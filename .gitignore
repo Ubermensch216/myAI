@@ -8,3 +8,4 @@ server.err.log
 .claude/
 .DS_Store
 Thumbs.db
+.env.example
