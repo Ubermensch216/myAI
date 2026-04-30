@@ -1,0 +1,29 @@
+# Place at /etc/caddy/Caddyfile (or include from there).
+# Caddy auto-provisions a Let's Encrypt certificate for the hostname below.
+#
+# Replace myai.example.com with your real DNS name. The DNS A/AAAA record
+# must already point to this server before reload.
+
+myai.example.com {
+    encode zstd gzip
+
+    # Match upload limit configured for the app (MAX_UPLOAD_BYTES = 40 MB).
+    request_body {
+        max_size 40MB
+    }
+
+    reverse_proxy 127.0.0.1:3000 {
+        # Streaming responses (Ollama tokens) must not be buffered.
+        flush_interval -1
+        # Long generations should not be killed mid-flight.
+        transport http {
+            response_header_timeout 1h
+            read_timeout            1h
+        }
+    }
+
+    # Optional: basic-auth gate. Generate hash with: caddy hash-password
+    # basicauth {
+    #     myuser JDJhJDE0JE...
+    # }
+}

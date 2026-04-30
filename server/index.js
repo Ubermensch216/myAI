@@ -15,6 +15,7 @@ const rootDir = path.resolve(__dirname, "..");
 const uploadDir = path.join(rootDir, "uploads");
 const publicDir = path.join(rootDir, "public");
 const port = Number(process.env.PORT || 3000);
+const host = process.env.HOST || undefined;
 
 const app = express();
 const upload = multer({
@@ -140,6 +141,7 @@ app.use((_request, response) => {
   response.sendFile(path.join(publicDir, "index.html"));
 });
 
-app.listen(port, () => {
-  console.log(`Ollama Document Chatter listening on http://localhost:${port}`);
+app.listen(port, host, () => {
+  const displayHost = host || "0.0.0.0";
+  console.log(`myAI listening on http://${displayHost}:${port}`);
 });

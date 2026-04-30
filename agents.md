@@ -62,6 +62,11 @@ public/styles.css
 package.json
 README.md
 agents.md
+deploy/DEPLOY.md
+deploy/myai.service
+deploy/myai.env.example
+deploy/Caddyfile
+deploy/nginx.conf.example
 ```
 
 Key responsibilities:
@@ -686,6 +691,13 @@ Current behavior:
 - Section title symbol duplication fix and stronger badge:
   - `cleanSectionLabel` in `public/answerRenderer.js` now strips leading section glyphs from the model output so only the renderer-chosen symbol is shown.
   - `.answer-section-symbol` was made more prominent: 20×20, accent-mixed background at 88%, white glyph, soft accent-tinted shadow — and re-tints with the color theme.
+- Linux deployment scaffolding was added under `deploy/`:
+  - `myai.service` — systemd unit with sandboxing (`ProtectSystem=strict`, `NoNewPrivileges`, `MemoryDenyWriteExecute`, etc.) and `ReadWritePaths=/opt/myai/uploads`. Loads env from `/etc/myai.env`.
+  - `myai.env.example` — production env template (defaults to `HOST=127.0.0.1` so the app only listens on loopback behind a proxy).
+  - `Caddyfile` — Caddy reverse proxy with auto-TLS, streaming-friendly `flush_interval -1`, and matching upload size.
+  - `nginx.conf.example` — nginx vhost with certbot hookup, `proxy_buffering off`, 1h timeouts, and `client_max_body_size 40m`.
+  - `DEPLOY.md` — Ubuntu/Debian step-by-step (Node 20 install, Ollama, dedicated `myai` user, env file permissions, systemd, proxy, firewall, troubleshooting).
+- `server/index.js` now reads `HOST` env to control bind interface (default keeps current behavior of binding all interfaces). `package.json` declares `"engines": { "node": ">=20" }`.
 - Settings dialog layout was reorganized to be more compact:
   - Top row: `시스템 명칭` text input next to a `시스템 아이콘` `<fieldset>` containing the existing logo preview / file input / remove button.
   - Second row: `사용자 별명` and `AI 별명` side by side.

@@ -63,12 +63,25 @@ npm start
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |
 | `MAX_UPLOAD_BYTES` | `41943040` | 업로드 파일 한 개당 최대 바이트 (40MB) |
 
-## Deployment Notes
+## Deployment
 
-- **HTTPS 필수**: WebCrypto Subtle API는 보안 컨텍스트(`https://` 또는 `http://localhost`)에서만 동작합니다. 외부 호스트로 노출할 때 HTTP로 접속하면 암호화 저장이 작동하지 않으니 nginx/Caddy 등으로 TLS를 종단시키세요.
-- **리버스 프록시**: 스트리밍 응답이 끊기지 않도록 `proxy_buffering off` (nginx) 설정과 충분한 `proxy_read_timeout`을 권장. 업로드 한도는 `client_max_body_size`도 같이 맞추세요.
-- **systemd 서비스**: `WorkingDirectory`, `ExecStart=/usr/bin/node server/index.js`, `Restart=on-failure`, `Environment=…` 패턴으로 단순 등록 가능.
-- **GPU 권장**: CPU 전용에서도 동작하지만 응답 지연이 큽니다. 실서비스라면 NVIDIA GPU + Ollama 자동 감지 사용.
+Linux 서버 배포는 [`deploy/DEPLOY.md`](./deploy/DEPLOY.md)에 단계별로 정리되어 있습니다. `deploy/` 안에는 바로 쓸 수 있는 템플릿이 있습니다.
+
+| 파일 | 용도 |
+|---|---|
+| [`deploy/DEPLOY.md`](./deploy/DEPLOY.md) | Ubuntu/Debian 배포 단계별 가이드 |
+| [`deploy/myai.service`](./deploy/myai.service) | systemd 유닛 (샌드박싱 포함) |
+| [`deploy/myai.env.example`](./deploy/myai.env.example) | `/etc/myai.env`로 복사할 환경변수 |
+| [`deploy/Caddyfile`](./deploy/Caddyfile) | Caddy 리버스 프록시 (Let's Encrypt 자동) |
+| [`deploy/nginx.conf.example`](./deploy/nginx.conf.example) | nginx vhost (certbot 사용) |
+
+핵심 주의사항:
+
+- **HTTPS는 필수**입니다. 프론트엔드 `WebCrypto AES-GCM`은 보안 컨텍스트(`https://` 또는 `http://localhost`)에서만 동작합니다.
+- 운영에서는 `HOST=127.0.0.1`로 묶고 리버스 프록시 뒤에 두세요. (`server/index.js`가 `HOST` 환경변수를 읽어 바인딩합니다.)
+- 프록시는 스트리밍을 차단하지 않도록: nginx면 `proxy_buffering off` + `proxy_read_timeout 1h`, Caddy면 `flush_interval -1`.
+- 업로드 한도(`MAX_UPLOAD_BYTES`)는 프록시 한도(`client_max_body_size` / Caddy `request_body max_size`)와 일치시킬 것.
+- CPU 전용 추론은 매우 느립니다. 실서비스에는 NVIDIA GPU 권장 (Ollama 설치 스크립트가 자동 감지).
 
 ## Supported Inputs
 
