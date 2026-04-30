@@ -21,7 +21,10 @@
           <span id="statusBadge" class="status-badge" aria-label="연결 확인 중" title="연결 확인 중"></span>
         </section>
 
-        <button id="newRoomButton" class="new-room-button" type="button">새 대화</button>
+        <button id="newRoomButton" class="new-room-button" type="button" title="새 대화 (Shift+N)">
+          <span class="new-room-label">새 대화</span>
+          <span class="shortcut-hint" aria-hidden="true">Shift+N</span>
+        </button>
 
         <section class="panel room-panel">
           <div class="panel-heading">
@@ -84,31 +87,75 @@
           <button id="closeSettingsButton" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label class="field-label" for="appNameInput">시스템 명칭</label>
-            <input id="appNameInput" class="text-input" placeholder="예: My Local AI" />
-          </div>
-          <fieldset class="field-section icon-section">
-            <legend class="field-section-title">시스템 아이콘</legend>
-            <div class="logo-picker">
-              <img id="appLogoPreview" class="logo-preview" alt="시스템 아이콘 미리보기" hidden />
-              <input id="appLogoInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" />
-              <button id="removeLogoButton" class="ghost-button" type="button">이미지 제거</button>
+        <fieldset class="field-section identity-section">
+          <legend class="field-section-title">시스템 정보</legend>
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="appNameInput">명칭</label>
+              <input id="appNameInput" class="text-input" placeholder="예: My Local AI" />
             </div>
-          </fieldset>
-        </div>
+            <div class="field">
+              <span class="field-label">아이콘</span>
+              <div id="appLogoPicker" class="logo-picker" data-state="empty">
+                <button id="appLogoTrigger" type="button" class="logo-slot" aria-label="아이콘 선택">
+                  <img id="appLogoPreview" class="logo-preview-img" alt="" hidden />
+                  <svg class="logo-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>
+                  </svg>
+                </button>
+                <div class="logo-actions">
+                  <button id="changeLogoButton" type="button" class="logo-action-btn" aria-label="아이콘 변경" title="변경">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                      <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
+                    </svg>
+                  </button>
+                  <button id="removeLogoButton" type="button" class="logo-action-btn" aria-label="아이콘 삭제" title="삭제">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+                    </svg>
+                  </button>
+                </div>
+                <input id="appLogoInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
+              </div>
+            </div>
+          </div>
+        </fieldset>
 
-        <div class="field-row">
-          <div class="field">
-            <label class="field-label" for="userTitleInput">사용자 별명</label>
-            <input id="userTitleInput" class="text-input" placeholder="예: 선생님, 지훈님" />
+        <fieldset class="field-section identity-section">
+          <legend class="field-section-title">사용자 정보</legend>
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label" for="userTitleInput">별명</label>
+              <input id="userTitleInput" class="text-input" placeholder="예: 선생님, 지훈님" />
+            </div>
+            <div class="field">
+              <span class="field-label">아바타</span>
+              <div id="userAvatarPicker" class="logo-picker" data-state="empty">
+                <button id="userAvatarTrigger" type="button" class="logo-slot" aria-label="아바타 선택">
+                  <img id="userAvatarPreview" class="logo-preview-img" alt="" hidden />
+                  <svg class="logo-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>
+                  </svg>
+                </button>
+                <div class="logo-actions">
+                  <button id="changeAvatarButton" type="button" class="logo-action-btn" aria-label="아바타 변경" title="변경">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                      <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
+                    </svg>
+                  </button>
+                  <button id="removeAvatarButton" type="button" class="logo-action-btn" aria-label="아바타 삭제" title="삭제">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+                    </svg>
+                  </button>
+                </div>
+                <input id="userAvatarInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
+              </div>
+            </div>
           </div>
-          <div class="field">
-            <label class="field-label" for="aiNameInput">AI 별명</label>
-            <input id="aiNameInput" class="text-input" placeholder="예: Jarvis, 루미" />
-          </div>
-        </div>
+        </fieldset>
 
         <fieldset class="field-section theme-section">
           <legend class="field-section-title">테마</legend>

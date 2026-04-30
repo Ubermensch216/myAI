@@ -43,6 +43,7 @@ server/
   index.js          Express 앱, 라우트 정의 (150 LOC)
   ollama.js         Ollama 호출, 시스템 프롬프트, 후속질문 (329 LOC)
   parsers.js        PDF/DOCX/XLSX/PPTX/HWPX/이미지 파싱 (274 LOC)
+  visualization.js  시각화 요청 컨텍스트 구성과 JSON 검증
   retrieval.js      BM25 청크 선택기 (94 LOC)
   documents.js      문서 요약·직렬화 헬퍼 (25 LOC)
   documentStore.js  서버 인메모리 Map (28 LOC)
@@ -51,6 +52,7 @@ public/
   index.html        앱 셸 + 설정 다이얼로그 (179 LOC)
   app.js            상태/UI/IndexedDB 암호화/스트리밍 (1,331 LOC)
   answerRenderer.js 마크다운-라이트 답변 렌더러 (254 LOC)
+  visualizationRenderer.js SVG 차트/KPI/표/인포그래픽 렌더러
   fileDisplay.js    파일 배지/표시명 (22 LOC)
   textRepair.js     mojibake 점수/복구 (31 LOC)
   styles.css        테마 토큰, 레이아웃 (1,312 LOC)
@@ -87,6 +89,7 @@ PROJECT_ANALYSIS.md  현재 분석 보고서
 | DELETE | `/api/documents/:id` | 서버 메모리 캐시에서 제거 |
 | POST | `/api/upload` | multer 단일 파일 업로드 후 `parseUpload` 결과 반환 |
 | POST | `/api/chat` | Ollama 스트리밍 응답을 text/plain으로 전달 |
+| POST | `/api/visualize` | 표 데이터 기반 시각화 요청을 strict JSON으로 생성/검증 |
 | POST | `/api/followups` | Ollama로 1-3개 한국어 후속 질문 생성 |
 | catch-all | 기타 | SPA 폴백으로 `index.html` 반환 |
 
@@ -126,7 +129,13 @@ PROJECT_ANALYSIS.md  현재 분석 보고서
 
 중지는 `AbortController` 기반이다. `Esc` 또는 송신 버튼 재클릭으로 중단하며, 부분 답변이 있으면 남겨 둔다.
 
-### 5.3 답변 렌더링
+### 5.3 데이터 시각화 흐름
+
+CSV/XLSX 업로드는 텍스트뿐 아니라 `headers`, `rows`, `sampleRows`, `profile`을 함께 보존한다. 사용자의 최신 요청에 차트/그래프/인포그래픽 의도가 있고 활성 대화방에 표 데이터가 있으면 프론트엔드는 `/api/chat` 대신 `/api/visualize`를 호출한다.
+
+`/api/visualize`는 표 컨텍스트를 압축해 Ollama에 전달하고 strict JSON 응답을 요구한다. 서버는 `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, `infographic` 타입만 통과시키며, 브라우저는 `visualizationRenderer.js`에서 SVG 차트와 KPI/표/인포그래픽 블록으로 렌더링한다.
+
+### 5.4 답변 렌더링
 
 `answerRenderer.js`는 풀 Markdown 렌더러가 아니라 의도적 lite 렌더러다. 일반 Markdown 강조 마크는 제거하고, 표·리스트·짧은 섹션 라벨만 보기 좋게 변환한다. 섹션 라벨에는 `◆`, `●`, `✓`, `※`, `→`, `◇` 심볼을 자동 부여한다.
 

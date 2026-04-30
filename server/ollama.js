@@ -1,6 +1,12 @@
 import { loadLocalEnv } from "./env.js";
 import { chunkText } from "./parsers.js";
 import { pickRelevantChunks } from "./retrieval.js";
+import {
+  buildVisualizationContext,
+  buildFallbackVisualizationSpec,
+  normalizeVisualizationSpec,
+  parseVisualizationJson
+} from "./visualization.js";
 
 loadLocalEnv();
 
@@ -114,6 +120,121 @@ export async function generateFollowupSuggestions({
 
   const payload = await response.json();
   return parseSuggestionPayload(payload.message?.content ?? "");
+}
+
+export async function generateVisualizationSpec({
+  prompt,
+  messages,
+  documents,
+  model = DEFAULT_MODEL,
+  personalization = {}
+}) {
+  const context = buildVisualizationContext(documents);
+  if (!context.available) {
+    throw new Error("No tabular data is available for visualization. Upload an Excel or CSV file first.");
+  }
+
+  const userTitle = sanitizeName(personalization.userTitle, "user");
+  const aiName = sanitizeName(personalization.aiName, "AI");
+  const recentMessages = messages
+    .slice(-6)
+    .map((message) => `${message.role === "assistant" ? aiName : userTitle}: ${String(message.content ?? "").slice(0, 1200)}`)
+    .join("\n\n");
+
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: "json",
+        messages: [
+          {
+            role: "system",
+            content: [
+              "You are a data visualization planner for a local Korean AI web app.",
+              "Return only one strict JSON object. Do not include markdown, code fences, prose, or comments.",
+              "Use the uploaded table data only. Do not invent rows, labels, totals, or columns.",
+              "Create concise Korean titles, summary, insights, warnings, and labels unless the data itself is in another language.",
+              "Allowed visualization types: bar, line, pie, scatter, table, kpi, infographic.",
+              "Prefer kpi plus one or two charts when the user asks for an infographic.",
+              "For bar, line, and pie, data must be an array of objects with label and numeric value.",
+              "For scatter, data must be an array of objects with label, numeric x, and numeric y.",
+              "For table, include columns and rows.",
+              "For kpi, include items with label, value, and optional note.",
+              "Schema:",
+              JSON.stringify({
+                version: "1.0",
+                summary: "short answer",
+                visualizations: [
+                  {
+                    type: "bar",
+                    title: "chart title",
+                    subtitle: "optional subtitle",
+                    xLabel: "x axis",
+                    yLabel: "y axis",
+                    data: [{ label: "A", value: 10 }],
+                    items: [{ label: "metric", value: "10", note: "optional" }],
+                    columns: ["Column"],
+                    rows: [["Value"]],
+                    sections: [{ title: "section", body: "text", items: ["point"] }]
+                  }
+                ],
+                insights: ["specific insight"],
+                warnings: ["data limitation"]
+              })
+            ].join("\n")
+          },
+          {
+            role: "user",
+            content: [
+              `User request: ${String(prompt ?? "").slice(0, 2000)}`,
+              "",
+              "Recent conversation:",
+              recentMessages || "(none)",
+              "",
+              "Available table context:",
+              JSON.stringify(context, null, 2),
+              "",
+              "Create the visualization JSON now."
+            ].join("\n")
+          }
+        ],
+        options: {
+          temperature: 0.05,
+          top_p: 0.8
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      return buildFallbackVisualizationSpec({
+        prompt,
+        context,
+        reason: `Ollama returned ${response.status}. ${errorText}`
+      });
+    }
+
+    const payload = await response.json();
+    const rawContent = payload.message?.content ?? "";
+    const parsed = parseVisualizationJson(rawContent);
+    const spec = normalizeVisualizationSpec(parsed);
+    if (spec.visualizations.length) return spec;
+
+    return buildFallbackVisualizationSpec({
+      prompt,
+      context,
+      reason: String(rawContent || "The model did not return a usable visualization JSON object.").slice(0, 500)
+    });
+  } catch (error) {
+    return buildFallbackVisualizationSpec({
+      prompt,
+      context,
+      reason: error.message || "Visualization model call failed."
+    });
+  }
 }
 
 function buildMessages(messages, documents, personalization) {

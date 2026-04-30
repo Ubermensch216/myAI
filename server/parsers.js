@@ -6,7 +6,10 @@ import pdfParse from "pdf-parse";
 import { XMLParser } from "fast-xml-parser";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
-const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".hwpx"]);
+const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".xls", ".csv", ".pptx", ".hwpx"]);
+const MAX_STORED_TABLE_ROWS = 800;
+const MAX_STORED_TABLE_COLUMNS = 60;
+const MAX_PROFILE_VALUES = 12;
 
 const xmlParser = new XMLParser({
   ignoreAttributes: true,
@@ -38,6 +41,7 @@ export async function parseUpload(file) {
     throw new Error("구형 .xls는 보안상 직접 파싱하지 않습니다. .xlsx로 변환한 뒤 업로드해 주세요.");
   }
   if (extension === ".xlsx") return parseWorkbook(file);
+  if (extension === ".csv") return parseCsv(file);
   if (extension === ".pptx") return parsePptx(file);
   if (extension === ".hwpx") return parseHwpx(file);
 
@@ -84,6 +88,24 @@ async function parseDocx(file) {
   };
 }
 
+async function parseCsv(file) {
+  const buffer = await fs.readFile(file.path);
+  const content = stripUtf8Bom(buffer.toString("utf8"));
+  const rows = normalizeRows(parseCsvRows(content));
+  const table = buildTableFromRows("CSV", rows);
+  const text = normalizeText(tableRowsForText(table).map((row) => row.join(", ")).join("\n"));
+
+  return {
+    fileName: file.originalname,
+    fileType: "csv",
+    kind: "document",
+    text,
+    sheets: [{ ...table, text }],
+    tables: [table],
+    pages: [{ page: 1, label: "CSV", text }]
+  };
+}
+
 async function parseWorkbook(file) {
   const buffer = await fs.readFile(file.path);
   const zip = await JSZip.loadAsync(buffer);
@@ -97,15 +119,13 @@ async function parseWorkbook(file) {
   for (const [index, sheetPath] of sheetFiles.entries()) {
     const xml = await zip.file(sheetPath).async("string");
     const parsed = xmlParserWithAttributes.parse(xml);
-    const rows = asArray(parsed.worksheet?.sheetData?.row).map((row) => {
-      return asArray(row.c)
-        .map((cell) => readCellValue(cell, sharedStrings))
-        .join(", ");
-    });
+    const rows = readWorksheetRows(parsed, sharedStrings);
+    const table = buildTableFromRows(sheetNames[index] || `Sheet ${index + 1}`, rows);
+    const text = normalizeText(tableRowsForText(table).map((row) => row.join(", ")).join("\n"));
 
     sheets.push({
-      name: sheetNames[index] || `Sheet ${index + 1}`,
-      text: normalizeText(rows.join("\n"))
+      ...table,
+      text
     });
   }
 
@@ -119,6 +139,15 @@ async function parseWorkbook(file) {
     kind: "document",
     text,
     sheets,
+    tables: sheets.map(({ name, headers, rows, rowCount, columnCount, truncated, profile }) => ({
+      name,
+      headers,
+      rows,
+      rowCount,
+      columnCount,
+      truncated,
+      profile
+    })),
     pages: sheets.map((sheet, index) => ({
       page: index + 1,
       label: sheet.name,
@@ -146,12 +175,229 @@ async function readSheetNames(zip) {
   return asArray(parsed.workbook?.sheets?.sheet).map((sheet) => String(sheet.name || ""));
 }
 
+function readWorksheetRows(parsed, sharedStrings) {
+  const rows = asArray(parsed.worksheet?.sheetData?.row).map((row) => {
+    const values = [];
+
+    for (const cell of asArray(row.c)) {
+      const columnIndex = getCellColumnIndex(cell?.r);
+      const value = readCellValue(cell, sharedStrings);
+      if (columnIndex >= 0) values[columnIndex] = value;
+      else values.push(value);
+    }
+
+    return trimTrailingEmpty(values.map((value) => String(value ?? "")));
+  });
+
+  return normalizeRows(rows);
+}
+
+function getCellColumnIndex(reference = "") {
+  const match = String(reference).match(/^[A-Z]+/i);
+  if (!match) return -1;
+
+  let index = 0;
+  for (const character of match[0].toUpperCase()) {
+    index = index * 26 + character.charCodeAt(0) - 64;
+  }
+  return index - 1;
+}
+
 function readCellValue(cell, sharedStrings) {
   if (!cell) return "";
   if (cell.t === "s") return sharedStrings[Number(cell.v)] ?? "";
   if (cell.t === "inlineStr") return collectText(cell.is).join("");
   if (cell.t === "b") return cell.v === "1" ? "TRUE" : "FALSE";
   return String(cell.v ?? "");
+}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const next = text[index + 1];
+
+    if (character === "\"") {
+      if (inQuotes && next === "\"") {
+        field += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (character === "," && !inQuotes) {
+      row.push(field);
+      field = "";
+      continue;
+    }
+
+    if ((character === "\n" || character === "\r") && !inQuotes) {
+      if (character === "\r" && next === "\n") index += 1;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      continue;
+    }
+
+    field += character;
+  }
+
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function buildTableFromRows(name, sourceRows) {
+  const normalizedRows = normalizeRows(sourceRows);
+  const sourceColumnCount = normalizedRows.reduce((max, row) => Math.max(max, row.length), 0);
+  const limitedRows = normalizedRows
+    .slice(0, MAX_STORED_TABLE_ROWS + 1)
+    .map((row) => row.slice(0, MAX_STORED_TABLE_COLUMNS));
+  const hasHeader = inferHeaderRow(limitedRows);
+  const columnCount = limitedRows.reduce((max, row) => Math.max(max, row.length), 0);
+  const headers = hasHeader
+    ? buildHeaders(limitedRows[0] || [], columnCount)
+    : buildHeaders([], columnCount);
+  const rows = hasHeader ? limitedRows.slice(1) : limitedRows;
+  const paddedRows = rows.map((row) => padRow(row, headers.length));
+
+  return {
+    name,
+    headers,
+    rows: paddedRows,
+    sampleRows: paddedRows.slice(0, 12).map((row) => rowToRecord(headers, row)),
+    rowCount: Math.max(0, normalizedRows.length - (hasHeader ? 1 : 0)),
+    columnCount: headers.length,
+    truncated: normalizedRows.length > limitedRows.length || sourceColumnCount > MAX_STORED_TABLE_COLUMNS,
+    profile: profileTable(headers, paddedRows)
+  };
+}
+
+function inferHeaderRow(rows) {
+  if (!rows.length) return false;
+  const first = rows[0] || [];
+  const second = rows[1] || [];
+  const firstTextCount = first.filter((value) => {
+    const text = String(value ?? "").trim();
+    return text && !isNumericText(text);
+  }).length;
+  const secondNumericCount = second.filter((value) => isNumericText(value)).length;
+  return firstTextCount > 0 && (firstTextCount >= Math.ceil(first.length / 2) || secondNumericCount > 0);
+}
+
+function buildHeaders(row, columnCount) {
+  const seen = new Map();
+  const headers = [];
+
+  for (let index = 0; index < columnCount; index += 1) {
+    const fallback = `Column ${index + 1}`;
+    const base = String(row[index] ?? "").trim() || fallback;
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    headers.push(count ? `${base} ${count + 1}` : base);
+  }
+
+  return headers;
+}
+
+function normalizeRows(rows) {
+  return rows
+    .map((row) => trimTrailingEmpty(asArray(row).map((value) => String(value ?? "").trim())))
+    .filter((row) => row.some((value) => value !== ""));
+}
+
+function trimTrailingEmpty(row) {
+  const trimmed = [...row];
+  while (trimmed.length && String(trimmed[trimmed.length - 1] ?? "").trim() === "") {
+    trimmed.pop();
+  }
+  return trimmed;
+}
+
+function padRow(row, length) {
+  return Array.from({ length }, (_value, index) => String(row[index] ?? ""));
+}
+
+function tableRowsForText(table) {
+  if (!table.headers.length) return table.rows;
+  return [table.headers, ...table.rows];
+}
+
+function rowToRecord(headers, row) {
+  return Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""]));
+}
+
+function profileTable(headers, rows) {
+  return {
+    columns: headers.map((header, index) => profileColumn(header, rows.map((row) => row[index])))
+  };
+}
+
+function profileColumn(name, values) {
+  const nonEmptyValues = values.map((value) => String(value ?? "").trim()).filter(Boolean);
+  const numbers = nonEmptyValues
+    .map(parseNumber)
+    .filter((value) => Number.isFinite(value));
+  const numberRatio = nonEmptyValues.length ? numbers.length / nonEmptyValues.length : 0;
+  const topValues = topValueCounts(nonEmptyValues);
+  const numeric = numberRatio >= 0.75 && numbers.length > 0;
+
+  return {
+    name,
+    type: numeric ? "number" : "category",
+    count: nonEmptyValues.length,
+    emptyCount: Math.max(0, values.length - nonEmptyValues.length),
+    uniqueCount: new Set(nonEmptyValues).size,
+    ...(numeric
+      ? {
+          min: Math.min(...numbers),
+          max: Math.max(...numbers),
+          sum: roundNumber(numbers.reduce((sum, value) => sum + value, 0)),
+          average: roundNumber(numbers.reduce((sum, value) => sum + value, 0) / numbers.length)
+        }
+      : {}),
+    topValues
+  };
+}
+
+function topValueCounts(values) {
+  const counts = new Map();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, MAX_PROFILE_VALUES)
+    .map(([value, count]) => ({ value, count }));
+}
+
+function isNumericText(value) {
+  return Number.isFinite(parseNumber(value));
+}
+
+function parseNumber(value) {
+  const text = String(value ?? "")
+    .trim()
+    .replace(/,/g, "")
+    .replace(/[%$]/g, "");
+  if (!text) return NaN;
+  return Number(text);
+}
+
+function roundNumber(value) {
+  return Math.round(value * 10000) / 10000;
+}
+
+function stripUtf8Bom(text) {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
 function asArray(value) {

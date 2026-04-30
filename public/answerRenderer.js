@@ -1,3 +1,5 @@
+const CODE_COPY_RESET_MS = 900;
+
 const SECTION_LABELS = new Set([
   "summary",
   "key points",
@@ -20,8 +22,10 @@ const SECTION_LABELS = new Set([
 export function renderAssistantAnswer(container, rawText) {
   container.innerHTML = "";
   const blocks = parseAnswerBlocks(rawText);
+  container.classList.toggle("has-code-block", blocks.some((block) => block.type === "code"));
 
   if (!blocks.length) {
+    container.classList.remove("has-code-block");
     container.textContent = rawText;
     return;
   }
@@ -42,6 +46,11 @@ export function renderAssistantAnswer(container, rawText) {
       continue;
     }
 
+    if (block.type === "code") {
+      container.append(createCodeBlock(block.code, block.language));
+      continue;
+    }
+
     const paragraph = document.createElement("p");
     paragraph.textContent = cleanPlainText(block.text);
     container.append(paragraph);
@@ -55,6 +64,14 @@ export function parseAnswerBlocks(text) {
   let index = 0;
 
   while (index < lines.length) {
+    const codeBlock = parseCodeBlock(lines, index);
+    if (codeBlock) {
+      flushParagraph();
+      blocks.push(codeBlock.block);
+      index = codeBlock.nextIndex;
+      continue;
+    }
+
     if (isMarkdownTableStart(lines, index)) {
       flushParagraph();
       const tableLines = [];
@@ -107,6 +124,58 @@ export function parseAnswerBlocks(text) {
     blocks.push({ type: "paragraph", text: paragraph.join("\n") });
     paragraph = [];
   }
+}
+
+function parseCodeBlock(lines, startIndex) {
+  const fence = parseCodeFence(lines[startIndex]);
+  if (!fence) return null;
+
+  const codeLines = [];
+  let index = startIndex + 1;
+
+  while (index < lines.length) {
+    if (isCodeFenceClose(lines[index], fence)) {
+      index += 1;
+      break;
+    }
+
+    codeLines.push(lines[index]);
+    index += 1;
+  }
+
+  return {
+    block: {
+      type: "code",
+      language: fence.language,
+      code: codeLines.join("\n")
+    },
+    nextIndex: index
+  };
+}
+
+function parseCodeFence(line = "") {
+  const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+  if (!match) return null;
+
+  return {
+    marker: match[1][0],
+    length: match[1].length,
+    language: sanitizeCodeLanguage(match[2])
+  };
+}
+
+function isCodeFenceClose(line = "", fence) {
+  const match = line.match(/^\s*(`{3,}|~{3,})\s*$/);
+  return Boolean(match && match[1][0] === fence.marker && match[1].length >= fence.length);
+}
+
+function sanitizeCodeLanguage(value = "") {
+  return String(value ?? "")
+    .trim()
+    .split(/\s+/)[0]
+    .replace(/[^a-zA-Z0-9_+.#-]/g, "")
+    .slice(0, 32)
+    .toLowerCase();
 }
 
 function parseListItem(line = "") {
@@ -179,6 +248,77 @@ function createList(items, ordered) {
   }
 
   return list;
+}
+
+function createCodeBlock(code, language = "") {
+  const wrapper = document.createElement("div");
+  wrapper.className = "answer-code-block";
+
+  const header = document.createElement("div");
+  header.className = "answer-code-header";
+
+  const label = document.createElement("span");
+  label.className = "answer-code-language";
+  label.textContent = language || "code";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "answer-code-copy";
+  button.title = "코드 복사";
+  button.setAttribute("aria-label", "코드 복사");
+  button.innerHTML = `
+    <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="9" width="10" height="10" rx="2"></rect>
+      <path d="M5 15V7a2 2 0 0 1 2-2h8"></path>
+    </svg>
+    <svg class="check-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m5 13 4 4L19 7"></path>
+    </svg>
+  `;
+  button.addEventListener("click", async () => {
+    await copyTextToClipboard(String(code ?? ""));
+    showCodeCopyFeedback(button);
+  });
+
+  const pre = document.createElement("pre");
+  pre.className = "answer-code-pre";
+
+  const codeElement = document.createElement("code");
+  codeElement.textContent = String(code ?? "");
+  if (language) codeElement.dataset.language = language;
+
+  pre.append(codeElement);
+  header.append(label, button);
+  wrapper.append(header, pre);
+  return wrapper;
+}
+
+function showCodeCopyFeedback(button) {
+  button.classList.add("copied");
+  clearTimeout(button.copyResetTimer);
+  button.copyResetTimer = setTimeout(() => {
+    button.classList.remove("copied");
+  }, CODE_COPY_RESET_MS);
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      // Fall back for older or restricted browser contexts.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 function isMarkdownTableStart(lines, index) {

@@ -41,6 +41,7 @@ The app is intended to be a local AI secretary that can chat, analyze uploaded d
   - PDF: `pdf-parse`
   - DOCX: `mammoth`
   - XLSX: direct ZIP/XML parsing with `jszip`
+  - CSV: built-in quoted CSV parser
   - PPTX: ZIP/XML parsing with `jszip` + `fast-xml-parser`
   - HWPX: ZIP/XML parsing with `jszip` + `fast-xml-parser`
   - Images: base64 stored and passed to Ollama
@@ -60,10 +61,12 @@ server/env.js
 server/documents.js
 server/ollama.js
 server/parsers.js
+server/visualization.js
 server/documentStore.js
 public/index.html
 public/app.js
 public/answerRenderer.js
+public/visualizationRenderer.js
 public/fileDisplay.js
 public/textRepair.js
 public/styles.css
@@ -89,6 +92,7 @@ Key responsibilities:
   - `/api/documents`
   - `/api/documents/:id`
   - `/api/chat`
+  - `/api/visualize`
   - `/api/followups`
   - delegates upload filename repair and document serialization to shared helpers
 
@@ -102,6 +106,7 @@ Key responsibilities:
 - `server/ollama.js`
   - Ollama streaming chat call
   - follow-up question generation call
+  - structured visualization JSON generation call
   - model/system prompt construction
   - personal settings injection
   - custom user prompt injection
@@ -115,6 +120,12 @@ Key responsibilities:
   - parses uploaded file types into common document objects
   - chunks long text
   - extracts text from Office/HWPX ZIP XML formats
+  - preserves CSV/XLSX tabular data as headers, rows, samples, and column profiles for visualization
+
+- `server/visualization.js`
+  - detects visualization intent keywords
+  - builds compact table context for the model
+  - parses and normalizes model JSON into an allowed chart/infographic schema
 
 - `server/documentStore.js`
   - in-memory server-side document map
@@ -131,6 +142,7 @@ Key responsibilities:
   - the `+` menu is intended as an extension point for future composer tools
   - drag and drop is handled by a full-app overlay instead of a left sidebar upload box
   - streaming response handling
+  - routes chart/graph/infographic requests with tabular data to `/api/visualize`
   - stop generation via button or Escape
   - message copy/edit actions
   - follow-up suggestion rendering and click-to-send behavior
@@ -146,10 +158,14 @@ Key responsibilities:
     - `→` next steps
     - `◇` notes
 
+- `public/visualizationRenderer.js`
+  - renders validated visualization JSON as SVG charts, KPI cards, tables, and infographic sections
+  - provides chart PNG download and visualization JSON copy controls
+
 - `public/fileDisplay.js`
   - frontend file display helpers
   - repairs previously stored mojibake filenames at display time
-  - maps uploaded files to sidebar badges (`PDF`, `DOC`, `XLS`, `PPT`, `HWP`, `IMG`, `FILE`)
+  - maps uploaded files to sidebar badges (`PDF`, `DOC`, `XLS`, `CSV`, `PPT`, `HWP`, `IMG`, `FILE`)
 
 - `public/textRepair.js`
   - mojibake scoring/repair helper shared by browser display code and server upload filename normalization
@@ -203,6 +219,7 @@ Key responsibilities:
   - PDF
   - DOCX
   - XLSX
+  - CSV
   - PPTX
   - HWPX
   - PNG/JPG/JPEG/WEBP/GIF
@@ -212,7 +229,7 @@ Key responsibilities:
   - paste image into prompt input
 - Left sidebar shows:
   - room list
-  - per-room file type badges (`PDF`, `DOC`, `XLS`, `PPT`, `HWP`, `IMG`, `FILE`)
+  - per-room file type badges (`PDF`, `DOC`, `XLS`, `CSV`, `PPT`, `HWP`, `IMG`, `FILE`)
   - selected room's file titles under the active room
 - The old standalone `파일 업로드` and `현재 대화방 파일` sidebar sections were removed.
 - File deletion happens from the selected room's file title rows via the trailing `X` button.
@@ -220,6 +237,14 @@ Key responsibilities:
 - Upload file names are normalized server-side to repair common UTF-8/Latin-1 mojibake.
 - The frontend also tries to repair previously stored mojibake names at display time.
 - Processing-step labels use the frontend display helper so thinking details also show repaired filenames.
+
+### Data Visualization
+
+- CSV and XLSX uploads preserve structured table data in addition to extracted text.
+- When the latest user prompt asks for a chart, graph, dashboard, visualization, or infographic and the active room has tabular data, the frontend calls `/api/visualize` instead of `/api/chat`.
+- `/api/visualize` asks Ollama for strict JSON, then server-side validation allows only `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
+- The browser renders the validated JSON with `public/visualizationRenderer.js` as SVG charts, KPI cards, tables, or infographic sections.
+- Chart blocks include icon-only PNG download controls. The visualization panel includes a JSON copy control.
 
 ### Persistence
 

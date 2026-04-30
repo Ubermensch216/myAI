@@ -7,6 +7,7 @@ export function summarizeDocument(document) {
     kind: document.kind,
     pageCount: document.pages?.length ?? 0,
     sheetCount: document.sheets?.length ?? 0,
+    tableCount: document.tables?.length ?? document.sheets?.filter((sheet) => sheet.rows?.length).length ?? 0,
     textLength: document.text?.length ?? 0,
     preview: document.text?.slice(0, 280) ?? ""
   };
@@ -19,7 +20,7 @@ export function serializeDocumentForClient(document) {
     imageBase64: document.imageBase64,
     text: document.text,
     pages: document.pages || [],
-    sheets: document.sheets || []
+    sheets: document.sheets || [],
+    tables: document.tables || []
   };
 }
-

@@ -1,5 +1,9 @@
 import { renderAssistantAnswer as renderAssistantContent } from "./answerRenderer.js";
 import {
+  formatVisualizationText,
+  renderVisualizationSpec
+} from "./visualizationRenderer.js";
+import {
   displayFileName as formatDisplayFileName,
   fileTypeIcon as getFileTypeIcon
 } from "./fileDisplay.js";
@@ -14,11 +18,12 @@ const state = {
   activeRoomId: null,
   settings: {
     userTitle: "사용자님",
-    aiName: "AI",
+    aiName: "Ollama Chatter",
     appName: "Ollama Chatter",
     theme: "light",
     colorTheme: "busan",
     appLogoDataUrl: "",
+    userAvatarDataUrl: "",
     customPrompt: ""
   },
   busy: false,
@@ -53,14 +58,22 @@ const elements = {
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
   cancelSettingsButton: document.querySelector("#cancelSettingsButton"),
   userTitleInput: document.querySelector("#userTitleInput"),
-  aiNameInput: document.querySelector("#aiNameInput"),
   appNameInput: document.querySelector("#appNameInput"),
   themeOptions: Array.from(document.querySelectorAll(".theme-option")),
   colorThemeOptions: Array.from(document.querySelectorAll(".color-theme-option")),
   customPromptInput: document.querySelector("#customPromptInput"),
   appLogoInput: document.querySelector("#appLogoInput"),
   appLogoPreview: document.querySelector("#appLogoPreview"),
-  removeLogoButton: document.querySelector("#removeLogoButton")
+  appLogoPicker: document.querySelector("#appLogoPicker"),
+  appLogoTrigger: document.querySelector("#appLogoTrigger"),
+  changeLogoButton: document.querySelector("#changeLogoButton"),
+  removeLogoButton: document.querySelector("#removeLogoButton"),
+  userAvatarInput: document.querySelector("#userAvatarInput"),
+  userAvatarPreview: document.querySelector("#userAvatarPreview"),
+  userAvatarPicker: document.querySelector("#userAvatarPicker"),
+  userAvatarTrigger: document.querySelector("#userAvatarTrigger"),
+  changeAvatarButton: document.querySelector("#changeAvatarButton"),
+  removeAvatarButton: document.querySelector("#removeAvatarButton")
 };
 
 let saveTimer = null;
@@ -80,14 +93,7 @@ async function init() {
 }
 
 function bindEvents() {
-  elements.newRoomButton.addEventListener("click", () => {
-    const room = createRoom();
-    state.rooms.unshift(room);
-    state.activeRoomId = room.id;
-    scheduleSave();
-    renderAll();
-    elements.promptInput.focus();
-  });
+  elements.newRoomButton.addEventListener("click", createNewRoom);
 
   elements.roomTitleInput.addEventListener("input", () => {
     const room = getActiveRoom();
@@ -102,9 +108,29 @@ function bindEvents() {
   elements.settingsButton.addEventListener("click", openSettings);
   elements.closeSettingsButton.addEventListener("click", closeSettings);
   elements.cancelSettingsButton.addEventListener("click", closeSettings);
+  const openLogoPicker = () => {
+    if (!state.busy) elements.appLogoInput.click();
+  };
+  const openAvatarPicker = () => {
+    if (!state.busy) elements.userAvatarInput.click();
+  };
+
+  elements.appLogoTrigger.addEventListener("click", () => {
+    if (elements.appLogoPicker.dataset.state === "empty") openLogoPicker();
+  });
+  elements.changeLogoButton.addEventListener("click", openLogoPicker);
+  elements.userAvatarTrigger.addEventListener("click", () => {
+    if (elements.userAvatarPicker.dataset.state === "empty") openAvatarPicker();
+  });
+  elements.changeAvatarButton.addEventListener("click", openAvatarPicker);
+
   elements.removeLogoButton.addEventListener("click", () => {
     state.settings.appLogoDataUrl = "";
     renderLogoPreview();
+  });
+  elements.removeAvatarButton.addEventListener("click", () => {
+    state.settings.userAvatarDataUrl = "";
+    renderAvatarPreview();
   });
 
   elements.appLogoInput.addEventListener("change", async (event) => {
@@ -114,12 +140,19 @@ function bindEvents() {
     renderLogoPreview();
     elements.appLogoInput.value = "";
   });
+  elements.userAvatarInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    state.settings.userAvatarDataUrl = await readFileAsDataUrl(file);
+    renderAvatarPreview();
+    elements.userAvatarInput.value = "";
+  });
 
   elements.settingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
     state.settings.userTitle = elements.userTitleInput.value.trim() || "사용자님";
-    state.settings.aiName = elements.aiNameInput.value.trim() || "AI";
     state.settings.appName = elements.appNameInput.value.trim() || "Ollama Chatter";
+    state.settings.aiName = state.settings.appName;
     state.settings.customPrompt = elements.customPromptInput.value.trim();
     scheduleSave();
     closeSettings();
@@ -187,6 +220,17 @@ function bindEvents() {
   });
 
   window.addEventListener("keydown", (event) => {
+    if (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === "n") {
+      const target = event.target;
+      const isTyping = target instanceof HTMLElement
+        && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (!isTyping) {
+        event.preventDefault();
+        if (!state.busy) createNewRoom();
+        return;
+      }
+    }
+
     if (event.key === "Escape" && !elements.attachMenu.hidden) {
       closeAttachMenu();
       return;
@@ -211,6 +255,15 @@ function bindEvents() {
     elements.promptInput.style.height = "auto";
     await sendMessage(prompt);
   });
+}
+
+function createNewRoom() {
+  const room = createRoom();
+  state.rooms.unshift(room);
+  state.activeRoomId = room.id;
+  scheduleSave();
+  renderAll();
+  elements.promptInput.focus();
 }
 
 async function initializeEncryptedStorage() {
@@ -250,13 +303,15 @@ async function loadAppState() {
 
   state.rooms = Array.isArray(stored.rooms) ? stored.rooms : [];
   state.activeRoomId = stored.activeRoomId || null;
+  const appName = stored.settings?.appName || stored.settings?.aiName || "Ollama Chatter";
   state.settings = {
     userTitle: stored.settings?.userTitle || "사용자님",
-    aiName: stored.settings?.aiName || "AI",
-    appName: stored.settings?.appName || "Ollama Chatter",
+    aiName: appName,
+    appName,
     theme: stored.settings?.theme === "dark" ? "dark" : "light",
     colorTheme: normalizeColorTheme(stored.settings?.colorTheme),
     appLogoDataUrl: stored.settings?.appLogoDataUrl || "",
+    userAvatarDataUrl: stored.settings?.userAvatarDataUrl || "",
     customPrompt: stored.settings?.customPrompt || ""
   };
 }
@@ -457,6 +512,7 @@ function renderAll() {
 function renderBrand() {
   const appName = state.settings.appName || "Ollama Chatter";
   const logo = state.settings.appLogoDataUrl;
+  state.settings.aiName = appName;
   document.title = appName;
   document.documentElement.dataset.theme = state.settings.theme || "light";
   document.documentElement.dataset.colorTheme = normalizeColorTheme(state.settings.colorTheme);
@@ -581,6 +637,7 @@ function renderMessages() {
       persist: false,
       messageIndex: index,
       suggestions: message.suggestions,
+      visualization: message.visualization,
       createdAt: message.createdAt
     });
   }
@@ -754,9 +811,19 @@ async function sendMessage(prompt) {
 
 async function requestAssistantResponse(room) {
   if (await hydrateStoredDocuments()) renderRooms();
+  if (shouldRequestVisualizationResponse(room)) {
+    await requestVisualizationResponse(room);
+    return;
+  }
+
+  await requestTextAssistantResponse(room);
+}
+
+async function requestTextAssistantResponse(room) {
   setBusy(true);
   state.abortController = new AbortController();
   const thinking = appendThinking();
+  advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
   let answer = "";
@@ -770,7 +837,7 @@ async function requestAssistantResponse(room) {
         model: elements.modelInput.value.trim() || "gemma3n:e2b",
         messages: room.messages.map(({ role, content }) => ({ role, content })),
         documents: getActiveDocuments(),
-        personalization: state.settings
+        personalization: getPersonalizationSettings()
       })
     });
 
@@ -786,6 +853,7 @@ async function requestAssistantResponse(room) {
       const { value, done } = await reader.read();
       if (done) break;
       answer += decoder.decode(value, { stream: true });
+      advanceThinkingProgress(thinking, getThinkingStepCount(thinking) - 1);
       if (!assistant) {
         assistant = appendMessage("assistant", "", { persist: false, streaming: true });
         assistantBody = assistant.querySelector(".message-body");
@@ -804,6 +872,7 @@ async function requestAssistantResponse(room) {
     assistant.dataset.copyText = finalAnswer;
     renderAssistantContent(assistantBody, finalAnswer);
     assistant.classList.remove("streaming");
+    advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
     const assistantMessage = { role: "assistant", content: finalAnswer, createdAt: new Date().toISOString() };
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
     room.messages.push(assistantMessage);
@@ -823,6 +892,83 @@ async function requestAssistantResponse(room) {
       assistantBody = assistant.querySelector(".message-body");
     }
     const errorText = `[오류] ${error.message}`;
+    assistant.dataset.copyText = errorText;
+    renderAssistantContent(assistantBody, errorText);
+    assistant.classList.remove("streaming");
+  } finally {
+    removeThinking(thinking);
+    state.abortController = null;
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+async function requestVisualizationResponse(room) {
+  setBusy(true);
+  state.abortController = new AbortController();
+  const thinking = appendThinking();
+  advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
+  let assistant = null;
+  let assistantBody = null;
+
+  try {
+    const prompt = getLastUserPrompt(room);
+    const response = await fetch("/api/visualize", {
+      method: "POST",
+      signal: state.abortController.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        model: elements.modelInput.value.trim() || "gemma3n:e2b",
+        messages: room.messages.map(({ role, content }) => ({ role, content })),
+        documents: getActiveDocuments(),
+        personalization: getPersonalizationSettings()
+      })
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "visualization generation failed");
+    advanceThinkingProgress(thinking, getThinkingStepCount(thinking) - 1);
+
+    const visualization = result.visualization;
+    const finalAnswer = ensureAddressedAnswer(formatVisualizationText(visualization));
+    assistant = appendMessage("assistant", finalAnswer, {
+      persist: false,
+      streaming: true,
+      visualization
+    });
+    assistantBody = assistant.querySelector(".message-body");
+    assistant.dataset.copyText = finalAnswer;
+    renderAssistantContent(assistantBody, finalAnswer);
+    assistantBody.append(renderVisualizationSpec(visualization));
+    assistantBody.classList.add("has-visualization");
+    assistant.classList.remove("streaming");
+    advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
+
+    const assistantMessage = {
+      role: "assistant",
+      content: finalAnswer,
+      visualization,
+      createdAt: new Date().toISOString()
+    };
+    setAssistantAnswerTime(assistant, assistantMessage.createdAt);
+    room.messages.push(assistantMessage);
+    room.updatedAt = assistantMessage.createdAt;
+    scheduleSave();
+    renderRooms();
+    renderFollowupSuggestions(assistant, [], { loading: true });
+    attachFollowupSuggestions(room, assistantMessage, assistant).finally(scrollToBottom);
+  } catch (error) {
+    if (error.name === "AbortError") {
+      if (assistant) assistant.classList.remove("streaming");
+      return;
+    }
+
+    if (!assistant) {
+      assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+      assistantBody = assistant.querySelector(".message-body");
+    }
+    const errorText = `[?ㅻ쪟] ${error.message}`;
     assistant.dataset.copyText = errorText;
     renderAssistantContent(assistantBody, errorText);
     assistant.classList.remove("streaming");
@@ -873,7 +1019,7 @@ async function requestFollowupSuggestions(room) {
     body: JSON.stringify({
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
       messages: room.messages.map(({ role, content }) => ({ role, content })),
-      personalization: state.settings
+      personalization: getPersonalizationSettings()
     })
   }).finally(() => clearTimeout(timeout));
 
@@ -911,12 +1057,29 @@ function appendMessage(role, text, options = {}) {
 
   const meta = document.createElement("div");
   meta.className = "message-meta";
-  meta.textContent = role === "user" ? state.settings.userTitle : state.settings.aiName;
+  const metaLabel = document.createElement("span");
+  metaLabel.textContent = role === "user" ? state.settings.userTitle : state.settings.aiName;
+  if (role === "user" && state.settings.userAvatarDataUrl) {
+    const avatar = document.createElement("img");
+    avatar.className = "message-meta-avatar";
+    avatar.src = state.settings.userAvatarDataUrl;
+    avatar.alt = "";
+    meta.append(metaLabel, avatar);
+  } else {
+    meta.append(metaLabel);
+  }
 
   const body = document.createElement("div");
   body.className = "message-body";
-  if (role === "assistant") renderAssistantContent(body, text);
-  else body.textContent = text;
+  if (role === "assistant") {
+    renderAssistantContent(body, text);
+    if (options.visualization) {
+      body.append(renderVisualizationSpec(options.visualization));
+      body.classList.add("has-visualization");
+    }
+  } else {
+    body.textContent = text;
+  }
 
   article.append(meta, body);
   article.append(createMessageActions(article, role, options.createdAt));
@@ -1187,20 +1350,56 @@ function appendThinking() {
   const summary = document.createElement("summary");
   summary.textContent = "처리 단계 보기";
   const list = document.createElement("ul");
-  for (const step of buildProcessingSteps()) {
+  const steps = buildProcessingSteps();
+  for (const [index, step] of steps.entries()) {
     const item = document.createElement("li");
-    item.textContent = step;
+    item.dataset.stepIndex = String(index);
+    const marker = document.createElement("span");
+    marker.className = "thinking-step-marker";
+    marker.textContent = "▷";
+    const label = document.createElement("span");
+    label.className = "thinking-step-label";
+    label.textContent = step;
+    item.append(marker, label);
     list.append(item);
   }
   details.append(summary, list);
   wrapper.append(row, details);
+  wrapper.dataset.completedSteps = "0";
   elements.messages.append(wrapper);
+  updateThinkingProgress(wrapper, 0);
   scrollToBottom();
   return wrapper;
 }
 
 function removeThinking(thinking) {
   thinking?.remove();
+}
+
+function updateThinkingProgress(thinking, completedCount) {
+  if (!thinking) return;
+  const items = Array.from(thinking.querySelectorAll(".thinking-details li"));
+  const safeCount = Math.max(0, Math.min(completedCount, items.length));
+  thinking.dataset.completedSteps = String(safeCount);
+
+  for (const [index, item] of items.entries()) {
+    const done = index < safeCount;
+    const active = index === safeCount;
+    item.classList.toggle("done", done);
+    item.classList.toggle("active", active);
+    const marker = item.querySelector(".thinking-step-marker");
+    if (marker) marker.textContent = "▷";
+  }
+}
+
+function advanceThinkingProgress(thinking, completedCount = null) {
+  if (!thinking) return;
+  const nextCount = completedCount ?? Number(thinking.dataset.completedSteps || 0) + 1;
+  updateThinkingProgress(thinking, nextCount);
+}
+
+function getThinkingStepCount(thinking) {
+  return thinking?.querySelectorAll(".thinking-details li").length ?? 0;
 }
 
 function buildProcessingSteps() {
@@ -1228,6 +1427,53 @@ function getActiveDocuments() {
   return room.documents;
 }
 
+function getPersonalizationSettings() {
+  const appName = state.settings.appName || "Ollama Chatter";
+  return {
+    userTitle: state.settings.userTitle || "사용자님",
+    aiName: appName,
+    appName,
+    customPrompt: state.settings.customPrompt || ""
+  };
+}
+
+function shouldRequestVisualizationResponse(room) {
+  const prompt = getLastUserPrompt(room);
+  return hasVisualizationIntent(prompt) && hasVisualizableDocuments();
+}
+
+function getLastUserPrompt(room) {
+  const message = [...(room?.messages ?? [])].reverse().find((item) => item.role !== "assistant");
+  return String(message?.content ?? "");
+}
+
+function hasVisualizationIntent(prompt) {
+  return /chart|graph|plot|dashboard|visuali[sz]e|visuali[sz]ation|infographic|차트|그래프|도표|시각화|인포그래픽|대시보드|막대|원형|선그래프/i.test(String(prompt ?? ""));
+}
+
+function hasVisualizableDocuments() {
+  return getActiveDocuments().some((documentItem) => {
+    const tables = Array.isArray(documentItem.tables) ? documentItem.tables : [];
+    const sheets = Array.isArray(documentItem.sheets) ? documentItem.sheets : [];
+    const hasRows = [...tables, ...sheets].some((table) => Array.isArray(table?.rows) && table.rows.length > 0);
+    if (hasRows) return true;
+
+    const fileType = String(documentItem.fileType || "").toLowerCase();
+    const hasSheetText = sheets.some((sheet) => isTableLikeText(sheet?.text));
+    const hasDocumentText = isTableLikeText(documentItem.text);
+    return ["csv", "xlsx"].includes(fileType) && (hasSheetText || hasDocumentText);
+  });
+}
+
+function isTableLikeText(value) {
+  const lines = String(value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  return lines.filter((line) => line.includes(",") || line.includes("\t")).length >= 2;
+}
+
 function extractImageFilesFromPaste(event) {
   const items = Array.from(event.clipboardData?.items ?? []);
   return items
@@ -1245,14 +1491,14 @@ function extractImageFilesFromPaste(event) {
 
 function openSettings() {
   elements.userTitleInput.value = state.settings.userTitle;
-  elements.aiNameInput.value = state.settings.aiName;
   elements.appNameInput.value = state.settings.appName || "Ollama Chatter";
   renderThemeToggle();
   renderColorThemeToggle();
   elements.customPromptInput.value = state.settings.customPrompt || "";
   renderLogoPreview();
+  renderAvatarPreview();
   elements.settingsDialog.showModal();
-  elements.userTitleInput.focus();
+  elements.appNameInput.focus();
 }
 
 function setTheme(theme) {
@@ -1295,9 +1541,24 @@ function renderLogoPreview() {
   if (logo) {
     elements.appLogoPreview.src = logo;
     elements.appLogoPreview.hidden = false;
+    elements.appLogoPicker.dataset.state = "filled";
   } else {
     elements.appLogoPreview.hidden = true;
     elements.appLogoPreview.removeAttribute("src");
+    elements.appLogoPicker.dataset.state = "empty";
+  }
+}
+
+function renderAvatarPreview() {
+  const avatar = state.settings.userAvatarDataUrl;
+  if (avatar) {
+    elements.userAvatarPreview.src = avatar;
+    elements.userAvatarPreview.hidden = false;
+    elements.userAvatarPicker.dataset.state = "filled";
+  } else {
+    elements.userAvatarPreview.hidden = true;
+    elements.userAvatarPreview.removeAttribute("src");
+    elements.userAvatarPicker.dataset.state = "empty";
   }
 }
 

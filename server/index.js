@@ -7,7 +7,7 @@ import { loadLocalEnv } from "./env.js";
 import { addDocument, getDocument, listDocuments, removeDocument } from "./documentStore.js";
 import { serializeDocumentForClient as serializeClientDocument } from "./documents.js";
 import { normalizeUploadFileName as repairUploadFileName } from "../public/textRepair.js";
-import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, listModels, streamChat } from "./ollama.js";
+import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, generateVisualizationSpec, listModels, streamChat } from "./ollama.js";
 import { parseUpload } from "./parsers.js";
 
 loadLocalEnv();
@@ -117,6 +117,34 @@ app.post("/api/chat", async (request, response) => {
   } catch (error) {
     response.write(`\n\n[오류] ${error.message}`);
     response.end();
+  }
+});
+
+app.post("/api/visualize", async (request, response) => {
+  const messages = Array.isArray(request.body.messages) ? request.body.messages : [];
+  const documents = Array.isArray(request.body.documents) ? request.body.documents : [];
+  const model = request.body.model || DEFAULT_MODEL;
+  const prompt = request.body.prompt || messages.findLast?.((message) => message.role !== "assistant")?.content || "";
+  const personalization = request.body.personalization && typeof request.body.personalization === "object"
+    ? request.body.personalization
+    : {};
+
+  if (!String(prompt).trim()) {
+    response.status(400).json({ error: "prompt is required." });
+    return;
+  }
+
+  try {
+    const visualization = await generateVisualizationSpec({
+      prompt,
+      messages,
+      documents,
+      model,
+      personalization
+    });
+    response.json({ visualization });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
   }
 });
 

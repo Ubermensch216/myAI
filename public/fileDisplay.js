@@ -5,6 +5,7 @@ const DOCUMENT_BADGES = new Map([
   ["pdf", "PDF"],
   ["docx", "DOC"],
   ["xlsx", "XLS"],
+  ["csv", "CSV"],
   ["pptx", "PPT"],
   ["hwpx", "HWP"]
 ]);

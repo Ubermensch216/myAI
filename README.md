@@ -4,8 +4,10 @@
 
 ## Features
 
+- **Data visualizations**: CSV/XLSX table data can be analyzed into validated JSON specs and rendered as chart, KPI, table, or infographic blocks.
+
 - **다중 대화방**: 방 단위로 메시지·업로드 파일이 분리 저장
-- **문서/이미지 분석**: PDF / DOCX / XLSX / PPTX / HWPX, PNG / JPG / WEBP / GIF
+- **문서/이미지 분석**: PDF / DOCX / XLSX / CSV / PPTX / HWPX, PNG / JPG / WEBP / GIF
 - **스트리밍 응답**: 생성 중 `중지` 버튼 또는 `Esc`로 중단 가능
 - **후속 질문 추천**: 답변 완료 후 1–3개 한국어 후속 질문 자동 생성
 - **개인화 설정**:
@@ -93,7 +95,7 @@ Linux 서버 배포는 [`deploy/DEPLOY.md`](./deploy/DEPLOY.md)에 단계별로 
 ## Supported Inputs
 
 - **이미지**: PNG, JPG, JPEG, WEBP, GIF
-- **문서**: PDF, DOCX, XLSX, PPTX, HWPX
+- **문서**: PDF, DOCX, XLSX, CSV, PPTX, HWPX
 
 레거시 `.hwp` 바이너리는 의도적으로 미지원입니다 — HWPX로 변환해 주세요. `.xls`도 안전한 파싱을 위해 `.xlsx`로 변환 권장.
 
@@ -105,12 +107,14 @@ server/
   env.js             루트 .env 로더
   ollama.js          Ollama 호출 / 시스템 프롬프트 / 후속 질문
   parsers.js         업로드 파일 파싱 (PDF/Office/HWPX/이미지)
+  visualization.js   차트/인포그래픽 JSON 컨텍스트와 검증 헬퍼
   documents.js       문서 요약·직렬화 헬퍼
   documentStore.js   서버 메모리 문서 캐시 (런타임용)
 public/
   index.html         앱 셸 + 설정 다이얼로그
   app.js             프론트엔드 상태/UI/암호화 IndexedDB 영속화
   answerRenderer.js  마크다운-라이트 답변 렌더러 (섹션/리스트/표)
+  visualizationRenderer.js  SVG 차트/KPI/표/인포그래픽 렌더러
   fileDisplay.js     파일명 표시·복구·타입 배지
   textRepair.js      mojibake 점수 계산·복구 헬퍼
   styles.css         테마 토큰, 레이아웃, 메시지/설정 UI
