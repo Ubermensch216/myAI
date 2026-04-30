@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ollama Chatter</title>
+    <link id="faviconLink" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f766e'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='30' fill='white' font-family='Arial'%3EO%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="대화방 및 파일">
+        <section class="brand">
+          <div class="brand-main">
+            <img id="appLogoImg" class="app-logo" alt="" hidden />
+            <div>
+              <h1 id="appNameText">Ollama Chatter</h1>
+              <p>당신의 AI 비서</p>
+            </div>
+          </div>
+          <span id="statusBadge" class="status-badge" aria-label="연결 확인 중" title="연결 확인 중"></span>
+        </section>
+
+        <button id="newRoomButton" class="new-room-button" type="button">새 대화</button>
+
+        <section class="panel room-panel">
+          <div class="panel-heading">
+            <h2>대화방</h2>
+          </div>
+          <div id="roomList" class="room-list"></div>
+        </section>
+
+      </aside>
+
+      <section class="chat-area" aria-label="채팅">
+        <div class="chat-header">
+          <input id="roomTitleInput" class="room-title-input" aria-label="대화방 제목" />
+          <button id="settingsButton" class="icon-button settings-icon-button" type="button" aria-label="설정 열기" title="설정">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+              <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04A1.8 1.8 0 0 0 14.8 19.6a1.8 1.8 0 0 0-1.08 1.65V21.4a2.1 2.1 0 0 1-4.2 0v-.06A1.8 1.8 0 0 0 8.45 19.7a1.8 1.8 0 0 0-1.98.36l-.04.04a2.1 2.1 0 0 1-2.97-2.97l.04-.04A1.8 1.8 0 0 0 3.85 15.1a1.8 1.8 0 0 0-1.65-1.08H2.1a2.1 2.1 0 0 1 0-4.2h.06A1.8 1.8 0 0 0 3.8 8.75a1.8 1.8 0 0 0-.36-1.98L3.4 6.73a2.1 2.1 0 0 1 2.97-2.97l.04.04A1.8 1.8 0 0 0 8.4 4.15a1.8 1.8 0 0 0 1.08-1.65V2.4a2.1 2.1 0 0 1 4.2 0v.06a1.8 1.8 0 0 0 1.08 1.65 1.8 1.8 0 0 0 1.98-.36l.04-.04a2.1 2.1 0 0 1 2.97 2.97l-.04.04a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.08h.1a2.1 2.1 0 0 1 0 4.2h-.06A1.8 1.8 0 0 0 19.4 15Z"></path>
+            </svg>
+          </button>
+          <input id="modelInput" type="hidden" value="gemma3n:e2b" />
+          <p id="modelHint" class="sr-only">설정에서 개인화와 테마를 변경할 수 있습니다.</p>
+        </div>
+
+        <div id="messages" class="messages"></div>
+
+        <form id="chatForm" class="composer">
+          <div class="attach-menu-wrap">
+            <button id="attachFileButton" class="attach-button" type="button" aria-label="첨부 메뉴 열기" title="첨부">+</button>
+            <div id="attachMenu" class="attach-menu" hidden>
+              <button id="attachFromDeviceButton" class="attach-menu-button" type="button" aria-label="파일 첨부" title="파일 첨부">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <input id="fileInput" type="file" multiple hidden />
+          <textarea
+            id="promptInput"
+            rows="1"
+            placeholder="문서 요약, 이미지 분석, 표 추출, 근거 확인을 요청하거나 캡쳐 이미지를 붙여 넣으세요."
+          ></textarea>
+          <button id="sendButton" class="send-button" type="submit">전송</button>
+          <div id="uploadProgress" class="upload-progress" aria-live="polite"></div>
+        </form>
+      </section>
+    </main>
+
+    <div id="dropOverlay" class="drop-overlay" hidden>
+      <div class="drop-overlay-panel">
+        <div class="drop-overlay-title">파일을 놓아 첨부</div>
+        <div class="drop-overlay-subtitle">현재 대화방에 추가됩니다</div>
+      </div>
+    </div>
+
+    <dialog id="settingsDialog" class="settings-dialog">
+      <form id="settingsForm" method="dialog">
+        <div class="dialog-heading">
+          <h2>설정</h2>
+          <button id="closeSettingsButton" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="appNameInput">시스템 명칭</label>
+            <input id="appNameInput" class="text-input" placeholder="예: My Local AI" />
+          </div>
+          <fieldset class="field-section icon-section">
+            <legend class="field-section-title">시스템 아이콘</legend>
+            <div class="logo-picker">
+              <img id="appLogoPreview" class="logo-preview" alt="시스템 아이콘 미리보기" hidden />
+              <input id="appLogoInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" />
+              <button id="removeLogoButton" class="ghost-button" type="button">이미지 제거</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="userTitleInput">사용자 별명</label>
+            <input id="userTitleInput" class="text-input" placeholder="예: 선생님, 지훈님" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="aiNameInput">AI 별명</label>
+            <input id="aiNameInput" class="text-input" placeholder="예: Jarvis, 루미" />
+          </div>
+        </div>
+
+        <fieldset class="field-section theme-section">
+          <legend class="field-section-title">테마</legend>
+          <div class="field-row">
+            <div class="field">
+              <span class="field-label" id="themeLabel">밝기</span>
+              <div id="themeToggle" class="theme-toggle" role="group" aria-labelledby="themeLabel">
+                <button class="theme-option" type="button" data-theme-value="light" aria-label="라이트 테마" title="라이트 테마">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M12 2v2"></path>
+                    <path d="M12 20v2"></path>
+                    <path d="m4.93 4.93 1.41 1.41"></path>
+                    <path d="m17.66 17.66 1.41 1.41"></path>
+                    <path d="M2 12h2"></path>
+                    <path d="M20 12h2"></path>
+                    <path d="m6.34 17.66-1.41 1.41"></path>
+                    <path d="m19.07 4.93-1.41 1.41"></path>
+                  </svg>
+                </button>
+                <button class="theme-option" type="button" data-theme-value="dark" aria-label="다크 테마" title="다크 테마">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="field">
+              <span class="field-label" id="colorThemeLabel">색상</span>
+              <div id="colorThemeToggle" class="color-theme-toggle" role="group" aria-labelledby="colorThemeLabel">
+                <button class="color-theme-option" type="button" data-color-theme-value="busan" aria-label="부산 CI 색상" title="부산 CI">
+                  <span class="color-theme-thumb color-theme-thumb-busan" aria-hidden="true"></span>
+                  <span class="color-theme-name">부산 CI</span>
+                </button>
+                <button class="color-theme-option" type="button" data-color-theme-value="water" aria-label="부산 상수도 CI 색상" title="부산 상수도 CI">
+                  <span class="color-theme-thumb color-theme-thumb-water" aria-hidden="true"></span>
+                  <span class="color-theme-name">부산 상수도</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="field">
+          <label class="field-label" for="customPromptInput">사용자 정의 프롬프트</label>
+          <textarea
+            id="customPromptInput"
+            class="text-input custom-prompt-input"
+            rows="6"
+            placeholder="예: 친절하고 간결하게 답해줘. 표가 필요하면 표로 정리해줘. 확실하지 않은 내용은 추정이라고 말해줘."
+          ></textarea>
+        </div>
+
+        <p class="hint">
+          ※대화 내용과 설정은 PC 내부에만 암호화되어 저장됨<br />
+          ※파일은 해당 대화방에 저장됨
+        </p>
+
+        <div class="dialog-actions">
+          <button class="ghost-button" type="button" id="cancelSettingsButton">취소</button>
+          <button class="send-button" type="submit">저장</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
