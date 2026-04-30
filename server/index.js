@@ -3,11 +3,14 @@ import path from "node:path";
 import express from "express";
 import multer from "multer";
 import { fileURLToPath } from "node:url";
+import { loadLocalEnv } from "./env.js";
 import { addDocument, getDocument, listDocuments, removeDocument } from "./documentStore.js";
 import { serializeDocumentForClient as serializeClientDocument } from "./documents.js";
 import { normalizeUploadFileName as repairUploadFileName } from "../public/textRepair.js";
 import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, listModels, streamChat } from "./ollama.js";
 import { parseUpload } from "./parsers.js";
+
+loadLocalEnv();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

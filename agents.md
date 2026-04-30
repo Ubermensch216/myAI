@@ -26,7 +26,7 @@ http://localhost:3000
 Default model:
 
 ```text
-gemma4:e2b
+gemma3n:e2b
 ```
 
 The app is intended to be a local AI secretary that can chat, analyze uploaded documents/images, persist conversations locally, and provide a personalized UI.
@@ -45,12 +45,19 @@ The app is intended to be a local AI secretary that can chat, analyze uploaded d
   - HWPX: ZIP/XML parsing with `jszip` + `fast-xml-parser`
   - Images: base64 stored and passed to Ollama
 
+## Environment
+
+- Runtime requirement: Node.js 20 or newer (`package.json` declares `engines.node >=20`).
+- The server loads project-root `.env` through `server/env.js`.
+- Existing process environment variables win over `.env` values.
+- `HOST` is optional. If unset, Express listens on all interfaces; production templates set `HOST=127.0.0.1` behind a reverse proxy.
+
 ## Important Files
 
 ```text
 server/index.js
+server/env.js
 server/documents.js
-server/fileNames.js
 server/ollama.js
 server/parsers.js
 server/documentStore.js
@@ -58,10 +65,12 @@ public/index.html
 public/app.js
 public/answerRenderer.js
 public/fileDisplay.js
+public/textRepair.js
 public/styles.css
 package.json
 README.md
 agents.md
+PROJECT_ANALYSIS.md
 deploy/DEPLOY.md
 deploy/myai.service
 deploy/myai.env.example
@@ -74,6 +83,7 @@ Key responsibilities:
 - `server/index.js`
   - Express server
   - static frontend serving
+  - loads local `.env` values through `server/env.js`
   - `/api/status`
   - `/api/upload`
   - `/api/documents`
@@ -81,16 +91,13 @@ Key responsibilities:
   - `/api/chat`
   - `/api/followups`
   - delegates upload filename repair and document serialization to shared helpers
-  - note: a few old local helper functions still remain at the bottom of the file, but current routes use the imported helpers from `server/documents.js` and `server/fileNames.js`
+
+- `server/env.js`
+  - dependency-free project-root `.env` loader
+  - keeps already-defined environment variables unchanged
 
 - `server/documents.js`
   - common document summary/full-payload serialization helpers
-  - merges server-memory documents and client-persisted documents for chat requests
-
-- `server/fileNames.js`
-  - upload filename mojibake scoring/repair helper
-  - keeps filename repair out of route handlers
-  - repairs UTF-8 filenames that arrive as Latin-1 mojibake, including Korean patterns such as `ì`, `ê`, `ë`
 
 - `server/ollama.js`
   - Ollama streaming chat call
@@ -117,7 +124,8 @@ Key responsibilities:
   - all frontend state and UI behavior
   - encrypted IndexedDB persistence
   - rooms, messages, files, settings
-- file upload / drag and drop / clipboard image paste
+  - local save failure and browser quota warnings via `handleLocalSaveError`
+  - file upload / drag and drop / clipboard image paste
   - attachment now starts from an expandable `+` menu in the prompt composer
   - the current `+` menu contains a paperclip button that opens the file picker
   - the `+` menu is intended as an extension point for future composer tools
@@ -141,8 +149,11 @@ Key responsibilities:
 - `public/fileDisplay.js`
   - frontend file display helpers
   - repairs previously stored mojibake filenames at display time
-  - uses the same broader mojibake scoring idea as `server/fileNames.js`, so old IndexedDB records with broken Korean filenames can display correctly without re-upload
   - maps uploaded files to sidebar badges (`PDF`, `DOC`, `XLS`, `PPT`, `HWP`, `IMG`, `FILE`)
+
+- `public/textRepair.js`
+  - mojibake scoring/repair helper shared by browser display code and server upload filename normalization
+  - repairs UTF-8 filenames that arrive as Latin-1 mojibake, including Korean patterns such as `ì`, `ê`, `ë`
 
 - `public/styles.css`
   - layout, themes, message UI, thinking UI, buttons, settings modal
@@ -235,12 +246,11 @@ Important architectural decision:
 - Earlier versions kept only file summaries in IndexedDB and full parsed document contents in server memory.
 - That caused uploaded files to disappear after refresh/restart.
 - Current version stores the full parsed document payload in each room's `documents` array.
-- Chat requests send both:
-  - `documentIds`
-  - `documents: getActiveDocuments()`
+- Chat requests send `documents: getActiveDocuments()` with the active room's full client-side document payloads.
 - This allows AI analysis even if the server's in-memory `documentStore` is empty after restart.
 - Chat now re-runs stored document hydration before sending a request, not only during app startup.
 - Stored documents that have `pages` or `sheets` text but a missing aggregate `text` field are normalized client-side before being sent.
+- Save failures go through `persistAppState()` and surface in the UI through `handleLocalSaveError()`, including browser quota failures.
 - Server context building accepts document text from `text`, `pages`, or `sheets`; it no longer depends only on the aggregate `text` field.
 - If a room document is only a summary and no full text/pages/sheets payload can be hydrated from server memory, the content cannot be recovered automatically and the user must re-upload that file.
 
@@ -249,6 +259,7 @@ Limitations:
 - Files are stored in the browser's local IndexedDB only.
 - They are not shared across browsers/devices.
 - Very large files or many images may hit browser storage limits.
+- There is no export/import or storage usage meter yet.
 - Existing files that were deleted by old reconcile logic cannot be recovered.
 
 ### Settings / Personalization
@@ -480,8 +491,9 @@ hydrateStoredDocuments()
 hasPersistentDocumentContent(documentItem)
 normalizeStoredDocumentContent(documentItem)
 buildContext(documents)
+collectChunks(documents)
+pageSections(documentItem)
 hasDocumentContext(documentItem)
-formatDocumentContext(documentItem)
 ```
 
 Important:
@@ -600,21 +612,12 @@ Body includes:
 {
   model,
   messages,
-  documentIds,
   documents,
   personalization
 }
 ```
 
-Server merges memory documents and client documents:
-
-```js
-mergeDocuments(memoryDocuments, clientDocuments)
-```
-
-The helper lives in `server/documents.js`.
-
-Client documents make persistence across server restarts possible.
+Server uses the client-sent `documents` array directly. The in-memory `documentStore` remains only for upload summaries and legacy hydration through `/api/documents/:id`.
 
 ### `POST /api/followups`
 
@@ -664,7 +667,7 @@ Current behavior:
   - Added full-app drag and drop overlay.
   - Added per-file delete buttons under the selected room's file titles with confirmation before deletion.
 - Filename mojibake repair was broadened:
-  - `server/fileNames.js` now detects Latin-1 mojibake characters like `ì`, `ê`, `ë` in addition to the earlier patterns.
+  - `public/textRepair.js` detects Latin-1 mojibake characters like `ì`, `ê`, `ë` in addition to the earlier patterns.
   - `public/fileDisplay.js` applies the same style of repair when displaying existing stored filenames.
   - Thinking processing steps now use repaired display filenames.
 - Document context resilience was improved:
@@ -672,11 +675,12 @@ Current behavior:
   - `public/app.js` re-runs stored document hydration immediately before chat requests.
   - `server/ollama.js` now builds context from `text`, `pages`, or `sheets` and reports attachments that have no recoverable extracted content.
 - Server helpers were split out:
-  - `server/documents.js` for summary/full document serialization and document merging.
-  - `server/fileNames.js` for upload filename mojibake repair.
+  - `server/env.js` for project-root `.env` loading.
+  - `server/documents.js` for summary/full document serialization.
 - Frontend helpers were split out:
   - `public/answerRenderer.js` for lightweight assistant answer rendering.
   - `public/fileDisplay.js` for file name repair and file type badge display.
+  - `public/textRepair.js` for shared mojibake scoring and repair.
 - Assistant answers were made more scan-friendly:
   - `server/ollama.js` now asks for short labels, compact bullets, numbered lists, and visual section symbols.
   - `public/answerRenderer.js` parses labels/lists/tables and adds symbols automatically.
@@ -698,6 +702,9 @@ Current behavior:
   - `nginx.conf.example` — nginx vhost with certbot hookup, `proxy_buffering off`, 1h timeouts, and `client_max_body_size 40m`.
   - `DEPLOY.md` — Ubuntu/Debian step-by-step (Node 20 install, Ollama, dedicated `myai` user, env file permissions, systemd, proxy, firewall, troubleshooting).
 - `server/index.js` now reads `HOST` env to control bind interface (default keeps current behavior of binding all interfaces). `package.json` declares `"engines": { "node": ">=20" }`.
+- Project-root `.env` loading was added through `server/env.js`; no external `dotenv` dependency is required.
+- Local IndexedDB save failures now surface in the UI instead of only being logged to the console.
+- README, agents notes, and project analysis were refreshed to match the current default model, file layout, Node.js 20+ requirement, and client-persisted document flow.
 - Settings dialog layout was reorganized to be more compact:
   - Top row: `시스템 명칭` text input next to a `시스템 아이콘` `<fieldset>` containing the existing logo preview / file input / remove button.
   - Second row: `사용자 별명` and `AI 별명` side by side.
@@ -724,6 +731,7 @@ Good next steps:
 Potential issue:
 
 - Because uploaded files are now persisted in browser IndexedDB, very large images or many documents can make encrypted app state large.
+- Browser quota/save failures are surfaced in the UI via `public/app.js#handleLocalSaveError`, but there is still no storage usage meter or export/import recovery workflow.
 - `/api/chat` has JSON body limit configured as:
 
 ```js
@@ -734,22 +742,16 @@ If users store/send larger files, this may need to be raised or replaced with ch
 
 ## Recent Verification
 
-Recently verified:
+Current verification commands:
 
 ```powershell
-node --check public/app.js
-node --check public/answerRenderer.js
-node --check public/fileDisplay.js
-node --check server/index.js
-node --check server/ollama.js
-node --check server/documents.js
-node --check server/fileNames.js
+Get-ChildItem -Recurse -Include *.js -Path .\server,.\public | ForEach-Object { node --check $_.FullName }
 node -e "import('./public/answerRenderer.js').then(({parseAnswerBlocks})=>console.log(JSON.stringify(parseAnswerBlocks('요약\n- 첫째\n\n주의점:\n- 조심\n\n다음 단계\n1. 실행'))))"
-npm.cmd audit --json
-Invoke-WebRequest -Uri http://localhost:3000/api/status -UseBasicParsing
+node -e "import('./server/env.js').then(({loadLocalEnv})=>{loadLocalEnv('.env.example'); console.log(process.env.OLLAMA_MODEL)})"
+node -e "import('./server/ollama.js').then(({DEFAULT_MODEL})=>console.log(DEFAULT_MODEL))"
 ```
 
-Note: the most recent local verification after the readability work used `node --check`, the parser smoke test, server restart, and `/api/status`. `npm.cmd audit --json` was part of earlier verification and should be rerun after dependency changes.
+Latest local verification used the commands above. `npm.cmd audit --json` and a live `/api/status` request were not rerun in the latest documentation refresh.
 
 Expected status response:
 
@@ -757,8 +759,8 @@ Expected status response:
 {
   "ok": true,
   "ollamaUrl": "http://127.0.0.1:11434",
-  "defaultModel": "gemma4:e2b",
-  "models": ["gemma4:e2b"]
+  "defaultModel": "gemma3n:e2b",
+  "models": ["gemma3n:e2b"]
 }
 ```
 

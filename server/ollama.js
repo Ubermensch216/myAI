@@ -1,5 +1,8 @@
+import { loadLocalEnv } from "./env.js";
 import { chunkText } from "./parsers.js";
 import { pickRelevantChunks } from "./retrieval.js";
+
+loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";

@@ -18,7 +18,7 @@
 
 ## Requirements
 
-- **Node.js 20+** (또는 18 LTS 이상)
+- **Node.js 20+**
 - **Ollama** 로컬 데몬 — <https://ollama.com/download>
 - 사용할 모델을 미리 pull (기본값 `gemma3n:e2b`)
 
@@ -52,7 +52,7 @@ npm start
 
 ## Configuration
 
-모든 설정은 환경변수 또는 `.env`로 주입. (자세한 기본값은 [`.env.example`](./.env.example) 참고)
+모든 설정은 환경변수 또는 프로젝트 루트의 `.env`로 주입. 서버가 시작될 때 `.env`를 자동으로 읽으며, 이미 지정된 환경변수가 `.env` 값보다 우선합니다. (자세한 기본값은 [`.env.example`](./.env.example) 참고)
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
@@ -62,6 +62,13 @@ npm start
 | `MAX_CONTEXT_CHARS` | `24000` | 한 요청에 포함할 최대 문서 컨텍스트 글자 수 |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |
 | `MAX_UPLOAD_BYTES` | `41943040` | 업로드 파일 한 개당 최대 바이트 (40MB) |
+| `HOST` | 미설정 | HTTP 바인딩 호스트. 미설정 시 모든 인터페이스에서 listen |
+
+## Local Storage Notes
+
+대화, 설정, 업로드 파일 본문은 서버가 아니라 브라우저 IndexedDB에 저장됩니다. 큰 이미지나 문서를 많이 저장하면 브라우저 저장 공간 제한에 걸릴 수 있으며, 이 경우 앱 화면에 저장 실패 안내가 표시됩니다.
+
+서버 백업만으로는 사용자 대화나 업로드 파일을 복구할 수 없습니다. 브라우저 프로필을 삭제하거나 다른 브라우저·기기로 이동하면 기존 대화 데이터는 자동으로 따라가지 않습니다.
 
 ## Deployment
 
@@ -95,16 +102,17 @@ Linux 서버 배포는 [`deploy/DEPLOY.md`](./deploy/DEPLOY.md)에 단계별로 
 ```
 server/
   index.js           Express 서버 + 라우트
+  env.js             루트 .env 로더
   ollama.js          Ollama 호출 / 시스템 프롬프트 / 후속 질문
   parsers.js         업로드 파일 파싱 (PDF/Office/HWPX/이미지)
-  documents.js       문서 직렬화·병합 헬퍼
+  documents.js       문서 요약·직렬화 헬퍼
   documentStore.js   서버 메모리 문서 캐시 (런타임용)
-  fileNames.js       업로드 파일명 mojibake 복구
 public/
   index.html         앱 셸 + 설정 다이얼로그
   app.js             프론트엔드 상태/UI/암호화 IndexedDB 영속화
   answerRenderer.js  마크다운-라이트 답변 렌더러 (섹션/리스트/표)
   fileDisplay.js     파일명 표시·복구·타입 배지
+  textRepair.js      mojibake 점수 계산·복구 헬퍼
   styles.css         테마 토큰, 레이아웃, 메시지/설정 UI
 ```
 

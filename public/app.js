@@ -272,7 +272,33 @@ async function saveAppState() {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveAppState().catch(console.error), 100);
+  saveTimer = setTimeout(() => persistAppState(), 100);
+}
+
+async function persistAppState() {
+  try {
+    await saveAppState();
+    return true;
+  } catch (error) {
+    handleLocalSaveError(error);
+    return false;
+  }
+}
+
+function handleLocalSaveError(error) {
+  console.error("Encrypted local data could not be saved.", error);
+  const message = formatLocalSaveError(error);
+  if (elements.uploadProgress) elements.uploadProgress.textContent = message;
+  if (elements.modelHint) elements.modelHint.textContent = message;
+}
+
+function formatLocalSaveError(error) {
+  const text = String(error?.message ?? "");
+  const quotaExceeded = error?.name === "QuotaExceededError" || error?.code === 22 || /quota/i.test(text);
+  if (quotaExceeded) {
+    return "브라우저 저장 공간이 부족해 변경사항을 저장하지 못했습니다. 큰 이미지나 문서를 삭제한 뒤 다시 시도해 주세요.";
+  }
+  return `브라우저 저장에 실패했습니다: ${text || "알 수 없는 오류"}`;
 }
 
 async function saveEncryptedRecord(id, value) {
@@ -388,7 +414,7 @@ async function hydrateStoredDocuments() {
     }
   }
 
-  if (changed) await saveAppState();
+  if (changed) await persistAppState();
   return changed;
 }
 
@@ -621,9 +647,9 @@ async function uploadFiles(files) {
       if (!response.ok) throw new Error(result.error || "업로드 실패");
       room.documents.push(result.document);
       room.updatedAt = new Date().toISOString();
-      scheduleSave();
+      const saved = await persistAppState();
       renderRooms();
-      elements.uploadProgress.textContent = `${file.name} 분석 준비 완료`;
+      if (saved) elements.uploadProgress.textContent = `${file.name} 분석 준비 완료`;
     } catch (error) {
       elements.uploadProgress.textContent = `${file.name}: ${error.message}`;
     }
