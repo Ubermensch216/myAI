@@ -12,6 +12,8 @@ const DB_NAME = "ollama-chatter-secure";
 const DB_VERSION = 1;
 const APP_STATE_KEY = "app-state";
 const KEY_ID = "local-aes-gcm-key";
+const DEFAULT_BANNER_SRC = "/default-banner.png";
+const DEFAULT_FAVICON_HREF = "/default-icon.svg";
 
 const state = {
   rooms: [],
@@ -22,6 +24,7 @@ const state = {
     appName: "Ollama Chatter",
     theme: "light",
     colorTheme: "busan",
+    appBannerDataUrl: "",
     appLogoDataUrl: "",
     userAvatarDataUrl: "",
     customPrompt: ""
@@ -33,7 +36,6 @@ const state = {
 };
 
 const elements = {
-  statusBadge: document.querySelector("#statusBadge"),
   modelInput: document.querySelector("#modelInput"),
   modelHint: document.querySelector("#modelHint"),
   fileInput: document.querySelector("#fileInput"),
@@ -43,7 +45,7 @@ const elements = {
   dropOverlay: document.querySelector("#dropOverlay"),
   faviconLink: document.querySelector("#faviconLink"),
   appNameText: document.querySelector("#appNameText"),
-  appLogoImg: document.querySelector("#appLogoImg"),
+  appBannerImg: document.querySelector("#appBannerImg"),
   uploadProgress: document.querySelector("#uploadProgress"),
   roomList: document.querySelector("#roomList"),
   newRoomButton: document.querySelector("#newRoomButton"),
@@ -62,12 +64,12 @@ const elements = {
   themeOptions: Array.from(document.querySelectorAll(".theme-option")),
   colorThemeOptions: Array.from(document.querySelectorAll(".color-theme-option")),
   customPromptInput: document.querySelector("#customPromptInput"),
-  appLogoInput: document.querySelector("#appLogoInput"),
-  appLogoPreview: document.querySelector("#appLogoPreview"),
-  appLogoPicker: document.querySelector("#appLogoPicker"),
-  appLogoTrigger: document.querySelector("#appLogoTrigger"),
-  changeLogoButton: document.querySelector("#changeLogoButton"),
-  removeLogoButton: document.querySelector("#removeLogoButton"),
+  appBannerInput: document.querySelector("#appBannerInput"),
+  appBannerPreview: document.querySelector("#appBannerPreview"),
+  appBannerPicker: document.querySelector("#appBannerPicker"),
+  appBannerTrigger: document.querySelector("#appBannerTrigger"),
+  changeBannerButton: document.querySelector("#changeBannerButton"),
+  removeBannerButton: document.querySelector("#removeBannerButton"),
   userAvatarInput: document.querySelector("#userAvatarInput"),
   userAvatarPreview: document.querySelector("#userAvatarPreview"),
   userAvatarPicker: document.querySelector("#userAvatarPicker"),
@@ -108,37 +110,35 @@ function bindEvents() {
   elements.settingsButton.addEventListener("click", openSettings);
   elements.closeSettingsButton.addEventListener("click", closeSettings);
   elements.cancelSettingsButton.addEventListener("click", closeSettings);
-  const openLogoPicker = () => {
-    if (!state.busy) elements.appLogoInput.click();
+  const openBannerPicker = () => {
+    if (!state.busy) elements.appBannerInput.click();
   };
   const openAvatarPicker = () => {
     if (!state.busy) elements.userAvatarInput.click();
   };
 
-  elements.appLogoTrigger.addEventListener("click", () => {
-    if (elements.appLogoPicker.dataset.state === "empty") openLogoPicker();
-  });
-  elements.changeLogoButton.addEventListener("click", openLogoPicker);
+  elements.appBannerTrigger.addEventListener("click", openBannerPicker);
+  elements.changeBannerButton.addEventListener("click", openBannerPicker);
   elements.userAvatarTrigger.addEventListener("click", () => {
     if (elements.userAvatarPicker.dataset.state === "empty") openAvatarPicker();
   });
   elements.changeAvatarButton.addEventListener("click", openAvatarPicker);
 
-  elements.removeLogoButton.addEventListener("click", () => {
-    state.settings.appLogoDataUrl = "";
-    renderLogoPreview();
+  elements.removeBannerButton.addEventListener("click", () => {
+    state.settings.appBannerDataUrl = "";
+    renderBannerPreview();
   });
   elements.removeAvatarButton.addEventListener("click", () => {
     state.settings.userAvatarDataUrl = "";
     renderAvatarPreview();
   });
 
-  elements.appLogoInput.addEventListener("change", async (event) => {
+  elements.appBannerInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    state.settings.appLogoDataUrl = await readFileAsDataUrl(file);
-    renderLogoPreview();
-    elements.appLogoInput.value = "";
+    state.settings.appBannerDataUrl = await readFileAsDataUrl(file);
+    renderBannerPreview();
+    elements.appBannerInput.value = "";
   });
   elements.userAvatarInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
@@ -152,7 +152,7 @@ function bindEvents() {
     event.preventDefault();
     state.settings.userTitle = elements.userTitleInput.value.trim() || "사용자님";
     state.settings.appName = elements.appNameInput.value.trim() || "Ollama Chatter";
-    state.settings.aiName = state.settings.appName;
+    state.settings.aiName = state.settings.appName || "Ollama Chatter";
     state.settings.customPrompt = elements.customPromptInput.value.trim();
     scheduleSave();
     closeSettings();
@@ -310,6 +310,7 @@ async function loadAppState() {
     appName,
     theme: stored.settings?.theme === "dark" ? "dark" : "light",
     colorTheme: normalizeColorTheme(stored.settings?.colorTheme),
+    appBannerDataUrl: stored.settings?.appBannerDataUrl || "",
     appLogoDataUrl: stored.settings?.appLogoDataUrl || "",
     userAvatarDataUrl: stored.settings?.userAvatarDataUrl || "",
     customPrompt: stored.settings?.customPrompt || ""
@@ -511,7 +512,7 @@ function renderAll() {
 
 function renderBrand() {
   const appName = state.settings.appName || "Ollama Chatter";
-  const logo = state.settings.appLogoDataUrl;
+  const banner = state.settings.appBannerDataUrl || DEFAULT_BANNER_SRC;
   state.settings.aiName = appName;
   document.title = appName;
   document.documentElement.dataset.theme = state.settings.theme || "light";
@@ -519,16 +520,9 @@ function renderBrand() {
   renderThemeToggle();
   renderColorThemeToggle();
   elements.appNameText.textContent = appName;
-
-  if (logo) {
-    elements.appLogoImg.src = logo;
-    elements.appLogoImg.hidden = false;
-    elements.faviconLink.href = logo;
-  } else {
-    elements.appLogoImg.hidden = true;
-    elements.appLogoImg.removeAttribute("src");
-    elements.faviconLink.href = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f766e'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='30' fill='white' font-family='Arial'%3EO%3C/text%3E%3C/svg%3E";
-  }
+  elements.appBannerImg.src = banner;
+  elements.appBannerImg.alt = appName;
+  elements.faviconLink.href = DEFAULT_FAVICON_HREF;
 }
 
 function renderRooms() {
@@ -669,17 +663,9 @@ async function checkStatus() {
     const status = await response.json();
     if (!status.ok) throw new Error(status.error || "Ollama 연결 실패");
 
-    elements.statusBadge.textContent = "";
-    elements.statusBadge.className = "status-badge ok";
-    elements.statusBadge.setAttribute("aria-label", "연결됨");
-    elements.statusBadge.title = "연결됨";
     elements.modelInput.value = status.defaultModel || "gemma3n:e2b";
     elements.modelHint.textContent = "설정에서 개인화와 테마를 변경할 수 있습니다.";
   } catch (error) {
-    elements.statusBadge.textContent = "";
-    elements.statusBadge.className = "status-badge error";
-    elements.statusBadge.setAttribute("aria-label", "미연결");
-    elements.statusBadge.title = "미연결";
     elements.modelHint.textContent = `Ollama 연결 오류: ${error.message}`;
   }
 }
@@ -1495,10 +1481,10 @@ function openSettings() {
   renderThemeToggle();
   renderColorThemeToggle();
   elements.customPromptInput.value = state.settings.customPrompt || "";
-  renderLogoPreview();
+  renderBannerPreview();
   renderAvatarPreview();
   elements.settingsDialog.showModal();
-  elements.appNameInput.focus();
+  elements.appBannerTrigger.focus();
 }
 
 function setTheme(theme) {
@@ -1536,17 +1522,13 @@ function renderColorThemeToggle() {
   }
 }
 
-function renderLogoPreview() {
-  const logo = state.settings.appLogoDataUrl;
-  if (logo) {
-    elements.appLogoPreview.src = logo;
-    elements.appLogoPreview.hidden = false;
-    elements.appLogoPicker.dataset.state = "filled";
-  } else {
-    elements.appLogoPreview.hidden = true;
-    elements.appLogoPreview.removeAttribute("src");
-    elements.appLogoPicker.dataset.state = "empty";
-  }
+function renderBannerPreview() {
+  const banner = state.settings.appBannerDataUrl || DEFAULT_BANNER_SRC;
+  const hasCustomBanner = Boolean(state.settings.appBannerDataUrl);
+  elements.appBannerPreview.src = banner;
+  elements.appBannerPreview.hidden = false;
+  elements.appBannerPicker.dataset.state = hasCustomBanner ? "filled" : "default";
+  elements.removeBannerButton.disabled = !hasCustomBanner;
 }
 
 function renderAvatarPreview() {
