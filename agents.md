@@ -10,6 +10,24 @@ Workspace:
 D:\Dev\myAI
 ```
 
+Latest current state:
+
+- The app now supports user and system avatars in the settings dialog.
+- Message avatars render before the speaker name and are displayed at 44px.
+- Data visualization now follows an AI-analysis pipeline:
+  - the LLM returns an `analysis + visualizationPlan` JSON plan,
+  - the server validates the plan against real table columns,
+  - the server computes chart data from CSV/XLSX rows,
+  - the browser renders the final spec,
+  - the UI distinguishes `AI 분석 기반 시각화` from `자동 fallback 시각화`.
+- The old behavior where the LLM had to directly produce final render data has been replaced for `/api/visualize`.
+- `llm_performance_dummy.csv` exists as a local test fixture for visualization prompts.
+- Current live status after the latest restart:
+  - URL: `http://localhost:3000`
+  - default model from `/api/status`: `gemma4:e2b`
+  - available models: `gemma4:e4b`, `gemma4:e2b`
+  - server log: `server-start.log`
+
 Run:
 
 ```powershell
@@ -79,6 +97,7 @@ deploy/myai.service
 deploy/myai.env.example
 deploy/Caddyfile
 deploy/nginx.conf.example
+llm_performance_dummy.csv
 ```
 
 Key responsibilities:
@@ -106,7 +125,7 @@ Key responsibilities:
 - `server/ollama.js`
   - Ollama streaming chat call
   - follow-up question generation call
-  - structured visualization JSON generation call
+  - LLM visualization analysis-plan generation, repair, and interpretation calls
   - model/system prompt construction
   - personal settings injection
   - custom user prompt injection
@@ -125,7 +144,11 @@ Key responsibilities:
 - `server/visualization.js`
   - detects visualization intent keywords
   - builds compact table context for the model
-  - parses and normalizes model JSON into an allowed chart/infographic schema
+  - normalizes LLM `analysis + visualizationPlan` JSON
+  - validates chart type, dataset index, columns, and numeric requirements
+  - executes accepted LLM plans against real CSV/XLSX rows
+  - computes chart data for `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`
+  - marks specs as `source: "llm"` or `source: "fallback"`
 
 - `server/documentStore.js`
   - in-memory server-side document map
@@ -161,6 +184,7 @@ Key responsibilities:
 - `public/visualizationRenderer.js`
   - renders validated visualization JSON as SVG charts, KPI cards, tables, and infographic sections
   - provides chart PNG download and visualization JSON copy controls
+  - labels panels as `AI 분석 기반 시각화` or `자동 fallback 시각화`
 
 - `public/fileDisplay.js`
   - frontend file display helpers
@@ -242,9 +266,30 @@ Key responsibilities:
 
 - CSV and XLSX uploads preserve structured table data in addition to extracted text.
 - When the latest user prompt asks for a chart, graph, dashboard, visualization, or infographic and the active room has tabular data, the frontend calls `/api/visualize` instead of `/api/chat`.
-- `/api/visualize` asks Ollama for strict JSON, then server-side validation allows only `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
-- The browser renders the validated JSON with `public/visualizationRenderer.js` as SVG charts, KPI cards, tables, or infographic sections.
+- `/api/visualize` now uses a plan-first AI workflow rather than asking the LLM to directly emit final chart points.
+- Step 1: `server/ollama.js#requestVisualizationPlan` asks Ollama for strict JSON with exactly:
+  - `status`
+  - `analysis`
+  - `visualizationPlan`
+- Step 2: `server/visualization.js#normalizeVisualizationPlan` validates chart type, dataset index, exact column names, aggregation, and numeric requirements.
+- Step 3: `server/visualization.js#executeVisualizationPlan` computes the actual render data from the uploaded table rows.
+- Step 4: `server/ollama.js#requestVisualizationInterpretation` asks Ollama to interpret the computed result in Korean without changing chart data.
+- If the plan JSON is invalid, `/api/visualize` retries once with a repair prompt that includes validation errors and the previous model output.
+- If the repair attempt still fails, the app may create a server-side automatic fallback chart, but it is explicitly marked as `source: "fallback"` and `fallback: true`.
+- Successful AI-planned specs are marked as `source: "llm"` and `fallback: false`.
+- Allowed render outputs remain `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
+- For duplicate category labels, `aggregation: "none"` is normalized to a safer default aggregation, usually `average`, so prompts like "모델별 accuracy_percent" or "날짜별 tokens_per_second" do not render duplicate category points.
+- The browser renders the final validated spec with `public/visualizationRenderer.js` as SVG charts, KPI cards, tables, or infographic sections.
+- Visualization panels are labeled:
+  - `AI 분석 기반 시각화` for LLM-planned outputs
+  - `자동 fallback 시각화` for automatic fallback outputs
 - Chart blocks include icon-only PNG download controls. The visualization panel includes a JSON copy control.
+- Local test fixture:
+  - `llm_performance_dummy.csv`
+  - Useful prompts:
+    - `날짜별 tokens_per_second 추이를 선그래프로 시각화하고 분석해줘`
+    - `latency_ms와 accuracy_percent 관계를 산점도로 시각화하고 분석해줘`
+    - `모델별 accuracy_percent를 막대그래프로 비교하고 분석해줘`
 
 ### Persistence
 
@@ -305,6 +350,28 @@ Settings dialog layout (top to bottom):
 - Action row: `취소` / `저장`
 
 Persisted settings shape (`state.settings`):
+
+Current settings keys to keep backward compatible:
+
+- `userTitle`
+- `aiName`
+- `appName`
+- `theme`
+- `colorTheme`
+- `appLogoDataUrl`
+- `appBannerDataUrl`
+- `systemAvatarDataUrl`
+- `userAvatarDataUrl`
+- `customPrompt`
+
+Current avatar behavior:
+
+- Settings includes both user avatar and system avatar pickers.
+- The system avatar is stored as `state.settings.systemAvatarDataUrl`.
+- The user avatar is stored as `state.settings.userAvatarDataUrl`.
+- Message metadata renders the avatar before the speaker name.
+- Message avatars use `.message-meta-avatar` and are 44px by 44px.
+- The assistant/system avatar is used for `role === "assistant"` messages; the user avatar is used for `role === "user"` messages.
 
 - `userTitle` — was previously labeled `사용자 호칭`; UI label is now `사용자 별명`
 - `aiName` — was previously labeled `AI 이름`; UI label is now `AI 별명`
@@ -677,6 +744,29 @@ Current behavior:
 
 ## Recent Changes
 
+- LLM-based visualization planning pipeline was added:
+  - `/api/visualize` no longer depends on the model producing final chart data directly.
+  - `server/ollama.js` first asks the model for `analysis + visualizationPlan` JSON.
+  - The plan prompt explicitly tells the model not to calculate averages, totals, standard deviations, correlations, or chart points.
+  - If the initial plan is invalid, `server/ollama.js` retries once with a repair prompt containing validation errors and the previous model output.
+  - `server/visualization.js` validates exact column names, chart type, dataset index, aggregation, and numeric requirements.
+  - `server/visualization.js` computes render data from the actual CSV/XLSX rows after accepting the LLM plan.
+  - `server/ollama.js` then asks the model for Korean interpretation of the computed result.
+  - Successful specs use `source: "llm"` and `fallback: false`.
+  - Failed/automatic specs use `source: "fallback"` and `fallback: true`.
+  - `public/visualizationRenderer.js` labels panels as `AI 분석 기반 시각화` or `자동 fallback 시각화`.
+- Chart type handling was fixed for fallback and LLM-plan execution:
+  - line chart requests now produce `line` render specs when supported.
+  - scatter plot requests now produce `scatter` render specs with numeric `x` and `y`.
+  - duplicate category labels with `aggregation: "none"` are normalized to a safer default aggregation, usually `average`.
+- Visualization test fixture was added:
+  - `llm_performance_dummy.csv`
+  - contains dummy LLM performance rows with `date`, `model`, `task_category`, `latency_ms`, `tokens_per_second`, `accuracy_percent`, `error_rate_percent`, and related metrics.
+- System/user avatar settings were updated:
+  - settings now includes `systemAvatarDataUrl` for assistant/system messages.
+  - existing `userAvatarDataUrl` is used for user messages.
+  - message avatars appear before speaker names and render at 44px.
+- General chat prompt rules now tell the LLM that this app can render CSV/XLSX-backed visualizations, so it should not claim graphing is impossible just because the language model itself cannot paint pixels.
 - Project folder was renamed from `D:\Dev\ollama_chatter` to `D:\Dev\myAI`.
 - Follow-up question suggestions were added:
   - `server/index.js` exposes `POST /api/followups`.
@@ -776,7 +866,33 @@ node -e "import('./server/env.js').then(({loadLocalEnv})=>{loadLocalEnv('.env.ex
 node -e "import('./server/ollama.js').then(({DEFAULT_MODEL})=>console.log(DEFAULT_MODEL))"
 ```
 
-Latest local verification used the commands above. `npm.cmd audit --json` and a live `/api/status` request were not rerun in the latest documentation refresh.
+Latest local verification additionally used:
+
+```powershell
+node -e "import('./server/visualization.js').then(({normalizeVisualizationPlan,executeVisualizationPlan})=>{ /* llm_performance_dummy.csv plan execution smoke test */ })"
+node -e "import('./server/parsers.js').then(async ({parseUpload})=>{ const {generateVisualizationSpec}=await import('./server/ollama.js'); /* live Ollama / visualization plan smoke tests */ })"
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSec 10
+```
+
+Verified visualization behavior:
+
+- `날짜별 tokens_per_second 추이를 선그래프로 시각화하고 분석해줘`
+  - `source: "llm"`
+  - `type: "line"`
+  - x: `date`
+  - y: `tokens_per_second`
+- `latency_ms와 accuracy_percent 관계를 산점도로 시각화하고 분석해줘`
+  - `source: "llm"`
+  - `type: "scatter"`
+  - x: `latency_ms`
+  - y: `accuracy_percent`
+- `모델별 accuracy_percent를 막대그래프로 비교하고 분석해줘`
+  - `source: "llm"`
+  - `type: "bar"`
+  - x: `model`
+  - y: `accuracy_percent`
+
+`npm.cmd audit --json` was not rerun in the latest refresh.
 
 Expected status response:
 
@@ -784,8 +900,8 @@ Expected status response:
 {
   "ok": true,
   "ollamaUrl": "http://127.0.0.1:11434",
-  "defaultModel": "gemma3n:e2b",
-  "models": ["gemma3n:e2b"]
+  "defaultModel": "gemma4:e2b",
+  "models": ["gemma4:e4b", "gemma4:e2b"]
 }
 ```
 
@@ -810,3 +926,9 @@ Expected status response:
 - Brightness UI is icon-based (`.theme-option`); persisted shape is still `theme: "light" | "dark"`.
 - Color palette UI is swatch-based (`.color-theme-option`); persisted shape is `colorTheme: "busan" | "water"`. Always normalize unknown values via `normalizeColorTheme` (default `"busan"`) before applying or saving.
 - Prefer `--accent` / `--accent-dark` (and `color-mix(... var(--accent) ...)`) over hardcoded brand colors so new UI inherits the active color theme automatically.
+- If changing visualization, preserve the plan-first contract:
+  - LLM chooses analytical intent, chart type, columns, and aggregation.
+  - Server validates and computes chart data.
+  - Browser only renders the final validated spec.
+  - Do not silently present automatic fallback charts as AI analysis.
+  - Keep `source: "llm"` vs `source: "fallback"` visible and meaningful.

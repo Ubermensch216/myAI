@@ -545,8 +545,8 @@ textarea {
 }
 
 .message-meta-avatar {
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--line);
   border-radius: 999px;
   object-fit: cover;

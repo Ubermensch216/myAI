@@ -26,6 +26,7 @@ const state = {
     colorTheme: "busan",
     appBannerDataUrl: "",
     appLogoDataUrl: "",
+    systemAvatarDataUrl: "",
     userAvatarDataUrl: "",
     customPrompt: ""
   },
@@ -70,6 +71,12 @@ const elements = {
   appBannerTrigger: document.querySelector("#appBannerTrigger"),
   changeBannerButton: document.querySelector("#changeBannerButton"),
   removeBannerButton: document.querySelector("#removeBannerButton"),
+  systemAvatarInput: document.querySelector("#systemAvatarInput"),
+  systemAvatarPreview: document.querySelector("#systemAvatarPreview"),
+  systemAvatarPicker: document.querySelector("#systemAvatarPicker"),
+  systemAvatarTrigger: document.querySelector("#systemAvatarTrigger"),
+  changeSystemAvatarButton: document.querySelector("#changeSystemAvatarButton"),
+  removeSystemAvatarButton: document.querySelector("#removeSystemAvatarButton"),
   userAvatarInput: document.querySelector("#userAvatarInput"),
   userAvatarPreview: document.querySelector("#userAvatarPreview"),
   userAvatarPicker: document.querySelector("#userAvatarPicker"),
@@ -116,9 +123,16 @@ function bindEvents() {
   const openAvatarPicker = () => {
     if (!state.busy) elements.userAvatarInput.click();
   };
+  const openSystemAvatarPicker = () => {
+    if (!state.busy) elements.systemAvatarInput.click();
+  };
 
   elements.appBannerTrigger.addEventListener("click", openBannerPicker);
   elements.changeBannerButton.addEventListener("click", openBannerPicker);
+  elements.systemAvatarTrigger.addEventListener("click", () => {
+    if (elements.systemAvatarPicker.dataset.state === "empty") openSystemAvatarPicker();
+  });
+  elements.changeSystemAvatarButton.addEventListener("click", openSystemAvatarPicker);
   elements.userAvatarTrigger.addEventListener("click", () => {
     if (elements.userAvatarPicker.dataset.state === "empty") openAvatarPicker();
   });
@@ -127,6 +141,10 @@ function bindEvents() {
   elements.removeBannerButton.addEventListener("click", () => {
     state.settings.appBannerDataUrl = "";
     renderBannerPreview();
+  });
+  elements.removeSystemAvatarButton.addEventListener("click", () => {
+    state.settings.systemAvatarDataUrl = "";
+    renderSystemAvatarPreview();
   });
   elements.removeAvatarButton.addEventListener("click", () => {
     state.settings.userAvatarDataUrl = "";
@@ -139,6 +157,13 @@ function bindEvents() {
     state.settings.appBannerDataUrl = await readFileAsDataUrl(file);
     renderBannerPreview();
     elements.appBannerInput.value = "";
+  });
+  elements.systemAvatarInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    state.settings.systemAvatarDataUrl = await readFileAsDataUrl(file);
+    renderSystemAvatarPreview();
+    elements.systemAvatarInput.value = "";
   });
   elements.userAvatarInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
@@ -312,6 +337,7 @@ async function loadAppState() {
     colorTheme: normalizeColorTheme(stored.settings?.colorTheme),
     appBannerDataUrl: stored.settings?.appBannerDataUrl || "",
     appLogoDataUrl: stored.settings?.appLogoDataUrl || "",
+    systemAvatarDataUrl: stored.settings?.systemAvatarDataUrl || "",
     userAvatarDataUrl: stored.settings?.userAvatarDataUrl || "",
     customPrompt: stored.settings?.customPrompt || ""
   };
@@ -1045,12 +1071,13 @@ function appendMessage(role, text, options = {}) {
   meta.className = "message-meta";
   const metaLabel = document.createElement("span");
   metaLabel.textContent = role === "user" ? state.settings.userTitle : state.settings.aiName;
-  if (role === "user" && state.settings.userAvatarDataUrl) {
+  const avatarSrc = role === "user" ? state.settings.userAvatarDataUrl : state.settings.systemAvatarDataUrl;
+  if (avatarSrc) {
     const avatar = document.createElement("img");
     avatar.className = "message-meta-avatar";
-    avatar.src = state.settings.userAvatarDataUrl;
+    avatar.src = avatarSrc;
     avatar.alt = "";
-    meta.append(metaLabel, avatar);
+    meta.append(avatar, metaLabel);
   } else {
     meta.append(metaLabel);
   }
@@ -1482,6 +1509,7 @@ function openSettings() {
   renderColorThemeToggle();
   elements.customPromptInput.value = state.settings.customPrompt || "";
   renderBannerPreview();
+  renderSystemAvatarPreview();
   renderAvatarPreview();
   elements.settingsDialog.showModal();
   elements.appBannerTrigger.focus();
@@ -1532,15 +1560,31 @@ function renderBannerPreview() {
 }
 
 function renderAvatarPreview() {
-  const avatar = state.settings.userAvatarDataUrl;
+  renderLogoPickerPreview({
+    dataUrl: state.settings.userAvatarDataUrl,
+    preview: elements.userAvatarPreview,
+    picker: elements.userAvatarPicker
+  });
+}
+
+function renderSystemAvatarPreview() {
+  renderLogoPickerPreview({
+    dataUrl: state.settings.systemAvatarDataUrl,
+    preview: elements.systemAvatarPreview,
+    picker: elements.systemAvatarPicker
+  });
+}
+
+function renderLogoPickerPreview({ dataUrl, preview, picker }) {
+  const avatar = dataUrl;
   if (avatar) {
-    elements.userAvatarPreview.src = avatar;
-    elements.userAvatarPreview.hidden = false;
-    elements.userAvatarPicker.dataset.state = "filled";
+    preview.src = avatar;
+    preview.hidden = false;
+    picker.dataset.state = "filled";
   } else {
-    elements.userAvatarPreview.hidden = true;
-    elements.userAvatarPreview.removeAttribute("src");
-    elements.userAvatarPicker.dataset.state = "empty";
+    preview.hidden = true;
+    preview.removeAttribute("src");
+    picker.dataset.state = "empty";
   }
 }
 

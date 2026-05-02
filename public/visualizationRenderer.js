@@ -12,7 +12,7 @@ export function formatVisualizationText(spec) {
     lines.push("", "Insights");
     for (const insight of normalized.insights) lines.push(`- ${insight}`);
   }
-  if (!normalized.fallback && normalized.warnings.length) {
+  if (normalized.warnings.length) {
     lines.push("", "Warnings");
     for (const warning of normalized.warnings) lines.push(`- ${warning}`);
   }
@@ -29,7 +29,7 @@ export function renderVisualizationSpec(spec) {
 
   const label = document.createElement("div");
   label.className = "visualization-label";
-  label.textContent = "Visualization";
+  label.textContent = visualizationSourceLabel(normalized);
 
   const copyButton = createIconButton("visualization-json-copy", "Copy visualization JSON", copyIconSvg());
   copyButton.addEventListener("click", async () => {
@@ -435,14 +435,21 @@ function normalizeSpec(spec) {
   const source = spec && typeof spec === "object" ? spec : {};
   return {
     version: String(source.version || "1.0"),
+    source: String(source.source || (source.fallback ? "fallback" : "llm")).trim(),
     fallback: Boolean(source.fallback),
     fallbackNotice: String(source.fallbackNotice || "").trim(),
     fallbackReason: String(source.fallbackReason || "").trim(),
     summary: String(source.summary || "").trim(),
+    analysisPlan: source.analysisPlan && typeof source.analysisPlan === "object" ? source.analysisPlan : null,
     insights: asArray(source.insights).map(String).filter(Boolean).slice(0, 8),
     warnings: asArray(source.warnings).map(String).filter(Boolean).slice(0, 6),
     visualizations: asArray(source.visualizations).map(normalizeVisualization).filter(Boolean)
   };
+}
+
+function visualizationSourceLabel(spec) {
+  if (spec.fallback || spec.source === "fallback") return "자동 fallback 시각화";
+  return "AI 분석 기반 시각화";
 }
 
 function normalizeVisualization(value) {

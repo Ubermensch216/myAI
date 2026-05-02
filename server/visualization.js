@@ -158,42 +158,152 @@ export function normalizeVisualizationSpec(value) {
 
   return {
     version: safeText(source.version, 20) || "1.0",
+    source: safeText(source.source, 40) || (source.fallback ? "fallback" : "llm"),
     fallback: Boolean(source.fallback),
     fallbackNotice: safeText(source.fallbackNotice, 240),
     fallbackReason: safeText(source.fallbackReason, 400),
     summary: safeText(source.summary ?? source.title ?? "", MAX_TEXT_LENGTH),
+    analysisPlan: source.analysisPlan && typeof source.analysisPlan === "object" ? source.analysisPlan : null,
     visualizations,
     insights: normalizeTextArray(source.insights ?? source.keyFindings ?? source.findings, 8),
     warnings: normalizeTextArray(source.warnings ?? source.cautions ?? source.notes, 6)
   };
 }
 
-export function buildFallbackVisualizationSpec({ prompt, context, reason = "" }) {
+export function normalizeVisualizationPlan(value, context = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const rawPlan = source.visualizationPlan ?? source.plan ?? source.chartPlan ?? source.chart ?? source;
+  const dataSets = asArray(context?.dataSets);
+  const dataSetIndex = clampIndex(Number(rawPlan.dataSetIndex ?? rawPlan.datasetIndex ?? rawPlan.tableIndex ?? 0), dataSets.length);
+  const dataSet = dataSets[dataSetIndex];
+  const headers = asArray(dataSet?.headers).map((header) => safeText(header, 120)).filter(Boolean);
+  const analysisSource = source.analysis && typeof source.analysis === "object" ? source.analysis : source;
+  const chartType = normalizeType(rawPlan.chartType ?? rawPlan.type ?? rawPlan.visualizationType ?? rawPlan.kind);
+  const aggregation = normalizeAggregation(
+    rawPlan.aggregation ?? rawPlan.aggregate ?? rawPlan.y?.aggregation ?? rawPlan.metric?.aggregation
+  );
+
+  const plan = {
+    status: safeText(source.status ?? "ok", 40).toLowerCase() || "ok",
+    analysis: {
+      summary: safeText(analysisSource.summary ?? analysisSource.answer ?? "", MAX_TEXT_LENGTH),
+      insights: normalizeTextArray(analysisSource.insights ?? analysisSource.keyFindings ?? analysisSource.findings, 8),
+      warnings: normalizeTextArray(analysisSource.warnings ?? analysisSource.limitations ?? analysisSource.cautions, 6)
+    },
+    chartType,
+    dataSetIndex,
+    title: safeText(rawPlan.title ?? rawPlan.name ?? "", 160),
+    subtitle: safeText(rawPlan.subtitle ?? rawPlan.description ?? rawPlan.reason ?? "", 240),
+    xColumn: resolveColumn(rawPlan.xColumn ?? rawPlan.x?.column ?? rawPlan.labelColumn ?? rawPlan.categoryColumn, headers),
+    yColumn: resolveColumn(rawPlan.yColumn ?? rawPlan.y?.column ?? rawPlan.valueColumn ?? rawPlan.metricColumn, headers),
+    labelColumn: resolveColumn(rawPlan.labelColumn ?? rawPlan.label?.column ?? rawPlan.categoryColumn ?? rawPlan.xColumn, headers),
+    seriesColumn: resolveColumn(rawPlan.seriesColumn ?? rawPlan.groupColumn ?? rawPlan.colorColumn ?? rawPlan.series?.column, headers),
+    aggregation,
+    reason: safeText(rawPlan.reason ?? source.reason ?? "", MAX_TEXT_LENGTH)
+  };
+
+  const errors = [];
+  if (["cannot_visualize", "cannot-visualize", "error"].includes(plan.status)) {
+    errors.push(safeText(source.reason ?? "The model reported that it cannot create a visualization plan.", 240));
+  }
+  if (!dataSet) errors.push("No dataset index in the plan matches the available table context.");
+  if (!VISUALIZATION_TYPES.has(plan.chartType)) errors.push(`Unsupported chart type: ${plan.chartType || "(empty)"}.`);
+  if (["bar", "line", "pie"].includes(plan.chartType) && !plan.xColumn && !plan.labelColumn) {
+    errors.push(`${plan.chartType} requires xColumn or labelColumn.`);
+  }
+  if (["bar", "line", "pie"].includes(plan.chartType) && plan.aggregation !== "count" && !plan.yColumn) {
+    errors.push(`${plan.chartType} requires yColumn unless aggregation is count.`);
+  }
+  if (plan.chartType === "scatter" && (!plan.xColumn || !plan.yColumn)) {
+    errors.push("scatter requires xColumn and yColumn.");
+  }
+
+  return { ok: errors.length === 0, plan, errors };
+}
+
+export function executeVisualizationPlan(plan, context = {}) {
+  const dataSet = asArray(context?.dataSets)[plan?.dataSetIndex ?? 0];
+  if (!dataSet) return { ok: false, errors: ["The selected dataset is not available."] };
+
+  const rows = asArray(dataSet.rows);
+  const headers = asArray(dataSet.headers).map((header) => safeText(header, 120)).filter(Boolean);
+  const errors = validatePlanAgainstRows(plan, rows, headers);
+  if (errors.length) return { ok: false, errors };
+
+  const executionPlan = {
+    ...plan,
+    aggregation: effectiveAggregationForPlan(plan, rows)
+  };
+  const visualization = buildVisualizationFromPlan(executionPlan, dataSet, rows, headers);
+  if (!visualization) return { ok: false, errors: ["The analysis plan did not produce renderable chart data."] };
+
+  const spec = {
+    version: "1.0",
+    source: "llm",
+    fallback: false,
+    summary: plan.analysis?.summary || plan.reason || "AI analysis plan was executed successfully.",
+    insights: normalizeTextArray(plan.analysis?.insights, 8),
+    warnings: normalizeTextArray(plan.analysis?.warnings, 6),
+    analysisPlan: {
+      chartType: executionPlan.chartType,
+      dataSetIndex: executionPlan.dataSetIndex,
+      xColumn: executionPlan.xColumn,
+      yColumn: executionPlan.yColumn,
+      labelColumn: executionPlan.labelColumn,
+      seriesColumn: executionPlan.seriesColumn,
+      aggregation: executionPlan.aggregation,
+      reason: executionPlan.reason
+    },
+    visualizations: [visualization]
+  };
+
+  return { ok: true, spec };
+}
+
+export function buildFallbackVisualizationSpec({ prompt, context, reason = "", modelText = "" }) {
   const dataSet = asArray(context?.dataSets).find((item) => asArray(item?.rows).length && asArray(item?.headers).length);
+  const recoveredAnalysis = extractModelAnalysis(modelText);
   if (!dataSet) {
     return {
       version: "1.0",
+      source: "fallback",
       fallback: true,
-      fallbackNotice: "\ubaa8\ub378\uc774 \uc2dc\uac01\ud654 JSON\uc744 \uc81c\ub300\ub85c \ub9cc\ub4e4\uc9c0 \ubabb\ud574, \ud45c \ub370\uc774\ud130\ub85c \uae30\ubcf8 \ucc28\ud2b8\ub97c \uc0dd\uc131\ud588\uc2b5\ub2c8\ub2e4.",
+      fallbackNotice: "AI 분석 계획을 검증하지 못해 자동 fallback 결과를 표시합니다.",
       fallbackReason: safeText(reason, 400),
-      summary: "No tabular data was available for visualization.",
+      summary: recoveredAnalysis.summary || "No tabular data was available for visualization.",
       visualizations: [],
-      insights: [],
+      insights: recoveredAnalysis.insights,
       warnings: [safeText(reason, 240)].filter(Boolean)
     };
   }
 
   const rows = asArray(dataSet.rows);
   const headers = asArray(dataSet.headers).map((header) => safeText(header, 120)).filter(Boolean);
+  const requestedType = pickRequestedVisualizationType(prompt);
   const valueColumn = pickValueColumn(headers, rows, prompt);
   const labelColumn = pickLabelColumn(headers, rows, prompt, valueColumn);
   const visualizations = [];
 
-  if (labelColumn && valueColumn) {
+  if (requestedType === "scatter") {
+    const scatterColumns = pickScatterColumns(headers, rows, prompt);
+    const scatterData = buildScatterRows(rows, scatterColumns.xColumn, scatterColumns.yColumn, labelColumn);
+    if (scatterData.length) {
+      visualizations.push({
+        type: "scatter",
+        title: `${scatterColumns.xColumn}\uc640 ${scatterColumns.yColumn} \uad00\uacc4`,
+        subtitle: `${safeText(dataSet.fileName, 80)} / ${safeText(dataSet.sheetName, 80)}`,
+        xLabel: scatterColumns.xColumn,
+        yLabel: scatterColumns.yColumn,
+        data: scatterData
+      });
+    }
+  }
+
+  if (!visualizations.length && labelColumn && valueColumn) {
     const grouped = groupNumericRows(rows, labelColumn, valueColumn);
     if (grouped.length) {
       visualizations.push({
-        type: "bar",
+        type: requestedType === "line" ? "line" : "bar",
         title: `${labelColumn}\ubcc4 ${valueColumn}`,
         subtitle: `${safeText(dataSet.fileName, 80)} / ${safeText(dataSet.sheetName, 80)}`,
         xLabel: labelColumn,
@@ -207,7 +317,7 @@ export function buildFallbackVisualizationSpec({ prompt, context, reason = "" })
     const counts = groupCountRows(rows, labelColumn);
     if (counts.length) {
       visualizations.push({
-        type: "pie",
+        type: requestedType === "pie" ? "pie" : "bar",
         title: `${labelColumn} \ubd84\ud3ec`,
         subtitle: `${safeText(dataSet.fileName, 80)} / ${safeText(dataSet.sheetName, 80)}`,
         data: counts
@@ -230,14 +340,310 @@ export function buildFallbackVisualizationSpec({ prompt, context, reason = "" })
 
   return {
     version: "1.0",
+    source: "fallback",
     fallback: true,
-    fallbackNotice: "\ubaa8\ub378\uc774 \uc2dc\uac01\ud654 JSON\uc744 \uc81c\ub300\ub85c \ub9cc\ub4e4\uc9c0 \ubabb\ud574, \ud45c \ub370\uc774\ud130\ub85c \uae30\ubcf8 \ucc28\ud2b8\ub97c \uc0dd\uc131\ud588\uc2b5\ub2c8\ub2e4.",
+    fallbackNotice: "AI 분석 계획을 검증하지 못해 자동 fallback 차트를 표시합니다.",
     fallbackReason: safeText(reason, 400),
-    summary: "\uc5c5\ub85c\ub4dc\ud55c \ud45c \ub370\uc774\ud130\ub85c \uae30\ubcf8 \ucc28\ud2b8\ub97c \uc0dd\uc131\ud588\uc2b5\ub2c8\ub2e4.",
+    summary: recoveredAnalysis.summary || "\uc5c5\ub85c\ub4dc\ud55c \ud45c \ub370\uc774\ud130\ub85c \uae30\ubcf8 \ucc28\ud2b8\ub97c \uc0dd\uc131\ud588\uc2b5\ub2c8\ub2e4.",
     visualizations,
-    insights: buildFallbackInsights(rows, labelColumn, valueColumn),
+    insights: mergeInsights(recoveredAnalysis.insights, buildFallbackInsights(rows, labelColumn, valueColumn)),
     warnings
   };
+}
+
+function extractModelAnalysis(value) {
+  const text = String(value ?? "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  if (!text || /^[\s{[]/.test(text)) return { summary: "", insights: [] };
+
+  const cleanedLines = text
+    .split(/\r?\n/)
+    .map((line) => line
+      .replace(/^\s{0,3}(?:[-*+•]|\d+[.)])\s*/, "")
+      .replace(/^\s{0,3}#{1,6}\s*/, "")
+      .trim())
+    .filter((line) => line && !/^[{}\[\],:]+$/.test(line));
+
+  const summary = safeText(cleanedLines[0] || firstSentence(text), MAX_TEXT_LENGTH);
+  const insightCandidates = cleanedLines.slice(1).length
+    ? cleanedLines.slice(1)
+    : text.split(/(?<=[.!?。！？])\s+/).slice(1);
+
+  return {
+    summary,
+    insights: normalizeTextArray(insightCandidates, 6)
+  };
+}
+
+function mergeInsights(primary, fallback) {
+  const seen = new Set();
+  return [...asArray(primary), ...asArray(fallback)]
+    .map((item) => safeText(item, MAX_TEXT_LENGTH))
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function firstSentence(value) {
+  return String(value ?? "").split(/(?<=[.!?。！？])\s+/)[0] || "";
+}
+
+function pickRequestedVisualizationType(prompt) {
+  const text = String(prompt ?? "").toLowerCase();
+  if (/\bscatter\b|scatterplot|scatter plot|bubble|\uc0b0\uc810\ub3c4/.test(text)) return "scatter";
+  if (/\bline\b|linechart|line chart|trend|\uc120\uadf8\ub798\ud504|\uc120 \uadf8\ub798\ud504|\ucd94\uc774/.test(text)) return "line";
+  if (/\bpie\b|piechart|pie chart|donut|doughnut|\uc6d0\ud615|\ud30c\uc774/.test(text)) return "pie";
+  if (/\bbar\b|barchart|bar chart|column|\ub9c9\ub300/.test(text)) return "bar";
+  return "bar";
+}
+
+function validatePlanAgainstRows(plan, rows, headers) {
+  const errors = [];
+  const hasColumn = (column) => !column || headers.includes(column);
+  if (!rows.length) errors.push("The selected dataset has no rows.");
+  if (!hasColumn(plan.xColumn)) errors.push(`Unknown xColumn: ${plan.xColumn}.`);
+  if (!hasColumn(plan.yColumn)) errors.push(`Unknown yColumn: ${plan.yColumn}.`);
+  if (!hasColumn(plan.labelColumn)) errors.push(`Unknown labelColumn: ${plan.labelColumn}.`);
+  if (!hasColumn(plan.seriesColumn)) errors.push(`Unknown seriesColumn: ${plan.seriesColumn}.`);
+
+  if (["bar", "line", "pie"].includes(plan.chartType)) {
+    const labelColumn = plan.xColumn || plan.labelColumn;
+    const aggregation = plan.aggregation || defaultAggregation(plan.yColumn);
+    if (!labelColumn) errors.push(`${plan.chartType} requires a category or x column.`);
+    if (aggregation !== "count" && !plan.yColumn) errors.push(`${plan.chartType} requires a numeric y column.`);
+    if (plan.yColumn && !isMostlyNumericColumn(rows, plan.yColumn)) {
+      errors.push(`${plan.yColumn} must be numeric for ${plan.chartType}.`);
+    }
+  }
+
+  if (plan.chartType === "scatter") {
+    if (!plan.xColumn || !plan.yColumn) errors.push("scatter requires numeric xColumn and yColumn.");
+    if (plan.xColumn && !isMostlyNumericColumn(rows, plan.xColumn)) errors.push(`${plan.xColumn} must be numeric for scatter.`);
+    if (plan.yColumn && !isMostlyNumericColumn(rows, plan.yColumn)) errors.push(`${plan.yColumn} must be numeric for scatter.`);
+  }
+
+  return errors;
+}
+
+function effectiveAggregationForPlan(plan, rows) {
+  if (!["bar", "line", "pie"].includes(plan.chartType)) return plan.aggregation;
+  const labelColumn = plan.xColumn || plan.labelColumn;
+  if (plan.aggregation === "none" && hasDuplicateLabels(rows, labelColumn)) {
+    return defaultAggregation(plan.yColumn);
+  }
+  return plan.aggregation || defaultAggregation(plan.yColumn);
+}
+
+function hasDuplicateLabels(rows, labelColumn) {
+  if (!labelColumn) return false;
+  const seen = new Set();
+  for (const row of rows) {
+    const label = safeText(row?.[labelColumn], 120);
+    if (!label) continue;
+    if (seen.has(label)) return true;
+    seen.add(label);
+  }
+  return false;
+}
+
+function buildVisualizationFromPlan(plan, dataSet, rows, headers) {
+  const subtitle = [
+    `${safeText(dataSet.fileName, 80)} / ${safeText(dataSet.sheetName, 80)}`,
+    plan.reason
+  ].filter(Boolean).join(" - ");
+
+  if (plan.chartType === "scatter") {
+    const labelColumn = plan.labelColumn || plan.seriesColumn || "";
+    const data = buildScatterRows(rows, plan.xColumn, plan.yColumn, labelColumn);
+    if (!data.length) return null;
+    return {
+      type: "scatter",
+      title: plan.title || `${plan.xColumn} and ${plan.yColumn}`,
+      subtitle,
+      xLabel: plan.xColumn,
+      yLabel: plan.yColumn,
+      data
+    };
+  }
+
+  if (["bar", "line", "pie"].includes(plan.chartType)) {
+    const labelColumn = plan.xColumn || plan.labelColumn;
+    const aggregation = plan.aggregation || defaultAggregation(plan.yColumn);
+    const data = aggregation === "count"
+      ? groupCountRows(rows, labelColumn)
+      : aggregation === "none"
+        ? rawNumericRows(rows, labelColumn, plan.yColumn)
+      : aggregateNumericRows(rows, labelColumn, plan.yColumn, aggregation);
+    const sortedData = plan.chartType === "line" ? sortChartData(data) : data;
+    if (!sortedData.length) return null;
+    return {
+      type: plan.chartType,
+      title: plan.title || `${labelColumn} by ${plan.yColumn || "count"}`,
+      subtitle,
+      xLabel: labelColumn,
+      yLabel: aggregation === "count" ? "count" : plan.yColumn,
+      data: sortedData
+    };
+  }
+
+  if (plan.chartType === "table") {
+    const columns = uniqueValues([plan.xColumn, plan.yColumn, plan.labelColumn, plan.seriesColumn, ...headers]).slice(0, 8);
+    return {
+      type: "table",
+      title: plan.title || "Data table",
+      subtitle,
+      columns,
+      rows: rows.slice(0, 40).map((row) => columns.map((column) => safeText(row?.[column], 180)))
+    };
+  }
+
+  if (plan.chartType === "kpi") {
+    const items = buildKpiItemsFromPlan(rows, plan);
+    if (!items.length) return null;
+    return {
+      type: "kpi",
+      title: plan.title || "Key metrics",
+      subtitle,
+      items
+    };
+  }
+
+  if (plan.chartType === "infographic") {
+    const labelColumn = plan.xColumn || plan.labelColumn || headers.find((header) => !isMostlyNumericColumn(rows, header));
+    const yColumn = plan.yColumn || headers.find((header) => isMostlyNumericColumn(rows, header));
+    const data = labelColumn && yColumn ? aggregateNumericRows(rows, labelColumn, yColumn, plan.aggregation || defaultAggregation(yColumn)) : [];
+    return {
+      type: "infographic",
+      title: plan.title || "Infographic summary",
+      subtitle,
+      data,
+      items: buildKpiItemsFromPlan(rows, { ...plan, yColumn }),
+      sections: plan.reason ? [{ title: "AI analysis plan", body: plan.reason, items: [] }] : []
+    };
+  }
+
+  return null;
+}
+
+function aggregateNumericRows(rows, labelColumn, valueColumn, aggregation = "average") {
+  const groups = new Map();
+  for (const row of rows) {
+    const label = safeText(row?.[labelColumn], 120);
+    const value = parseNumber(row?.[valueColumn]);
+    if (!label || !Number.isFinite(value)) continue;
+    const current = groups.get(label) ?? { sum: 0, count: 0, min: value, max: value };
+    current.sum += value;
+    current.count += 1;
+    current.min = Math.min(current.min, value);
+    current.max = Math.max(current.max, value);
+    groups.set(label, current);
+  }
+
+  return Array.from(groups.entries())
+    .map(([label, stats]) => ({ label, value: roundNumber(aggregateValue(stats, aggregation)) }))
+    .filter((point) => Number.isFinite(point.value))
+    .slice(0, MAX_POINTS);
+}
+
+function rawNumericRows(rows, labelColumn, valueColumn) {
+  return rows
+    .map((row, index) => {
+      const label = safeText(row?.[labelColumn], 120) || `Row ${index + 1}`;
+      const value = parseNumber(row?.[valueColumn]);
+      if (!Number.isFinite(value)) return null;
+      return { label, value: roundNumber(value) };
+    })
+    .filter(Boolean)
+    .slice(0, MAX_POINTS);
+}
+
+function aggregateValue(stats, aggregation) {
+  if (aggregation === "sum") return stats.sum;
+  if (aggregation === "min") return stats.min;
+  if (aggregation === "max") return stats.max;
+  if (aggregation === "count") return stats.count;
+  return stats.sum / Math.max(1, stats.count);
+}
+
+function buildKpiItemsFromPlan(rows, plan) {
+  if (!rows.length) return [];
+  if (!plan.yColumn || !isMostlyNumericColumn(rows, plan.yColumn)) {
+    return [{ label: "Rows", value: String(rows.length), note: "Number of rows used for the AI analysis plan." }];
+  }
+
+  const values = rows.map((row) => parseNumber(row?.[plan.yColumn])).filter(Number.isFinite);
+  if (!values.length) return [];
+  const sum = values.reduce((total, value) => total + value, 0);
+  const average = sum / values.length;
+  return [
+    { label: `${plan.yColumn} avg`, value: String(roundNumber(average)), note: "Average over valid numeric rows." },
+    { label: `${plan.yColumn} min`, value: String(roundNumber(Math.min(...values))), note: "Minimum value." },
+    { label: `${plan.yColumn} max`, value: String(roundNumber(Math.max(...values))), note: "Maximum value." }
+  ];
+}
+
+function sortChartData(data) {
+  return [...data].sort((left, right) => compareLabels(left.label, right.label));
+}
+
+function compareLabels(left, right) {
+  const leftNumber = parseNumber(left);
+  const rightNumber = parseNumber(right);
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return leftTime - rightTime;
+  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function normalizeAggregation(value) {
+  const text = String(value ?? "").trim().toLowerCase().replace(/[-_\s]+/g, "");
+  if (["avg", "average", "mean"].includes(text)) return "average";
+  if (["sum", "total"].includes(text)) return "sum";
+  if (["count", "frequency", "freq"].includes(text)) return "count";
+  if (["min", "minimum"].includes(text)) return "min";
+  if (["max", "maximum"].includes(text)) return "max";
+  if (["none", "raw"].includes(text)) return "none";
+  return "";
+}
+
+function defaultAggregation(valueColumn) {
+  return valueColumn ? "average" : "count";
+}
+
+function resolveColumn(value, headers) {
+  const raw = value && typeof value === "object" ? value.column ?? value.name ?? value.field : value;
+  const text = String(raw ?? "").trim();
+  if (!text) return "";
+  const lower = text.toLowerCase();
+  const compact = lower.replace(/[-_\s]+/g, "");
+  return headers.find((header) => header === text)
+    ?? headers.find((header) => header.toLowerCase() === lower)
+    ?? headers.find((header) => header.toLowerCase().replace(/[-_\s]+/g, "") === compact)
+    ?? "";
+}
+
+function clampIndex(value, length) {
+  if (!length) return 0;
+  const index = Number.isInteger(value) ? value : 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+function uniqueValues(values) {
+  const seen = new Set();
+  return values
+    .map((value) => safeText(value, 120))
+    .filter((value) => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
 }
 
 function collectTables(documents) {
@@ -519,14 +925,63 @@ function pickValueColumn(headers, rows, prompt) {
     .sort((left, right) => right.score - left.score)[0]?.header ?? "";
 }
 
+function pickScatterColumns(headers, rows, prompt) {
+  const promptText = String(prompt ?? "").toLowerCase();
+  const numericCandidates = headers
+    .filter((header) => isMostlyNumericColumn(rows, header))
+    .map((header, index) => {
+      const normalized = String(header ?? "").toLowerCase();
+      const promptIndex = normalized ? promptText.indexOf(normalized) : -1;
+      return {
+        header,
+        index,
+        promptIndex,
+        score: scoreHeader(header, promptText, VALUE_COLUMN_KEYWORDS)
+      };
+    })
+    .sort((left, right) => {
+      const leftMentioned = left.promptIndex >= 0;
+      const rightMentioned = right.promptIndex >= 0;
+      if (leftMentioned && rightMentioned) return left.promptIndex - right.promptIndex;
+      if (leftMentioned !== rightMentioned) return leftMentioned ? -1 : 1;
+      if (right.score !== left.score) return right.score - left.score;
+      return left.index - right.index;
+    });
+
+  return {
+    xColumn: numericCandidates[0]?.header ?? "",
+    yColumn: numericCandidates.find((candidate) => candidate.header !== numericCandidates[0]?.header)?.header ?? ""
+  };
+}
+
 function scoreHeader(header, promptText, keywords) {
   const normalized = String(header ?? "").toLowerCase();
   let score = promptText.includes(normalized) && normalized ? 6 : 0;
+  score += scoreHeaderPromptAliases(normalized, promptText);
   for (const keyword of keywords) {
     if (normalized.includes(keyword.toLowerCase())) score += 4;
     if (promptText.includes(keyword.toLowerCase())) score += 1;
   }
   return score;
+}
+
+function scoreHeaderPromptAliases(normalizedHeader, promptText) {
+  const aliases = [
+    { match: /(^|_)date($|_)|time|day/, words: ["\ub0a0\uc9dc", "\uc77c\uc790", "\uc77c\ubcc4", "\uae30\uac04", "\ucd94\uc774"], score: 8 },
+    { match: /model/, words: ["\ubaa8\ub378", "llm"], score: 8 },
+    { match: /task|category|type/, words: ["\uc791\uc5c5", "\uc720\ud615", "\ubd84\ub958", "\uce74\ud14c\uace0\ub9ac"], score: 8 },
+    { match: /provider/, words: ["\uc81c\uacf5", "\uc5d4\uc9c4", "provider"], score: 6 },
+    { match: /accuracy/, words: ["\uc815\ud655\ub3c4", "accuracy"], score: 8 },
+    { match: /latency/, words: ["\uc9c0\uc5f0", "\uc751\ub2f5\uc2dc\uac04", "latency"], score: 8 },
+    { match: /token/, words: ["\ud1a0\ud070", "token"], score: 8 },
+    { match: /error/, words: ["\uc624\ub958", "error"], score: 8 },
+    { match: /satisfaction/, words: ["\ub9cc\uc871", "satisfaction"], score: 8 }
+  ];
+
+  return aliases.reduce((total, alias) => {
+    if (!alias.match.test(normalizedHeader)) return total;
+    return total + (alias.words.some((word) => promptText.includes(word.toLowerCase())) ? alias.score : 0);
+  }, 0);
 }
 
 function isMostlyNumericColumn(rows, header) {
@@ -551,6 +1006,23 @@ function groupNumericRows(rows, labelColumn, valueColumn) {
   }
   return Array.from(groups.entries())
     .map(([label, value]) => ({ label, value: roundNumber(value) }))
+    .slice(0, MAX_POINTS);
+}
+
+function buildScatterRows(rows, xColumn, yColumn, labelColumn) {
+  if (!xColumn || !yColumn) return [];
+  return rows
+    .map((row, index) => {
+      const x = parseNumber(row?.[xColumn]);
+      const y = parseNumber(row?.[yColumn]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return {
+        label: safeText(row?.[labelColumn], 120) || `Point ${index + 1}`,
+        x: roundNumber(x),
+        y: roundNumber(y)
+      };
+    })
+    .filter(Boolean)
     .slice(0, MAX_POINTS);
 }
 

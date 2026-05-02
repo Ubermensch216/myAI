@@ -3,8 +3,9 @@ import { chunkText } from "./parsers.js";
 import { pickRelevantChunks } from "./retrieval.js";
 import {
   buildVisualizationContext,
+  executeVisualizationPlan,
   buildFallbackVisualizationSpec,
-  normalizeVisualizationSpec,
+  normalizeVisualizationPlan,
   parseVisualizationJson
 } from "./visualization.js";
 
@@ -142,92 +143,44 @@ export async function generateVisualizationSpec({
     .join("\n\n");
 
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        stream: false,
-        format: "json",
-        messages: [
-          {
-            role: "system",
-            content: [
-              "You are a data visualization planner for a local Korean AI web app.",
-              "Return only one strict JSON object. Do not include markdown, code fences, prose, or comments.",
-              "Use the uploaded table data only. Do not invent rows, labels, totals, or columns.",
-              "Create concise Korean titles, summary, insights, warnings, and labels unless the data itself is in another language.",
-              "Allowed visualization types: bar, line, pie, scatter, table, kpi, infographic.",
-              "Prefer kpi plus one or two charts when the user asks for an infographic.",
-              "For bar, line, and pie, data must be an array of objects with label and numeric value.",
-              "For scatter, data must be an array of objects with label, numeric x, and numeric y.",
-              "For table, include columns and rows.",
-              "For kpi, include items with label, value, and optional note.",
-              "Schema:",
-              JSON.stringify({
-                version: "1.0",
-                summary: "short answer",
-                visualizations: [
-                  {
-                    type: "bar",
-                    title: "chart title",
-                    subtitle: "optional subtitle",
-                    xLabel: "x axis",
-                    yLabel: "y axis",
-                    data: [{ label: "A", value: 10 }],
-                    items: [{ label: "metric", value: "10", note: "optional" }],
-                    columns: ["Column"],
-                    rows: [["Value"]],
-                    sections: [{ title: "section", body: "text", items: ["point"] }]
-                  }
-                ],
-                insights: ["specific insight"],
-                warnings: ["data limitation"]
-              })
-            ].join("\n")
-          },
-          {
-            role: "user",
-            content: [
-              `User request: ${String(prompt ?? "").slice(0, 2000)}`,
-              "",
-              "Recent conversation:",
-              recentMessages || "(none)",
-              "",
-              "Available table context:",
-              JSON.stringify(context, null, 2),
-              "",
-              "Create the visualization JSON now."
-            ].join("\n")
-          }
-        ],
-        options: {
-          temperature: 0.05,
-          top_p: 0.8
-        }
-      })
+    const firstAttempt = await requestVisualizationPlan({
+      model,
+      prompt,
+      recentMessages,
+      context
     });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      return buildFallbackVisualizationSpec({
+    let planResult = parseAndExecuteVisualizationPlan(firstAttempt.rawContent, context);
+
+    if (!planResult.ok) {
+      const repairAttempt = await requestVisualizationPlanRepair({
+        model,
         prompt,
+        recentMessages,
         context,
-        reason: `Ollama returned ${response.status}. ${errorText}`
+        previousContent: firstAttempt.rawContent,
+        errors: planResult.errors
       });
+      planResult = parseAndExecuteVisualizationPlan(repairAttempt.rawContent, context);
+      if (!planResult.ok) {
+        return buildFallbackVisualizationSpec({
+          prompt,
+          context,
+          reason: planResult.errors.join(" "),
+          modelText: repairAttempt.rawContent || firstAttempt.rawContent
+        });
+      }
     }
 
-    const payload = await response.json();
-    const rawContent = payload.message?.content ?? "";
-    const parsed = parseVisualizationJson(rawContent);
-    const spec = normalizeVisualizationSpec(parsed);
-    if (spec.visualizations.length) return spec;
-
-    return buildFallbackVisualizationSpec({
+    const interpreted = await requestVisualizationInterpretation({
+      model,
       prompt,
+      recentMessages,
       context,
-      reason: String(rawContent || "The model did not return a usable visualization JSON object.").slice(0, 500)
-    });
+      spec: planResult.spec
+    }).catch(() => null);
+
+    return mergeVisualizationInterpretation(planResult.spec, interpreted);
   } catch (error) {
     return buildFallbackVisualizationSpec({
       prompt,
@@ -235,6 +188,257 @@ export async function generateVisualizationSpec({
       reason: error.message || "Visualization model call failed."
     });
   }
+}
+
+async function requestVisualizationPlan({ model, prompt, recentMessages, context }) {
+  const planningContext = formatPlanningContext(context);
+  return requestOllamaJson({
+    model,
+    temperature: 0.02,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You are a data analyst. Return only JSON.",
+          "Choose an executable visualization plan for the user's analytical request.",
+          "Do not calculate chart data points yourself. The server will calculate exact values.",
+          "Do not compute averages, standard deviations, totals, correlations, or distribution summaries.",
+          "Do not add keys such as average_metrics or distribution_summary.",
+          "Use exact column names from the provided context.",
+          "chartType must be one exact string: bar, line, pie, scatter, table, kpi, or infographic.",
+          "Chart choice rules:",
+          "- line: trend, date/time change, sequence, 추이",
+          "- scatter: relationship, correlation, trade-off, impact between two numeric metrics",
+          "- bar: comparison across categories/models/tasks",
+          "- pie: small part-to-whole distribution",
+          "- table: exact row values matter more than visual pattern",
+          "- kpi: top-level summary metrics",
+          "- infographic: KPI plus concise narrative sections",
+          "aggregation must be one exact string: average, sum, count, min, max, or none.",
+          "For percentages, rates, latency, satisfaction, and speed metrics, average is usually safer than sum.",
+          "The JSON must have exactly these top-level keys: status, analysis, visualizationPlan.",
+          "Example shape:",
+          JSON.stringify({
+            status: "ok",
+            analysis: {
+              summary: "Korean one-sentence analytical summary",
+              insights: ["Korean insight grounded in the table profile"],
+              warnings: ["data limitation, if any"]
+            },
+            visualizationPlan: {
+              chartType: "scatter",
+              dataSetIndex: 0,
+              title: "Korean chart title",
+              xColumn: "exact existing x/category column",
+              yColumn: "exact existing numeric value column",
+              labelColumn: "exact existing label column or empty string",
+              seriesColumn: "exact existing grouping column or empty string",
+              aggregation: "none",
+              reason: "why this chart and these columns answer the user request"
+            }
+          })
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: [
+          `User request: ${String(prompt ?? "").slice(0, 2000)}`,
+          "",
+          "Recent conversation:",
+          recentMessages || "(none)",
+          "",
+          "Available table context for planning:",
+          planningContext,
+          "",
+          "Return the analysis plan JSON now."
+        ].join("\n")
+      }
+    ]
+  });
+}
+
+async function requestVisualizationPlanRepair({ model, prompt, recentMessages, context, previousContent, errors }) {
+  const planningContext = formatPlanningContext(context);
+  return requestOllamaJson({
+    model,
+    temperature: 0.02,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You repair invalid visualization analysis plans.",
+          "Return only strict JSON matching the requested schema.",
+          "The JSON must contain status, analysis, and visualizationPlan.",
+          "Use only exact column names from the table context.",
+          "Do not calculate chart data points yourself.",
+          "Do not return computed statistics or prose-only analysis.",
+          "Fix every validation error."
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: [
+          `User request: ${String(prompt ?? "").slice(0, 2000)}`,
+          "",
+          "Recent conversation:",
+          recentMessages || "(none)",
+          "",
+          "Validation errors:",
+          errors.map((error) => `- ${error}`).join("\n"),
+          "",
+          "Previous model output:",
+          String(previousContent ?? "").slice(0, 4000),
+          "",
+          "Available table context for planning:",
+          planningContext,
+          "",
+          "Return corrected JSON only."
+        ].join("\n")
+      }
+    ]
+  });
+}
+
+async function requestVisualizationInterpretation({ model, prompt, recentMessages, context, spec }) {
+  const response = await requestOllamaJson({
+    model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You are a Korean data analyst.",
+          "Always write summary, insights, and warnings in Korean.",
+          "Do not make generic statements. Refer to the actual chart variables, point count, and visible pattern.",
+          "Interpret the computed visualization result. Do not change the chart data.",
+          "Return only strict JSON with summary, insights, and warnings.",
+          "Base your answer on the computed render spec and table context only."
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: [
+          `User request: ${String(prompt ?? "").slice(0, 2000)}`,
+          "",
+          "Recent conversation:",
+          recentMessages || "(none)",
+          "",
+          "Computed visualization spec:",
+          JSON.stringify(trimVisualizationForPrompt(spec), null, 2),
+          "",
+          "Table context summary:",
+          JSON.stringify({
+            tableCount: context.tableCount,
+            dataSets: context.dataSets.map((dataSet) => ({
+              fileName: dataSet.fileName,
+              sheetName: dataSet.sheetName,
+              rowCount: dataSet.rowCount,
+              headers: dataSet.headers,
+              columns: dataSet.columns
+            }))
+          }, null, 2),
+          "",
+          "Return JSON: {\"summary\":\"...\",\"insights\":[\"...\"],\"warnings\":[\"...\"]}"
+        ].join("\n")
+      }
+    ]
+  });
+
+  const parsed = parseVisualizationJson(response.rawContent);
+  if (!parsed || typeof parsed !== "object") return null;
+  return normalizeInterpretation(parsed);
+}
+
+async function requestOllamaJson({ model, messages, temperature }) {
+  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      stream: false,
+      format: "json",
+      messages,
+      options: {
+        temperature,
+        top_p: 0.8
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`Ollama returned ${response.status}. ${errorText}`);
+  }
+
+  const payload = await response.json();
+  return { rawContent: payload.message?.content ?? "" };
+}
+
+function parseAndExecuteVisualizationPlan(rawContent, context) {
+  const parsed = parseVisualizationJson(rawContent);
+  const normalizedPlan = normalizeVisualizationPlan(parsed, context);
+  if (!normalizedPlan.ok) return { ok: false, errors: normalizedPlan.errors };
+  const execution = executeVisualizationPlan(normalizedPlan.plan, context);
+  if (!execution.ok) return { ok: false, errors: execution.errors };
+  return { ok: true, spec: execution.spec };
+}
+
+function normalizeInterpretation(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    summary: String(source.summary ?? source.answer ?? "").trim().slice(0, 600),
+    insights: normalizeStringArray(source.insights ?? source.keyFindings ?? source.findings, 8),
+    warnings: normalizeStringArray(source.warnings ?? source.limitations ?? source.cautions, 6)
+  };
+}
+
+function mergeVisualizationInterpretation(spec, interpretation) {
+  if (!interpretation) return spec;
+  const summary = interpretation.summary && containsHangul(interpretation.summary)
+    ? interpretation.summary
+    : spec.summary;
+  return {
+    ...spec,
+    summary,
+    insights: interpretation.insights.length ? interpretation.insights : spec.insights,
+    warnings: interpretation.warnings.length ? interpretation.warnings : spec.warnings
+  };
+}
+
+function containsHangul(value) {
+  return /[\u3131-\u318e\uac00-\ud7a3]/.test(String(value ?? ""));
+}
+
+function trimVisualizationForPrompt(spec) {
+  return {
+    source: spec.source,
+    analysisPlan: spec.analysisPlan,
+    visualizations: (spec.visualizations ?? []).map((visualization) => ({
+      ...visualization,
+      data: Array.isArray(visualization.data) ? visualization.data.slice(0, 40) : visualization.data,
+      rows: Array.isArray(visualization.rows) ? visualization.rows.slice(0, 20) : visualization.rows
+    }))
+  };
+}
+
+function formatPlanningContext(context) {
+  return context.dataSets.map((dataSet, index) => [
+    `Dataset ${index}`,
+    `File: ${dataSet.fileName}`,
+    `Sheet: ${dataSet.sheetName}`,
+    `Rows: ${dataSet.rowCount}`,
+    `Columns: ${dataSet.headers.join(", ")}`,
+    "Sample rows:",
+    JSON.stringify((dataSet.sampleRows ?? dataSet.rows ?? []).slice(0, 5), null, 2)
+  ].join("\n")).join("\n\n");
+}
+
+function normalizeStringArray(value, limit) {
+  const values = Array.isArray(value) ? value : [value];
+  return values
+    .map((item) => String(item ?? "").trim().slice(0, 600))
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 function buildMessages(messages, documents, personalization) {
@@ -258,6 +462,12 @@ function buildMessages(messages, documents, personalization) {
   ];
 
   systemParts.push(
+    "App capability: this web app can render data visualizations for uploaded CSV/XLSX table data.",
+    "When the user asks whether charts, graphs, dashboards, visualizations, or infographics are possible, answer that they are possible in this app when table data is uploaded.",
+    "Do not claim that visualization is impossible just because the language model itself cannot directly paint pixels.",
+    "Explain that the app routes chart/graph requests with tabular data to its visualization renderer, which can show SVG charts and provide PNG download controls.",
+    "If no suitable CSV/XLSX table is available yet, ask the user to upload one and then request the chart type or insight they want.",
+    "Supported visualization outputs include bar, line, pie, scatter, table, KPI cards, dashboards, and infographic-style summaries.",
     "Format answers for scanning: use short section labels such as Summary, Key points, Evidence, Caution, Next steps when helpful.",
     "Put a simple visual symbol before section labels when it improves readability: ◆ Summary, ● Key points, ✓ Evidence, ※ Caution, -> Next steps.",
     "Prefer compact bullet lists with '- ', numbered lists with '1. ', and clear symbols like '->' or '※' for notes.",
