@@ -63,6 +63,18 @@
           </section>
         </div>
 
+        <div class="sidebar-footer">
+          <button id="openAdminNotebookButton" class="sidebar-admin-button" type="button" title="부서노트북 관리 (관리자)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+              <circle cx="17.5" cy="6.5" r="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.6"></circle>
+              <path d="M16 6.5l1 1 2-2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span>부서노트북 관리</span>
+            <span class="sidebar-admin-status" data-status="locked" aria-hidden="true"></span>
+          </button>
+        </div>
       </aside>
 
       <section class="chat-area" aria-label="채팅">
@@ -81,15 +93,30 @@
         <div id="messages" class="messages"></div>
 
         <form id="chatForm" class="composer">
-          <div class="attach-menu-wrap">
-            <button id="attachFileButton" class="attach-button" type="button" aria-label="첨부 메뉴 열기" title="첨부">+</button>
-            <div id="attachMenu" class="attach-menu" hidden>
-              <button id="attachFromDeviceButton" class="attach-menu-button" type="button" aria-label="파일 첨부" title="파일 첨부">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48"></path>
-                </svg>
-              </button>
+          <div class="composer-leading">
+            <div class="attach-menu-wrap">
+              <button id="attachFileButton" class="attach-button" type="button" aria-label="첨부 메뉴 열기" title="첨부">+</button>
+              <div id="attachMenu" class="attach-menu" hidden>
+                <button id="attachFromDeviceButton" class="attach-menu-button" type="button" aria-label="파일 첨부" title="파일 첨부">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48"></path>
+                  </svg>
+                </button>
+                <button id="attachNotebookButton" class="attach-menu-button" type="button" aria-label="부서노트북 선택" title="부서노트북">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                    <path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+                  </svg>
+                </button>
+              </div>
             </div>
+            <button id="notebookBadge" class="notebook-badge" type="button" hidden aria-label="부서노트북 변경" title="부서노트북">
+              <svg class="notebook-badge-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                <path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+              </svg>
+              <span id="notebookBadgeName" class="notebook-badge-name">노트북</span>
+            </button>
           </div>
           <input id="fileInput" type="file" multiple hidden />
           <textarea
@@ -406,10 +433,186 @@
         </p>
 
         <div class="dialog-actions">
+          <span class="dialog-actions-spacer"></span>
           <button class="ghost-button" type="button" id="cancelSettingsButton">취소</button>
           <button class="send-button" type="submit">저장</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="notebookSelectorDialog" class="notebook-selector-dialog">
+      <div class="notebook-selector-header">
+        <h2 class="notebook-selector-title">부서노트북</h2>
+        <button id="closeNotebookSelectorButton" class="icon-button" type="button" aria-label="닫기">×</button>
+      </div>
+      <div id="notebookList" class="notebook-list" aria-live="polite"></div>
+    </dialog>
+
+    <dialog id="adminNotebookDialog" class="admin-dialog" aria-labelledby="adminDialogTitle">
+      <header class="admin-dialog-header">
+        <div class="admin-dialog-title-group">
+          <h2 id="adminDialogTitle">부서노트북 관리</h2>
+          <span id="adminDialogSubtitle" class="admin-dialog-subtitle"></span>
+        </div>
+        <div class="admin-dialog-header-actions">
+          <button id="adminLogoutButton" class="ghost-button admin-logout-button" type="button" hidden>로그아웃</button>
+          <button id="closeAdminNotebookButton" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+      </header>
+
+      <!-- State A: ADMIN_TOKEN not configured on server -->
+      <section id="adminUnconfiguredSection" class="admin-unconfigured" hidden>
+        <div class="admin-unconfigured-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M4.93 19h14.14a2 2 0 0 0 1.74-3L13.74 4a2 2 0 0 0-3.48 0L3.2 16a2 2 0 0 0 1.73 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <h3>관리자 토큰이 서버에 설정되어 있지 않습니다</h3>
+        <p class="admin-unconfigured-lede">서버 운영자가 <code>.env</code>에 <code>ADMIN_TOKEN</code>을 추가하면 부서노트북을 관리할 수 있습니다.</p>
+        <ol class="admin-setup-checklist">
+          <li>
+            <span class="admin-setup-step">1</span>
+            <div class="admin-setup-body">
+              <div class="admin-setup-text">긴 무작위 문자열 생성</div>
+              <div class="admin-setup-code">
+                <code>openssl rand -hex 32</code>
+                <button class="admin-copy-button" type="button" data-copy="openssl rand -hex 32" aria-label="명령 복사">복사</button>
+              </div>
+            </div>
+          </li>
+          <li>
+            <span class="admin-setup-step">2</span>
+            <div class="admin-setup-body">
+              <div class="admin-setup-text">프로젝트 루트의 <code>.env</code>에 추가</div>
+              <div class="admin-setup-code">
+                <code>ADMIN_TOKEN=&lt;생성한 값&gt;</code>
+                <button class="admin-copy-button" type="button" data-copy="ADMIN_TOKEN=" aria-label="키 복사">복사</button>
+              </div>
+            </div>
+          </li>
+          <li>
+            <span class="admin-setup-step">3</span>
+            <div class="admin-setup-body">
+              <div class="admin-setup-text">서버 재시작</div>
+            </div>
+          </li>
+          <li>
+            <span class="admin-setup-step">4</span>
+            <div class="admin-setup-body">
+              <div class="admin-setup-text">이 화면을 다시 열기</div>
+              <button id="adminRecheckButton" class="ghost-button admin-recheck-button" type="button">상태 다시 확인</button>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <!-- State B: Auth required -->
+      <section id="adminAuthSection" class="admin-auth" hidden>
+        <div class="admin-auth-card">
+          <div class="admin-auth-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+          </div>
+          <h3>관리자 인증</h3>
+          <p class="admin-auth-hint"><code>.env</code>에 설정한 <code>ADMIN_TOKEN</code> 값을 입력하세요. 입력값은 이 브라우저 탭에서만 유지됩니다.</p>
+          <div class="admin-auth-row">
+            <input id="adminTokenInput" class="text-input admin-auth-input" type="password" placeholder="관리자 토큰" autocomplete="off" />
+            <button id="adminTokenToggleButton" class="icon-button admin-auth-toggle" type="button" aria-label="입력값 표시" title="표시/숨김">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"></circle></svg>
+            </button>
+          </div>
+          <div id="adminTokenError" class="admin-token-error" hidden></div>
+          <div class="admin-auth-actions">
+            <button id="adminTokenSubmitButton" class="send-button" type="button">인증</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- State C: 2-panel workspace -->
+      <section id="adminWorkspace" class="admin-workspace" hidden>
+        <aside class="admin-list-pane" aria-label="노트북 목록">
+          <header class="admin-list-header">
+            <h3>노트북</h3>
+            <button id="adminNewNotebookButton" class="icon-button admin-new-button" type="button" aria-label="새 노트북" title="새 노트북">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+            </button>
+          </header>
+          <div id="adminNotebookList" class="admin-list" aria-live="polite"></div>
+        </aside>
+
+        <main class="admin-detail-pane" aria-label="노트북 상세">
+          <button id="adminBackToListButton" class="ghost-button admin-back-button" type="button" hidden>← 목록</button>
+
+          <!-- Empty state -->
+          <div id="adminDetailEmpty" class="admin-detail-empty">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>
+            <p>왼쪽에서 노트북을 선택하거나<br/>오른쪽 상단의 <strong>+</strong> 버튼으로 새 노트북을 만드세요.</p>
+          </div>
+
+          <!-- New notebook form -->
+          <form id="adminNewNotebookForm" class="admin-new-form" hidden>
+            <h3>새 노트북</h3>
+            <div class="field">
+              <label class="field-label" for="adminNewNotebookName">이름</label>
+              <input id="adminNewNotebookName" class="text-input" maxlength="80" placeholder="예: 영업팀 FAQ" required />
+            </div>
+            <div class="field">
+              <label class="field-label" for="adminNewNotebookDescription">설명 (선택)</label>
+              <input id="adminNewNotebookDescription" class="text-input" maxlength="400" placeholder="이 노트북에 어떤 자료가 있는지" />
+            </div>
+            <div class="admin-form-actions">
+              <span class="dialog-actions-spacer"></span>
+              <button id="adminCancelNewNotebookButton" class="ghost-button" type="button">취소</button>
+              <button id="adminCreateNotebookButton" class="send-button" type="submit">생성</button>
+            </div>
+          </form>
+
+          <!-- Notebook detail -->
+          <div id="adminDetailContent" class="admin-detail-content" hidden>
+            <header class="admin-detail-header">
+              <div class="admin-detail-titles">
+                <input id="adminDetailNameInput" class="admin-inline-input admin-detail-name-input" maxlength="80" placeholder="노트북 이름" />
+                <input id="adminDetailDescriptionInput" class="admin-inline-input admin-detail-desc-input" maxlength="400" placeholder="설명 추가" />
+              </div>
+              <div class="admin-detail-meta">
+                <span id="adminDetailSaveStatus" class="admin-save-status" aria-live="polite"></span>
+                <button id="adminDeleteNotebookButton" class="ghost-button admin-danger-button" type="button">노트북 삭제</button>
+              </div>
+            </header>
+
+            <section class="admin-detail-docs">
+              <header class="admin-docs-header">
+                <h4>문서 <span id="adminDocsCount" class="admin-docs-count">0</span></h4>
+              </header>
+
+              <div id="adminDropZone" class="admin-drop-zone" tabindex="0" role="button" aria-label="문서 추가">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <p class="admin-drop-title">파일을 끌어다 놓거나 클릭해서 업로드</p>
+                <p class="admin-drop-hint">PDF · DOCX · XLSX · PPTX · TXT · MD · CSV — 여러 개 동시 가능</p>
+                <input id="adminFileInput" type="file" multiple hidden accept=".pdf,.txt,.md,.markdown,.csv,.json,.docx,.xlsx,.pptx,.html,.htm" />
+              </div>
+
+              <div id="adminUploadProgress" class="admin-upload-progress" aria-live="polite"></div>
+
+              <div class="admin-docs-table-wrap">
+                <table class="admin-docs-table">
+                  <thead>
+                    <tr>
+                      <th class="admin-docs-col-name">이름</th>
+                      <th class="admin-docs-col-type">형식</th>
+                      <th class="admin-docs-col-size">크기</th>
+                      <th class="admin-docs-col-chunks">청크</th>
+                      <th class="admin-docs-col-date">등록일</th>
+                      <th class="admin-docs-col-actions" aria-label="작업"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="adminDocsTableBody"></tbody>
+                </table>
+                <div id="adminDocsEmpty" class="admin-docs-empty" hidden>
+                  등록된 문서가 없습니다. 위 영역에 파일을 끌어다 놓으세요.
+                </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </section>
     </dialog>
 
     <script type="module" src="/app.js"></script>

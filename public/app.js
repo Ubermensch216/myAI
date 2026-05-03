@@ -46,7 +46,13 @@ const state = {
   busy: false,
   abortController: null,
   db: null,
-  cryptoKey: null
+  cryptoKey: null,
+  notebooks: [],
+  admin: {
+    configured: false,
+    token: null,
+    authenticated: false
+  }
 };
 
 function todayDateISO() {
@@ -173,7 +179,46 @@ const elements = {
   calendarCommandResult: document.querySelector("#calendarCommandResult"),
   calendarCommandResultBody: document.querySelector("#calendarCommandResultBody"),
   calendarCommandResultClose: document.querySelector("#calendarCommandResultClose"),
-  reminderToastContainer: document.querySelector("#reminderToastContainer")
+  reminderToastContainer: document.querySelector("#reminderToastContainer"),
+  attachNotebookButton: document.querySelector("#attachNotebookButton"),
+  notebookBadge: document.querySelector("#notebookBadge"),
+  notebookBadgeName: document.querySelector("#notebookBadgeName"),
+  notebookSelectorDialog: document.querySelector("#notebookSelectorDialog"),
+  closeNotebookSelectorButton: document.querySelector("#closeNotebookSelectorButton"),
+  notebookList: document.querySelector("#notebookList"),
+  adminNotebookDialog: document.querySelector("#adminNotebookDialog"),
+  closeAdminNotebookButton: document.querySelector("#closeAdminNotebookButton"),
+  openAdminNotebookButton: document.querySelector("#openAdminNotebookButton"),
+  adminDialogSubtitle: document.querySelector("#adminDialogSubtitle"),
+  adminUnconfiguredSection: document.querySelector("#adminUnconfiguredSection"),
+  adminRecheckButton: document.querySelector("#adminRecheckButton"),
+  adminAuthSection: document.querySelector("#adminAuthSection"),
+  adminTokenInput: document.querySelector("#adminTokenInput"),
+  adminTokenToggleButton: document.querySelector("#adminTokenToggleButton"),
+  adminTokenSubmitButton: document.querySelector("#adminTokenSubmitButton"),
+  adminTokenError: document.querySelector("#adminTokenError"),
+  adminWorkspace: document.querySelector("#adminWorkspace"),
+  adminLogoutButton: document.querySelector("#adminLogoutButton"),
+  adminNewNotebookButton: document.querySelector("#adminNewNotebookButton"),
+  adminNotebookList: document.querySelector("#adminNotebookList"),
+  adminBackToListButton: document.querySelector("#adminBackToListButton"),
+  adminDetailEmpty: document.querySelector("#adminDetailEmpty"),
+  adminNewNotebookForm: document.querySelector("#adminNewNotebookForm"),
+  adminNewNotebookName: document.querySelector("#adminNewNotebookName"),
+  adminNewNotebookDescription: document.querySelector("#adminNewNotebookDescription"),
+  adminCancelNewNotebookButton: document.querySelector("#adminCancelNewNotebookButton"),
+  adminCreateNotebookButton: document.querySelector("#adminCreateNotebookButton"),
+  adminDetailContent: document.querySelector("#adminDetailContent"),
+  adminDetailNameInput: document.querySelector("#adminDetailNameInput"),
+  adminDetailDescriptionInput: document.querySelector("#adminDetailDescriptionInput"),
+  adminDetailSaveStatus: document.querySelector("#adminDetailSaveStatus"),
+  adminDeleteNotebookButton: document.querySelector("#adminDeleteNotebookButton"),
+  adminDocsCount: document.querySelector("#adminDocsCount"),
+  adminDropZone: document.querySelector("#adminDropZone"),
+  adminFileInput: document.querySelector("#adminFileInput"),
+  adminUploadProgress: document.querySelector("#adminUploadProgress"),
+  adminDocsTableBody: document.querySelector("#adminDocsTableBody"),
+  adminDocsEmpty: document.querySelector("#adminDocsEmpty")
 };
 
 let saveTimer = null;
@@ -191,6 +236,9 @@ async function init() {
   renderAll();
   startReminderWatcher();
   checkStatus();
+  loadNotebooks().catch(() => {});
+  loadAdminStatus().catch(() => {});
+  restoreAdminTokenSession();
 }
 
 function bindEvents() {
@@ -355,6 +403,163 @@ function bindEvents() {
     elements.fileInput.click();
   });
 
+  if (elements.attachNotebookButton) {
+    elements.attachNotebookButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openNotebookSelector();
+    });
+  }
+  if (elements.notebookBadge) {
+    elements.notebookBadge.addEventListener("click", (event) => {
+      event.preventDefault();
+      openNotebookSelector();
+    });
+  }
+  if (elements.closeNotebookSelectorButton) {
+    elements.closeNotebookSelectorButton.addEventListener("click", closeNotebookSelector);
+  }
+  if (elements.notebookSelectorDialog) {
+    elements.notebookSelectorDialog.addEventListener("click", (event) => {
+      // Click on backdrop closes the dialog.
+      if (event.target === elements.notebookSelectorDialog) closeNotebookSelector();
+    });
+  }
+
+  if (elements.openAdminNotebookButton) {
+    elements.openAdminNotebookButton.addEventListener("click", openAdminNotebookDialog);
+  }
+  if (elements.closeAdminNotebookButton) {
+    elements.closeAdminNotebookButton.addEventListener("click", closeAdminNotebookDialog);
+  }
+  if (elements.adminNotebookDialog) {
+    elements.adminNotebookDialog.addEventListener("click", (event) => {
+      if (event.target === elements.adminNotebookDialog) closeAdminNotebookDialog();
+    });
+    elements.adminNotebookDialog.addEventListener("close", () => {
+      adminUiState.selectedId = null;
+    });
+  }
+  if (elements.adminRecheckButton) {
+    elements.adminRecheckButton.addEventListener("click", async () => {
+      await loadAdminStatus();
+      await renderAdminDialogState();
+    });
+  }
+  if (elements.adminTokenSubmitButton) {
+    elements.adminTokenSubmitButton.addEventListener("click", submitAdminToken);
+  }
+  if (elements.adminTokenInput) {
+    elements.adminTokenInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submitAdminToken();
+      }
+    });
+  }
+  if (elements.adminTokenToggleButton) {
+    elements.adminTokenToggleButton.addEventListener("click", () => {
+      const input = elements.adminTokenInput;
+      if (!input) return;
+      input.type = input.type === "password" ? "text" : "password";
+      elements.adminTokenToggleButton.setAttribute(
+        "aria-label",
+        input.type === "password" ? "입력값 표시" : "입력값 숨김"
+      );
+    });
+  }
+  if (elements.adminLogoutButton) {
+    elements.adminLogoutButton.addEventListener("click", adminLogout);
+  }
+  if (elements.adminNewNotebookButton) {
+    elements.adminNewNotebookButton.addEventListener("click", showAdminNewNotebookForm);
+  }
+  if (elements.adminCancelNewNotebookButton) {
+    elements.adminCancelNewNotebookButton.addEventListener("click", () => {
+      hideAdminNewNotebookForm();
+      renderAdminDetail();
+    });
+  }
+  if (elements.adminNewNotebookForm) {
+    elements.adminNewNotebookForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      adminCreateNotebook();
+    });
+  }
+  if (elements.adminBackToListButton) {
+    elements.adminBackToListButton.addEventListener("click", () => {
+      adminUiState.mobileView = "list";
+      applyAdminMobileView();
+    });
+  }
+  if (elements.adminDetailNameInput) {
+    elements.adminDetailNameInput.addEventListener("input", () => scheduleAdminDetailSave());
+    elements.adminDetailNameInput.addEventListener("blur", () => commitAdminDetailSave());
+  }
+  if (elements.adminDetailDescriptionInput) {
+    elements.adminDetailDescriptionInput.addEventListener("input", () => scheduleAdminDetailSave());
+    elements.adminDetailDescriptionInput.addEventListener("blur", () => commitAdminDetailSave());
+  }
+  if (elements.adminDeleteNotebookButton) {
+    elements.adminDeleteNotebookButton.addEventListener("click", () => {
+      const notebook = adminUiState.selectedNotebook;
+      if (notebook) adminDeleteNotebook(notebook.id, notebook.name);
+    });
+  }
+  if (elements.adminDropZone) {
+    elements.adminDropZone.addEventListener("click", () => {
+      if (!adminUiState.selectedId) return;
+      elements.adminFileInput?.click();
+    });
+    elements.adminDropZone.addEventListener("keydown", (event) => {
+      if ((event.key === "Enter" || event.key === " ") && adminUiState.selectedId) {
+        event.preventDefault();
+        elements.adminFileInput?.click();
+      }
+    });
+    elements.adminDropZone.addEventListener("dragover", (event) => {
+      if (!adminUiState.selectedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      elements.adminDropZone.classList.add("dragover");
+    });
+    elements.adminDropZone.addEventListener("dragleave", (event) => {
+      event.stopPropagation();
+      elements.adminDropZone.classList.remove("dragover");
+    });
+    elements.adminDropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      elements.adminDropZone.classList.remove("dragover");
+      if (!adminUiState.selectedId) return;
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length) uploadAdminDocuments(adminUiState.selectedId, files);
+    });
+  }
+  if (elements.adminFileInput) {
+    elements.adminFileInput.addEventListener("change", (event) => {
+      const files = Array.from(event.target.files || []);
+      const notebookId = adminUiState.selectedId;
+      event.target.value = "";
+      if (notebookId && files.length) uploadAdminDocuments(notebookId, files);
+    });
+  }
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.classList.contains("admin-copy-button")) {
+      const text = target.dataset.copy ?? "";
+      if (!text) return;
+      navigator.clipboard?.writeText(text).then(() => {
+        target.classList.add("copied");
+        const original = target.textContent;
+        target.textContent = "복사됨";
+        setTimeout(() => {
+          target.classList.remove("copied");
+          target.textContent = original;
+        }, 1200);
+      }).catch(() => {});
+    }
+  });
+
   document.addEventListener("click", (event) => {
     if (elements.attachMenu.hidden) return;
     if (event.target === elements.attachFileButton || elements.attachMenu.contains(event.target)) return;
@@ -488,6 +693,13 @@ async function loadAppState() {
   if (!stored) return;
 
   state.rooms = Array.isArray(stored.rooms) ? stored.rooms : [];
+  for (const room of state.rooms) {
+    if (typeof room.selectedNotebookId !== "string" && room.selectedNotebookId !== null) {
+      room.selectedNotebookId = null;
+    } else if (room.selectedNotebookId === undefined) {
+      room.selectedNotebookId = null;
+    }
+  }
   state.activeRoomId = stored.activeRoomId || null;
   state.activeView = stored.activeView === "calendar" ? "calendar" : "chat";
   const storedEvents = Array.isArray(stored.calendar?.events) ? stored.calendar.events : [];
@@ -634,6 +846,7 @@ function createRoom() {
     messages: [],
     documents: [],
     pendingCalendarAction: null,
+    selectedNotebookId: null,
     createdAt: now,
     updatedAt: now
   };
@@ -709,6 +922,7 @@ function renderAll() {
   renderHeader();
   renderMessages();
   renderCalendar();
+  renderActiveNotebookUi();
 }
 
 function renderPrimaryNav() {
@@ -857,7 +1071,8 @@ function renderMessages() {
       suggestions: message.suggestions,
       visualization: message.visualization,
       eventCards: message.eventCards,
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
+      citations: message.citations
     });
   }
 }
@@ -2527,7 +2742,8 @@ async function requestTextAssistantResponse(room) {
         model: elements.modelInput.value.trim() || "gemma3n:e2b",
         messages: room.messages.map(({ role, content }) => ({ role, content })),
         documents: getActiveDocuments(),
-        personalization: getPersonalizationSettings()
+        personalization: getPersonalizationSettings(),
+        notebookId: room.selectedNotebookId || null
       })
     });
 
@@ -2535,6 +2751,9 @@ async function requestTextAssistantResponse(room) {
       const errorText = await response.text();
       throw new Error(errorText || "응답 생성 실패");
     }
+
+    const notebookMeta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
+    const citations = Array.isArray(notebookMeta?.citations) ? notebookMeta.citations : [];
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -2564,6 +2783,11 @@ async function requestTextAssistantResponse(room) {
     assistant.classList.remove("streaming");
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
     const assistantMessage = { role: "assistant", content: finalAnswer, createdAt: new Date().toISOString() };
+    if (citations.length) {
+      assistantMessage.citations = citations;
+      assistantMessage.notebook = notebookMeta?.notebook ?? null;
+      renderCitationsPanel(assistant, citations);
+    }
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
     room.messages.push(assistantMessage);
     room.updatedAt = new Date().toISOString();
@@ -2779,6 +3003,9 @@ function appendMessage(role, text, options = {}) {
   article.append(meta, body);
   article.append(createMessageActions(article, role, options.createdAt));
   if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
+  if (role === "assistant" && Array.isArray(options.citations) && options.citations.length) {
+    renderCitationsPanel(article, options.citations);
+  }
   elements.messages.append(article);
   scrollToBottom();
   return article;
@@ -3297,4 +3524,586 @@ function stopGeneration() {
 
 function scrollToBottom() {
   elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
+// ===== Department Notebooks (RAG) =====
+
+const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
+
+async function loadNotebooks() {
+  try {
+    const response = await fetch("/api/notebooks");
+    if (!response.ok) return;
+    const result = await response.json();
+    state.notebooks = Array.isArray(result.notebooks) ? result.notebooks : [];
+    renderActiveNotebookUi();
+  } catch (error) {
+    console.warn("노트북 목록을 불러오지 못했습니다:", error.message);
+  }
+}
+
+async function loadAdminStatus() {
+  try {
+    const response = await fetch("/api/admin/status");
+    if (!response.ok) return;
+    const result = await response.json();
+    state.admin.configured = Boolean(result.configured);
+  } catch (error) {
+    state.admin.configured = false;
+  }
+}
+
+function restoreAdminTokenSession() {
+  try {
+    const stored = sessionStorage.getItem(ADMIN_TOKEN_SESSION_KEY);
+    if (stored) {
+      state.admin.token = stored;
+      state.admin.authenticated = true;
+    }
+  } catch {
+    // sessionStorage may be blocked; ignore.
+  }
+}
+
+function findNotebookSummary(notebookId) {
+  if (!notebookId) return null;
+  return state.notebooks.find((notebook) => notebook.id === notebookId) ?? null;
+}
+
+function getActiveNotebookId() {
+  return getActiveRoom()?.selectedNotebookId ?? null;
+}
+
+function renderActiveNotebookUi() {
+  const id = getActiveNotebookId();
+  const notebook = findNotebookSummary(id);
+
+  if (!elements.notebookBadge) return;
+
+  if (notebook) {
+    elements.notebookBadge.hidden = false;
+    elements.notebookBadgeName.textContent = notebook.name;
+    elements.notebookBadge.title = `부서노트북: ${notebook.name}`;
+  } else {
+    elements.notebookBadge.hidden = true;
+  }
+}
+
+async function openNotebookSelector() {
+  if (!elements.notebookSelectorDialog) return;
+  closeAttachMenu();
+  await loadNotebooks();
+  renderNotebookSelectorList();
+  if (!elements.notebookSelectorDialog.open) {
+    elements.notebookSelectorDialog.showModal();
+  }
+}
+
+function closeNotebookSelector() {
+  if (elements.notebookSelectorDialog?.open) {
+    elements.notebookSelectorDialog.close();
+  }
+}
+
+function renderNotebookSelectorList() {
+  if (!elements.notebookList) return;
+  elements.notebookList.innerHTML = "";
+  const activeId = getActiveNotebookId();
+
+  // Always show the "off" sentinel first.
+  elements.notebookList.append(buildNotebookListItem({
+    id: null,
+    name: "사용 안 함",
+    description: "일반 대화 모드",
+    isOff: true,
+    isActive: !activeId
+  }, () => {
+    selectNotebook(null);
+    closeNotebookSelector();
+  }));
+
+  if (state.notebooks.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "notebook-list-empty";
+    empty.textContent = "등록된 부서노트북이 없습니다.";
+    elements.notebookList.append(empty);
+    return;
+  }
+
+  for (const notebook of state.notebooks) {
+    elements.notebookList.append(buildNotebookListItem({
+      id: notebook.id,
+      name: notebook.name,
+      description: notebook.description,
+      meta: `문서 ${notebook.documentCount ?? 0}`,
+      isActive: notebook.id === activeId
+    }, () => {
+      selectNotebook(notebook.id);
+      closeNotebookSelector();
+    }));
+  }
+}
+
+function buildNotebookListItem(item, onSelect) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "notebook-list-item";
+  if (item.isOff) button.classList.add("notebook-list-item-off");
+  if (item.isActive) button.classList.add("active");
+
+  const content = document.createElement("div");
+  content.className = "notebook-list-content";
+  const name = document.createElement("span");
+  name.className = "notebook-list-name";
+  name.textContent = item.name;
+  content.append(name);
+  if (item.description) {
+    const desc = document.createElement("span");
+    desc.className = "notebook-list-description";
+    desc.textContent = item.description;
+    content.append(desc);
+  }
+
+  const trailing = document.createElement("span");
+  trailing.className = "notebook-list-trailing";
+  if (item.meta) {
+    const meta = document.createElement("span");
+    meta.className = "notebook-list-meta";
+    meta.textContent = item.meta;
+    trailing.append(meta);
+  }
+  const check = document.createElement("span");
+  check.className = "notebook-list-check";
+  check.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`;
+  trailing.append(check);
+
+  button.append(content, trailing);
+  button.addEventListener("click", onSelect);
+  return button;
+}
+
+function selectNotebook(notebookId) {
+  const room = getActiveRoom();
+  if (!room) return;
+  const next = notebookId ? String(notebookId) : null;
+  if (room.selectedNotebookId === next) {
+    renderActiveNotebookUi();
+    return;
+  }
+  room.selectedNotebookId = next;
+  room.updatedAt = new Date().toISOString();
+  renderActiveNotebookUi();
+  scheduleSave();
+}
+
+function clearNotebookSelection() {
+  selectNotebook(null);
+}
+
+// ===== Citations =====
+
+function decodeNotebookMetaHeader(headerValue) {
+  if (!headerValue) return null;
+  try {
+    const json = atob(headerValue);
+    const decoded = decodeURIComponent(escape(json));
+    const parsed = JSON.parse(decoded);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    try {
+      const parsed = JSON.parse(atob(headerValue));
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+function renderCitationsPanel(article, citations) {
+  if (!article) return;
+  article.querySelector(".message-citations")?.remove();
+  if (!Array.isArray(citations) || !citations.length) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-citations";
+
+  const title = document.createElement("div");
+  title.className = "message-citations-title";
+  title.textContent = "출처";
+  wrapper.append(title);
+
+  const list = document.createElement("ol");
+  list.className = "message-citations-list";
+
+  for (const citation of citations) {
+    const item = document.createElement("li");
+    item.className = "message-citation-item";
+
+    const marker = document.createElement("span");
+    marker.className = "message-citation-marker";
+    marker.textContent = `[${citation.citationId}]`;
+
+    const source = document.createElement("span");
+    source.className = "message-citation-source";
+    const docName = document.createElement("span");
+    docName.className = "citation-doc";
+    docName.textContent = citation.documentName || "출처 미상";
+    source.append(docName);
+    if (citation.locator) {
+      const locator = document.createElement("span");
+      locator.className = "citation-locator";
+      locator.textContent = `· ${citation.locator}`;
+      source.append(locator);
+    }
+
+    item.append(marker, source);
+    list.append(item);
+  }
+
+  wrapper.append(list);
+  article.append(wrapper);
+}
+
+// ===== Admin notebook panel =====
+
+function adminAuthHeader() {
+  return state.admin.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
+}
+
+async function openAdminNotebookDialog() {
+  if (!elements.adminNotebookDialog) return;
+  closeSettings();
+  // Refresh server admin status in case it was just configured.
+  await loadAdminStatus();
+  if (!state.admin.configured) {
+    showAdminUnconfigured();
+  } else if (state.admin.authenticated && state.admin.token) {
+    showAdminContent();
+    await refreshAdminNotebooks();
+  } else {
+    showAdminLogin();
+  }
+  if (!elements.adminNotebookDialog.open) elements.adminNotebookDialog.showModal();
+}
+
+function showAdminUnconfigured() {
+  if (elements.adminTokenSection) elements.adminTokenSection.hidden = false;
+  if (elements.adminNotebookContent) elements.adminNotebookContent.hidden = true;
+  if (elements.adminTokenInput) {
+    elements.adminTokenInput.value = "";
+    elements.adminTokenInput.disabled = true;
+  }
+  if (elements.adminTokenSubmitButton) elements.adminTokenSubmitButton.disabled = true;
+  if (elements.adminTokenError) {
+    elements.adminTokenError.hidden = false;
+    elements.adminTokenError.textContent = "서버에 ADMIN_TOKEN이 설정되어 있지 않습니다. .env에 ADMIN_TOKEN을 추가하고 서버를 재시작하세요.";
+  }
+}
+
+function closeAdminNotebookDialog() {
+  if (elements.adminNotebookDialog?.open) elements.adminNotebookDialog.close();
+}
+
+function showAdminLogin() {
+  if (elements.adminTokenSection) elements.adminTokenSection.hidden = false;
+  if (elements.adminNotebookContent) elements.adminNotebookContent.hidden = true;
+  if (elements.adminTokenInput) {
+    elements.adminTokenInput.value = "";
+    elements.adminTokenInput.disabled = false;
+  }
+  if (elements.adminTokenSubmitButton) elements.adminTokenSubmitButton.disabled = false;
+  if (elements.adminTokenError) elements.adminTokenError.hidden = true;
+}
+
+function showAdminContent() {
+  if (elements.adminTokenSection) elements.adminTokenSection.hidden = true;
+  if (elements.adminNotebookContent) elements.adminNotebookContent.hidden = false;
+  hideNewNotebookForm();
+}
+
+async function submitAdminToken() {
+  const token = (elements.adminTokenInput?.value ?? "").trim();
+  if (!token) {
+    showAdminTokenError("토큰을 입력하세요.");
+    return;
+  }
+  try {
+    const response = await fetch("/api/admin/verify", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      showAdminTokenError("인증 실패. 토큰을 확인하세요.");
+      return;
+    }
+    state.admin.token = token;
+    state.admin.authenticated = true;
+    try {
+      sessionStorage.setItem(ADMIN_TOKEN_SESSION_KEY, token);
+    } catch {
+      // sessionStorage may be blocked; the token still works for this tab.
+    }
+    showAdminContent();
+    await refreshAdminNotebooks();
+  } catch (error) {
+    showAdminTokenError(`인증 요청 실패: ${error.message}`);
+  }
+}
+
+function showAdminTokenError(message) {
+  if (!elements.adminTokenError) return;
+  elements.adminTokenError.textContent = message;
+  elements.adminTokenError.hidden = false;
+}
+
+function adminLogout() {
+  state.admin.token = null;
+  state.admin.authenticated = false;
+  try {
+    sessionStorage.removeItem(ADMIN_TOKEN_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+  showAdminLogin();
+}
+
+function showNewNotebookForm() {
+  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
+  if (elements.adminNewNotebookName) {
+    elements.adminNewNotebookName.value = "";
+    elements.adminNewNotebookName.focus();
+  }
+  if (elements.adminNewNotebookDescription) elements.adminNewNotebookDescription.value = "";
+}
+
+function hideNewNotebookForm() {
+  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+}
+
+async function adminCreateNotebook() {
+  const name = (elements.adminNewNotebookName?.value ?? "").trim();
+  const description = (elements.adminNewNotebookDescription?.value ?? "").trim();
+  if (!name) {
+    alert("노트북 이름을 입력하세요.");
+    return;
+  }
+  try {
+    const response = await fetch("/api/notebooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+      body: JSON.stringify({ name, description })
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "노트북 생성 실패");
+    }
+    hideNewNotebookForm();
+    await refreshAdminNotebooks();
+    await loadNotebooks();
+  } catch (error) {
+    alert(`노트북 생성 실패: ${error.message}`);
+  }
+}
+
+async function adminDeleteNotebook(notebookId, notebookName) {
+  if (!confirm(`부서노트북 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`)) return;
+  try {
+    const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}`, {
+      method: "DELETE",
+      headers: adminAuthHeader()
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "삭제 실패");
+    }
+    await refreshAdminNotebooks();
+    await loadNotebooks();
+    for (const room of state.rooms) {
+      if (room.selectedNotebookId === notebookId) room.selectedNotebookId = null;
+    }
+    renderActiveNotebookUi();
+    scheduleSave();
+  } catch (error) {
+    alert(`삭제 실패: ${error.message}`);
+  }
+}
+
+let pendingAdminUploadNotebookId = null;
+
+function triggerAdminDocumentUpload(notebookId) {
+  if (!elements.adminNotebookFileInput) return;
+  pendingAdminUploadNotebookId = notebookId;
+  elements.adminNotebookFileInput.value = "";
+  elements.adminNotebookFileInput.click();
+}
+
+async function handleAdminDocumentUploadChange(event) {
+  const file = event.target.files?.[0];
+  const notebookId = pendingAdminUploadNotebookId;
+  pendingAdminUploadNotebookId = null;
+  event.target.value = "";
+  if (!file || !notebookId) return;
+  await adminUploadDocument(notebookId, file);
+}
+
+async function adminUploadDocument(notebookId, file) {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}/documents`, {
+      method: "POST",
+      headers: adminAuthHeader(),
+      body: formData
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "업로드 실패");
+    }
+    await refreshAdminNotebooks();
+    await loadNotebooks();
+  } catch (error) {
+    alert(`업로드 실패: ${error.message}`);
+  }
+}
+
+async function adminDeleteDocument(notebookId, documentId, documentName) {
+  if (!confirm(`문서 "${documentName}"을(를) 삭제할까요?`)) return;
+  try {
+    const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}/documents/${encodeURIComponent(documentId)}`, {
+      method: "DELETE",
+      headers: adminAuthHeader()
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "삭제 실패");
+    }
+    await refreshAdminNotebooks();
+    await loadNotebooks();
+  } catch (error) {
+    alert(`삭제 실패: ${error.message}`);
+  }
+}
+
+async function refreshAdminNotebooks() {
+  if (!elements.adminNotebookList) return;
+  elements.adminNotebookList.innerHTML = "<div class='admin-notebook-empty'>불러오는 중...</div>";
+  try {
+    const listResponse = await fetch("/api/notebooks");
+    const listResult = await listResponse.json();
+    const summaries = Array.isArray(listResult.notebooks) ? listResult.notebooks : [];
+
+    const detailedNotebooks = await Promise.all(
+      summaries.map(async (summary) => {
+        try {
+          const response = await fetch(`/api/notebooks/${encodeURIComponent(summary.id)}`);
+          if (!response.ok) return summary;
+          const data = await response.json();
+          return data.notebook ?? summary;
+        } catch {
+          return summary;
+        }
+      })
+    );
+
+    elements.adminNotebookList.innerHTML = "";
+    if (!detailedNotebooks.length) {
+      const empty = document.createElement("div");
+      empty.className = "admin-notebook-empty";
+      empty.textContent = "등록된 노트북이 없습니다. 새 노트북을 만드세요.";
+      elements.adminNotebookList.append(empty);
+      return;
+    }
+
+    for (const notebook of detailedNotebooks) {
+      elements.adminNotebookList.append(buildAdminNotebookCard(notebook));
+    }
+  } catch (error) {
+    elements.adminNotebookList.innerHTML = "";
+    const errorBox = document.createElement("div");
+    errorBox.className = "admin-notebook-empty";
+    errorBox.textContent = `목록을 불러오지 못했습니다: ${error.message}`;
+    elements.adminNotebookList.append(errorBox);
+  }
+}
+
+function buildAdminNotebookCard(notebook) {
+  const card = document.createElement("div");
+  card.className = "admin-notebook-card";
+
+  const header = document.createElement("div");
+  header.className = "admin-notebook-card-header";
+
+  const title = document.createElement("div");
+  title.className = "admin-notebook-card-title";
+  const name = document.createElement("span");
+  name.className = "admin-notebook-card-name";
+  name.textContent = notebook.name;
+  title.append(name);
+  if (notebook.description) {
+    const desc = document.createElement("span");
+    desc.className = "admin-notebook-card-description";
+    desc.textContent = notebook.description;
+    title.append(desc);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "admin-notebook-card-actions";
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "ghost-button";
+  deleteButton.textContent = "삭제";
+  deleteButton.addEventListener("click", () => adminDeleteNotebook(notebook.id, notebook.name));
+  actions.append(deleteButton);
+
+  header.append(title, actions);
+  card.append(header);
+
+  const body = document.createElement("div");
+  body.className = "admin-notebook-card-body";
+
+  const documents = Array.isArray(notebook.documents) ? notebook.documents : [];
+  if (!documents.length) {
+    const empty = document.createElement("div");
+    empty.className = "admin-notebook-doc-empty";
+    empty.textContent = "등록된 문서가 없습니다.";
+    body.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    list.className = "admin-notebook-doc-list";
+    for (const doc of documents) {
+      const item = document.createElement("li");
+      item.className = "admin-notebook-doc-item";
+
+      const docName = document.createElement("span");
+      docName.className = "admin-notebook-doc-name";
+      docName.textContent = doc.name;
+
+      const meta = document.createElement("span");
+      meta.className = "admin-notebook-doc-meta";
+      const sizeKb = doc.sizeBytes ? `${Math.max(1, Math.round(doc.sizeBytes / 1024))} KB` : "";
+      const chunkInfo = doc.chunkCount ? `${doc.chunkCount} chunks` : "";
+      meta.textContent = [chunkInfo, sizeKb].filter(Boolean).join(" · ");
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "admin-notebook-doc-remove";
+      remove.textContent = "삭제";
+      remove.addEventListener("click", () => adminDeleteDocument(notebook.id, doc.id, doc.name));
+
+      item.append(docName, meta, remove);
+      list.append(item);
+    }
+    body.append(list);
+  }
+
+  const addDoc = document.createElement("button");
+  addDoc.type = "button";
+  addDoc.className = "ghost-button admin-notebook-add-doc";
+  addDoc.textContent = "+ 문서 추가";
+  addDoc.addEventListener("click", () => triggerAdminDocumentUpload(notebook.id));
+  body.append(addDoc);
+
+  card.append(body);
+  return card;
 }

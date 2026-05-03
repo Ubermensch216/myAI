@@ -40,6 +40,8 @@ Model notes:
 - Code fallback in `server/ollama.js` and `server/calendarAgent.js`: `gemma3n:e2b`.
 - `.env.example` also defaults to `gemma3n:e2b`.
 - `KOREA_HOLIDAY_SERVICE_KEY` is optional. If configured, `/api/holidays` uses the official Korean public-holiday API; otherwise it returns a limited fixed-solar-holiday fallback.
+- `ADMIN_TOKEN` is optional but required for department-notebook management endpoints. When unset, all admin routes return 503 and the "부서노트북 관리" UI button stays hidden.
+- `NOTEBOOK_QUERY_BUDGET` (default `12000`) caps how many characters of notebook chunks are inlined per chat turn.
 
 Current worktree notes at this refresh:
 
@@ -73,6 +75,8 @@ server/documents.js
 server/ollama.js
 server/calendarAgent.js
 server/holidays.js
+server/notebooks.js
+server/auth.js
 server/parsers.js
 server/retrieval.js
 server/visualization.js
@@ -110,6 +114,11 @@ Key responsibilities:
     - `POST /api/followups`
     - `POST /api/agent/intent`
     - `GET /api/holidays`
+    - `GET /api/admin/status`
+    - `POST /api/admin/verify`
+    - `GET /api/notebooks`, `GET /api/notebooks/:id`
+    - `POST /api/notebooks`, `PATCH /api/notebooks/:id`, `DELETE /api/notebooks/:id`
+    - `POST /api/notebooks/:id/documents`, `DELETE /api/notebooks/:id/documents/:documentId`
   - Delegates upload filename repair and document serialization to shared helpers.
 
 - `server/env.js`
@@ -149,6 +158,18 @@ Key responsibilities:
   - Loads Korean public holidays by year.
   - Uses the public KASI/Data.go.kr `SpcdeInfoService/getRestDeInfo` endpoint when `KOREA_HOLIDAY_SERVICE_KEY` is configured.
   - Falls back to fixed solar holidays when no key is configured or the official API fails.
+
+- `server/notebooks.js`
+  - Department notebook (RAG) storage layer backed by `data/notebooks/<id>/`.
+  - `manifest.json` per notebook with `documents[]` summary; one parsed-document JSON file per uploaded document under `docs/<docId>.json`.
+  - Reuses `server/parsers.js` for ingest, `server/parsers.js#chunkText` for chunking, and `server/retrieval.js#pickRelevantChunks` (BM25 + CJK bigram) for query selection.
+  - `queryNotebook(id, query)` returns ranked chunks tagged with `citationId`, `documentName`, and `locator` (page/sheet/slide).
+  - Pure storage/retrieval — no LLM calls. Caller is responsible for building the prompt context.
+
+- `server/auth.js`
+  - `requireAdmin` Express middleware that compares `Authorization: Bearer <token>` against `ADMIN_TOKEN` using a constant-time comparison.
+  - Returns 503 when `ADMIN_TOKEN` is not configured, 401 on mismatch.
+  - `isAdminConfigured()` is used by `/api/admin/status` so the UI can decide whether to show the admin panel button.
 
 - `server/parsers.js`
   - Parses uploaded file types into common document objects.
@@ -265,6 +286,28 @@ calendar-like natural language prompt
 -> UI refreshes calendar grid, upcoming list, command result, and chat event cards
 ```
 
+### Department Notebook (RAG)
+
+```text
+chat prompt + room.selectedNotebookId
+-> POST /api/chat { ..., notebookId }
+-> server/ollama.js#streamChat awaits server/notebooks.js#queryNotebook
+-> top BM25-ranked chunks tagged with [N] citation IDs
+-> system message gains [노트북 컨텍스트] block + strict grounding rules
+-> Ollama streams answer
+-> X-Notebook-Meta response header carries base64-JSON {notebook, citations[]}
+-> public/app.js renders inline [N] markers in body and a citations panel below
+-> assistantMessage.citations is persisted with the room in encrypted IndexedDB
+```
+
+Important design points:
+
+- Notebook content lives on the server filesystem. It is shared across users.
+- Per-room state (`selectedNotebookId`) is persisted in encrypted IndexedDB. New rooms default to `null`.
+- Strict grounding is enforced via system prompt. The LLM is told to answer only from notebook + room files and to say "해당 노트북에서 관련 정보를 찾을 수 없습니다." when the answer cannot be grounded.
+- Room attachments and notebook chunks coexist in the system prompt; the prompt explicitly marks notebook as primary.
+- Admin endpoints are token-gated. Only `GET /api/notebooks` and `GET /api/notebooks/:id` are public so users can pick from the list.
+
 Important design point:
 
 - The LLM classifies intent and extracts fields.
@@ -298,8 +341,9 @@ Main panel:
 ```text
 대화 view:
   Chat header with room title and settings button
+  Notebook context bar (visible only when room.selectedNotebookId is set)
   Messages
-  Prompt composer with + attachment menu
+  Prompt composer with + menu (file attach, notebook select) + active-notebook badge
 
 캘린더 view:
   Month toolbar: previous / today / next / month label
@@ -318,6 +362,17 @@ eventDialog:
   notes
   color picker
   delete / cancel / save
+
+notebookSelectorDialog:
+  list of notebooks (with "사용 안 함" sentinel as first item)
+  click to select → selection persisted on the active room
+
+adminNotebookDialog (visible only when ADMIN_TOKEN is configured server-side):
+  step 1: ADMIN_TOKEN input → POST /api/admin/verify
+  step 2: notebook list with name/description/document list
+          + 새 노트북 form (name + description)
+          + 문서 추가 (file picker per notebook)
+          + 문서 삭제 + 노트북 삭제 (with confirm)
 
 settingsDialog:
   system banner
@@ -593,11 +648,23 @@ Body:
   model,
   messages,
   documents,
-  personalization
+  personalization,
+  notebookId        // optional; activates RAG mode against a specific notebook
 }
 ```
 
 Streams plain text from Ollama.
+
+When `notebookId` resolves to a notebook with chunks, the response includes an `X-Notebook-Meta` header containing a base64-encoded JSON object:
+
+```js
+{
+  notebook: { id, name, description, documentCount, updatedAt },
+  citations: [
+    { citationId, documentId, documentName, documentType, locator }
+  ]
+}
+```
 
 ### `POST /api/visualize`
 
@@ -695,6 +762,18 @@ Query:
 ```
 
 Returns Korean public holidays for the requested year. Uses official public-data API when `KOREA_HOLIDAY_SERVICE_KEY` is set; otherwise returns a limited fixed-solar fallback with `source: "fallback"`.
+
+### Department Notebook endpoints
+
+- `GET /api/admin/status` — `{ configured: boolean }`. Public.
+- `POST /api/admin/verify` — admin-only. Returns 200 if the bearer token matches `ADMIN_TOKEN`, else 401.
+- `GET /api/notebooks` — public. Returns `{ notebooks: [{id, name, description, documentCount, updatedAt}] }`.
+- `GET /api/notebooks/:id` — public. Returns the manifest plus `documents[]` summary.
+- `POST /api/notebooks` — admin. Body `{ name, description? }`. Returns the new summary.
+- `PATCH /api/notebooks/:id` — admin. Body `{ name?, description? }`.
+- `DELETE /api/notebooks/:id` — admin. Removes the entire `data/notebooks/<id>/` directory.
+- `POST /api/notebooks/:id/documents` — admin, multipart `file`. Parses with `server/parsers.js` and stores chunks under the notebook. Images are rejected.
+- `DELETE /api/notebooks/:id/documents/:documentId` — admin. Removes a single document.
 
 ## Important Behavior Details
 
@@ -801,6 +880,14 @@ Important:
 - Full-month daily create queries such as `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해` are expanded into one event per day.
 - Added `server/retrieval.js` to pick relevant document chunks for long documents.
 - README and handoff notes updated to reflect the current live model and calendar state.
+- Added department notebook (RAG) feature:
+  - New `server/notebooks.js` and `server/auth.js` modules.
+  - 9 new endpoints under `/api/notebooks/...` and `/api/admin/...`.
+  - `streamChat` accepts `notebookId`, fetches BM25-ranked chunks from the chosen notebook, and injects a strict-grounding system prompt that forbids answering outside the notebook + room files.
+  - `/api/chat` exposes citation metadata via the `X-Notebook-Meta` response header (base64-encoded JSON).
+  - Browser UI: '+' menu now has a "부서노트북" entry; active selection is shown as a pill-shaped badge in the composer plus a context bar under the chat header. Each room maintains its own `selectedNotebookId`; new rooms default to `null`.
+  - Citations rendered as a structured panel below assistant answers; `[1]`, `[2]` markers stay inline as plain text in the answer body.
+  - Admin panel reachable from settings dialog when `ADMIN_TOKEN` is configured. Token is held in `sessionStorage` (cleared on tab close).
 - Added `done` boolean field to calendar events; persisted transparently via `normalizeCalendarEvent` spread.
 - Upcoming events sidebar now shows only events within 7 days of today (was: up to 8 events with no date cutoff).
 - Added `toggleEventDone(eventId)` — flips `event.done`, re-renders calendar grid chips and upcoming list, and schedules a save.

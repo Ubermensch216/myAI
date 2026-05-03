@@ -1,6 +1,7 @@
 import { loadLocalEnv } from "./env.js";
 import { chunkText } from "./parsers.js";
 import { pickRelevantChunks } from "./retrieval.js";
+import { queryNotebook } from "./notebooks.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -29,9 +30,20 @@ export async function streamChat({
   documents,
   model = DEFAULT_MODEL,
   personalization = {},
-  onChunk
+  notebookId = null,
+  onChunk,
+  onMeta
 }) {
-  const ollamaMessages = buildMessages(messages, documents, personalization);
+  const notebookContext = await loadNotebookContext(notebookId, messages);
+
+  if (typeof onMeta === "function") {
+    onMeta({
+      notebook: notebookContext?.notebook ?? null,
+      citations: notebookContext?.chunks ?? []
+    });
+  }
+
+  const ollamaMessages = buildMessages(messages, documents, personalization, notebookContext);
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -441,10 +453,12 @@ function normalizeStringArray(value, limit) {
     .slice(0, limit);
 }
 
-function buildMessages(messages, documents, personalization) {
+function buildMessages(messages, documents, personalization, notebookContext = null) {
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
+  const notebook = notebookContext?.notebook ?? null;
+  const notebookChunks = notebookContext?.chunks ?? [];
 
   const systemParts = [
     "너는 로컬 Ollama 기반 문서/이미지 분석 도우미다.",
@@ -460,6 +474,18 @@ function buildMessages(messages, documents, personalization) {
     "확실하지 않은 내용은 추정이라고 밝힌다.",
     "내부 사고 과정 전문을 공개하지 말고, 답변에는 결론과 근거만 제공한다."
   ];
+
+  if (notebook) {
+    systemParts.push(
+      `이 대화는 부서노트북 "${notebook.name}"을(를) 지식 기반으로 사용한다. (RAG 모드)`,
+      "노트북 컨텍스트와 사용자 첨부 파일이 유일한 답변 자료다. 이 두 자료 외부의 일반 지식이나 추측은 절대 사용하지 마라.",
+      "자료에서 답을 찾을 수 없거나 자료가 부족하면 정확히 다음과 같이만 답해라: \"해당 노트북에서 관련 정보를 찾을 수 없습니다.\"",
+      "자료에서 부분적으로만 답할 수 있으면 알 수 있는 범위만 답하고, 모르는 부분은 모른다고 명시하라.",
+      "답변 본문에 [1], [2]처럼 노트북 컨텍스트 블록의 출처 번호를 인라인으로 인용하라. 동일 출처를 여러 번 인용해도 좋다.",
+      "출처 번호는 아래 [노트북 컨텍스트] 블록에 있는 번호만 사용하라. 새 번호를 만들지 마라.",
+      "사용자의 첨부 파일에서 인용할 때는 별도 번호 대신 파일명과 페이지/시트를 자연스럽게 적어라."
+    );
+  }
 
   systemParts.push(
     "App capability: this web app can render data visualizations for uploaded CSV/XLSX table data.",
@@ -503,16 +529,45 @@ function buildMessages(messages, documents, personalization) {
     return mappedMessage;
   });
 
-  if (context) {
-    mapped.unshift({
-      role: "system",
-      content: `${system}\n\n다음은 사용자가 업로드한 파일에서 추출한 컨텍스트다.\n\n${context}`
-    });
-  } else {
-    mapped.unshift({ role: "system", content: system });
+  const systemSegments = [system];
+
+  if (notebookChunks.length) {
+    const notebookBlock = notebookChunks
+      .map((chunk) => {
+        const locator = chunk.locator ? ` · ${chunk.locator}` : "";
+        return `[${chunk.citationId}] (출처: ${chunk.documentName}${locator})\n${chunk.text}`;
+      })
+      .join("\n\n");
+    systemSegments.push(
+      `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 사용자 질문과 가장 관련 있는 ${notebookChunks.length}개 청크입니다. 답변에 [N] 형식으로 인용하세요.\n\n${notebookBlock}`
+    );
+  } else if (notebook) {
+    systemSegments.push(
+      `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 이 질문과 관련된 자료를 찾지 못했습니다. "해당 노트북에서 관련 정보를 찾을 수 없습니다."라고만 답하세요.`
+    );
   }
 
+  if (context) {
+    systemSegments.push(`다음은 사용자가 업로드한 파일에서 추출한 컨텍스트다.\n\n${context}`);
+  }
+
+  mapped.unshift({ role: "system", content: systemSegments.join("\n\n") });
+
   return mapped;
+}
+
+async function loadNotebookContext(notebookId, messages) {
+  if (!notebookId || typeof notebookId !== "string") return null;
+  try {
+    const latestUserIndex = findLatestUserMessageIndex(messages);
+    const query = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
+    const result = await queryNotebook(notebookId, query);
+    if (!result.ok) return null;
+    return result;
+  } catch (error) {
+    console.warn(`Notebook context load failed for ${notebookId}: ${error.message}`);
+    return null;
+  }
 }
 
 function buildContext(documents, query = "") {

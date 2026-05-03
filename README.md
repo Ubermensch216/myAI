@@ -18,6 +18,7 @@ myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입
 - **대화방 기반 채팅**: 여러 대화방, 방 제목 편집, 메시지 복사/편집, 스트리밍 응답, `중지` 버튼과 `Esc` 중단을 지원합니다.
 - **파일 분석**: PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, GIF 업로드를 지원합니다.
 - **AI 캘린더 에이전트**: 왼쪽 1차 메뉴의 `대화` / `캘린더` 구조를 사용합니다. 캘린더 화면에서는 월/주/일 보기, 오늘 기준 7일 이내 예정 일정 목록, 새 일정 다이얼로그, 자연어 일정 명령 입력창을 제공합니다. 각 일정은 완료 처리를 할 수 있으며, 완료 상태는 사이드바 예정 일정, 캘린더 날짜 셀 칩, 일정 편집 다이얼로그에 모두 반영됩니다.
+- **부서노트북 (RAG)**: 부서가 공유하는 지식 자료를 주제별 노트북으로 묶어 등록할 수 있습니다. 컴포저 `+` 메뉴에서 노트북을 선택하면 해당 대화방은 RAG 모드로 전환되어 그 노트북 자료에만 근거하여 답변합니다. 자료 외 질문에는 "해당 노트북에서 관련 정보를 찾을 수 없습니다"라고 답합니다. 모든 답변에는 `[1]`, `[2]` 형식의 인라인 인용과 하단 출처 패널이 표시됩니다. 노트북 등록·문서 추가·삭제는 `ADMIN_TOKEN`을 보유한 관리자만 가능합니다.
 - **한국 공휴일과 일정 알림**: 공식 공휴일 API 키가 있으면 한국 공휴일을 표시하고, 키가 없으면 고정 양력 공휴일 fallback을 표시합니다. 일정별 시작 시/30분 전/하루 전/이틀 전/일주일 전 알림을 설정할 수 있습니다.
 - **자연어 일정 처리**: 채팅 입력 또는 캘린더 명령창에서 일정 등록, 조회, 삭제, 수정 요청을 감지하면 `/api/agent/intent`가 Ollama로 의도를 분류하고, 브라우저 코드가 검증된 payload를 실제 캘린더 상태에 적용합니다. tentative 요청은 `calendar.propose`로 보관한 뒤 사용자가 확인해야 실제 저장됩니다.
 - **데이터 시각화**: CSV/XLSX 표 데이터 요청은 `/api/visualize`로 라우팅됩니다. LLM은 `analysis + visualizationPlan` JSON 계획만 만들고, 서버가 실제 컬럼 검증과 차트 데이터를 계산한 뒤 브라우저가 SVG 차트/KPI/표/인포그래픽을 렌더링합니다.
@@ -81,6 +82,8 @@ npm start
 | `KOREA_HOLIDAY_SERVICE_KEY` | 미설정 | 공공데이터포털 한국천문연구원 특일 정보 API 서비스 키 |
 | `MAX_CONTEXT_CHARS` | `24000` | 한 요청에 포함할 최대 문서 컨텍스트 글자 수 |
 | `CHUNK_TARGET_CHARS` | `1800` | 문서 청크 목표 길이 |
+| `NOTEBOOK_QUERY_BUDGET` | `12000` | 부서노트북 RAG 응답에 포함할 최대 청크 글자 수 |
+| `ADMIN_TOKEN` | 미설정 | 부서노트북 등록·문서 추가·삭제에 필요한 관리자 토큰. 미설정 시 관리자 엔드포인트는 503 응답 |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |
 | `MAX_UPLOAD_BYTES` | `41943040` | 업로드 파일 1개당 최대 바이트 |
 
@@ -145,6 +148,49 @@ state.calendar = {
 
 월 전체/매일 등록도 단일 이벤트로 축약하지 않습니다. 예를 들어 `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해`는 `repeat: { frequency: "daily", from: "2026-05-01", to: "2026-05-31" }` payload로 보정되고, 브라우저가 각 날짜의 개별 이벤트로 확장해 저장합니다.
 
+## Department Notebooks (RAG)
+
+부서노트북은 부서 공용 자료를 주제별로 묶어둔 RAG 지식 창고입니다. 사용자별 IndexedDB가 아니라 서버 파일시스템(`data/notebooks/<id>/`)에 저장되며, 모든 사용자가 같은 노트북을 공유합니다.
+
+저장 구조:
+
+```text
+data/notebooks/
+  <notebookId>/
+    manifest.json           노트북 메타와 문서 목록
+    docs/
+      <docId>.json          파싱·청크된 문서 payload
+```
+
+대화방 단위 운영 모델:
+
+- 각 대화방은 자신의 `selectedNotebookId`를 독립적으로 가집니다.
+- 새 대화방의 디폴트는 `null` (일반 대화).
+- 컴포저 `+` 메뉴 → "부서노트북 선택" 또는 활성 배지를 클릭해 변경할 수 있습니다.
+- 노트북이 활성화되면 채팅 헤더 아래 컨텍스트 바와 컴포저 라인의 알약 배지가 동시에 표시됩니다.
+
+RAG 처리 흐름:
+
+```text
+사용자 입력 + room.selectedNotebookId
+-> POST /api/chat { ..., notebookId }
+-> server/notebooks.js#queryNotebook 으로 BM25+CJK bigram 검색
+-> 상위 청크를 시스템 메시지의 [노트북 컨텍스트] 블록에 [N] 번호와 함께 주입
+-> Strict 시스템 프롬프트로 "노트북 자료에만 근거" 규칙 강제
+-> 자료 부족 시 "해당 노트북에서 관련 정보를 찾을 수 없습니다."
+-> 응답 시 X-Notebook-Meta 헤더에 base64-JSON 인용 메타를 첨부
+-> 브라우저가 인라인 [N] 마커와 하단 출처 패널을 렌더
+```
+
+관리자 운영:
+
+- 노트북 등록/수정/삭제, 문서 업로드/삭제는 `ADMIN_TOKEN`을 가진 관리자만 가능합니다.
+- 설정 다이얼로그 하단의 "부서노트북 관리" 버튼은 서버에 `ADMIN_TOKEN`이 설정되어 있을 때만 보입니다.
+- 토큰은 브라우저 `sessionStorage`에 저장되어 탭 종료 시 사라집니다.
+- 문서 파싱은 채팅과 동일한 `server/parsers.js`를 재사용하며 PDF/DOCX/XLSX/CSV/PPTX/HWPX를 지원합니다(이미지는 노트북에 추가 불가).
+
+검색 한도는 `NOTEBOOK_QUERY_BUDGET` (기본 12,000자) 환경변수로 조정합니다. 룸 첨부파일과 노트북 컨텍스트는 함께 시스템 메시지에 들어가며, 시스템 프롬프트가 노트북 우선임을 LLM에 지시합니다.
+
 ## Local Storage Notes
 
 대화, 설정, 업로드 문서 payload, 캘린더 일정은 서버가 아니라 브라우저 IndexedDB에 저장됩니다.
@@ -167,11 +213,18 @@ Record id: local-aes-gcm-key
 - `GET /api/documents`: 서버 메모리 문서 summary 목록
 - `GET /api/documents/:id`: 서버 메모리의 full document payload 조회
 - `DELETE /api/documents/:id`: 서버 메모리 문서 삭제
-- `POST /api/chat`: Ollama 스트리밍 채팅
+- `POST /api/chat`: Ollama 스트리밍 채팅. 선택적 `notebookId`를 받으면 부서노트북 RAG 모드로 전환되고, 응답은 `X-Notebook-Meta` 헤더에 base64-JSON 인용 메타를 포함
 - `POST /api/visualize`: CSV/XLSX 기반 plan-first 시각화 생성
 - `POST /api/followups`: 후속 질문 추천
 - `POST /api/agent/intent`: 캘린더/일반 대화 intent 분류. `prompt`, `model`, `currentDate`와 선택적 `messages`, `pendingAction`을 받을 수 있음
 - `GET /api/holidays`: 연도별 한국 공휴일 조회. API 키가 없으면 고정 양력 공휴일 fallback 반환
+- `GET /api/admin/status`: `ADMIN_TOKEN` 설정 여부 반환
+- `POST /api/admin/verify`: 관리자 토큰 검증 (Bearer 헤더)
+- `GET /api/notebooks`: 부서노트북 목록 (id, name, description, documentCount)
+- `GET /api/notebooks/:id`: 노트북 상세와 문서 목록
+- `POST /api/notebooks` / `PATCH /api/notebooks/:id` / `DELETE /api/notebooks/:id`: 노트북 CRUD (관리자)
+- `POST /api/notebooks/:id/documents`: 노트북 문서 업로드 (관리자, multipart `file`)
+- `DELETE /api/notebooks/:id/documents/:documentId`: 노트북 문서 삭제 (관리자)
 
 ## Project Structure
 
@@ -179,23 +232,28 @@ Record id: local-aes-gcm-key
 server/
   index.js           Express 서버, 정적 파일, API 라우트
   env.js             프로젝트 루트 .env 로더
-  ollama.js          Ollama 호출, 채팅, 후속 질문, 시각화 계획/해석
+  ollama.js          Ollama 호출, 채팅, 후속 질문, 시각화 계획/해석, 노트북 컨텍스트 주입
   calendarAgent.js   자연어 캘린더 intent 분류와 payload 정규화
   holidays.js        한국 공휴일 API/fallback 조회
-  parsers.js         업로드 파일 파싱
-  retrieval.js       BM25 기반 문서 청크 선별
+  notebooks.js       부서노트북 CRUD, 문서 ingest, BM25 검색, 인용 생성
+  auth.js            ADMIN_TOKEN 기반 관리자 미들웨어
+  parsers.js         업로드 파일 파싱 (룸 파일과 노트북 문서 공통)
+  retrieval.js       BM25 + CJK bigram 기반 청크 선별
   visualization.js   시각화 계획 검증과 차트 데이터 계산
   documents.js       문서 summary/full payload 직렬화
   documentStore.js   서버 런타임 메모리 문서 캐시
 
 public/
-  index.html         앱 shell, 대화/캘린더 화면, 설정/일정 다이얼로그
-  app.js             프론트엔드 상태, IndexedDB 암호화 저장, 채팅/캘린더 UI
+  index.html         앱 shell, 대화/캘린더 화면, 설정/일정/노트북 다이얼로그
+  app.js             프론트엔드 상태, IndexedDB 암호화 저장, 채팅/캘린더/노트북 UI
   answerRenderer.js  마크다운-lite 답변 렌더러
   visualizationRenderer.js  SVG 차트/KPI/표/인포그래픽 렌더러
   fileDisplay.js     파일명 표시, 복구, 타입 배지
   textRepair.js      mojibake 점수 계산과 복구 헬퍼
-  styles.css         테마 토큰, 레이아웃, 메시지/설정/캘린더 UI
+  styles.css         테마 토큰, 레이아웃, 메시지/설정/캘린더/노트북 UI
+
+data/
+  notebooks/         부서노트북 manifest와 문서 payload (gitignored)
 
 deploy/
   DEPLOY.md

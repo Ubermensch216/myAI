@@ -11,6 +11,17 @@ import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, generateVisuali
 import { parseUpload } from "./parsers.js";
 import { classifyIntent } from "./calendarAgent.js";
 import { getKoreanHolidays } from "./holidays.js";
+import {
+  listNotebooks,
+  getNotebook,
+  createNotebook,
+  updateNotebook,
+  deleteNotebook,
+  addNotebookDocument,
+  removeNotebookDocument,
+  queryNotebook
+} from "./notebooks.js";
+import { isAdminConfigured, requireAdmin } from "./auth.js";
 
 loadLocalEnv();
 
@@ -105,17 +116,30 @@ app.post("/api/chat", async (request, response) => {
   const personalization = request.body.personalization && typeof request.body.personalization === "object"
     ? request.body.personalization
     : {};
+  const notebookId = typeof request.body.notebookId === "string" && request.body.notebookId
+    ? request.body.notebookId
+    : null;
 
   if (!messages.length) {
     response.status(400).json({ error: "messages가 비어 있습니다." });
     return;
   }
 
-  response.writeHead(200, {
-    "Content-Type": "text/plain; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive"
-  });
+  let pendingMeta = null;
+  const writeHeadOnce = () => {
+    if (response.headersSent) return;
+    const headers = {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive"
+    };
+    if (pendingMeta) {
+      const encoded = Buffer.from(JSON.stringify(pendingMeta), "utf8").toString("base64");
+      headers["X-Notebook-Meta"] = encoded;
+      headers["Access-Control-Expose-Headers"] = "X-Notebook-Meta";
+    }
+    response.writeHead(200, headers);
+  };
 
   try {
     await streamChat({
@@ -123,10 +147,30 @@ app.post("/api/chat", async (request, response) => {
       documents,
       model,
       personalization,
-      onChunk: (chunk) => response.write(chunk)
+      notebookId,
+      onMeta: (meta) => {
+        if (meta && (meta.notebook || (meta.citations && meta.citations.length))) {
+          pendingMeta = {
+            notebook: meta.notebook,
+            citations: (meta.citations || []).map((chunk) => ({
+              citationId: chunk.citationId,
+              documentId: chunk.documentId,
+              documentName: chunk.documentName,
+              documentType: chunk.documentType,
+              locator: chunk.locator
+            }))
+          };
+        }
+      },
+      onChunk: (chunk) => {
+        writeHeadOnce();
+        response.write(chunk);
+      }
     });
+    writeHeadOnce();
     response.end();
   } catch (error) {
+    writeHeadOnce();
     response.write(`\n\n[오류] ${error.message}`);
     response.end();
   }
@@ -199,6 +243,103 @@ app.post("/api/agent/intent", async (request, response) => {
     response.json(result);
   } catch (error) {
     response.json({ intent: "chat", payload: {}, fallbackReason: `server_error: ${error.message}` });
+  }
+});
+
+app.get("/api/admin/status", (_request, response) => {
+  response.json({ configured: isAdminConfigured() });
+});
+
+app.post("/api/admin/verify", requireAdmin, (_request, response) => {
+  response.json({ ok: true });
+});
+
+app.get("/api/notebooks", async (_request, response) => {
+  try {
+    const notebooks = await listNotebooks();
+    response.json({ notebooks });
+  } catch (error) {
+    response.status(500).json({ error: error.message, notebooks: [] });
+  }
+});
+
+app.get("/api/notebooks/:id", async (request, response) => {
+  try {
+    const notebook = await getNotebook(request.params.id);
+    if (!notebook) {
+      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      return;
+    }
+    response.json({ notebook });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/notebooks", requireAdmin, async (request, response) => {
+  try {
+    const created = await createNotebook({
+      name: request.body?.name,
+      description: request.body?.description
+    });
+    response.status(201).json({ notebook: created });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/notebooks/:id", requireAdmin, async (request, response) => {
+  try {
+    const updated = await updateNotebook(request.params.id, {
+      name: request.body?.name,
+      description: request.body?.description
+    });
+    if (!updated) {
+      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      return;
+    }
+    response.json({ notebook: updated });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/notebooks/:id", requireAdmin, async (request, response) => {
+  try {
+    const removed = await deleteNotebook(request.params.id);
+    response.json({ removed });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/notebooks/:id/documents", requireAdmin, upload.single("file"), async (request, response) => {
+  if (!request.file) {
+    response.status(400).json({ error: "업로드된 파일이 없습니다." });
+    return;
+  }
+  try {
+    request.file.originalname = repairUploadFileName(request.file.originalname);
+    const parsed = await parseUpload(request.file);
+    const summary = await addNotebookDocument(request.params.id, parsed);
+    response.status(201).json({ document: summary });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  } finally {
+    await fs.unlink(request.file.path).catch(() => {});
+  }
+});
+
+app.delete("/api/notebooks/:id/documents/:documentId", requireAdmin, async (request, response) => {
+  try {
+    const removed = await removeNotebookDocument(request.params.id, request.params.documentId);
+    if (!removed) {
+      response.status(404).json({ error: "문서를 찾을 수 없습니다." });
+      return;
+    }
+    response.json({ removed: true });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
   }
 });
 
