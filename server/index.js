@@ -10,6 +10,7 @@ import { normalizeUploadFileName as repairUploadFileName } from "../public/textR
 import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, generateVisualizationSpec, listModels, streamChat } from "./ollama.js";
 import { parseUpload } from "./parsers.js";
 import { classifyIntent } from "./calendarAgent.js";
+import { getKoreanHolidays } from "./holidays.js";
 
 loadLocalEnv();
 
@@ -53,6 +54,16 @@ app.get("/api/status", async (_request, response) => {
 
 app.get("/api/documents", (_request, response) => {
   response.json({ documents: listDocuments() });
+});
+
+app.get("/api/holidays", async (request, response) => {
+  try {
+    const year = request.query.year || new Date().getFullYear();
+    const result = await getKoreanHolidays(year);
+    response.json(result);
+  } catch (error) {
+    response.status(500).json({ error: error.message, holidays: [] });
+  }
 });
 
 app.get("/api/documents/:id", (request, response) => {

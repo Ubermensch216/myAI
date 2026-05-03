@@ -39,6 +39,7 @@ Model notes:
 - Current local `.env`: `OLLAMA_MODEL=gemma4:e2b`.
 - Code fallback in `server/ollama.js` and `server/calendarAgent.js`: `gemma3n:e2b`.
 - `.env.example` also defaults to `gemma3n:e2b`.
+- `KOREA_HOLIDAY_SERVICE_KEY` is optional. If configured, `/api/holidays` uses the official Korean public-holiday API; otherwise it returns a limited fixed-solar-holiday fallback.
 
 Current worktree notes at this refresh:
 
@@ -71,6 +72,7 @@ server/env.js
 server/documents.js
 server/ollama.js
 server/calendarAgent.js
+server/holidays.js
 server/parsers.js
 server/retrieval.js
 server/visualization.js
@@ -107,6 +109,7 @@ Key responsibilities:
     - `POST /api/visualize`
     - `POST /api/followups`
     - `POST /api/agent/intent`
+    - `GET /api/holidays`
   - Delegates upload filename repair and document serialization to shared helpers.
 
 - `server/env.js`
@@ -137,6 +140,11 @@ Key responsibilities:
   - Resolves relative Korean dates using `currentDate` from the request.
   - Normalizes payload shapes before returning to the browser.
   - Does not mutate calendar data itself. The browser applies accepted operations to encrypted local state.
+
+- `server/holidays.js`
+  - Loads Korean public holidays by year.
+  - Uses the public KASI/Data.go.kr `SpcdeInfoService/getRestDeInfo` endpoint when `KOREA_HOLIDAY_SERVICE_KEY` is configured.
+  - Falls back to fixed solar holidays when no key is configured or the official API fails.
 
 - `server/parsers.js`
   - Parses uploaded file types into common document objects.
@@ -359,6 +367,7 @@ State shape:
 state.calendar = {
   events: [],
   cursorISO: todayDateISO(),
+  viewMode: "month",
   editingEventId: null,
   selectedColor: "accent"
 }
@@ -371,7 +380,8 @@ Persisted app state adds:
   activeView: "chat" | "calendar",
   calendar: {
     events,
-    cursorISO
+    cursorISO,
+    viewMode
   }
 }
 ```
@@ -388,6 +398,8 @@ Event shape:
   location,
   notes,
   color,
+  reminders,
+  notifiedReminders,
   createdAt,
   updatedAt
 }
@@ -396,11 +408,18 @@ Event shape:
 Current calendar UI:
 
 - Primary navigation switches between `대화` and `캘린더`.
+- Calendar supports `month`, `week`, and `day` view modes.
 - Month grid always renders 42 day cells.
-- Previous/today/next month controls update `state.calendar.cursorISO`.
+- Previous/today/next controls move by month, week, or day depending on the active view mode.
 - Clicking a day opens the create-event dialog at 09:00-10:00.
 - Clicking an event chip opens the edit dialog.
+- Clicking a month-cell `+N` overflow indicator switches to day view for that date.
 - Sidebar shows up to 8 upcoming events.
+- `Shift+N` is scoped by active primary view:
+  - chat view: new chat
+  - calendar view: new event
+- Korean holidays render in calendar cells and agenda columns.
+- Event reminders support start time, 30 minutes before, 1 day before, 2 days before, and 1 week before.
 - Event colors:
   - `accent`
   - `blue`
@@ -430,7 +449,7 @@ Calendar limitations and risks:
 
 - Local-only calendar. No Google/Outlook/ICS sync.
 - No recurrence model.
-- No reminder execution engine.
+- Reminder checks run in the open browser tab at one-minute intervals.
 - No timezone UI. Date/time strings are stored in browser-local form.
 - No multi-calendar account model.
 - AI delete by date range currently deletes matching events immediately after intent classification.
@@ -615,6 +634,18 @@ Returns:
 
 `fallbackReason` appears only when classification or validation falls back to normal chat.
 
+### `GET /api/holidays`
+
+Query:
+
+```js
+{
+  year
+}
+```
+
+Returns Korean public holidays for the requested year. Uses official public-data API when `KOREA_HOLIDAY_SERVICE_KEY` is set; otherwise returns a limited fixed-solar fallback with `source: "fallback"`.
+
 ## Important Behavior Details
 
 ### Status Indicator
@@ -709,8 +740,11 @@ Important:
 - Added calendar month view, upcoming event list, event dialog, and event cards.
 - Added local calendar persistence under encrypted app state.
 - Added `/api/agent/intent`.
+- Added `/api/holidays`.
 - Added `server/calendarAgent.js`.
+- Added `server/holidays.js`.
 - Chat prompt can now trigger calendar CRUD when a calendar intent is detected.
+- Calendar now supports month/week/day views, Korean holiday display, scoped `Shift+N`, and browser-tab reminder checks.
 - Added `server/retrieval.js` to pick relevant document chunks for long documents.
 - README and handoff notes updated to reflect the current live model and calendar state.
 
@@ -719,7 +753,7 @@ Important:
 Good next steps:
 
 - Add stronger confirmation UX for AI calendar delete/update operations.
-- Add recurrence, reminders, timezone display, and multi-calendar support.
+- Add recurrence, richer reminder options, timezone display, and multi-calendar support.
 - Add external calendar integration only after local CRUD is stable.
 - Split the large `public/app.js` calendar code into focused modules.
 - Add browser smoke tests for chat, upload, visualization, and calendar flows.

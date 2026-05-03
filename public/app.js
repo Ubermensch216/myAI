@@ -14,6 +14,7 @@ const APP_STATE_KEY = "app-state";
 const KEY_ID = "local-aes-gcm-key";
 const DEFAULT_BANNER_SRC = "/default-banner.png";
 const DEFAULT_FAVICON_HREF = "/default-icon.svg";
+const KOREAN_SHORT_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 const state = {
   rooms: [],
@@ -22,8 +23,13 @@ const state = {
   calendar: {
     events: [],
     cursorISO: todayDateISO(),
+    viewMode: "month",
     editingEventId: null,
-    selectedColor: "accent"
+    selectedColor: "accent",
+    holidaysByYear: {},
+    holidayWarnings: {},
+    holidayRequests: new Set(),
+    reminderTimer: null
   },
   settings: {
     userTitle: "사용자님",
@@ -53,6 +59,36 @@ function formatLocalDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function normalizeCalendarViewMode(value) {
+  return value === "week" || value === "day" ? value : "month";
+}
+
+function normalizeCalendarEvent(event) {
+  if (!event || typeof event !== "object") return null;
+  return {
+    ...event,
+    reminders: normalizeReminderList(event.reminders),
+    notifiedReminders: Array.isArray(event.notifiedReminders) ? event.notifiedReminders : []
+  };
+}
+
+function normalizeReminderList(value) {
+  const rawValues = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  const seen = new Set();
+  const reminders = [];
+  for (const item of rawValues) {
+    const minutes = typeof item === "object" && item
+      ? Number(item.minutesBefore ?? item.minutes)
+      : Number(item);
+    if (!Number.isFinite(minutes)) continue;
+    const normalized = Math.max(0, Math.min(60 * 24 * 30, Math.round(minutes)));
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    reminders.push({ minutesBefore: normalized });
+  }
+  return reminders.sort((left, right) => right.minutesBefore - left.minutesBefore);
 }
 
 const elements = {
@@ -111,6 +147,7 @@ const elements = {
   calendarPrevButton: document.querySelector("#calendarPrevButton"),
   calendarNextButton: document.querySelector("#calendarNextButton"),
   calendarTodayButton: document.querySelector("#calendarTodayButton"),
+  calendarViewOptions: Array.from(document.querySelectorAll(".calendar-view-option")),
   calendarGrid: document.querySelector("#calendarGrid"),
   newEventButton: document.querySelector("#newEventButton"),
   upcomingEventsList: document.querySelector("#upcomingEventsList"),
@@ -126,13 +163,15 @@ const elements = {
   eventEndInput: document.querySelector("#eventEndInput"),
   eventLocationInput: document.querySelector("#eventLocationInput"),
   eventNotesInput: document.querySelector("#eventNotesInput"),
+  eventReminderInputs: Array.from(document.querySelectorAll(".event-reminder-input")),
   eventColorOptions: Array.from(document.querySelectorAll(".event-color-option")),
   calendarCommandForm: document.querySelector("#calendarCommandForm"),
   calendarCommandInput: document.querySelector("#calendarCommandInput"),
   calendarCommandSendButton: document.querySelector("#calendarCommandSendButton"),
   calendarCommandResult: document.querySelector("#calendarCommandResult"),
   calendarCommandResultBody: document.querySelector("#calendarCommandResultBody"),
-  calendarCommandResultClose: document.querySelector("#calendarCommandResultClose")
+  calendarCommandResultClose: document.querySelector("#calendarCommandResultClose"),
+  reminderToastContainer: document.querySelector("#reminderToastContainer")
 };
 
 let saveTimer = null;
@@ -148,6 +187,7 @@ async function init() {
   await hydrateStoredDocuments();
   bindEvents();
   renderAll();
+  startReminderWatcher();
   checkStatus();
 }
 
@@ -167,6 +207,9 @@ function bindEvents() {
   }
   if (elements.calendarTodayButton) {
     elements.calendarTodayButton.addEventListener("click", jumpCalendarToToday);
+  }
+  for (const option of elements.calendarViewOptions) {
+    option.addEventListener("click", () => setCalendarViewMode(option.dataset.calendarView));
   }
   if (elements.eventForm) {
     elements.eventForm.addEventListener("submit", submitEventForm);
@@ -346,9 +389,15 @@ function bindEvents() {
       const target = event.target;
       const isTyping = target instanceof HTMLElement
         && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-      if (!isTyping) {
+      const dialogOpen = elements.settingsDialog.open || elements.eventDialog.open;
+      if (!isTyping && !dialogOpen) {
         event.preventDefault();
-        if (!state.busy) createNewRoom();
+        if (state.busy) return;
+        if (state.activeView === "calendar") {
+          openEventDialogForCreate(state.calendar.cursorISO);
+        } else {
+          createNewRoom();
+        }
         return;
       }
     }
@@ -427,8 +476,9 @@ async function loadAppState() {
   state.activeRoomId = stored.activeRoomId || null;
   state.activeView = stored.activeView === "calendar" ? "calendar" : "chat";
   const storedEvents = Array.isArray(stored.calendar?.events) ? stored.calendar.events : [];
-  state.calendar.events = storedEvents.filter((event) => event && event.id && event.start);
+  state.calendar.events = storedEvents.map(normalizeCalendarEvent).filter((event) => event && event.id && event.start);
   state.calendar.cursorISO = stored.calendar?.cursorISO || todayDateISO();
+  state.calendar.viewMode = normalizeCalendarViewMode(stored.calendar?.viewMode);
   const appName = stored.settings?.appName || stored.settings?.aiName || "Ollama Chatter";
   state.settings = {
     userTitle: stored.settings?.userTitle || "사용자님",
@@ -451,7 +501,8 @@ async function saveAppState() {
     activeView: state.activeView,
     calendar: {
       events: state.calendar.events,
-      cursorISO: state.calendar.cursorISO
+      cursorISO: state.calendar.cursorISO,
+      viewMode: state.calendar.viewMode
     },
     settings: state.settings,
     savedAt: new Date().toISOString()
@@ -798,14 +849,34 @@ function renderMessages() {
 function renderCalendar() {
   if (!elements.calendarGrid) return;
   renderCalendarHeader();
+  renderCalendarViewToggle();
   renderCalendarGrid();
   renderUpcomingEvents();
+  ensureHolidaysForCalendarRange();
 }
 
 function renderCalendarHeader() {
   const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
   if (elements.calendarMonthLabel) {
-    elements.calendarMonthLabel.textContent = `${cursor.getFullYear()}년 ${cursor.getMonth() + 1}월`;
+    elements.calendarMonthLabel.textContent = formatCalendarRangeLabel(cursor, state.calendar.viewMode);
+  }
+  const unit = state.calendar.viewMode === "day" ? "일" : state.calendar.viewMode === "week" ? "주" : "달";
+  if (elements.calendarPrevButton) {
+    elements.calendarPrevButton.title = `이전 ${unit}`;
+    elements.calendarPrevButton.setAttribute("aria-label", `이전 ${unit}`);
+  }
+  if (elements.calendarNextButton) {
+    elements.calendarNextButton.title = `다음 ${unit}`;
+    elements.calendarNextButton.setAttribute("aria-label", `다음 ${unit}`);
+  }
+}
+
+function renderCalendarViewToggle() {
+  const viewMode = normalizeCalendarViewMode(state.calendar.viewMode);
+  for (const option of elements.calendarViewOptions) {
+    const isActive = option.dataset.calendarView === viewMode;
+    option.classList.toggle("active", isActive);
+    option.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 }
 
@@ -813,6 +884,17 @@ function renderCalendarGrid() {
   const grid = elements.calendarGrid;
   if (!grid) return;
   grid.innerHTML = "";
+  grid.className = "calendar-grid";
+  grid.dataset.viewMode = state.calendar.viewMode;
+
+  if (state.calendar.viewMode === "week") {
+    renderWeekCalendarGrid(grid);
+    return;
+  }
+  if (state.calendar.viewMode === "day") {
+    renderDayCalendarGrid(grid);
+    return;
+  }
 
   const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
   const year = cursor.getFullYear();
@@ -823,16 +905,7 @@ function renderCalendarGrid() {
   const gridStart = new Date(year, month, 1 - startOffset);
   const todayISO = todayDateISO();
 
-  const eventsByDate = new Map();
-  for (const event of state.calendar.events) {
-    const startDate = (event.start ?? "").slice(0, 10);
-    if (!startDate) continue;
-    if (!eventsByDate.has(startDate)) eventsByDate.set(startDate, []);
-    eventsByDate.get(startDate).push(event);
-  }
-  for (const list of eventsByDate.values()) {
-    list.sort((a, b) => String(a.start).localeCompare(String(b.start)));
-  }
+  const eventsByDate = groupEventsByDate(state.calendar.events);
 
   for (let cellIndex = 0; cellIndex < 42; cellIndex += 1) {
     const cellDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + cellIndex);
@@ -854,6 +927,8 @@ function renderCalendarGrid() {
     number.className = "calendar-day-number";
     number.textContent = String(cellDate.getDate());
     cell.append(number);
+
+    appendHolidayBadges(cell, cellISO);
 
     const eventList = eventsByDate.get(cellISO) ?? [];
     if (eventList.length) {
@@ -878,6 +953,11 @@ function renderCalendarGrid() {
         const more = document.createElement("div");
         more.className = "calendar-event-more";
         more.textContent = `+${eventList.length - visibleCount}`;
+        more.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          state.calendar.cursorISO = cellISO;
+          setCalendarViewMode("day");
+        });
         eventsContainer.append(more);
       }
       cell.append(eventsContainer);
@@ -885,6 +965,104 @@ function renderCalendarGrid() {
 
     grid.append(cell);
   }
+}
+
+function renderWeekCalendarGrid(grid) {
+  grid.classList.add("calendar-grid-week");
+  const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
+  const weekStart = startOfWeek(cursor);
+  for (let index = 0; index < 7; index += 1) {
+    const day = addDays(weekStart, index);
+    grid.append(createAgendaDayColumn(day, { compact: false }));
+  }
+}
+
+function renderDayCalendarGrid(grid) {
+  grid.classList.add("calendar-grid-day");
+  const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
+  grid.append(createAgendaDayColumn(cursor, { compact: false, fullDay: true }));
+}
+
+function createAgendaDayColumn(date, { compact = false, fullDay = false } = {}) {
+  const dateISO = formatLocalDate(date);
+  const events = getEventsForDate(dateISO);
+  const holidays = getHolidaysForDate(dateISO);
+  const column = document.createElement("section");
+  column.className = fullDay ? "calendar-agenda-day full-day" : "calendar-agenda-day";
+  column.dataset.weekday = String(date.getDay());
+
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "calendar-agenda-day-header";
+  header.addEventListener("click", () => openEventDialogForCreate(dateISO));
+
+  const dayName = document.createElement("span");
+  dayName.className = "calendar-agenda-weekday";
+  dayName.textContent = KOREAN_SHORT_WEEKDAYS[date.getDay()];
+  const dayNumber = document.createElement("span");
+  dayNumber.className = "calendar-agenda-date";
+  dayNumber.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+  header.append(dayName, dayNumber);
+  column.append(header);
+
+  if (holidays.length) {
+    const holidayList = document.createElement("div");
+    holidayList.className = "calendar-agenda-holidays";
+    for (const holiday of holidays) {
+      const badge = document.createElement("span");
+      badge.className = "calendar-holiday-badge";
+      badge.textContent = holiday.name;
+      holidayList.append(badge);
+    }
+    column.append(holidayList);
+  }
+
+  const list = document.createElement("div");
+  list.className = "calendar-agenda-event-list";
+  if (!events.length) {
+    const empty = document.createElement("div");
+    empty.className = "calendar-agenda-empty";
+    empty.textContent = compact ? "일정 없음" : "등록된 일정이 없습니다.";
+    list.append(empty);
+  } else {
+    for (const event of events) {
+      list.append(createAgendaEventCard(event));
+    }
+  }
+  column.append(list);
+  return column;
+}
+
+function createAgendaEventCard(event) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "calendar-agenda-event";
+  card.dataset.color = event.color || "accent";
+  card.addEventListener("click", () => openEventDialogForEdit(event.id));
+
+  const time = document.createElement("div");
+  time.className = "calendar-agenda-event-time";
+  time.textContent = formatAgendaEventTime(event);
+  const title = document.createElement("div");
+  title.className = "calendar-agenda-event-title";
+  title.textContent = event.title || "(제목 없음)";
+  card.append(time, title);
+
+  if (event.location) {
+    const location = document.createElement("div");
+    location.className = "calendar-agenda-event-location";
+    location.textContent = event.location;
+    card.append(location);
+  }
+
+  if (normalizeReminderList(event.reminders).length) {
+    const reminders = document.createElement("div");
+    reminders.className = "calendar-agenda-event-reminders";
+    reminders.textContent = normalizeReminderList(event.reminders).map(formatReminderLabel).join(", ");
+    card.append(reminders);
+  }
+
+  return card;
 }
 
 function renderUpcomingEvents() {
@@ -951,6 +1129,117 @@ function parseDateISO(value) {
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
+function addDays(date, days) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function startOfWeek(date) {
+  return addDays(date, -date.getDay());
+}
+
+function formatCalendarRangeLabel(cursor, viewMode) {
+  if (viewMode === "day") {
+    return `${cursor.getFullYear()}년 ${cursor.getMonth() + 1}월 ${cursor.getDate()}일 (${KOREAN_SHORT_WEEKDAYS[cursor.getDay()]})`;
+  }
+  if (viewMode === "week") {
+    const start = startOfWeek(cursor);
+    const end = addDays(start, 6);
+    return `${formatShortDate(start)} ~ ${formatShortDate(end)}`;
+  }
+  return `${cursor.getFullYear()}년 ${cursor.getMonth() + 1}월`;
+}
+
+function formatShortDate(date) {
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function groupEventsByDate(events) {
+  const eventsByDate = new Map();
+  for (const event of events) {
+    const startDate = (event.start ?? "").slice(0, 10);
+    if (!startDate) continue;
+    if (!eventsByDate.has(startDate)) eventsByDate.set(startDate, []);
+    eventsByDate.get(startDate).push(event);
+  }
+  for (const list of eventsByDate.values()) {
+    list.sort(compareEventsByStart);
+  }
+  return eventsByDate;
+}
+
+function getEventsForDate(dateISO) {
+  return state.calendar.events
+    .filter((event) => String(event.start || "").slice(0, 10) === dateISO)
+    .sort(compareEventsByStart);
+}
+
+function compareEventsByStart(a, b) {
+  return String(a.start).localeCompare(String(b.start)) || String(a.title || "").localeCompare(String(b.title || ""));
+}
+
+function appendHolidayBadges(container, dateISO) {
+  const holidays = getHolidaysForDate(dateISO);
+  if (!holidays.length) return;
+  container.classList.add("holiday");
+  const wrapper = document.createElement("div");
+  wrapper.className = "calendar-holiday-list";
+  for (const holiday of holidays.slice(0, 2)) {
+    const badge = document.createElement("span");
+    badge.className = "calendar-holiday-badge";
+    badge.textContent = holiday.name;
+    wrapper.append(badge);
+  }
+  container.append(wrapper);
+}
+
+function getHolidaysForDate(dateISO) {
+  const year = String(dateISO || "").slice(0, 4);
+  const holidays = state.calendar.holidaysByYear[year] ?? [];
+  return holidays.filter((holiday) => holiday.date === dateISO);
+}
+
+function getCalendarVisibleYears() {
+  const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
+  if (state.calendar.viewMode === "week") {
+    const start = startOfWeek(cursor);
+    const end = addDays(start, 6);
+    return Array.from(new Set([start.getFullYear(), end.getFullYear()]));
+  }
+  if (state.calendar.viewMode === "day") return [cursor.getFullYear()];
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const gridStart = new Date(year, month, 1 - firstOfMonth.getDay());
+  const gridEnd = addDays(gridStart, 41);
+  return Array.from(new Set([gridStart.getFullYear(), year, gridEnd.getFullYear()]));
+}
+
+function ensureHolidaysForCalendarRange() {
+  for (const year of getCalendarVisibleYears()) {
+    loadHolidaysForYear(year);
+  }
+}
+
+async function loadHolidaysForYear(year) {
+  const key = String(year);
+  if (state.calendar.holidaysByYear[key] || state.calendar.holidayRequests.has(key)) return;
+  state.calendar.holidayRequests.add(key);
+  try {
+    const response = await fetch(`/api/holidays?year=${encodeURIComponent(key)}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "공휴일 정보를 불러오지 못했습니다.");
+    state.calendar.holidaysByYear[key] = Array.isArray(result.holidays) ? result.holidays : [];
+    if (result.warning) state.calendar.holidayWarnings[key] = result.warning;
+  } catch (error) {
+    console.warn("Holiday data could not be loaded.", error);
+    state.calendar.holidaysByYear[key] = [];
+    state.calendar.holidayWarnings[key] = error.message;
+  } finally {
+    state.calendar.holidayRequests.delete(key);
+    renderCalendar();
+  }
+}
+
 function parseEventStart(event) {
   if (!event?.start) return null;
   const value = event.allDay ? `${String(event.start).slice(0, 10)}T00:00` : event.start;
@@ -1010,7 +1299,11 @@ function formatDateTime(date) {
 
 function shiftCalendarMonth(delta) {
   const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
-  const next = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
+  const next = state.calendar.viewMode === "week"
+    ? addDays(cursor, delta * 7)
+    : state.calendar.viewMode === "day"
+      ? addDays(cursor, delta)
+      : new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
   state.calendar.cursorISO = formatLocalDate(next);
   scheduleSave();
   renderCalendar();
@@ -1022,11 +1315,55 @@ function jumpCalendarToToday() {
   renderCalendar();
 }
 
+function setCalendarViewMode(viewMode) {
+  const next = normalizeCalendarViewMode(viewMode);
+  if (state.calendar.viewMode === next) return;
+  state.calendar.viewMode = next;
+  scheduleSave();
+  renderCalendar();
+}
+
 function setEventColor(color) {
   state.calendar.selectedColor = color || "accent";
   for (const option of elements.eventColorOptions) {
     option.classList.toggle("active", option.dataset.color === state.calendar.selectedColor);
   }
+}
+
+function setReminderPicker(reminders) {
+  const selected = new Set(normalizeReminderList(reminders).map((reminder) => String(reminder.minutesBefore)));
+  for (const input of elements.eventReminderInputs) {
+    input.checked = selected.has(input.value);
+  }
+}
+
+function getSelectedReminderList() {
+  return normalizeReminderList(
+    elements.eventReminderInputs
+      .filter((input) => input.checked)
+      .map((input) => Number(input.value))
+  );
+}
+
+function formatReminderLabel(reminder) {
+  const minutes = Number(typeof reminder === "object" ? reminder.minutesBefore : reminder);
+  if (minutes === 0) return "시작 시";
+  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes % 10080 === 0) return `${minutes / 10080}주 전`;
+  if (minutes % 1440 === 0) return `${minutes / 1440}일 전`;
+  if (minutes % 60 === 0) return `${minutes / 60}시간 전`;
+  return `${minutes}분 전`;
+}
+
+function formatAgendaEventTime(event) {
+  if (event.allDay) return "종일";
+  const start = parseEventStart(event);
+  const end = parseEventEnd(event);
+  if (!start) return "";
+  const startText = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`;
+  if (!end) return startText;
+  const endText = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
+  return `${startText} - ${endText}`;
 }
 
 function toLocalInputValue(date) {
@@ -1073,6 +1410,7 @@ function openEventDialogForCreate(dateISO) {
   elements.eventStartInput.value = toLocalInputValue(start);
   elements.eventEndInput.value = toLocalInputValue(end);
   setEventColor("accent");
+  setReminderPicker([]);
   elements.deleteEventButton.hidden = true;
   showEventDialog();
 }
@@ -1098,6 +1436,7 @@ function openEventDialogForEdit(eventId) {
   }
   elements.eventLocationInput.value = event.location || "";
   elements.eventNotesInput.value = event.notes || "";
+  setReminderPicker(event.reminders);
   setEventColor(event.color || "accent");
   elements.deleteEventButton.hidden = false;
   showEventDialog();
@@ -1154,6 +1493,7 @@ function submitEventForm(formEvent) {
     end: allDay ? endRaw.slice(0, 10) : endRaw.slice(0, 16),
     location: elements.eventLocationInput.value.trim(),
     notes: elements.eventNotesInput.value.trim(),
+    reminders: getSelectedReminderList(),
     color: state.calendar.selectedColor || "accent"
   };
 
@@ -1173,6 +1513,7 @@ function submitEventForm(formEvent) {
       state.calendar.events[index] = {
         ...state.calendar.events[index],
         ...payload,
+        reminders: normalizeReminderList(payload.reminders),
         updatedAt: nowIso
       };
     }
@@ -1180,6 +1521,8 @@ function submitEventForm(formEvent) {
     state.calendar.events.push({
       id: crypto.randomUUID(),
       ...payload,
+      reminders: normalizeReminderList(payload.reminders),
+      notifiedReminders: [],
       createdAt: nowIso,
       updatedAt: nowIso
     });
@@ -1187,6 +1530,7 @@ function submitEventForm(formEvent) {
 
   state.calendar.cursorISO = String(payload.start).slice(0, 10);
   closeEventDialog();
+  maybeRequestNotificationPermission(payload.reminders);
   scheduleSave();
   renderCalendar();
 }
@@ -1480,12 +1824,15 @@ function applyCalendarCreate(payload) {
     end: payload.end || payload.start,
     location: payload.location || "",
     notes: payload.notes || "",
+    reminders: normalizeReminderList(payload.reminders),
+    notifiedReminders: [],
     color: "accent",
     createdAt: nowIso,
     updatedAt: nowIso
   };
   state.calendar.events.push(event);
   state.calendar.cursorISO = String(event.start).slice(0, 10);
+  maybeRequestNotificationPermission(event.reminders);
   return {
     mutated: true,
     text: `✓ 일정을 추가했습니다: ${formatEventOneLine(event)}`,
@@ -1610,10 +1957,12 @@ function applyCalendarUpdate(payload) {
   const merged = {
     ...target,
     ...changes,
+    reminders: changes.reminders !== undefined ? normalizeReminderList(changes.reminders) : target.reminders,
     updatedAt: new Date().toISOString()
   };
   state.calendar.events[index] = merged;
   state.calendar.cursorISO = String(merged.start).slice(0, 10);
+  maybeRequestNotificationPermission(merged.reminders);
   return {
     mutated: true,
     text: `✓ 일정을 수정했습니다: ${formatEventOneLine(merged)}`,
@@ -1759,6 +2108,81 @@ function hideCalendarCommandResult() {
   if (!elements.calendarCommandResult) return;
   elements.calendarCommandResult.hidden = true;
   elements.calendarCommandResultBody.innerHTML = "";
+}
+
+function startReminderWatcher() {
+  if (state.calendar.reminderTimer) return;
+  checkDueReminders();
+  state.calendar.reminderTimer = window.setInterval(checkDueReminders, 60 * 1000);
+}
+
+function checkDueReminders() {
+  const now = Date.now();
+  let changed = false;
+  for (const event of state.calendar.events) {
+    const reminders = normalizeReminderList(event.reminders);
+    if (!reminders.length) continue;
+    const start = getReminderBaseDate(event);
+    if (!start) continue;
+    if (!Array.isArray(event.notifiedReminders)) event.notifiedReminders = [];
+
+    for (const reminder of reminders) {
+      const fireAt = start.getTime() - reminder.minutesBefore * 60 * 1000;
+      const key = `${event.start}:${reminder.minutesBefore}`;
+      const isDue = fireAt <= now && now - fireAt < 10 * 60 * 1000;
+      if (!isDue || event.notifiedReminders.includes(key)) continue;
+      event.notifiedReminders.push(key);
+      changed = true;
+      showReminderNotification(event, reminder);
+    }
+  }
+  if (changed) scheduleSave();
+}
+
+function getReminderBaseDate(event) {
+  if (!event?.start) return null;
+  const value = event.allDay ? `${String(event.start).slice(0, 10)}T09:00` : event.start;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function showReminderNotification(event, reminder) {
+  const title = event.title || "일정";
+  const body = `${formatReminderLabel(reminder)} · ${formatEventOneLine(event)}`;
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, {
+      body,
+      icon: DEFAULT_FAVICON_HREF
+    });
+  }
+  showReminderToast(title, body);
+}
+
+function showReminderToast(title, body) {
+  if (!elements.reminderToastContainer) {
+    if (elements.uploadProgress) elements.uploadProgress.textContent = `${title}: ${body}`;
+    return;
+  }
+  const toast = document.createElement("div");
+  toast.className = "reminder-toast";
+  const titleEl = document.createElement("div");
+  titleEl.className = "reminder-toast-title";
+  titleEl.textContent = title;
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "reminder-toast-body";
+  bodyEl.textContent = body;
+  toast.append(titleEl, bodyEl);
+  elements.reminderToastContainer.append(toast);
+  window.setTimeout(() => toast.remove(), 10000);
+}
+
+function maybeRequestNotificationPermission(reminders) {
+  if (!normalizeReminderList(reminders).length) return;
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    const request = Notification.requestPermission();
+    if (request?.catch) request.catch(() => {});
+  }
 }
 
 async function requestAssistantResponse(room) {

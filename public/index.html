@@ -48,8 +48,9 @@
         </div>
 
         <div class="sidebar-content" data-view-content="calendar" hidden>
-          <button id="newEventButton" class="new-room-button" type="button" title="새 일정">
+          <button id="newEventButton" class="new-room-button" type="button" title="새 일정 (Shift+N)">
             <span class="new-room-label">새 일정</span>
+            <span class="shortcut-hint" aria-hidden="true">Shift+N</span>
           </button>
 
           <section class="panel calendar-sidebar-panel">
@@ -106,6 +107,11 @@
             <button id="calendarTodayButton" class="ghost-button calendar-today-button" type="button" title="오늘로 이동">오늘</button>
             <button id="calendarNextButton" class="icon-button calendar-nav-button" type="button" aria-label="다음 달" title="다음 달">›</button>
             <h2 id="calendarMonthLabel" class="calendar-month-label">2026년 5월</h2>
+          </div>
+          <div id="calendarViewToggle" class="calendar-view-toggle" role="group" aria-label="캘린더 보기">
+            <button class="calendar-view-option active" type="button" data-calendar-view="month" aria-pressed="true">월</button>
+            <button class="calendar-view-option" type="button" data-calendar-view="week" aria-pressed="false">주</button>
+            <button class="calendar-view-option" type="button" data-calendar-view="day" aria-pressed="false">일</button>
           </div>
         </div>
 
@@ -175,6 +181,32 @@
         </div>
 
         <div class="field">
+          <span class="field-label">일정 알림</span>
+          <div id="eventReminderPicker" class="event-reminder-picker" role="group" aria-label="일정 알림">
+            <label class="event-reminder-option">
+              <input class="event-reminder-input" type="checkbox" value="0" />
+              <span>시작 시</span>
+            </label>
+            <label class="event-reminder-option">
+              <input class="event-reminder-input" type="checkbox" value="30" />
+              <span>30분 전</span>
+            </label>
+            <label class="event-reminder-option">
+              <input class="event-reminder-input" type="checkbox" value="1440" />
+              <span>하루 전</span>
+            </label>
+            <label class="event-reminder-option">
+              <input class="event-reminder-input" type="checkbox" value="2880" />
+              <span>이틀 전</span>
+            </label>
+            <label class="event-reminder-option">
+              <input class="event-reminder-input" type="checkbox" value="10080" />
+              <span>일주일 전</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
           <span class="field-label">색상</span>
           <div id="eventColorPicker" class="event-color-picker" role="group" aria-label="일정 색상">
             <button type="button" class="event-color-option" data-color="accent" aria-label="기본"></button>
@@ -201,6 +233,8 @@
         <div class="drop-overlay-subtitle">현재 대화방에 추가됩니다</div>
       </div>
     </div>
+
+    <div id="reminderToastContainer" class="reminder-toast-container" aria-live="polite"></div>
 
     <dialog id="settingsDialog" class="settings-dialog">
       <form id="settingsForm" method="dialog">

@@ -51,7 +51,7 @@ function buildSystemPrompt(currentDate) {
     '{"intent":"<one of above>","payload":{...}}',
     "",
     "Payload schemas:",
-    "- calendar.create: { title (string, required), start (\"YYYY-MM-DDTHH:mm\" or all-day \"YYYY-MM-DD\"), end (same shape, must be >= start; default = start + 1 hour), allDay (boolean), location (optional string), notes (optional string) }",
+    "- calendar.create: { title (string, required), start (\"YYYY-MM-DDTHH:mm\" or all-day \"YYYY-MM-DD\"), end (same shape, must be >= start; default = start + 1 hour), allDay (boolean), location (optional string), notes (optional string), reminders (optional array of { minutesBefore: number }) }",
     "- calendar.list: { from (\"YYYY-MM-DD\", optional), to (\"YYYY-MM-DD\", optional), query (optional string for title search) }",
     "- calendar.delete: { matchTitle (optional partial title; OMIT when the user does NOT name a specific event), from (optional date), to (optional date) }. At least one of matchTitle, from, to MUST be present.",
     "- calendar.update: { matchTitle (string), changes (object with any subset of create payload fields) }",
@@ -63,11 +63,15 @@ function buildSystemPrompt(currentDate) {
     `- "이번 주" -> from ${weekStartISO} to ${weekEndISO}`,
     "- Default duration when only start time is given: 1 hour.",
     "- If the user does NOT specify a time, set allDay=true and use date-only ISO.",
+    "- Reminder rules: \"시작할 때\" -> 0, \"30분 전\" -> 30, \"1시간 전\" -> 60, \"하루 전\" -> 1440, \"이틀 전\" -> 2880, \"일주일 전\" -> 10080.",
     "- Korean weekday names map: 일요일=Sun ... 토요일=Sat (week starts Sunday).",
     "",
     "Examples:",
     `User: "내일 오후 3시에 영업팀 회의 잡아줘"`,
     `→ {"intent":"calendar.create","payload":{"title":"영업팀 회의","start":"${tomorrowISO}T15:00","end":"${tomorrowISO}T16:00","allDay":false}}`,
+    "",
+    `User: "내일 오후 3시에 영업팀 회의 잡고 하루 전에 알려줘"`,
+    `→ {"intent":"calendar.create","payload":{"title":"영업팀 회의","start":"${tomorrowISO}T15:00","end":"${tomorrowISO}T16:00","allDay":false,"reminders":[{"minutesBefore":1440}]}}`,
     "",
     `User: "이번 주 일정 보여줘"`,
     `→ {"intent":"calendar.list","payload":{"from":"${weekStartISO}","to":"${weekEndISO}"}}`,
@@ -195,7 +199,8 @@ function normalizeCreate(payload) {
     title,
     allDay,
     start,
-    end
+    end,
+    reminders: normalizeReminders(payload.reminders ?? payload.reminderMinutesBefore)
   };
   const location = String(payload.location ?? "").trim();
   if (location) out.location = location;
@@ -238,6 +243,9 @@ function normalizeUpdate(payload) {
   if (typeof rawChanges.location === "string") changes.location = rawChanges.location.trim();
   if (typeof rawChanges.notes === "string") changes.notes = rawChanges.notes.trim();
   if (typeof rawChanges.allDay === "boolean") changes.allDay = rawChanges.allDay;
+  if (rawChanges.reminders !== undefined || rawChanges.reminderMinutesBefore !== undefined) {
+    changes.reminders = normalizeReminders(rawChanges.reminders ?? rawChanges.reminderMinutesBefore);
+  }
   const allDay = changes.allDay ?? false;
   const start = normalizeDateTime(rawChanges.start, allDay);
   const end = normalizeDateTime(rawChanges.end, allDay);
@@ -265,6 +273,23 @@ function normalizeDateOnly(value) {
   if (!value) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value).trim());
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+function normalizeReminders(value) {
+  const rawValues = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  const seen = new Set();
+  const reminders = [];
+  for (const item of rawValues) {
+    const minutes = typeof item === "object" && item
+      ? Number(item.minutesBefore ?? item.minutes)
+      : Number(item);
+    if (!Number.isFinite(minutes)) continue;
+    const normalized = Math.max(0, Math.min(60 * 24 * 30, Math.round(minutes)));
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    reminders.push({ minutesBefore: normalized });
+  }
+  return reminders.sort((left, right) => right.minutesBefore - left.minutesBefore);
 }
 
 function addOneHour(iso) {

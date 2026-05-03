@@ -17,7 +17,8 @@ myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입
 
 - **대화방 기반 채팅**: 여러 대화방, 방 제목 편집, 메시지 복사/편집, 스트리밍 응답, `중지` 버튼과 `Esc` 중단을 지원합니다.
 - **파일 분석**: PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, GIF 업로드를 지원합니다.
-- **AI 캘린더 에이전트**: 왼쪽 1차 메뉴의 `대화` / `캘린더` 구조를 사용합니다. 캘린더 화면에서는 월간 보기, 예정 일정 목록, 새 일정 다이얼로그, 자연어 일정 명령 입력창을 제공합니다.
+- **AI 캘린더 에이전트**: 왼쪽 1차 메뉴의 `대화` / `캘린더` 구조를 사용합니다. 캘린더 화면에서는 월/주/일 보기, 예정 일정 목록, 새 일정 다이얼로그, 자연어 일정 명령 입력창을 제공합니다.
+- **한국 공휴일과 일정 알림**: 공식 공휴일 API 키가 있으면 한국 공휴일을 표시하고, 키가 없으면 고정 양력 공휴일 fallback을 표시합니다. 일정별 시작 시/30분 전/하루 전/이틀 전/일주일 전 알림을 설정할 수 있습니다.
 - **자연어 일정 처리**: 채팅 입력 또는 캘린더 명령창에서 일정 등록, 조회, 삭제, 수정 요청을 감지하면 `/api/agent/intent`가 Ollama로 의도를 분류하고, 브라우저 코드가 검증된 payload를 실제 캘린더 상태에 적용합니다.
 - **데이터 시각화**: CSV/XLSX 표 데이터 요청은 `/api/visualize`로 라우팅됩니다. LLM은 `analysis + visualizationPlan` JSON 계획만 만들고, 서버가 실제 컬럼 검증과 차트 데이터를 계산한 뒤 브라우저가 SVG 차트/KPI/표/인포그래픽을 렌더링합니다.
 - **문서 컨텍스트 선별**: 문서가 길면 `server/retrieval.js`의 BM25 기반 선별로 관련 청크를 골라 `MAX_CONTEXT_CHARS` 안에 넣습니다.
@@ -77,6 +78,7 @@ npm start
 | `HOST` | 미설정 | HTTP 바인딩 호스트. 미설정 시 모든 인터페이스에서 listen |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API 엔드포인트 |
 | `OLLAMA_MODEL` | `gemma3n:e2b` | 코드 fallback 및 `.env.example`의 기본 모델 |
+| `KOREA_HOLIDAY_SERVICE_KEY` | 미설정 | 공공데이터포털 한국천문연구원 특일 정보 API 서비스 키 |
 | `MAX_CONTEXT_CHARS` | `24000` | 한 요청에 포함할 최대 문서 컨텍스트 글자 수 |
 | `CHUNK_TARGET_CHARS` | `1800` | 문서 청크 목표 길이 |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |
@@ -100,6 +102,8 @@ state.calendar = {
       location,
       notes,
       color,
+      reminders,
+      notifiedReminders,
       createdAt,
       updatedAt
     }
@@ -189,7 +193,8 @@ deploy/
 ## Known Constraints
 
 - 캘린더는 현재 로컬 IndexedDB 전용입니다. Google Calendar, Outlook, ICS 동기화는 없습니다.
-- 반복 일정, 알림 실행 엔진, 여러 캘린더 계정, timezone UI는 아직 없습니다.
+- 반복 일정, 여러 캘린더 계정, timezone UI는 아직 없습니다.
+- 일정 알림은 브라우저가 열려 있을 때 동작합니다. 앱/브라우저가 완전히 꺼진 상태의 보장 알림은 PWA/service worker 또는 데스크톱 앱화가 필요합니다.
 - AI 일정 삭제/수정은 LLM 분류 결과를 바탕으로 로컬 이벤트를 변경합니다. 운영 수준의 안전성을 위해서는 삭제/대량 수정 확인 UX를 더 강화하는 것이 좋습니다.
 - 파일과 캘린더 데이터는 브라우저 로컬에만 저장됩니다. export/import와 저장 공간 사용량 UI는 아직 없습니다.
 - 레거시 `.hwp`와 `.xls`는 직접 지원하지 않습니다. HWPX/XLSX 변환을 권장합니다.
