@@ -385,18 +385,31 @@ function bindEvents() {
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === "n") {
+    const isShiftOnly = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
+    const key = event.key.toLowerCase();
+
+    if (isShiftOnly && (key === "n" || key === "d" || key === "c" || key === "i")) {
       const target = event.target;
       const isTyping = target instanceof HTMLElement
         && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
       const dialogOpen = elements.settingsDialog.open || elements.eventDialog.open;
+
       if (!isTyping && !dialogOpen) {
         event.preventDefault();
-        if (state.busy) return;
-        if (state.activeView === "calendar") {
-          openEventDialogForCreate(state.calendar.cursorISO);
-        } else {
-          createNewRoom();
+
+        if (key === "n") {
+          if (state.busy) return;
+          if (state.activeView === "calendar") {
+            openEventDialogForCreate(state.calendar.cursorISO);
+          } else {
+            createNewRoom();
+          }
+        } else if (key === "d") {
+          setActiveView("chat");
+        } else if (key === "c") {
+          setActiveView("calendar");
+        } else if (key === "i") {
+          elements.promptInput.focus();
         }
         return;
       }
@@ -2572,15 +2585,8 @@ async function requestVisualizationResponse(room) {
     const finalAnswer = ensureAddressedAnswer(formatVisualizationText(visualization));
     assistant = appendMessage("assistant", finalAnswer, {
       persist: false,
-      streaming: true,
       visualization
     });
-    assistantBody = assistant.querySelector(".message-body");
-    assistant.dataset.copyText = finalAnswer;
-    renderAssistantContent(assistantBody, finalAnswer);
-    assistantBody.append(renderVisualizationSpec(visualization));
-    assistantBody.classList.add("has-visualization");
-    assistant.classList.remove("streaming");
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
 
     const assistantMessage = {
@@ -2715,10 +2721,17 @@ function appendMessage(role, text, options = {}) {
     if (options.visualization) {
       body.append(renderVisualizationSpec(options.visualization));
       body.classList.add("has-visualization");
+      const visualText = formatVisualizationText(options.visualization);
+      if (visualText) {
+        article.dataset.copyText = `${text}\n\n${visualText}`;
+      }
     }
     if (Array.isArray(options.eventCards) && options.eventCards.length) {
       body.append(renderEventCardList(options.eventCards));
       body.classList.add("has-event-cards");
+      const cardText = options.eventCards.map(formatEventOneLine).join("\n");
+      const currentText = article.dataset.copyText || text;
+      article.dataset.copyText = `${currentText}\n\n${cardText}`;
     }
   } else {
     body.textContent = text;

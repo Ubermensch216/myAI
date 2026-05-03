@@ -21,6 +21,7 @@
               <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
             <span>대화</span>
+            <span class="shortcut-hint" aria-hidden="true">shift+D</span>
           </button>
           <button class="primary-nav-item" type="button" data-view-target="calendar" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -30,13 +31,14 @@
               <path d="M3 10h18"></path>
             </svg>
             <span>캘린더</span>
+            <span class="shortcut-hint" aria-hidden="true">shift+C</span>
           </button>
         </nav>
 
         <div class="sidebar-content" data-view-content="chat">
-          <button id="newRoomButton" class="new-room-button" type="button" title="새 대화 (Shift+N)">
+          <button id="newRoomButton" class="new-room-button" type="button" title="새 대화 (shift+N)">
             <span class="new-room-label">새 대화</span>
-            <span class="shortcut-hint" aria-hidden="true">Shift+N</span>
+            <span class="shortcut-hint" aria-hidden="true">shift+N</span>
           </button>
 
           <section class="panel room-panel">
@@ -48,9 +50,9 @@
         </div>
 
         <div class="sidebar-content" data-view-content="calendar" hidden>
-          <button id="newEventButton" class="new-room-button" type="button" title="새 일정 (Shift+N)">
+          <button id="newEventButton" class="new-room-button" type="button" title="새 일정 (shift+N)">
             <span class="new-room-label">새 일정</span>
-            <span class="shortcut-hint" aria-hidden="true">Shift+N</span>
+            <span class="shortcut-hint" aria-hidden="true">shift+N</span>
           </button>
 
           <section class="panel calendar-sidebar-panel">
@@ -93,7 +95,7 @@
           <textarea
             id="promptInput"
             rows="1"
-            placeholder="문서 요약, 이미지 분석, 표 추출, 근거 확인을 요청하거나 캡쳐 이미지를 붙여 넣으세요."
+            placeholder="[shift+I] 문서 요약, 이미지 분석, 표 추출, 근거 확인을 요청하거나 캡쳐 이미지를 붙여 넣으세요."
           ></textarea>
           <button id="sendButton" class="send-button" type="submit">전송</button>
           <div id="uploadProgress" class="upload-progress" aria-live="polite"></div>
