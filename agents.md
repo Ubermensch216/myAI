@@ -43,10 +43,10 @@ Model notes:
 
 Current worktree notes at this refresh:
 
-- Calendar work is present but uncommitted:
-  - `server/calendarAgent.js` is new.
-  - `server/index.js`, `public/index.html`, `public/app.js`, and `public/styles.css` contain calendar/nav changes.
-- `llm_performance_dummy.csv` is tracked but currently deleted in the working tree. Do not recreate it unless the user asks or visualization smoke tests require it.
+- Uncommitted calendar agent fixes are present:
+  - `public/app.js` adds pending calendar confirmation handling so tentative schedule requests are saved only after user confirmation.
+  - `server/calendarAgent.js` adds `calendar.propose`, recent-message/pending-action context, and deterministic month-range correction.
+  - `server/index.js` passes `messages` and `pendingAction` through `/api/agent/intent`.
 - This documentation refresh updates `agents.md` and `README.md`.
 
 ## Stack
@@ -133,11 +133,15 @@ Key responsibilities:
   - Calls Ollama with `format: "json"` and `think: false`.
   - Valid intents:
     - `chat`
+    - `calendar.propose`
     - `calendar.create`
     - `calendar.list`
     - `calendar.delete`
     - `calendar.update`
   - Resolves relative Korean dates using `currentDate` from the request.
+  - Accepts recent conversation messages and a pending calendar action so confirmation replies like `응, 추가해줘` can become concrete calendar operations.
+  - Applies deterministic correction for month-range list prompts such as `5월 전체 일정`, `이번 달`, `다음 달`, and `지난달`.
+  - Applies deterministic daily-repeat correction for prompts such as `5월 전체 일정에 ... 등록` and `이번 달 매일 ... 추가`.
   - Normalizes payload shapes before returning to the browser.
   - Does not mutate calendar data itself. The browser applies accepted operations to encrypted local state.
 
@@ -250,7 +254,9 @@ calendar-like natural language prompt
 -> public/app.js keyword prefilter
 -> POST /api/agent/intent
 -> server/calendarAgent.js asks Ollama for strict JSON
--> server normalizes intent and payload
+-> server normalizes intent/payload and applies deterministic date-range corrections
+-> public/app.js stores tentative calendar.propose payloads as pendingCalendarAction
+-> user confirmation can convert pendingCalendarAction into calendar.create
 -> public/app.js applies create/list/delete/update to state.calendar.events
 -> UI refreshes calendar grid, upcoming list, command result, and chat event cards
 ```
@@ -258,7 +264,9 @@ calendar-like natural language prompt
 Important design point:
 
 - The LLM classifies intent and extracts fields.
+- Deterministic code corrects known brittle cases, especially month-range queries.
 - The browser owns local calendar state and mutates it.
+- Calendar success messages are generated only after local mutation succeeds.
 - There is no server-side calendar database.
 
 ## Current Layout
@@ -434,6 +442,20 @@ Natural language calendar flow:
 - `public/app.js#hasCalendarKeyword` prefilters likely calendar prompts.
 - `public/app.js#classifyMessageIntent` calls `POST /api/agent/intent`.
 - `server/calendarAgent.js#classifyIntent` returns normalized `{ intent, payload }`.
+- Supported intents are:
+  - `chat`
+  - `calendar.propose`
+  - `calendar.create`
+  - `calendar.list`
+  - `calendar.delete`
+  - `calendar.update`
+- `calendar.propose` means the user is discussing or asking whether an event can be scheduled, but has not clearly asked to save it yet.
+- `public/app.js#handleCalendarProposal` stores the proposed create payload in `room.pendingCalendarAction` and asks for confirmation.
+- Confirmation messages such as `응`, `좋아`, `추가해줘`, `등록해줘`, or `진행해` are classified with both recent messages and `pendingCalendarAction`.
+- If the model still returns `chat` but a pending action exists and the user confirms, `public/app.js` falls back to executing the pending action directly.
+- Rejection messages such as `아니`, `취소`, or `하지마` clear the pending calendar action.
+- `server/calendarAgent.js#applyDeterministicCorrections` forces full-month ranges for prompts like `5월 전체 일정 보고해`, `이번 달 일정`, `다음 달 일정`, and `지난달 일정`.
+- Full-month daily create prompts are represented as `repeat: { frequency: "daily", from, to }`; `public/app.js#applyDailyRepeatCalendarCreateAsync` expands them into individual local events.
 - `public/app.js#executeCalendarIntent` dispatches to:
   - `applyCalendarCreateAsync`
   - `applyCalendarList`
@@ -618,7 +640,9 @@ Body:
 {
   prompt,
   model,
-  currentDate
+  currentDate,
+  messages,
+  pendingAction
 }
 ```
 
@@ -626,13 +650,30 @@ Returns:
 
 ```js
 {
-  intent: "chat" | "calendar.create" | "calendar.list" | "calendar.delete" | "calendar.update",
+  intent: "chat" | "calendar.propose" | "calendar.create" | "calendar.list" | "calendar.delete" | "calendar.update",
   payload: {},
   fallbackReason
 }
 ```
 
 `fallbackReason` appears only when classification or validation falls back to normal chat.
+
+`messages` is optional recent chat context. `pendingAction` is optional and normally shaped like:
+
+```js
+{
+  intent: "calendar.create",
+  payload: {
+    title,
+    start,
+    end,
+    allDay,
+    location,
+    notes,
+    reminders
+  }
+}
+```
 
 ### `GET /api/holidays`
 
@@ -745,6 +786,10 @@ Important:
 - Added `server/holidays.js`.
 - Chat prompt can now trigger calendar CRUD when a calendar intent is detected.
 - Calendar now supports month/week/day views, Korean holiday display, scoped `Shift+N`, and browser-tab reminder checks.
+- Calendar natural-language handling now uses `calendar.propose` for tentative schedule requests and stores pending create actions until the user confirms.
+- `/api/agent/intent` now accepts recent messages and `pendingAction` to handle follow-up confirmations.
+- Month-range schedule queries such as `5월 전체 일정 보고해` are deterministically corrected to the first and last day of that month.
+- Full-month daily create queries such as `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해` are expanded into one event per day.
 - Added `server/retrieval.js` to pick relevant document chunks for long documents.
 - README and handoff notes updated to reflect the current live model and calendar state.
 
@@ -781,19 +826,20 @@ Commands run during this refresh:
 ```powershell
 Get-ChildItem -Recurse -Include *.js -Path .\server,.\public | ForEach-Object { node --check $_.FullName }
 Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSec 10 | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/agent/intent' -Method Post -ContentType 'application/json; charset=utf-8' -Body '{"prompt":"5월 전체 일정 보고해.","model":"gemma4:e2b","currentDate":"2026-05-03T11:00:00+09:00"}' | ConvertTo-Json -Depth 6
 ```
 
 Results:
 
 - JavaScript syntax check passed with no output.
 - `/api/status` returned `ok: true`, default model `gemma4:e2b`, and models `gemma4:e4b`, `gemma4:e2b`.
+- `/api/agent/intent` returned `calendar.list` with `from: "2026-05-01"` and `to: "2026-05-31"` for `5월 전체 일정 보고해.`
 
 Not run in this refresh:
 
 - Browser UI smoke test.
 - Playwright screenshots.
 - `npm audit`.
-- Live calendar intent LLM call.
 
 ## Operational Notes For Next Agent
 

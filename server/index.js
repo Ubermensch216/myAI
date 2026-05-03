@@ -184,6 +184,10 @@ app.post("/api/agent/intent", async (request, response) => {
   const prompt = typeof request.body?.prompt === "string" ? request.body.prompt : "";
   const model = request.body?.model || DEFAULT_MODEL;
   const currentDate = typeof request.body?.currentDate === "string" ? request.body.currentDate : new Date().toISOString();
+  const messages = Array.isArray(request.body?.messages) ? request.body.messages : [];
+  const pendingAction = request.body?.pendingAction && typeof request.body.pendingAction === "object"
+    ? request.body.pendingAction
+    : null;
 
   if (!prompt.trim()) {
     response.json({ intent: "chat", payload: {} });
@@ -191,7 +195,7 @@ app.post("/api/agent/intent", async (request, response) => {
   }
 
   try {
-    const result = await classifyIntent({ prompt, model, currentDate });
+    const result = await classifyIntent({ prompt, model, currentDate, messages, pendingAction });
     response.json(result);
   } catch (error) {
     response.json({ intent: "chat", payload: {}, fallbackReason: `server_error: ${error.message}` });

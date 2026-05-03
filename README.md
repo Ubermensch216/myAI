@@ -19,7 +19,7 @@ myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입
 - **파일 분석**: PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, GIF 업로드를 지원합니다.
 - **AI 캘린더 에이전트**: 왼쪽 1차 메뉴의 `대화` / `캘린더` 구조를 사용합니다. 캘린더 화면에서는 월/주/일 보기, 예정 일정 목록, 새 일정 다이얼로그, 자연어 일정 명령 입력창을 제공합니다.
 - **한국 공휴일과 일정 알림**: 공식 공휴일 API 키가 있으면 한국 공휴일을 표시하고, 키가 없으면 고정 양력 공휴일 fallback을 표시합니다. 일정별 시작 시/30분 전/하루 전/이틀 전/일주일 전 알림을 설정할 수 있습니다.
-- **자연어 일정 처리**: 채팅 입력 또는 캘린더 명령창에서 일정 등록, 조회, 삭제, 수정 요청을 감지하면 `/api/agent/intent`가 Ollama로 의도를 분류하고, 브라우저 코드가 검증된 payload를 실제 캘린더 상태에 적용합니다.
+- **자연어 일정 처리**: 채팅 입력 또는 캘린더 명령창에서 일정 등록, 조회, 삭제, 수정 요청을 감지하면 `/api/agent/intent`가 Ollama로 의도를 분류하고, 브라우저 코드가 검증된 payload를 실제 캘린더 상태에 적용합니다. tentative 요청은 `calendar.propose`로 보관한 뒤 사용자가 확인해야 실제 저장됩니다.
 - **데이터 시각화**: CSV/XLSX 표 데이터 요청은 `/api/visualize`로 라우팅됩니다. LLM은 `analysis + visualizationPlan` JSON 계획만 만들고, 서버가 실제 컬럼 검증과 차트 데이터를 계산한 뒤 브라우저가 SVG 차트/KPI/표/인포그래픽을 렌더링합니다.
 - **문서 컨텍스트 선별**: 문서가 길면 `server/retrieval.js`의 BM25 기반 선별로 관련 청크를 골라 `MAX_CONTEXT_CHARS` 안에 넣습니다.
 - **후속 질문 추천**: 답변 완료 후 `/api/followups`를 통해 1-3개 한국어 후속 질문을 생성하고, 실패 시 로컬 fallback을 사용합니다.
@@ -108,7 +108,8 @@ state.calendar = {
       updatedAt
     }
   ],
-  cursorISO
+  cursorISO,
+  viewMode
 }
 ```
 
@@ -119,18 +120,29 @@ state.calendar = {
 -> 프론트엔드 키워드 감지
 -> POST /api/agent/intent
 -> server/calendarAgent.js가 Ollama에 strict JSON 의도 분류 요청
--> intent/payload 정규화
+-> intent/payload 정규화와 날짜 범위 보정
+-> tentative 요청은 room.pendingCalendarAction에 보관
+-> 사용자의 확인 응답이 오면 pending action을 calendar.create로 실행
 -> public/app.js가 create/list/delete/update를 실제 IndexedDB 상태에 적용
 -> 캘린더 UI와 채팅 이벤트 카드 갱신
 ```
 
+이 구조에서 LLM은 자연어를 구조화된 JSON으로 바꾸는 역할만 합니다. 실제 일정 추가/조회/삭제/수정은 `public/app.js`의 결정적 코드가 로컬 `state.calendar.events`에 적용합니다. 그래서 성공 메시지는 실제 로컬 변경이 끝난 뒤에만 생성됩니다.
+
 현재 지원 intent:
 
+- `calendar.propose`
 - `calendar.create`
 - `calendar.list`
 - `calendar.delete`
 - `calendar.update`
 - `chat`
+
+`calendar.propose`는 “5월 4일 점심 일정 잡을 수 있나?”처럼 아직 저장을 명확히 지시하지 않은 후보 일정입니다. 사용자가 `응`, `좋아`, `추가해줘`, `등록해줘`처럼 확인하면 최근 대화와 `pendingAction`을 함께 분류해 실제 `calendar.create`로 전환합니다.
+
+월 범위 조회는 LLM 결과에만 의존하지 않습니다. `5월 전체 일정`, `이번 달`, `다음 달`, `지난달` 같은 표현은 서버가 최종적으로 해당 월의 1일~말일 범위로 보정합니다.
+
+월 전체/매일 등록도 단일 이벤트로 축약하지 않습니다. 예를 들어 `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해`는 `repeat: { frequency: "daily", from: "2026-05-01", to: "2026-05-31" }` payload로 보정되고, 브라우저가 각 날짜의 개별 이벤트로 확장해 저장합니다.
 
 ## Local Storage Notes
 
@@ -157,7 +169,8 @@ Record id: local-aes-gcm-key
 - `POST /api/chat`: Ollama 스트리밍 채팅
 - `POST /api/visualize`: CSV/XLSX 기반 plan-first 시각화 생성
 - `POST /api/followups`: 후속 질문 추천
-- `POST /api/agent/intent`: 캘린더/일반 대화 intent 분류
+- `POST /api/agent/intent`: 캘린더/일반 대화 intent 분류. `prompt`, `model`, `currentDate`와 선택적 `messages`, `pendingAction`을 받을 수 있음
+- `GET /api/holidays`: 연도별 한국 공휴일 조회. API 키가 없으면 고정 양력 공휴일 fallback 반환
 
 ## Project Structure
 
@@ -167,6 +180,7 @@ server/
   env.js             프로젝트 루트 .env 로더
   ollama.js          Ollama 호출, 채팅, 후속 질문, 시각화 계획/해석
   calendarAgent.js   자연어 캘린더 intent 분류와 payload 정규화
+  holidays.js        한국 공휴일 API/fallback 조회
   parsers.js         업로드 파일 파싱
   retrieval.js       BM25 기반 문서 청크 선별
   visualization.js   시각화 계획 검증과 차트 데이터 계산
@@ -198,7 +212,7 @@ deploy/
 - AI 일정 삭제/수정은 LLM 분류 결과를 바탕으로 로컬 이벤트를 변경합니다. 운영 수준의 안전성을 위해서는 삭제/대량 수정 확인 UX를 더 강화하는 것이 좋습니다.
 - 파일과 캘린더 데이터는 브라우저 로컬에만 저장됩니다. export/import와 저장 공간 사용량 UI는 아직 없습니다.
 - 레거시 `.hwp`와 `.xls`는 직접 지원하지 않습니다. HWPX/XLSX 변환을 권장합니다.
-- `llm_performance_dummy.csv`는 tracked fixture였지만 현재 작업트리에서는 삭제 상태입니다. 시각화 smoke test에 필요하면 git에서 복구하세요.
+- `llm_performance_dummy.csv`는 현재 작업트리에 없습니다. 시각화 smoke test에 필요하면 새 fixture를 추가하거나 기존 테스트 데이터를 준비하세요.
 
 ## Deployment
 

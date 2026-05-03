@@ -618,6 +618,7 @@ function createRoom() {
     title: "새 대화",
     messages: [],
     documents: [],
+    pendingCalendarAction: null,
     createdAt: now,
     updatedAt: now
   };
@@ -1739,10 +1740,37 @@ async function sendMessage(prompt) {
     createdAt: userMessage.createdAt
   });
 
-  if (hasCalendarKeyword(prompt)) {
-    const intentResult = await classifyMessageIntent(prompt);
+  if (room.pendingCalendarAction && isCalendarRejection(prompt)) {
+    clearPendingCalendarAction(room);
+    await handleCalendarStatusMessage(room, "알겠습니다. 보류 중이던 일정 등록은 취소했습니다.");
+    return;
+  }
+
+  const shouldTryCalendarIntent = hasCalendarKeyword(prompt)
+    || !!room.pendingCalendarAction
+    || isCalendarConfirmation(prompt);
+
+  if (shouldTryCalendarIntent) {
+    const intentResult = await classifyMessageIntent(prompt, room);
     if (intentResult && intentResult.intent && intentResult.intent !== "chat") {
+      if (intentResult.intent === "calendar.propose") {
+        await handleCalendarProposal(room, intentResult);
+        return;
+      }
       await handleCalendarIntent(room, intentResult);
+      return;
+    }
+
+    if (room.pendingCalendarAction && isCalendarConfirmation(prompt)) {
+      await handleCalendarIntent(room, room.pendingCalendarAction);
+      return;
+    }
+
+    if (hasCalendarKeyword(prompt) && isLikelyCalendarActionPrompt(prompt)) {
+      await handleCalendarStatusMessage(
+        room,
+        "일정 요청으로 보이지만 날짜, 시간, 제목을 확정하지 못했습니다. 실제 캘린더에는 아직 반영하지 않았습니다. 예: “5월 4일 오후 12시에 월클라우드 점심 식사 추가해줘”처럼 다시 말씀해주세요."
+      );
       return;
     }
   }
@@ -1751,12 +1779,27 @@ async function sendMessage(prompt) {
 }
 
 const CALENDAR_KEYWORD_PATTERN = /(일정|약속|회의|미팅|캘린더|스케줄|예약|행사|모임|잡아|등록|추가|취소|삭제|지워|빼|없애|옮겨|변경|바꿔|미뤄|미루|보여줘|알려줘|조회|검색|내일|모레|어제|오늘|이번\s*주|다음\s*주|지난\s*주|\d+\s*시|오전|오후)/;
+const CALENDAR_CONFIRMATION_PATTERN = /^(응|네|예|그래|좋아|오케이|ㅇㅋ|확인|진행|해줘|추가|등록|잡아|잡아줘|추가해줘|등록해줘)(\b|[,.!?\s]|$)/i;
+const CALENDAR_REJECTION_PATTERN = /^(아니|아니요|취소|그만|하지마|하지\s*마|보류|됐어|괜찮아)(\b|[,.!?\s]|$)/i;
+const CALENDAR_ACTION_PATTERN = /(잡아|잡을|등록|추가|예약|취소|삭제|지워|빼|없애|옮겨|변경|바꿔|미뤄|미루|조회|검색|보여줘|알려줘)/;
 
 function hasCalendarKeyword(prompt) {
   return CALENDAR_KEYWORD_PATTERN.test(String(prompt || ""));
 }
 
-async function classifyMessageIntent(prompt) {
+function isCalendarConfirmation(prompt) {
+  return CALENDAR_CONFIRMATION_PATTERN.test(String(prompt || "").trim());
+}
+
+function isCalendarRejection(prompt) {
+  return CALENDAR_REJECTION_PATTERN.test(String(prompt || "").trim());
+}
+
+function isLikelyCalendarActionPrompt(prompt) {
+  return CALENDAR_ACTION_PATTERN.test(String(prompt || ""));
+}
+
+async function classifyMessageIntent(prompt, room = getActiveRoom()) {
   try {
     const response = await fetch("/api/agent/intent", {
       method: "POST",
@@ -1764,7 +1807,9 @@ async function classifyMessageIntent(prompt) {
       body: JSON.stringify({
         prompt,
         model: elements.modelInput.value.trim() || "gemma3n:e2b",
-        currentDate: new Date().toISOString()
+        currentDate: new Date().toISOString(),
+        messages: getCalendarIntentMessages(room),
+        pendingAction: room?.pendingCalendarAction || null
       })
     });
     if (!response.ok) return { intent: "chat", payload: {} };
@@ -1772,6 +1817,19 @@ async function classifyMessageIntent(prompt) {
   } catch {
     return { intent: "chat", payload: {} };
   }
+}
+
+function getCalendarIntentMessages(room) {
+  if (!room || !Array.isArray(room.messages)) return [];
+  return room.messages
+    .slice(-8)
+    .map(({ role, content }) => ({ role, content }));
+}
+
+function clearPendingCalendarAction(room) {
+  if (!room?.pendingCalendarAction) return;
+  room.pendingCalendarAction = null;
+  scheduleSave();
 }
 
 async function handleCalendarIntent(room, intentResult) {
@@ -1784,26 +1842,11 @@ async function handleCalendarIntent(room, intentResult) {
       scheduleSave();
       renderCalendar();
     }
+    if (outcome.mutated && ["calendar.create", "calendar.delete", "calendar.update"].includes(intentResult.intent)) {
+      clearPendingCalendarAction(room);
+    }
 
-    const createdAt = new Date().toISOString();
-    const assistantMessage = {
-      role: "assistant",
-      content: outcome.text,
-      createdAt,
-      eventCards: outcome.eventCards ?? []
-    };
-    room.messages.push(assistantMessage);
-    room.updatedAt = createdAt;
-    scheduleSave();
-    renderRooms();
-
-    const article = appendMessage("assistant", outcome.text, {
-      persist: false,
-      messageIndex: room.messages.length - 1,
-      createdAt,
-      eventCards: assistantMessage.eventCards
-    });
-    setAssistantAnswerTime(article, createdAt);
+    appendCalendarAssistantMessage(room, outcome.text, { eventCards: outcome.eventCards ?? [] });
   } finally {
     removeThinking(thinking);
     setBusy(false);
@@ -1811,12 +1854,108 @@ async function handleCalendarIntent(room, intentResult) {
   }
 }
 
+async function handleCalendarProposal(room, intentResult) {
+  setBusy(true);
+  const thinking = appendThinking();
+  try {
+    const payload = intentResult?.payload || {};
+    if (!payload.title || !payload.start) {
+      appendCalendarAssistantMessage(
+        room,
+        "일정 후보를 만들기에는 정보가 부족합니다. 날짜, 시간, 제목을 함께 알려주세요."
+      );
+      return;
+    }
+
+    const pendingAction = {
+      intent: "calendar.create",
+      payload,
+      createdAt: new Date().toISOString()
+    };
+    room.pendingCalendarAction = pendingAction;
+    room.updatedAt = pendingAction.createdAt;
+    scheduleSave();
+
+    const conflicts = findConflictingEvents({
+      start: payload.start,
+      end: payload.end || payload.start,
+      allDay: !!payload.allDay
+    });
+    const text = buildCalendarProposalText(payload, conflicts);
+    appendCalendarAssistantMessage(room, text, { eventCards: conflicts.slice(0, 3) });
+  } finally {
+    removeThinking(thinking);
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+async function handleCalendarStatusMessage(room, text) {
+  setBusy(true);
+  const thinking = appendThinking();
+  try {
+    appendCalendarAssistantMessage(room, text);
+  } finally {
+    removeThinking(thinking);
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+function appendCalendarAssistantMessage(room, text, { eventCards = [] } = {}) {
+  const createdAt = new Date().toISOString();
+  const assistantMessage = {
+    role: "assistant",
+    content: text,
+    createdAt,
+    eventCards
+  };
+  room.messages.push(assistantMessage);
+  room.updatedAt = createdAt;
+  scheduleSave();
+  renderRooms();
+
+  const article = appendMessage("assistant", text, {
+    persist: false,
+    messageIndex: room.messages.length - 1,
+    createdAt,
+    eventCards
+  });
+  setAssistantAnswerTime(article, createdAt);
+  return article;
+}
+
+function buildCalendarProposalText(payload, conflicts) {
+  const summary = formatEventOneLine(payload);
+  if (conflicts.length) {
+    return [
+      `일정 후보를 확인했습니다: ${summary}`,
+      "다만 아래 기존 일정과 시간이 겹칩니다.",
+      buildConflictWarning(conflicts),
+      "그래도 이 일정으로 추가할까요?"
+    ].join("\n");
+  }
+  return `일정 후보를 확인했습니다: ${summary}\n이 일정으로 캘린더에 추가할까요?`;
+}
+
 function applyCalendarCreate(payload) {
   if (!payload?.title || !payload?.start) {
     return { text: "일정 정보를 이해하지 못했습니다. 제목과 시간을 다시 알려주세요.", eventCards: [] };
   }
   const nowIso = new Date().toISOString();
-  const event = {
+  const event = createCalendarEventFromPayload(payload, nowIso);
+  state.calendar.events.push(event);
+  state.calendar.cursorISO = String(event.start).slice(0, 10);
+  maybeRequestNotificationPermission(event.reminders);
+  return {
+    mutated: true,
+    text: `✓ 일정을 추가했습니다: ${formatEventOneLine(event)}`,
+    eventCards: [event]
+  };
+}
+
+function createCalendarEventFromPayload(payload, nowIso = new Date().toISOString()) {
+  return {
     id: crypto.randomUUID(),
     title: payload.title,
     allDay: !!payload.allDay,
@@ -1829,14 +1968,6 @@ function applyCalendarCreate(payload) {
     color: "accent",
     createdAt: nowIso,
     updatedAt: nowIso
-  };
-  state.calendar.events.push(event);
-  state.calendar.cursorISO = String(event.start).slice(0, 10);
-  maybeRequestNotificationPermission(event.reminders);
-  return {
-    mutated: true,
-    text: `✓ 일정을 추가했습니다: ${formatEventOneLine(event)}`,
-    eventCards: [event]
   };
 }
 
@@ -2025,6 +2156,30 @@ async function submitCalendarCommand(formEvent) {
       return;
     }
 
+    if (intentResult.intent === "calendar.propose") {
+      const room = getActiveRoom();
+      if (room) {
+        room.pendingCalendarAction = {
+          intent: "calendar.create",
+          payload: intentResult.payload,
+          createdAt: new Date().toISOString()
+        };
+        scheduleSave();
+      }
+      const conflicts = findConflictingEvents({
+        start: intentResult.payload?.start,
+        end: intentResult.payload?.end || intentResult.payload?.start,
+        allDay: !!intentResult.payload?.allDay
+      });
+      showCalendarCommandResult({
+        text: buildCalendarProposalText(intentResult.payload, conflicts),
+        kind: conflicts.length ? "warning" : "info",
+        events: conflicts.slice(0, 3)
+      });
+      elements.calendarCommandInput.value = "";
+      return;
+    }
+
     const outcome = await executeCalendarIntent(intentResult);
     if (outcome.mutated) {
       scheduleSave();
@@ -2055,6 +2210,9 @@ async function applyCalendarCreateAsync(payload) {
   if (!payload?.title || !payload?.start) {
     return { text: "일정 정보를 이해하지 못했습니다. 제목과 시간을 다시 알려주세요.", eventCards: [] };
   }
+  if (isDailyRepeatCreatePayload(payload)) {
+    return await applyDailyRepeatCalendarCreateAsync(payload);
+  }
   const conflicts = findConflictingEvents({
     start: payload.start,
     end: payload.end || payload.start,
@@ -2078,6 +2236,110 @@ async function applyCalendarCreateAsync(payload) {
     result.kind = "warning";
   }
   return result;
+}
+
+function isDailyRepeatCreatePayload(payload) {
+  return payload?.repeat?.frequency === "daily"
+    && /^\d{4}-\d{2}-\d{2}$/.test(String(payload.repeat.from || ""))
+    && /^\d{4}-\d{2}-\d{2}$/.test(String(payload.repeat.to || ""));
+}
+
+async function applyDailyRepeatCalendarCreateAsync(payload) {
+  const eventPayloads = expandDailyRepeatPayloads(payload);
+  if (!eventPayloads.length) {
+    return { text: "반복 등록할 날짜 범위를 이해하지 못했습니다.", eventCards: [] };
+  }
+
+  const conflicts = [];
+  for (const eventPayload of eventPayloads) {
+    conflicts.push(...findConflictingEvents({
+      start: eventPayload.start,
+      end: eventPayload.end || eventPayload.start,
+      allDay: !!eventPayload.allDay
+    }));
+  }
+
+  if (conflicts.length) {
+    const uniqueConflicts = dedupeEvents(conflicts);
+    const proceed = window.confirm(
+      `반복 등록 중 기존 일정과 겹치는 항목이 ${uniqueConflicts.length}건 있습니다:\n${buildConflictWarning(uniqueConflicts)}\n\n그래도 모두 추가할까요?`
+    );
+    if (!proceed) {
+      return {
+        text: "기존 일정과 겹쳐 반복 일정을 추가하지 않았습니다.",
+        kind: "warning",
+        eventCards: uniqueConflicts.slice(0, 5)
+      };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const events = eventPayloads.map((eventPayload) => createCalendarEventFromPayload(eventPayload, nowIso));
+  state.calendar.events.push(...events);
+  state.calendar.cursorISO = payload.repeat.from;
+  maybeRequestNotificationPermission(payload.reminders);
+
+  const rangeLabel = formatDateRangeLabel(payload.repeat.from, payload.repeat.to);
+  const result = {
+    mutated: true,
+    text: `✓ ${rangeLabel}에 ${payload.title} 일정 ${events.length}건을 추가했습니다.`,
+    eventCards: events.slice(0, 20)
+  };
+  if (conflicts.length) {
+    result.kind = "warning";
+    result.text = `${result.text} (⚠️ 기존 일정과 겹치는 항목이 있습니다)`;
+  }
+  return result;
+}
+
+function expandDailyRepeatPayloads(payload) {
+  const from = parseDateISO(payload.repeat?.from);
+  const to = parseDateISO(payload.repeat?.to);
+  if (!from || !to || from.getTime() > to.getTime()) return [];
+
+  const startDate = parseEventStart(payload);
+  const endDate = parseEventEnd(payload) || startDate;
+  const durationMs = startDate && endDate
+    ? Math.max(0, endDate.getTime() - startDate.getTime())
+    : 0;
+  const startTime = extractTimePart(payload.start) || "09:00";
+  const maxDays = 370;
+  const eventPayloads = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+
+  while (cursor.getTime() <= to.getTime() && eventPayloads.length < maxDays) {
+    const dateISO = formatLocalDate(cursor);
+    const start = payload.allDay ? dateISO : `${dateISO}T${startTime}`;
+    let end = start;
+    if (!payload.allDay) {
+      const startAt = new Date(start);
+      const endAt = new Date(startAt.getTime() + durationMs);
+      end = `${formatLocalDate(endAt)}T${String(endAt.getHours()).padStart(2, "0")}:${String(endAt.getMinutes()).padStart(2, "0")}`;
+    }
+    eventPayloads.push({
+      ...payload,
+      repeat: undefined,
+      start,
+      end
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return eventPayloads;
+}
+
+function extractTimePart(value) {
+  return /T(\d{2}:\d{2})/.exec(String(value || ""))?.[1] || null;
+}
+
+function dedupeEvents(events) {
+  const seen = new Set();
+  const out = [];
+  for (const event of events) {
+    if (!event?.id || seen.has(event.id)) continue;
+    seen.add(event.id);
+    out.push(event);
+  }
+  return out;
 }
 
 function setCalendarCommandBusy(busy) {

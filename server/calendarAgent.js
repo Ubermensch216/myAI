@@ -7,6 +7,7 @@ const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 
 const VALID_INTENTS = new Set([
   "chat",
+  "calendar.propose",
   "calendar.create",
   "calendar.list",
   "calendar.delete",
@@ -42,6 +43,7 @@ function buildSystemPrompt(currentDate) {
     "",
     "Intents:",
     "- chat: general conversation or questions unrelated to managing the user's calendar",
+    "- calendar.propose: user is discussing or asking to confirm a possible new calendar event, but has not clearly asked to save it yet",
     "- calendar.create: user wants to add an event/appointment/meeting/reminder",
     "- calendar.list: user wants to view/search their schedule",
     "- calendar.delete: user wants to remove an existing event",
@@ -51,7 +53,8 @@ function buildSystemPrompt(currentDate) {
     '{"intent":"<one of above>","payload":{...}}',
     "",
     "Payload schemas:",
-    "- calendar.create: { title (string, required), start (\"YYYY-MM-DDTHH:mm\" or all-day \"YYYY-MM-DD\"), end (same shape, must be >= start; default = start + 1 hour), allDay (boolean), location (optional string), notes (optional string), reminders (optional array of { minutesBefore: number }) }",
+    "- calendar.propose: same payload shape as calendar.create. Use this for tentative requests such as '일정 잡을 수 있나?', '가능할까?', or '추가할까요?' context.",
+    "- calendar.create: { title (string, required), start (\"YYYY-MM-DDTHH:mm\" or all-day \"YYYY-MM-DD\"), end (same shape, must be >= start; default = start + 1 hour), allDay (boolean), location (optional string), notes (optional string), reminders (optional array of { minutesBefore: number }), repeat (optional { frequency:\"daily\", from:\"YYYY-MM-DD\", to:\"YYYY-MM-DD\" }) }",
     "- calendar.list: { from (\"YYYY-MM-DD\", optional), to (\"YYYY-MM-DD\", optional), query (optional string for title search) }",
     "- calendar.delete: { matchTitle (optional partial title; OMIT when the user does NOT name a specific event), from (optional date), to (optional date) }. At least one of matchTitle, from, to MUST be present.",
     "- calendar.update: { matchTitle (string), changes (object with any subset of create payload fields) }",
@@ -61,12 +64,19 @@ function buildSystemPrompt(currentDate) {
     `- "오늘" -> ${todayISO}`,
     `- "내일" -> ${tomorrowISO}`,
     `- "이번 주" -> from ${weekStartISO} to ${weekEndISO}`,
+    `- "이번 달"/"이달" -> from ${yyyy}-${mm}-01 to the last day of ${yyyy}-${mm}.`,
+    "- A request like \"5월 전체 일정\" means the full calendar month, not the current week.",
+    "- A request like \"5월 전체 일정에 ... 등록\" or \"5월 매일 ... 등록\" means create one event per day for the full month. Use repeat.frequency=\"daily\" with from/to.",
     "- Default duration when only start time is given: 1 hour.",
+    "- If the user says 점심/점심 식사/lunch without an exact time, use 12:00 and a 1 hour duration.",
     "- If the user does NOT specify a time, set allDay=true and use date-only ISO.",
     "- Reminder rules: \"시작할 때\" -> 0, \"30분 전\" -> 30, \"1시간 전\" -> 60, \"하루 전\" -> 1440, \"이틀 전\" -> 2880, \"일주일 전\" -> 10080.",
     "- Korean weekday names map: 일요일=Sun ... 토요일=Sat (week starts Sunday).",
     "",
     "Examples:",
+    `User: "5월 4일에 일정 잡을 수 있나? 거래처 김부장님하고 점심 식사하고자 하는데?"`,
+    `→ {"intent":"calendar.propose","payload":{"title":"거래처 김부장님 점심 식사","start":"${yyyy}-05-04T12:00","end":"${yyyy}-05-04T13:00","allDay":false}}`,
+    "",
     `User: "내일 오후 3시에 영업팀 회의 잡아줘"`,
     `→ {"intent":"calendar.create","payload":{"title":"영업팀 회의","start":"${tomorrowISO}T15:00","end":"${tomorrowISO}T16:00","allDay":false}}`,
     "",
@@ -75,6 +85,12 @@ function buildSystemPrompt(currentDate) {
     "",
     `User: "이번 주 일정 보여줘"`,
     `→ {"intent":"calendar.list","payload":{"from":"${weekStartISO}","to":"${weekEndISO}"}}`,
+    "",
+    `User: "5월 전체 일정 보고해"`,
+    `→ {"intent":"calendar.list","payload":{"from":"${yyyy}-05-01","to":"${yyyy}-05-31"}}`,
+    "",
+    `User: "5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해"`,
+    `→ {"intent":"calendar.create","payload":{"title":"스트레칭","start":"${yyyy}-05-01T09:00","end":"${yyyy}-05-01T09:10","allDay":false,"repeat":{"frequency":"daily","from":"${yyyy}-05-01","to":"${yyyy}-05-31"}}}`,
     "",
     `User: "내일 일정 알려줘"`,
     `→ {"intent":"calendar.list","payload":{"from":"${tomorrowISO}","to":"${tomorrowISO}"}}`,
@@ -94,15 +110,21 @@ function buildSystemPrompt(currentDate) {
     `User: "안녕하세요"`,
     `→ {"intent":"chat","payload":{}}`,
     "",
+    "Conversation rules:",
+    "- You may use the recent conversation and pending calendar action supplied by the user prompt.",
+    "- If there is a pending calendar action and the current user message confirms it (예, 응, 좋아, 추가해줘, 등록해줘, 진행해), return calendar.create using the pending payload.",
+    "- If the confirmation message adds details such as 거래처명, 장소, 참석자, or 메모, merge those details into title/location/notes before returning calendar.create.",
+    "- If a user asks whether an event can be scheduled and gives enough event details, return calendar.propose, not chat.",
     "If the request is ambiguous or not about calendar, default to chat."
   ].join("\n");
 }
 
-export async function classifyIntent({ prompt, model = DEFAULT_MODEL, currentDate }) {
+export async function classifyIntent({ prompt, model = DEFAULT_MODEL, currentDate, messages = [], pendingAction = null }) {
   const trimmed = String(prompt ?? "").trim();
   if (!trimmed) return { intent: "chat", payload: {} };
 
   const systemPrompt = buildSystemPrompt(currentDate || new Date().toISOString());
+  const userPrompt = buildUserPrompt({ prompt: trimmed, messages, pendingAction });
 
   let response;
   try {
@@ -116,7 +138,7 @@ export async function classifyIntent({ prompt, model = DEFAULT_MODEL, currentDat
         think: false,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: trimmed }
+          { role: "user", content: userPrompt }
         ],
         options: {
           temperature: 0.1,
@@ -146,7 +168,11 @@ export async function classifyIntent({ prompt, model = DEFAULT_MODEL, currentDat
     return { intent: "chat", payload: {}, fallbackReason: "parse_failure" };
   }
 
-  return validateIntent(parsed);
+  return applyDeterministicCorrections(
+    validateIntent(parsed),
+    trimmed,
+    currentDate || new Date().toISOString()
+  );
 }
 
 function parseClassifierJson(text) {
@@ -172,6 +198,7 @@ function validateIntent(raw) {
   }
   const payload = raw?.payload && typeof raw.payload === "object" && !Array.isArray(raw.payload) ? raw.payload : {};
 
+  if (intent === "calendar.propose") return normalizeCreateLike("calendar.propose", payload);
   if (intent === "calendar.create") return normalizeCreate(payload);
   if (intent === "calendar.list") return normalizeList(payload);
   if (intent === "calendar.delete") return normalizeDelete(payload);
@@ -179,7 +206,131 @@ function validateIntent(raw) {
   return { intent: "chat", payload: {} };
 }
 
+function applyDeterministicCorrections(result, prompt, currentDate) {
+  if (result?.intent === "calendar.list") {
+    const monthRange = extractCalendarMonthRange(prompt, currentDate);
+    if (monthRange) {
+      return {
+        ...result,
+        payload: {
+          ...result.payload,
+          from: monthRange.from,
+          to: monthRange.to
+        }
+      };
+    }
+  }
+  if (result?.intent === "calendar.create" || result?.intent === "calendar.propose") {
+    const dailyRange = extractDailyCreateRange(prompt, currentDate);
+    if (dailyRange && result.payload?.start) {
+      const start = moveIsoDate(result.payload.start, dailyRange.from, result.payload.allDay);
+      const end = moveIsoDate(result.payload.end || result.payload.start, dailyRange.from, result.payload.allDay);
+      return {
+        ...result,
+        payload: {
+          ...result.payload,
+          start,
+          end,
+          repeat: {
+            frequency: "daily",
+            from: dailyRange.from,
+            to: dailyRange.to
+          }
+        }
+      };
+    }
+  }
+  return result;
+}
+
+function extractDailyCreateRange(prompt, currentDate) {
+  const text = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const hasCreateVerb = /(등록|추가|잡아|예약|넣어|생성)/.test(text);
+  const hasDailyScope = /(전체\s*일정에|전체\s*기간|매일|날마다|매\s*일)/.test(text);
+  if (!hasCreateVerb || !hasDailyScope) return null;
+  return extractCalendarMonthRange(text, currentDate);
+}
+
+function extractCalendarMonthRange(prompt, currentDate) {
+  const text = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  const baseDate = new Date(currentDate);
+  const baseYear = Number.isFinite(baseDate.getTime()) ? baseDate.getFullYear() : new Date().getFullYear();
+  const baseMonthIndex = Number.isFinite(baseDate.getTime()) ? baseDate.getMonth() : new Date().getMonth();
+
+  if (/(이번|이)\s*달|이번달|이달/.test(text)) {
+    return buildMonthRange(baseYear, baseMonthIndex + 1);
+  }
+  if (/다음\s*달|다음달|내달/.test(text)) {
+    const date = new Date(baseYear, baseMonthIndex + 1, 1);
+    return buildMonthRange(date.getFullYear(), date.getMonth() + 1);
+  }
+  if (/지난\s*달|지난달|전월/.test(text)) {
+    const date = new Date(baseYear, baseMonthIndex - 1, 1);
+    return buildMonthRange(date.getFullYear(), date.getMonth() + 1);
+  }
+
+  const explicitMonth = /(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월/.exec(text);
+  if (!explicitMonth) return null;
+
+  const month = Number(explicitMonth[2]);
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+  const year = explicitMonth[1] ? Number(explicitMonth[1]) : baseYear;
+  return buildMonthRange(year, month);
+}
+
+function buildMonthRange(year, month) {
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, "0");
+  return {
+    from: `${year}-${mm}-01`,
+    to: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`
+  };
+}
+
+function moveIsoDate(value, dateISO, allDay) {
+  const normalizedDate = normalizeDateOnly(dateISO);
+  if (!normalizedDate) return value;
+  if (allDay) return normalizedDate;
+  const time = /T(\d{2}:\d{2})/.exec(String(value || ""))?.[1] || "09:00";
+  return `${normalizedDate}T${time}`;
+}
+
+function buildUserPrompt({ prompt, messages, pendingAction }) {
+  const parts = [];
+  const recentMessages = Array.isArray(messages) ? messages : [];
+  const previousMessages = recentMessages
+    .slice(-8)
+    .filter((message, index, list) => {
+      const content = String(message?.content ?? "").trim();
+      if (!content) return false;
+      return !(index === list.length - 1 && content === prompt);
+    })
+    .map((message) => {
+      const role = message.role === "assistant" ? "assistant" : "user";
+      const content = String(message.content ?? "").replace(/\s+/g, " ").slice(0, 900);
+      return `${role}: ${content}`;
+    });
+
+  if (previousMessages.length) {
+    parts.push(`Recent conversation:\n${previousMessages.join("\n")}`);
+  }
+
+  if (pendingAction?.intent && pendingAction?.payload) {
+    parts.push(`Pending calendar action JSON:\n${JSON.stringify(pendingAction)}`);
+  }
+
+  parts.push(`Current user message:\n${prompt}`);
+  return parts.join("\n\n");
+}
+
 function normalizeCreate(payload) {
+  return normalizeCreateLike("calendar.create", payload);
+}
+
+function normalizeCreateLike(intent, payload) {
   const title = String(payload.title ?? "").trim();
   if (!title) return { intent: "chat", payload: {}, fallbackReason: "create_missing_title" };
 
@@ -202,11 +353,22 @@ function normalizeCreate(payload) {
     end,
     reminders: normalizeReminders(payload.reminders ?? payload.reminderMinutesBefore)
   };
+  const repeat = normalizeRepeat(payload.repeat);
+  if (repeat) out.repeat = repeat;
   const location = String(payload.location ?? "").trim();
   if (location) out.location = location;
   const notes = String(payload.notes ?? "").trim();
   if (notes) out.notes = notes;
-  return { intent: "calendar.create", payload: out };
+  return { intent, payload: out };
+}
+
+function normalizeRepeat(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (value.frequency !== "daily") return null;
+  const from = normalizeDateOnly(value.from);
+  const to = normalizeDateOnly(value.to);
+  if (!from || !to || compareIso(to, from) < 0) return null;
+  return { frequency: "daily", from, to };
 }
 
 function normalizeList(payload) {
