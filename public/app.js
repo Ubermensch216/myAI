@@ -18,6 +18,13 @@ const DEFAULT_FAVICON_HREF = "/default-icon.svg";
 const state = {
   rooms: [],
   activeRoomId: null,
+  activeView: "chat",
+  calendar: {
+    events: [],
+    cursorISO: todayDateISO(),
+    editingEventId: null,
+    selectedColor: "accent"
+  },
   settings: {
     userTitle: "사용자님",
     aiName: "Ollama Chatter",
@@ -35,6 +42,18 @@ const state = {
   db: null,
   cryptoKey: null
 };
+
+function todayDateISO() {
+  const now = new Date();
+  return formatLocalDate(now);
+}
+
+function formatLocalDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 const elements = {
   modelInput: document.querySelector("#modelInput"),
@@ -82,7 +101,38 @@ const elements = {
   userAvatarPicker: document.querySelector("#userAvatarPicker"),
   userAvatarTrigger: document.querySelector("#userAvatarTrigger"),
   changeAvatarButton: document.querySelector("#changeAvatarButton"),
-  removeAvatarButton: document.querySelector("#removeAvatarButton")
+  removeAvatarButton: document.querySelector("#removeAvatarButton"),
+  appShell: document.querySelector(".app-shell"),
+  primaryNavItems: Array.from(document.querySelectorAll(".primary-nav-item")),
+  sidebarContents: Array.from(document.querySelectorAll(".sidebar-content")),
+  calendarArea: document.querySelector(".calendar-area"),
+  chatArea: document.querySelector(".chat-area"),
+  calendarMonthLabel: document.querySelector("#calendarMonthLabel"),
+  calendarPrevButton: document.querySelector("#calendarPrevButton"),
+  calendarNextButton: document.querySelector("#calendarNextButton"),
+  calendarTodayButton: document.querySelector("#calendarTodayButton"),
+  calendarGrid: document.querySelector("#calendarGrid"),
+  newEventButton: document.querySelector("#newEventButton"),
+  upcomingEventsList: document.querySelector("#upcomingEventsList"),
+  eventDialog: document.querySelector("#eventDialog"),
+  eventForm: document.querySelector("#eventForm"),
+  eventDialogTitle: document.querySelector("#eventDialogTitle"),
+  closeEventDialogButton: document.querySelector("#closeEventDialogButton"),
+  cancelEventButton: document.querySelector("#cancelEventButton"),
+  deleteEventButton: document.querySelector("#deleteEventButton"),
+  eventTitleInput: document.querySelector("#eventTitleInput"),
+  eventAllDayInput: document.querySelector("#eventAllDayInput"),
+  eventStartInput: document.querySelector("#eventStartInput"),
+  eventEndInput: document.querySelector("#eventEndInput"),
+  eventLocationInput: document.querySelector("#eventLocationInput"),
+  eventNotesInput: document.querySelector("#eventNotesInput"),
+  eventColorOptions: Array.from(document.querySelectorAll(".event-color-option")),
+  calendarCommandForm: document.querySelector("#calendarCommandForm"),
+  calendarCommandInput: document.querySelector("#calendarCommandInput"),
+  calendarCommandSendButton: document.querySelector("#calendarCommandSendButton"),
+  calendarCommandResult: document.querySelector("#calendarCommandResult"),
+  calendarCommandResultBody: document.querySelector("#calendarCommandResultBody"),
+  calendarCommandResultClose: document.querySelector("#calendarCommandResultClose")
 };
 
 let saveTimer = null;
@@ -102,6 +152,53 @@ async function init() {
 }
 
 function bindEvents() {
+  for (const item of elements.primaryNavItems) {
+    item.addEventListener("click", () => setActiveView(item.dataset.viewTarget));
+  }
+
+  if (elements.newEventButton) {
+    elements.newEventButton.addEventListener("click", () => openEventDialogForCreate(state.calendar.cursorISO));
+  }
+  if (elements.calendarPrevButton) {
+    elements.calendarPrevButton.addEventListener("click", () => shiftCalendarMonth(-1));
+  }
+  if (elements.calendarNextButton) {
+    elements.calendarNextButton.addEventListener("click", () => shiftCalendarMonth(1));
+  }
+  if (elements.calendarTodayButton) {
+    elements.calendarTodayButton.addEventListener("click", jumpCalendarToToday);
+  }
+  if (elements.eventForm) {
+    elements.eventForm.addEventListener("submit", submitEventForm);
+  }
+  if (elements.closeEventDialogButton) {
+    elements.closeEventDialogButton.addEventListener("click", closeEventDialog);
+  }
+  if (elements.cancelEventButton) {
+    elements.cancelEventButton.addEventListener("click", closeEventDialog);
+  }
+  if (elements.deleteEventButton) {
+    elements.deleteEventButton.addEventListener("click", deleteCurrentEvent);
+  }
+  if (elements.eventAllDayInput) {
+    elements.eventAllDayInput.addEventListener("change", () => {
+      applyAllDayUiState(elements.eventAllDayInput.checked);
+    });
+  }
+  for (const option of elements.eventColorOptions) {
+    option.addEventListener("click", (event) => {
+      event.preventDefault();
+      setEventColor(option.dataset.color);
+    });
+  }
+
+  if (elements.calendarCommandForm) {
+    elements.calendarCommandForm.addEventListener("submit", submitCalendarCommand);
+  }
+  if (elements.calendarCommandResultClose) {
+    elements.calendarCommandResultClose.addEventListener("click", hideCalendarCommandResult);
+  }
+
   elements.newRoomButton.addEventListener("click", createNewRoom);
 
   elements.roomTitleInput.addEventListener("input", () => {
@@ -328,6 +425,10 @@ async function loadAppState() {
 
   state.rooms = Array.isArray(stored.rooms) ? stored.rooms : [];
   state.activeRoomId = stored.activeRoomId || null;
+  state.activeView = stored.activeView === "calendar" ? "calendar" : "chat";
+  const storedEvents = Array.isArray(stored.calendar?.events) ? stored.calendar.events : [];
+  state.calendar.events = storedEvents.filter((event) => event && event.id && event.start);
+  state.calendar.cursorISO = stored.calendar?.cursorISO || todayDateISO();
   const appName = stored.settings?.appName || stored.settings?.aiName || "Ollama Chatter";
   state.settings = {
     userTitle: stored.settings?.userTitle || "사용자님",
@@ -347,6 +448,11 @@ async function saveAppState() {
   await saveEncryptedRecord(APP_STATE_KEY, {
     rooms: state.rooms,
     activeRoomId: state.activeRoomId,
+    activeView: state.activeView,
+    calendar: {
+      events: state.calendar.events,
+      cursorISO: state.calendar.cursorISO
+    },
     settings: state.settings,
     savedAt: new Date().toISOString()
   });
@@ -531,9 +637,34 @@ function getActiveRoom() {
 
 function renderAll() {
   renderBrand();
+  renderPrimaryNav();
   renderRooms();
   renderHeader();
   renderMessages();
+  renderCalendar();
+}
+
+function renderPrimaryNav() {
+  const view = state.activeView === "calendar" ? "calendar" : "chat";
+  if (elements.appShell) elements.appShell.dataset.view = view;
+  for (const item of elements.primaryNavItems) {
+    const isActive = item.dataset.viewTarget === view;
+    item.classList.toggle("active", isActive);
+    item.setAttribute("aria-pressed", isActive ? "true" : "false");
+  }
+  for (const content of elements.sidebarContents) {
+    content.hidden = content.dataset.viewContent !== view;
+  }
+  if (elements.calendarArea) elements.calendarArea.hidden = view !== "calendar";
+  if (elements.chatArea) elements.chatArea.hidden = view !== "chat";
+}
+
+function setActiveView(view) {
+  const next = view === "calendar" ? "calendar" : "chat";
+  if (state.activeView === next) return;
+  state.activeView = next;
+  scheduleSave();
+  renderAll();
 }
 
 function renderBrand() {
@@ -658,9 +789,455 @@ function renderMessages() {
       messageIndex: index,
       suggestions: message.suggestions,
       visualization: message.visualization,
+      eventCards: message.eventCards,
       createdAt: message.createdAt
     });
   }
+}
+
+function renderCalendar() {
+  if (!elements.calendarGrid) return;
+  renderCalendarHeader();
+  renderCalendarGrid();
+  renderUpcomingEvents();
+}
+
+function renderCalendarHeader() {
+  const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
+  if (elements.calendarMonthLabel) {
+    elements.calendarMonthLabel.textContent = `${cursor.getFullYear()}년 ${cursor.getMonth() + 1}월`;
+  }
+}
+
+function renderCalendarGrid() {
+  const grid = elements.calendarGrid;
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startOffset = firstOfMonth.getDay();
+  const gridStart = new Date(year, month, 1 - startOffset);
+  const todayISO = todayDateISO();
+
+  const eventsByDate = new Map();
+  for (const event of state.calendar.events) {
+    const startDate = (event.start ?? "").slice(0, 10);
+    if (!startDate) continue;
+    if (!eventsByDate.has(startDate)) eventsByDate.set(startDate, []);
+    eventsByDate.get(startDate).push(event);
+  }
+  for (const list of eventsByDate.values()) {
+    list.sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  }
+
+  for (let cellIndex = 0; cellIndex < 42; cellIndex += 1) {
+    const cellDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + cellIndex);
+    const cellISO = formatLocalDate(cellDate);
+    const isOutside = cellDate.getMonth() !== month;
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "calendar-day-cell";
+    if (isOutside) cell.classList.add("outside");
+    if (cellISO === todayISO) cell.classList.add("today");
+    cell.dataset.date = cellISO;
+    cell.dataset.weekday = String(cellDate.getDay());
+    cell.addEventListener("click", (event) => {
+      if (event.target !== cell && event.target.closest(".calendar-event-chip")) return;
+      openEventDialogForCreate(cellISO);
+    });
+
+    const number = document.createElement("div");
+    number.className = "calendar-day-number";
+    number.textContent = String(cellDate.getDate());
+    cell.append(number);
+
+    const eventList = eventsByDate.get(cellISO) ?? [];
+    if (eventList.length) {
+      const eventsContainer = document.createElement("div");
+      eventsContainer.className = "calendar-day-events";
+      const visibleCount = Math.min(eventList.length, 3);
+      for (let index = 0; index < visibleCount; index += 1) {
+        const event = eventList[index];
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "calendar-event-chip";
+        chip.dataset.color = event.color || "accent";
+        chip.title = formatEventChipTitle(event);
+        chip.textContent = formatEventChipLabel(event);
+        chip.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          openEventDialogForEdit(event.id);
+        });
+        eventsContainer.append(chip);
+      }
+      if (eventList.length > visibleCount) {
+        const more = document.createElement("div");
+        more.className = "calendar-event-more";
+        more.textContent = `+${eventList.length - visibleCount}`;
+        eventsContainer.append(more);
+      }
+      cell.append(eventsContainer);
+    }
+
+    grid.append(cell);
+  }
+}
+
+function renderUpcomingEvents() {
+  const list = elements.upcomingEventsList;
+  if (!list) return;
+  list.innerHTML = "";
+
+  const now = new Date();
+  const upcoming = state.calendar.events
+    .filter((event) => {
+      const start = parseEventStart(event);
+      if (!start) return false;
+      if (event.allDay) {
+        const endOfDay = new Date(start);
+        endOfDay.setHours(23, 59, 59, 999);
+        return endOfDay >= now;
+      }
+      return start >= now;
+    })
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+    .slice(0, 8);
+
+  if (!upcoming.length) {
+    const empty = document.createElement("div");
+    empty.className = "upcoming-event-empty";
+    empty.textContent = "예정된 일정이 없습니다.";
+    list.append(empty);
+    return;
+  }
+
+  for (const event of upcoming) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "upcoming-event-item";
+    item.addEventListener("click", () => openEventDialogForEdit(event.id));
+
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "upcoming-event-title";
+    title.textContent = event.title || "(제목 없음)";
+    const time = document.createElement("div");
+    time.className = "upcoming-event-time";
+    time.textContent = formatUpcomingTime(event);
+    titleWrap.append(title, time);
+
+    const dot = document.createElement("span");
+    dot.className = "calendar-event-chip";
+    dot.dataset.color = event.color || "accent";
+    dot.style.width = "10px";
+    dot.style.height = "10px";
+    dot.style.padding = "0";
+    dot.style.borderRadius = "50%";
+    dot.setAttribute("aria-hidden", "true");
+
+    item.append(titleWrap, dot);
+    list.append(item);
+  }
+}
+
+function parseDateISO(value) {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function parseEventStart(event) {
+  if (!event?.start) return null;
+  const value = event.allDay ? `${String(event.start).slice(0, 10)}T00:00` : event.start;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseEventEnd(event) {
+  if (!event?.end) return null;
+  const value = event.allDay ? `${String(event.end).slice(0, 10)}T23:59` : event.end;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatEventChipLabel(event) {
+  if (event.allDay) return event.title || "(제목 없음)";
+  const start = parseEventStart(event);
+  if (!start) return event.title || "(제목 없음)";
+  const hh = String(start.getHours()).padStart(2, "0");
+  const mm = String(start.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm} ${event.title || "(제목 없음)"}`;
+}
+
+function formatEventChipTitle(event) {
+  const lines = [event.title || "(제목 없음)"];
+  if (event.allDay) {
+    lines.push(`종일 · ${String(event.start).slice(0, 10)}`);
+  } else {
+    const start = parseEventStart(event);
+    const end = parseEventEnd(event);
+    if (start && end) {
+      lines.push(`${formatDateTime(start)} – ${formatDateTime(end)}`);
+    }
+  }
+  if (event.location) lines.push(`장소: ${event.location}`);
+  return lines.join("\n");
+}
+
+function formatUpcomingTime(event) {
+  const start = parseEventStart(event);
+  if (!start) return "";
+  const dateLabel = `${start.getMonth() + 1}월 ${start.getDate()}일`;
+  if (event.allDay) return `${dateLabel} · 종일`;
+  const hh = String(start.getHours()).padStart(2, "0");
+  const mm = String(start.getMinutes()).padStart(2, "0");
+  return `${dateLabel} ${hh}:${mm}`;
+}
+
+function formatDateTime(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d} ${hh}:${mm}`;
+}
+
+function shiftCalendarMonth(delta) {
+  const cursor = parseDateISO(state.calendar.cursorISO) ?? new Date();
+  const next = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
+  state.calendar.cursorISO = formatLocalDate(next);
+  scheduleSave();
+  renderCalendar();
+}
+
+function jumpCalendarToToday() {
+  state.calendar.cursorISO = todayDateISO();
+  scheduleSave();
+  renderCalendar();
+}
+
+function setEventColor(color) {
+  state.calendar.selectedColor = color || "accent";
+  for (const option of elements.eventColorOptions) {
+    option.classList.toggle("active", option.dataset.color === state.calendar.selectedColor);
+  }
+}
+
+function toLocalInputValue(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
+function applyAllDayUiState(allDay) {
+  const startValue = elements.eventStartInput.value;
+  const endValue = elements.eventEndInput.value;
+  if (allDay) {
+    elements.eventStartInput.type = "date";
+    elements.eventEndInput.type = "date";
+    elements.eventStartInput.value = (startValue || "").slice(0, 10);
+    elements.eventEndInput.value = (endValue || "").slice(0, 10);
+  } else {
+    elements.eventStartInput.type = "datetime-local";
+    elements.eventEndInput.type = "datetime-local";
+    if (startValue && startValue.length === 10) {
+      elements.eventStartInput.value = `${startValue}T09:00`;
+    }
+    if (endValue && endValue.length === 10) {
+      elements.eventEndInput.value = `${endValue}T10:00`;
+    }
+  }
+}
+
+function openEventDialogForCreate(dateISO) {
+  state.calendar.editingEventId = null;
+  elements.eventDialogTitle.textContent = "새 일정";
+  elements.eventForm.reset();
+  elements.eventAllDayInput.checked = false;
+  elements.eventStartInput.type = "datetime-local";
+  elements.eventEndInput.type = "datetime-local";
+  const baseDate = parseDateISO(dateISO) ?? new Date();
+  const start = new Date(baseDate);
+  start.setHours(9, 0, 0, 0);
+  const end = new Date(start);
+  end.setHours(start.getHours() + 1);
+  elements.eventStartInput.value = toLocalInputValue(start);
+  elements.eventEndInput.value = toLocalInputValue(end);
+  setEventColor("accent");
+  elements.deleteEventButton.hidden = true;
+  showEventDialog();
+}
+
+function openEventDialogForEdit(eventId) {
+  const event = state.calendar.events.find((item) => item.id === eventId);
+  if (!event) return;
+  state.calendar.editingEventId = event.id;
+  elements.eventDialogTitle.textContent = "일정 편집";
+  elements.eventForm.reset();
+  elements.eventTitleInput.value = event.title || "";
+  elements.eventAllDayInput.checked = !!event.allDay;
+  if (event.allDay) {
+    elements.eventStartInput.type = "date";
+    elements.eventEndInput.type = "date";
+    elements.eventStartInput.value = String(event.start || "").slice(0, 10);
+    elements.eventEndInput.value = String(event.end || event.start || "").slice(0, 10);
+  } else {
+    elements.eventStartInput.type = "datetime-local";
+    elements.eventEndInput.type = "datetime-local";
+    elements.eventStartInput.value = String(event.start || "").slice(0, 16);
+    elements.eventEndInput.value = String(event.end || event.start || "").slice(0, 16);
+  }
+  elements.eventLocationInput.value = event.location || "";
+  elements.eventNotesInput.value = event.notes || "";
+  setEventColor(event.color || "accent");
+  elements.deleteEventButton.hidden = false;
+  showEventDialog();
+}
+
+function showEventDialog() {
+  if (typeof elements.eventDialog.showModal === "function") {
+    elements.eventDialog.showModal();
+  } else {
+    elements.eventDialog.setAttribute("open", "");
+  }
+  setTimeout(() => elements.eventTitleInput.focus(), 0);
+}
+
+function closeEventDialog() {
+  if (typeof elements.eventDialog.close === "function") {
+    elements.eventDialog.close();
+  } else {
+    elements.eventDialog.removeAttribute("open");
+  }
+  state.calendar.editingEventId = null;
+}
+
+function submitEventForm(formEvent) {
+  formEvent.preventDefault();
+  const title = elements.eventTitleInput.value.trim();
+  if (!title) {
+    elements.eventTitleInput.focus();
+    return;
+  }
+  const allDay = elements.eventAllDayInput.checked;
+  const startRaw = elements.eventStartInput.value;
+  const endRaw = elements.eventEndInput.value;
+  if (!startRaw || !endRaw) {
+    elements.eventStartInput.focus();
+    return;
+  }
+
+  const startDate = new Date(allDay ? `${startRaw}T00:00` : startRaw);
+  const endDate = new Date(allDay ? `${endRaw}T23:59` : endRaw);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    elements.eventStartInput.focus();
+    return;
+  }
+  if (endDate < startDate) {
+    elements.eventEndInput.focus();
+    return;
+  }
+
+  const payload = {
+    title,
+    allDay,
+    start: allDay ? startRaw.slice(0, 10) : startRaw.slice(0, 16),
+    end: allDay ? endRaw.slice(0, 10) : endRaw.slice(0, 16),
+    location: elements.eventLocationInput.value.trim(),
+    notes: elements.eventNotesInput.value.trim(),
+    color: state.calendar.selectedColor || "accent"
+  };
+
+  const editingId = state.calendar.editingEventId;
+  const conflicts = findConflictingEvents(payload, editingId);
+  if (conflicts.length) {
+    const proceed = window.confirm(
+      `기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 저장할까요?`
+    );
+    if (!proceed) return;
+  }
+
+  const nowIso = new Date().toISOString();
+  if (editingId) {
+    const index = state.calendar.events.findIndex((item) => item.id === editingId);
+    if (index >= 0) {
+      state.calendar.events[index] = {
+        ...state.calendar.events[index],
+        ...payload,
+        updatedAt: nowIso
+      };
+    }
+  } else {
+    state.calendar.events.push({
+      id: crypto.randomUUID(),
+      ...payload,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    });
+  }
+
+  state.calendar.cursorISO = String(payload.start).slice(0, 10);
+  closeEventDialog();
+  scheduleSave();
+  renderCalendar();
+}
+
+function deleteCurrentEvent() {
+  const editingId = state.calendar.editingEventId;
+  if (!editingId) return;
+  if (!window.confirm("이 일정을 삭제할까요?")) return;
+  state.calendar.events = state.calendar.events.filter((item) => item.id !== editingId);
+  closeEventDialog();
+  scheduleSave();
+  renderCalendar();
+}
+
+function renderEventCardList(events) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-event-list";
+  for (const event of events) {
+    if (!event) continue;
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "message-event-card";
+    card.dataset.color = event.color || "accent";
+    card.title = "캘린더에서 편집";
+    card.addEventListener("click", () => {
+      const exists = state.calendar.events.some((item) => item.id === event.id);
+      if (!exists) return;
+      setActiveView("calendar");
+      state.calendar.cursorISO = String(event.start).slice(0, 10);
+      renderCalendar();
+      openEventDialogForEdit(event.id);
+    });
+
+    const title = document.createElement("div");
+    title.className = "message-event-title";
+    title.textContent = event.title || "(제목 없음)";
+
+    const time = document.createElement("div");
+    time.className = "message-event-time";
+    time.textContent = formatEventOneLine(event).replace(` · ${event.title || "(제목 없음)"}`, "");
+
+    card.append(title, time);
+    if (event.location) {
+      const loc = document.createElement("div");
+      loc.className = "message-event-location";
+      loc.textContent = `📍 ${event.location}`;
+      card.append(loc);
+    }
+    wrapper.append(card);
+  }
+  return wrapper;
 }
 
 function appendWelcomeScreen() {
@@ -818,7 +1395,370 @@ async function sendMessage(prompt) {
     createdAt: userMessage.createdAt
   });
 
+  if (hasCalendarKeyword(prompt)) {
+    const intentResult = await classifyMessageIntent(prompt);
+    if (intentResult && intentResult.intent && intentResult.intent !== "chat") {
+      await handleCalendarIntent(room, intentResult);
+      return;
+    }
+  }
+
   await requestAssistantResponse(room);
+}
+
+const CALENDAR_KEYWORD_PATTERN = /(일정|약속|회의|미팅|캘린더|스케줄|예약|행사|모임|잡아|등록|추가|취소|삭제|지워|빼|없애|옮겨|변경|바꿔|미뤄|미루|보여줘|알려줘|조회|검색|내일|모레|어제|오늘|이번\s*주|다음\s*주|지난\s*주|\d+\s*시|오전|오후)/;
+
+function hasCalendarKeyword(prompt) {
+  return CALENDAR_KEYWORD_PATTERN.test(String(prompt || ""));
+}
+
+async function classifyMessageIntent(prompt) {
+  try {
+    const response = await fetch("/api/agent/intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        model: elements.modelInput.value.trim() || "gemma3n:e2b",
+        currentDate: new Date().toISOString()
+      })
+    });
+    if (!response.ok) return { intent: "chat", payload: {} };
+    return await response.json();
+  } catch {
+    return { intent: "chat", payload: {} };
+  }
+}
+
+async function handleCalendarIntent(room, intentResult) {
+  setBusy(true);
+  const thinking = appendThinking();
+  try {
+    const outcome = await executeCalendarIntent(intentResult);
+
+    if (outcome.mutated) {
+      scheduleSave();
+      renderCalendar();
+    }
+
+    const createdAt = new Date().toISOString();
+    const assistantMessage = {
+      role: "assistant",
+      content: outcome.text,
+      createdAt,
+      eventCards: outcome.eventCards ?? []
+    };
+    room.messages.push(assistantMessage);
+    room.updatedAt = createdAt;
+    scheduleSave();
+    renderRooms();
+
+    const article = appendMessage("assistant", outcome.text, {
+      persist: false,
+      messageIndex: room.messages.length - 1,
+      createdAt,
+      eventCards: assistantMessage.eventCards
+    });
+    setAssistantAnswerTime(article, createdAt);
+  } finally {
+    removeThinking(thinking);
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+function applyCalendarCreate(payload) {
+  if (!payload?.title || !payload?.start) {
+    return { text: "일정 정보를 이해하지 못했습니다. 제목과 시간을 다시 알려주세요.", eventCards: [] };
+  }
+  const nowIso = new Date().toISOString();
+  const event = {
+    id: crypto.randomUUID(),
+    title: payload.title,
+    allDay: !!payload.allDay,
+    start: payload.start,
+    end: payload.end || payload.start,
+    location: payload.location || "",
+    notes: payload.notes || "",
+    color: "accent",
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+  state.calendar.events.push(event);
+  state.calendar.cursorISO = String(event.start).slice(0, 10);
+  return {
+    mutated: true,
+    text: `✓ 일정을 추가했습니다: ${formatEventOneLine(event)}`,
+    eventCards: [event]
+  };
+}
+
+function applyCalendarList(payload) {
+  const fromISO = payload?.from ? String(payload.from).slice(0, 10) : null;
+  const toISO = payload?.to ? String(payload.to).slice(0, 10) : null;
+  const query = (payload?.query || "").toLowerCase();
+
+  const matches = state.calendar.events
+    .filter((event) => {
+      const eventDate = String(event.start).slice(0, 10);
+      if (fromISO && eventDate < fromISO) return false;
+      if (toISO && eventDate > toISO) return false;
+      if (query && !(event.title || "").toLowerCase().includes(query)) return false;
+      return true;
+    })
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+
+  if (!matches.length) {
+    const range = fromISO || toISO
+      ? `${fromISO || "?"} ~ ${toISO || "?"} 범위`
+      : "조건";
+    return { text: `해당 ${range}에서 일정을 찾지 못했습니다.`, eventCards: [] };
+  }
+
+  const header = `${matches.length}개의 일정을 찾았습니다.`;
+  return { text: header, eventCards: matches.slice(0, 20) };
+}
+
+function applyCalendarDelete(payload) {
+  const matchTitle = (payload?.matchTitle || "").toLowerCase();
+  const fromISO = payload?.from ? String(payload.from).slice(0, 10) : null;
+  const toISO = payload?.to ? String(payload.to).slice(0, 10) : null;
+
+  if (!matchTitle && !fromISO && !toISO) {
+    return { text: "삭제할 일정의 제목 또는 날짜를 알려주세요.", eventCards: [] };
+  }
+
+  const candidates = state.calendar.events.filter((event) => {
+    if (matchTitle && !(event.title || "").toLowerCase().includes(matchTitle)) return false;
+    const eventDate = String(event.start).slice(0, 10);
+    if (fromISO && eventDate < fromISO) return false;
+    if (toISO && eventDate > toISO) return false;
+    return true;
+  });
+
+  if (!candidates.length) {
+    const desc = matchTitle
+      ? `"${payload.matchTitle}"`
+      : formatDateRangeLabel(fromISO, toISO);
+    return { text: `${desc} 와 일치하는 일정을 찾지 못했습니다.`, eventCards: [] };
+  }
+
+  if (!matchTitle) {
+    const ids = new Set(candidates.map((event) => event.id));
+    state.calendar.events = state.calendar.events.filter((event) => !ids.has(event.id));
+    const dateLabel = formatDateRangeLabel(fromISO, toISO);
+    return {
+      mutated: true,
+      text: `✓ ${dateLabel}의 일정 ${candidates.length}건을 삭제했습니다.`,
+      eventCards: candidates.slice(0, 10)
+    };
+  }
+
+  if (candidates.length > 1) {
+    return {
+      text: `"${payload.matchTitle}" 와 일치하는 일정이 ${candidates.length}건 있습니다. 좀 더 구체적으로 (날짜 등) 알려주세요.`,
+      eventCards: candidates.slice(0, 10)
+    };
+  }
+
+  const target = candidates[0];
+  state.calendar.events = state.calendar.events.filter((event) => event.id !== target.id);
+  return {
+    mutated: true,
+    text: `✓ 일정을 삭제했습니다: ${formatEventOneLine(target)}`,
+    eventCards: []
+  };
+}
+
+function formatDateRangeLabel(fromISO, toISO) {
+  if (fromISO && toISO && fromISO === toISO) return formatKoreanDate(fromISO);
+  if (fromISO && toISO) return `${formatKoreanDate(fromISO)} ~ ${formatKoreanDate(toISO)}`;
+  if (fromISO) return `${formatKoreanDate(fromISO)} 이후`;
+  if (toISO) return `${formatKoreanDate(toISO)} 이전`;
+  return "범위";
+}
+
+function formatKoreanDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return String(iso || "");
+  return `${Number(m[2])}월 ${Number(m[3])}일`;
+}
+
+function applyCalendarUpdate(payload) {
+  const matchTitle = (payload?.matchTitle || "").toLowerCase();
+  const changes = payload?.changes || {};
+  if (!matchTitle) {
+    return { text: "수정할 일정의 제목을 알려주세요.", eventCards: [] };
+  }
+  if (!Object.keys(changes).length) {
+    return { text: "어떤 항목을 바꿀지 알려주세요.", eventCards: [] };
+  }
+  const candidates = state.calendar.events.filter((event) =>
+    (event.title || "").toLowerCase().includes(matchTitle)
+  );
+  if (!candidates.length) {
+    return { text: `"${payload.matchTitle}" 와 일치하는 일정을 찾지 못했습니다.`, eventCards: [] };
+  }
+  if (candidates.length > 1) {
+    return {
+      text: `"${payload.matchTitle}" 와 일치하는 일정이 ${candidates.length}건 있습니다. 좀 더 구체적으로 알려주세요.`,
+      eventCards: candidates.slice(0, 10)
+    };
+  }
+  const target = candidates[0];
+  const index = state.calendar.events.findIndex((item) => item.id === target.id);
+  const merged = {
+    ...target,
+    ...changes,
+    updatedAt: new Date().toISOString()
+  };
+  state.calendar.events[index] = merged;
+  state.calendar.cursorISO = String(merged.start).slice(0, 10);
+  return {
+    mutated: true,
+    text: `✓ 일정을 수정했습니다: ${formatEventOneLine(merged)}`,
+    eventCards: [merged]
+  };
+}
+
+function formatEventOneLine(event) {
+  const start = parseEventStart(event);
+  if (!start) return event.title || "(제목 없음)";
+  const dateLabel = `${start.getMonth() + 1}월 ${start.getDate()}일`;
+  if (event.allDay) return `${dateLabel} 종일 · ${event.title || "(제목 없음)"}`;
+  const hh = String(start.getHours()).padStart(2, "0");
+  const mm = String(start.getMinutes()).padStart(2, "0");
+  return `${dateLabel} ${hh}:${mm} · ${event.title || "(제목 없음)"}`;
+}
+
+function findConflictingEvents({ start, end, allDay }, excludeId) {
+  if (!start) return [];
+  const newStartMs = (allDay ? new Date(`${String(start).slice(0, 10)}T00:00`) : new Date(start)).getTime();
+  const newEndRaw = end || start;
+  const newEndMs = (allDay ? new Date(`${String(newEndRaw).slice(0, 10)}T23:59`) : new Date(newEndRaw)).getTime();
+  if (Number.isNaN(newStartMs) || Number.isNaN(newEndMs)) return [];
+
+  return state.calendar.events.filter((event) => {
+    if (event.id === excludeId) return false;
+    const existingStart = parseEventStart(event);
+    const existingEnd = parseEventEnd(event) || existingStart;
+    if (!existingStart || !existingEnd) return false;
+    return existingStart.getTime() < newEndMs && existingEnd.getTime() > newStartMs;
+  });
+}
+
+function buildConflictWarning(conflicts) {
+  return conflicts
+    .slice(0, 3)
+    .map((event) => `· ${formatEventOneLine(event)}`)
+    .join("\n");
+}
+
+async function submitCalendarCommand(formEvent) {
+  formEvent.preventDefault();
+  const prompt = elements.calendarCommandInput.value.trim();
+  if (!prompt) return;
+  if (state.busy) return;
+
+  setCalendarCommandBusy(true);
+  showCalendarCommandResult({ text: "처리 중…", kind: "info", events: [] });
+  try {
+    const intentResult = hasCalendarKeyword(prompt)
+      ? await classifyMessageIntent(prompt)
+      : { intent: "chat", payload: {} };
+
+    if (!intentResult || intentResult.intent === "chat") {
+      showCalendarCommandResult({
+        text: "캘린더와 관련된 요청만 처리할 수 있습니다. 채팅 뷰에서 다시 시도해 주세요.",
+        kind: "warning",
+        events: []
+      });
+      return;
+    }
+
+    const outcome = await executeCalendarIntent(intentResult);
+    if (outcome.mutated) {
+      scheduleSave();
+      renderCalendar();
+    }
+    showCalendarCommandResult({
+      text: outcome.text,
+      kind: outcome.kind || "info",
+      events: outcome.eventCards || []
+    });
+    elements.calendarCommandInput.value = "";
+  } finally {
+    setCalendarCommandBusy(false);
+    elements.calendarCommandInput.focus();
+  }
+}
+
+async function executeCalendarIntent(intentResult) {
+  const { intent, payload } = intentResult;
+  if (intent === "calendar.create") return await applyCalendarCreateAsync(payload);
+  if (intent === "calendar.list") return applyCalendarList(payload);
+  if (intent === "calendar.delete") return applyCalendarDelete(payload);
+  if (intent === "calendar.update") return applyCalendarUpdate(payload);
+  return { text: "처리할 수 없는 일정 의도입니다.", eventCards: [] };
+}
+
+async function applyCalendarCreateAsync(payload) {
+  if (!payload?.title || !payload?.start) {
+    return { text: "일정 정보를 이해하지 못했습니다. 제목과 시간을 다시 알려주세요.", eventCards: [] };
+  }
+  const conflicts = findConflictingEvents({
+    start: payload.start,
+    end: payload.end || payload.start,
+    allDay: !!payload.allDay
+  });
+  if (conflicts.length) {
+    const proceed = window.confirm(
+      `기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 추가할까요?`
+    );
+    if (!proceed) {
+      return {
+        text: "기존 일정과 겹쳐 추가하지 않았습니다.",
+        kind: "warning",
+        eventCards: conflicts.slice(0, 3)
+      };
+    }
+  }
+  const result = applyCalendarCreate(payload);
+  if (conflicts.length && result.mutated) {
+    result.text = `${result.text} (⚠️ 기존 일정과 시간이 겹칩니다)`;
+    result.kind = "warning";
+  }
+  return result;
+}
+
+function setCalendarCommandBusy(busy) {
+  if (!elements.calendarCommandForm) return;
+  elements.calendarCommandForm.classList.toggle("busy", !!busy);
+  elements.calendarCommandSendButton.textContent = busy ? "처리 중…" : "요청";
+}
+
+function showCalendarCommandResult({ text, kind = "info", events = [] }) {
+  if (!elements.calendarCommandResult) return;
+  const body = elements.calendarCommandResultBody;
+  body.innerHTML = "";
+  elements.calendarCommandResult.classList.remove("kind-info", "kind-warning", "kind-error");
+  elements.calendarCommandResult.classList.add(`kind-${kind}`);
+
+  const textEl = document.createElement("div");
+  textEl.className = "calendar-command-result-text";
+  textEl.textContent = text;
+  body.append(textEl);
+
+  if (Array.isArray(events) && events.length) {
+    body.append(renderEventCardList(events));
+  }
+  elements.calendarCommandResult.hidden = false;
+}
+
+function hideCalendarCommandResult() {
+  if (!elements.calendarCommandResult) return;
+  elements.calendarCommandResult.hidden = true;
+  elements.calendarCommandResultBody.innerHTML = "";
 }
 
 async function requestAssistantResponse(room) {
@@ -1089,6 +2029,10 @@ function appendMessage(role, text, options = {}) {
     if (options.visualization) {
       body.append(renderVisualizationSpec(options.visualization));
       body.classList.add("has-visualization");
+    }
+    if (Array.isArray(options.eventCards) && options.eventCards.length) {
+      body.append(renderEventCardList(options.eventCards));
+      body.classList.add("has-event-cards");
     }
   } else {
     body.textContent = text;

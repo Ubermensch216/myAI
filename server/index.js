@@ -9,6 +9,7 @@ import { serializeDocumentForClient as serializeClientDocument } from "./documen
 import { normalizeUploadFileName as repairUploadFileName } from "../public/textRepair.js";
 import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, generateVisualizationSpec, listModels, streamChat } from "./ollama.js";
 import { parseUpload } from "./parsers.js";
+import { classifyIntent } from "./calendarAgent.js";
 
 loadLocalEnv();
 
@@ -165,6 +166,24 @@ app.post("/api/followups", async (request, response) => {
     response.json({ suggestions });
   } catch (error) {
     response.status(500).json({ error: error.message, suggestions: [] });
+  }
+});
+
+app.post("/api/agent/intent", async (request, response) => {
+  const prompt = typeof request.body?.prompt === "string" ? request.body.prompt : "";
+  const model = request.body?.model || DEFAULT_MODEL;
+  const currentDate = typeof request.body?.currentDate === "string" ? request.body.currentDate : new Date().toISOString();
+
+  if (!prompt.trim()) {
+    response.json({ intent: "chat", payload: {} });
+    return;
+  }
+
+  try {
+    const result = await classifyIntent({ prompt, model, currentDate });
+    response.json(result);
+  } catch (error) {
+    response.json({ intent: "chat", payload: {}, fallbackReason: `server_error: ${error.message}` });
   }
 });
 

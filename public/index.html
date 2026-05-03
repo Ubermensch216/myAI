@@ -8,24 +8,57 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <aside class="sidebar" aria-label="대화방 및 파일">
+    <main class="app-shell" data-view="chat">
+      <aside class="sidebar" aria-label="사이드바">
         <section class="brand" aria-label="시스템 배너">
           <h1 id="appNameText" class="sr-only">Ollama Chatter</h1>
           <img id="appBannerImg" class="app-banner" src="/default-banner.png" alt="수비서 AI" />
         </section>
 
-        <button id="newRoomButton" class="new-room-button" type="button" title="새 대화 (Shift+N)">
-          <span class="new-room-label">새 대화</span>
-          <span class="shortcut-hint" aria-hidden="true">Shift+N</span>
-        </button>
+        <nav id="primaryNav" class="primary-nav" aria-label="주요 메뉴">
+          <button class="primary-nav-item active" type="button" data-view-target="chat" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>대화</span>
+          </button>
+          <button class="primary-nav-item" type="button" data-view-target="calendar" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="17" rx="2"></rect>
+              <path d="M16 2v4"></path>
+              <path d="M8 2v4"></path>
+              <path d="M3 10h18"></path>
+            </svg>
+            <span>캘린더</span>
+          </button>
+        </nav>
 
-        <section class="panel room-panel">
-          <div class="panel-heading">
-            <h2>대화방</h2>
-          </div>
-          <div id="roomList" class="room-list"></div>
-        </section>
+        <div class="sidebar-content" data-view-content="chat">
+          <button id="newRoomButton" class="new-room-button" type="button" title="새 대화 (Shift+N)">
+            <span class="new-room-label">새 대화</span>
+            <span class="shortcut-hint" aria-hidden="true">Shift+N</span>
+          </button>
+
+          <section class="panel room-panel">
+            <div class="panel-heading">
+              <h2>대화방</h2>
+            </div>
+            <div id="roomList" class="room-list"></div>
+          </section>
+        </div>
+
+        <div class="sidebar-content" data-view-content="calendar" hidden>
+          <button id="newEventButton" class="new-room-button" type="button" title="새 일정">
+            <span class="new-room-label">새 일정</span>
+          </button>
+
+          <section class="panel calendar-sidebar-panel">
+            <div class="panel-heading">
+              <h2>다가오는 일정</h2>
+            </div>
+            <div id="upcomingEventsList" class="upcoming-event-list"></div>
+          </section>
+        </div>
 
       </aside>
 
@@ -65,7 +98,102 @@
           <div id="uploadProgress" class="upload-progress" aria-live="polite"></div>
         </form>
       </section>
+
+      <section class="calendar-area" aria-label="캘린더" hidden>
+        <div class="calendar-header">
+          <div class="calendar-toolbar">
+            <button id="calendarPrevButton" class="icon-button calendar-nav-button" type="button" aria-label="이전 달" title="이전 달">‹</button>
+            <button id="calendarTodayButton" class="ghost-button calendar-today-button" type="button" title="오늘로 이동">오늘</button>
+            <button id="calendarNextButton" class="icon-button calendar-nav-button" type="button" aria-label="다음 달" title="다음 달">›</button>
+            <h2 id="calendarMonthLabel" class="calendar-month-label">2026년 5월</h2>
+          </div>
+        </div>
+
+        <form id="calendarCommandForm" class="calendar-command-bar">
+          <input
+            id="calendarCommandInput"
+            class="text-input calendar-command-input"
+            type="text"
+            placeholder="AI에게 일정을 요청하세요. 예: 내일 오후 3시 회의 잡아줘"
+            autocomplete="off"
+          />
+          <button id="calendarCommandSendButton" class="send-button calendar-command-send" type="submit">요청</button>
+        </form>
+
+        <div id="calendarCommandResult" class="calendar-command-result" hidden>
+          <button id="calendarCommandResultClose" class="icon-button calendar-command-result-close" type="button" aria-label="결과 닫기" title="닫기">×</button>
+          <div id="calendarCommandResultBody" class="calendar-command-result-body"></div>
+        </div>
+
+        <div class="calendar-body">
+          <div class="calendar-day-name-row" aria-hidden="true">
+            <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+          </div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+        </div>
+      </section>
     </main>
+
+    <dialog id="eventDialog" class="settings-dialog event-dialog">
+      <form id="eventForm" method="dialog">
+        <div class="dialog-heading">
+          <h2 id="eventDialogTitle">새 일정</h2>
+          <button id="closeEventDialogButton" class="icon-button" type="button" aria-label="닫기">×</button>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="eventTitleInput">제목</label>
+          <input id="eventTitleInput" class="text-input" required placeholder="예: 팀 주간 회의" />
+        </div>
+
+        <div class="field">
+          <label class="event-allday-toggle">
+            <input id="eventAllDayInput" type="checkbox" />
+            <span>종일</span>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="eventStartInput">시작</label>
+            <input id="eventStartInput" class="text-input" type="datetime-local" required />
+          </div>
+          <div class="field">
+            <label class="field-label" for="eventEndInput">종료</label>
+            <input id="eventEndInput" class="text-input" type="datetime-local" required />
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="eventLocationInput">장소 (선택)</label>
+          <input id="eventLocationInput" class="text-input" placeholder="예: 회의실 A" />
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="eventNotesInput">메모 (선택)</label>
+          <textarea id="eventNotesInput" class="text-input custom-prompt-input" rows="3" placeholder="안건, 참석자, 링크 등"></textarea>
+        </div>
+
+        <div class="field">
+          <span class="field-label">색상</span>
+          <div id="eventColorPicker" class="event-color-picker" role="group" aria-label="일정 색상">
+            <button type="button" class="event-color-option" data-color="accent" aria-label="기본"></button>
+            <button type="button" class="event-color-option" data-color="blue" aria-label="블루"></button>
+            <button type="button" class="event-color-option" data-color="green" aria-label="그린"></button>
+            <button type="button" class="event-color-option" data-color="orange" aria-label="오렌지"></button>
+            <button type="button" class="event-color-option" data-color="purple" aria-label="퍼플"></button>
+            <button type="button" class="event-color-option" data-color="red" aria-label="레드"></button>
+          </div>
+        </div>
+
+        <div class="dialog-actions event-dialog-actions">
+          <button id="deleteEventButton" class="ghost-button event-delete-button" type="button" hidden>삭제</button>
+          <span class="dialog-actions-spacer"></span>
+          <button class="ghost-button" type="button" id="cancelEventButton">취소</button>
+          <button class="send-button" type="submit">저장</button>
+        </div>
+      </form>
+    </dialog>
 
     <div id="dropOverlay" class="drop-overlay" hidden>
       <div class="drop-overlay-panel">

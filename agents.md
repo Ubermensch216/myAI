@@ -2,36 +2,29 @@
 
 ## Project
 
-This project is a local Ollama-based AI assistant web app.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX-backed visualizations, a local AI calendar agent, encrypted local persistence, and personalized UI settings.
 
-Workspace:
+Current workspace:
 
 ```text
-D:\Dev\myAI
+C:\Dev\myAI
 ```
 
-Latest current state:
+Current live status checked on 2026-05-03:
 
-- The app now supports user and system avatars in the settings dialog.
-- Message avatars render before the speaker name and are displayed at 44px.
-- Data visualization now follows an AI-analysis pipeline:
-  - the LLM returns an `analysis + visualizationPlan` JSON plan,
-  - the server validates the plan against real table columns,
-  - the server computes chart data from CSV/XLSX rows,
-  - the browser renders the final spec,
-  - the UI distinguishes `AI 분석 기반 시각화` from `자동 fallback 시각화`.
-- The old behavior where the LLM had to directly produce final render data has been replaced for `/api/visualize`.
-- `llm_performance_dummy.csv` exists as a local test fixture for visualization prompts.
-- Current live status after the latest restart:
-  - URL: `http://localhost:3000`
-  - default model from `/api/status`: `gemma4:e2b`
-  - available models: `gemma4:e4b`, `gemma4:e2b`
-  - server log: `server-start.log`
+```json
+{
+  "ok": true,
+  "ollamaUrl": "http://127.0.0.1:11434",
+  "defaultModel": "gemma4:e2b",
+  "models": ["gemma4:e4b", "gemma4:e2b"]
+}
+```
 
 Run:
 
 ```powershell
-cd D:\Dev\myAI
+cd C:\Dev\myAI
 npm.cmd start
 ```
 
@@ -41,35 +34,34 @@ Open:
 http://localhost:3000
 ```
 
-Default model:
+Model notes:
 
-```text
-gemma3n:e2b
-```
+- Current local `.env`: `OLLAMA_MODEL=gemma4:e2b`.
+- Code fallback in `server/ollama.js` and `server/calendarAgent.js`: `gemma3n:e2b`.
+- `.env.example` also defaults to `gemma3n:e2b`.
 
-The app is intended to be a local AI secretary that can chat, analyze uploaded documents/images, persist conversations locally, and provide a personalized UI.
+Current worktree notes at this refresh:
+
+- Calendar work is present but uncommitted:
+  - `server/calendarAgent.js` is new.
+  - `server/index.js`, `public/index.html`, `public/app.js`, and `public/styles.css` contain calendar/nav changes.
+- `llm_performance_dummy.csv` is tracked but currently deleted in the working tree. Do not recreate it unless the user asks or visualization smoke tests require it.
+- This documentation refresh updates `agents.md` and `README.md`.
 
 ## Stack
 
-- Frontend: plain HTML, CSS, JavaScript
-- Backend: Node.js + Express
-- LLM runtime: Ollama local API
-- Storage: browser IndexedDB, encrypted with WebCrypto AES-GCM
+- Frontend: plain HTML, CSS, JavaScript modules
+- Backend: Node.js 20+ and Express
+- LLM runtime: local Ollama API
+- Storage: browser IndexedDB encrypted with WebCrypto AES-GCM
 - File parsing:
   - PDF: `pdf-parse`
   - DOCX: `mammoth`
-  - XLSX: direct ZIP/XML parsing with `jszip`
+  - XLSX: ZIP/XML parsing with `jszip`
   - CSV: built-in quoted CSV parser
   - PPTX: ZIP/XML parsing with `jszip` + `fast-xml-parser`
   - HWPX: ZIP/XML parsing with `jszip` + `fast-xml-parser`
-  - Images: base64 stored and passed to Ollama
-
-## Environment
-
-- Runtime requirement: Node.js 20 or newer (`package.json` declares `engines.node >=20`).
-- The server loads project-root `.env` through `server/env.js`.
-- Existing process environment variables win over `.env` values.
-- `HOST` is optional. If unset, Express listens on all interfaces; production templates set `HOST=127.0.0.1` behind a reverse proxy.
+  - Images: base64 stored in the client payload and sent to Ollama
 
 ## Important Files
 
@@ -78,7 +70,9 @@ server/index.js
 server/env.js
 server/documents.js
 server/ollama.js
+server/calendarAgent.js
 server/parsers.js
+server/retrieval.js
 server/visualization.js
 server/documentStore.js
 public/index.html
@@ -91,118 +85,230 @@ public/styles.css
 package.json
 README.md
 agents.md
-PROJECT_ANALYSIS.md
 deploy/DEPLOY.md
 deploy/myai.service
 deploy/myai.env.example
 deploy/Caddyfile
 deploy/nginx.conf.example
-llm_performance_dummy.csv
 ```
 
 Key responsibilities:
 
 - `server/index.js`
-  - Express server
-  - static frontend serving
-  - loads local `.env` values through `server/env.js`
-  - `/api/status`
-  - `/api/upload`
-  - `/api/documents`
-  - `/api/documents/:id`
-  - `/api/chat`
-  - `/api/visualize`
-  - `/api/followups`
-  - delegates upload filename repair and document serialization to shared helpers
+  - Express server and static frontend serving.
+  - Loads local `.env` through `server/env.js`.
+  - Routes:
+    - `GET /api/status`
+    - `POST /api/upload`
+    - `GET /api/documents`
+    - `GET /api/documents/:id`
+    - `DELETE /api/documents/:id`
+    - `POST /api/chat`
+    - `POST /api/visualize`
+    - `POST /api/followups`
+    - `POST /api/agent/intent`
+  - Delegates upload filename repair and document serialization to shared helpers.
 
 - `server/env.js`
-  - dependency-free project-root `.env` loader
-  - keeps already-defined environment variables unchanged
+  - Dependency-free project-root `.env` loader.
+  - Existing process environment variables win over `.env` values.
 
 - `server/documents.js`
-  - common document summary/full-payload serialization helpers
+  - Common document summary/full-payload serialization helpers.
 
 - `server/ollama.js`
-  - Ollama streaming chat call
-  - follow-up question generation call
-  - LLM visualization analysis-plan generation, repair, and interpretation calls
-  - model/system prompt construction
-  - personal settings injection
-  - custom user prompt injection
-  - document/image context attachment
-  - answer readability prompt rules:
-    - short section labels
-    - compact bullet/numbered lists
-    - visual section symbols such as `◆`, `●`, `✓`, `※`, `->`
+  - Ollama streaming chat call.
+  - Follow-up question generation.
+  - LLM visualization plan generation, repair, and interpretation.
+  - Model/system prompt construction.
+  - Personal settings and custom prompt injection.
+  - Document/image context attachment.
+  - Uses `server/retrieval.js` to select relevant document chunks when the context exceeds `MAX_CONTEXT_CHARS`.
+
+- `server/calendarAgent.js`
+  - LLM-backed calendar intent classifier.
+  - Calls Ollama with `format: "json"` and `think: false`.
+  - Valid intents:
+    - `chat`
+    - `calendar.create`
+    - `calendar.list`
+    - `calendar.delete`
+    - `calendar.update`
+  - Resolves relative Korean dates using `currentDate` from the request.
+  - Normalizes payload shapes before returning to the browser.
+  - Does not mutate calendar data itself. The browser applies accepted operations to encrypted local state.
 
 - `server/parsers.js`
-  - parses uploaded file types into common document objects
-  - chunks long text
-  - extracts text from Office/HWPX ZIP XML formats
-  - preserves CSV/XLSX tabular data as headers, rows, samples, and column profiles for visualization
+  - Parses uploaded file types into common document objects.
+  - Chunks long text.
+  - Extracts text from Office/HWPX ZIP XML formats.
+  - Preserves CSV/XLSX tabular data as headers, rows, samples, and column profiles for visualization.
+
+- `server/retrieval.js`
+  - Tokenizes text with CJK bigram support.
+  - Uses BM25-like scoring to pick relevant document chunks for long-context chat.
 
 - `server/visualization.js`
-  - detects visualization intent keywords
-  - builds compact table context for the model
-  - normalizes LLM `analysis + visualizationPlan` JSON
-  - validates chart type, dataset index, columns, and numeric requirements
-  - executes accepted LLM plans against real CSV/XLSX rows
-  - computes chart data for `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`
-  - marks specs as `source: "llm"` or `source: "fallback"`
+  - Detects visualization intent keywords.
+  - Builds compact table context for the model.
+  - Normalizes LLM `analysis + visualizationPlan` JSON.
+  - Validates chart type, dataset index, columns, aggregation, and numeric requirements.
+  - Executes accepted plans against real CSV/XLSX rows.
+  - Computes chart data for `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
+  - Marks specs as `source: "llm"` or `source: "fallback"`.
 
 - `server/documentStore.js`
-  - in-memory server-side document map
-  - useful during the current server runtime only
-
-- `public/app.js`
-  - all frontend state and UI behavior
-  - encrypted IndexedDB persistence
-  - rooms, messages, files, settings
-  - local save failure and browser quota warnings via `handleLocalSaveError`
-  - file upload / drag and drop / clipboard image paste
-  - attachment now starts from an expandable `+` menu in the prompt composer
-  - the current `+` menu contains a paperclip button that opens the file picker
-  - the `+` menu is intended as an extension point for future composer tools
-  - drag and drop is handled by a full-app overlay instead of a left sidebar upload box
-  - streaming response handling
-  - routes chart/graph/infographic requests with tabular data to `/api/visualize`
-  - stop generation via button or Escape
-  - message copy/edit actions
-  - follow-up suggestion rendering and click-to-send behavior
-
-- `public/answerRenderer.js`
-  - lightweight assistant answer renderer
-  - parses plain paragraphs, markdown-style tables, bullet lists, numbered lists, and section labels
-  - renders section labels with visual symbols for scanability:
-    - `◆` default sections
-    - `●` key points
-    - `✓` evidence / checked facts
-    - `※` caution / warning
-    - `→` next steps
-    - `◇` notes
-
-- `public/visualizationRenderer.js`
-  - renders validated visualization JSON as SVG charts, KPI cards, tables, and infographic sections
-  - provides chart PNG download and visualization JSON copy controls
-  - labels panels as `AI 분석 기반 시각화` or `자동 fallback 시각화`
-
-- `public/fileDisplay.js`
-  - frontend file display helpers
-  - repairs previously stored mojibake filenames at display time
-  - maps uploaded files to sidebar badges (`PDF`, `DOC`, `XLS`, `CSV`, `PPT`, `HWP`, `IMG`, `FILE`)
-
-- `public/textRepair.js`
-  - mojibake scoring/repair helper shared by browser display code and server upload filename normalization
-  - repairs UTF-8 filenames that arrive as Latin-1 mojibake, including Korean patterns such as `ì`, `ê`, `ë`
-
-- `public/styles.css`
-  - layout, themes, message UI, thinking UI, buttons, settings modal
-  - assistant answer section/list/table styling
-  - exposes `--accent` / `--accent-dark` as theme tokens; light/dark via `:root[data-theme="..."]` and color palette via `:root[data-color-theme="..."]`
-  - sidebar active room item, primary buttons, section title underline, and answer section symbol badge all derive from `--accent`, so a color theme switch re-tints the whole UI without per-component overrides
+  - In-memory server-side document map.
+  - Runtime-only helper for upload summaries and legacy hydration.
 
 - `public/index.html`
-  - main app shell and settings dialog
+  - Main app shell.
+  - Left sidebar with brand banner and primary `대화` / `캘린더` navigation.
+  - Chat view, calendar view, event dialog, settings dialog, drop overlay.
+
+- `public/app.js`
+  - Main frontend state and UI behavior.
+  - Encrypted IndexedDB persistence.
+  - Rooms, messages, files, settings, calendar events.
+  - Upload, drag/drop, clipboard image paste.
+  - Streaming response handling and generation abort.
+  - Routes visualizable tabular prompts to `/api/visualize`.
+  - Routes suspected calendar prompts to `/api/agent/intent`.
+  - Executes local calendar CRUD and renders event cards.
+  - Follow-up suggestion rendering and click-to-send behavior.
+
+- `public/answerRenderer.js`
+  - Lightweight assistant answer renderer.
+  - Parses plain paragraphs, markdown-style tables, bullet lists, numbered lists, and section labels.
+
+- `public/visualizationRenderer.js`
+  - Renders validated visualization JSON as SVG charts, KPI cards, tables, and infographic sections.
+  - Provides chart PNG download and visualization JSON copy controls.
+
+- `public/fileDisplay.js`
+  - Frontend file display helpers.
+  - Repairs previously stored mojibake filenames at display time.
+  - Maps uploaded files to sidebar badges.
+
+- `public/textRepair.js`
+  - Mojibake scoring/repair helper shared by browser display code and server upload filename normalization.
+
+- `public/styles.css`
+  - Layout, themes, message UI, thinking UI, buttons, settings modal.
+  - Assistant answer styling.
+  - Primary nav and calendar UI styling.
+  - Uses `--accent` / `--accent-dark` theme tokens.
+
+## Architecture Summary
+
+### Chat
+
+```text
+user prompt
+-> public/app.js sends /api/chat
+-> server/ollama.js builds system prompt and document/image context
+-> Ollama streams chunks
+-> browser renders answer incrementally
+-> answer is saved in encrypted IndexedDB
+-> /api/followups generates suggestions
+```
+
+### Long Document Context
+
+```text
+room documents in IndexedDB
+-> client sends active room documents
+-> server/ollama.js collects text/pages/sheets
+-> if context is too large, server/retrieval.js picks relevant chunks
+-> selected context is injected into the system message
+```
+
+### Visualization
+
+```text
+chart/graph prompt + CSV/XLSX table data
+-> public/app.js calls /api/visualize
+-> LLM returns analysis + visualizationPlan JSON
+-> server/visualization.js validates exact columns and chart requirements
+-> server computes final chart data from real rows
+-> LLM optionally interprets the computed spec in Korean
+-> browser renders the validated spec
+```
+
+### Calendar Agent
+
+```text
+calendar-like natural language prompt
+-> public/app.js keyword prefilter
+-> POST /api/agent/intent
+-> server/calendarAgent.js asks Ollama for strict JSON
+-> server normalizes intent and payload
+-> public/app.js applies create/list/delete/update to state.calendar.events
+-> UI refreshes calendar grid, upcoming list, command result, and chat event cards
+```
+
+Important design point:
+
+- The LLM classifies intent and extracts fields.
+- The browser owns local calendar state and mutates it.
+- There is no server-side calendar database.
+
+## Current Layout
+
+Left sidebar:
+
+```text
+System banner
+Primary nav:
+  대화
+  캘린더
+
+대화 selected:
+  New chat button
+  Room list
+  Active room file titles under the selected room
+
+캘린더 selected:
+  New event button
+  Upcoming events list
+```
+
+Main panel:
+
+```text
+대화 view:
+  Chat header with room title and settings button
+  Messages
+  Prompt composer with + attachment menu
+
+캘린더 view:
+  Month toolbar: previous / today / next / month label
+  AI calendar command bar
+  Command result panel
+  Month grid
+```
+
+Dialogs:
+
+```text
+eventDialog:
+  title
+  all-day checkbox
+  start / end
+  location
+  notes
+  color picker
+  delete / cancel / save
+
+settingsDialog:
+  system banner
+  system name
+  system avatar
+  user alias
+  user avatar
+  theme and color palette
+  custom prompt
+```
 
 ## Current Features
 
@@ -212,34 +318,24 @@ Key responsibilities:
 - Room creation and deletion.
 - Room title editing.
 - Empty/new room shows a centered waiting screen using the user title.
-- User messages and AI messages are shown as chat bubbles.
-- AI responses stream from Ollama.
-- AI thinking state shows animated `Thinking...`.
-- Thinking details can be expanded.
-- The thinking card grows with expanded processing details instead of clipping them.
-- While AI is generating:
+- User and assistant messages render as chat bubbles.
+- Assistant responses stream from Ollama.
+- Thinking card can expand processing details.
+- While generating:
   - send button changes from `전송` to `중지`
   - clicking `중지` aborts generation
   - pressing `Esc` aborts generation
-- AI answer copy icon appears only after generation completes or stops.
-- Completed AI answers show their completion time as `hh:mm` to the right of the copy button.
-- Copy icons display a small `copied` label for about 1 second.
-- User prompt copy icon is available under user messages on hover/focus.
-- User prompt edit icon is available under user messages on hover/focus.
-- After an assistant answer completes, the app asks `/api/followups` for 1-3 context-aware Korean follow-up questions.
-- Follow-up suggestions are saved on the assistant message and rendered under that answer.
-- Clicking a follow-up suggestion sends it as the next user message.
-- If `/api/followups` fails or times out, the frontend falls back to local generic follow-up suggestions.
-- Editing a user prompt:
-  - happens inline inside the existing prompt bubble
-  - Enter or the enter-shaped icon confirms
-  - Esc or the cancel icon cancels
-  - confirming keeps the user prompt, removes its old following AI answer/subsequent messages, and regenerates from the edited prompt
+- Assistant answer copy icon appears only after generation completes or stops.
+- Completed assistant answers show completion time as `hh:mm`.
+- User prompt copy/edit actions appear on hover/focus.
+- Editing a user prompt happens inline and regenerates from the edited point.
+- Follow-up suggestions are requested after completed assistant answers.
+- Clicking a follow-up suggestion sends it as the next user prompt.
 
 ### Files
 
 - Files are scoped to the active chat room.
-- Supported inputs:
+- Supported:
   - PDF
   - DOCX
   - XLSX
@@ -248,295 +344,312 @@ Key responsibilities:
   - HWPX
   - PNG/JPG/JPEG/WEBP/GIF
 - Upload methods:
-  - click the `+` button in the prompt composer, then click the paperclip icon
-  - drag and drop files anywhere over the app, using the full-app drop overlay
+  - composer `+` menu, then paperclip
+  - drag and drop over the app
   - paste image into prompt input
-- Left sidebar shows:
-  - room list
-  - per-room file type badges (`PDF`, `DOC`, `XLS`, `CSV`, `PPT`, `HWP`, `IMG`, `FILE`)
-  - selected room's file titles under the active room
-- The old standalone `파일 업로드` and `현재 대화방 파일` sidebar sections were removed.
-- File deletion happens from the selected room's file title rows via the trailing `X` button.
-- File deletion asks for user confirmation and operates only on the current room.
-- Upload file names are normalized server-side to repair common UTF-8/Latin-1 mojibake.
-- The frontend also tries to repair previously stored mojibake names at display time.
-- Processing-step labels use the frontend display helper so thinking details also show repaired filenames.
+- Active room file titles render under the selected room in the chat sidebar.
+- File deletion asks for confirmation and removes from current room IndexedDB state.
+- Upload filenames are normalized server-side; stored mojibake names are repaired at display time.
+
+### Calendar
+
+State shape:
+
+```js
+state.calendar = {
+  events: [],
+  cursorISO: todayDateISO(),
+  editingEventId: null,
+  selectedColor: "accent"
+}
+```
+
+Persisted app state adds:
+
+```js
+{
+  activeView: "chat" | "calendar",
+  calendar: {
+    events,
+    cursorISO
+  }
+}
+```
+
+Event shape:
+
+```js
+{
+  id,
+  title,
+  allDay,
+  start,
+  end,
+  location,
+  notes,
+  color,
+  createdAt,
+  updatedAt
+}
+```
+
+Current calendar UI:
+
+- Primary navigation switches between `대화` and `캘린더`.
+- Month grid always renders 42 day cells.
+- Previous/today/next month controls update `state.calendar.cursorISO`.
+- Clicking a day opens the create-event dialog at 09:00-10:00.
+- Clicking an event chip opens the edit dialog.
+- Sidebar shows up to 8 upcoming events.
+- Event colors:
+  - `accent`
+  - `blue`
+  - `green`
+  - `orange`
+  - `purple`
+  - `red`
+- Manual create/edit checks for time conflicts and asks for confirmation before saving overlapping events.
+
+Natural language calendar flow:
+
+- `public/app.js#hasCalendarKeyword` prefilters likely calendar prompts.
+- `public/app.js#classifyMessageIntent` calls `POST /api/agent/intent`.
+- `server/calendarAgent.js#classifyIntent` returns normalized `{ intent, payload }`.
+- `public/app.js#executeCalendarIntent` dispatches to:
+  - `applyCalendarCreateAsync`
+  - `applyCalendarList`
+  - `applyCalendarDelete`
+  - `applyCalendarUpdate`
+- Calendar commands work from:
+  - the calendar command bar
+  - the normal chat prompt, when a calendar intent is detected
+- Chat responses for calendar operations can include inline event cards.
+- Clicking an event card switches to calendar view and opens the event dialog if the event still exists.
+
+Calendar limitations and risks:
+
+- Local-only calendar. No Google/Outlook/ICS sync.
+- No recurrence model.
+- No reminder execution engine.
+- No timezone UI. Date/time strings are stored in browser-local form.
+- No multi-calendar account model.
+- AI delete by date range currently deletes matching events immediately after intent classification.
+- AI delete by partial title deletes immediately when exactly one candidate is found; multiple candidates ask for a more specific request.
+- AI update matches by partial title and does not currently perform a conflict check after applying time changes.
+- Before production use, add stronger confirmation UX for destructive calendar operations.
 
 ### Data Visualization
 
-- CSV and XLSX uploads preserve structured table data in addition to extracted text.
-- When the latest user prompt asks for a chart, graph, dashboard, visualization, or infographic and the active room has tabular data, the frontend calls `/api/visualize` instead of `/api/chat`.
-- `/api/visualize` now uses a plan-first AI workflow rather than asking the LLM to directly emit final chart points.
-- Step 1: `server/ollama.js#requestVisualizationPlan` asks Ollama for strict JSON with exactly:
-  - `status`
-  - `analysis`
-  - `visualizationPlan`
-- Step 2: `server/visualization.js#normalizeVisualizationPlan` validates chart type, dataset index, exact column names, aggregation, and numeric requirements.
-- Step 3: `server/visualization.js#executeVisualizationPlan` computes the actual render data from the uploaded table rows.
-- Step 4: `server/ollama.js#requestVisualizationInterpretation` asks Ollama to interpret the computed result in Korean without changing chart data.
-- If the plan JSON is invalid, `/api/visualize` retries once with a repair prompt that includes validation errors and the previous model output.
-- If the repair attempt still fails, the app may create a server-side automatic fallback chart, but it is explicitly marked as `source: "fallback"` and `fallback: true`.
-- Successful AI-planned specs are marked as `source: "llm"` and `fallback: false`.
-- Allowed render outputs remain `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
-- For duplicate category labels, `aggregation: "none"` is normalized to a safer default aggregation, usually `average`, so prompts like "모델별 accuracy_percent" or "날짜별 tokens_per_second" do not render duplicate category points.
-- The browser renders the final validated spec with `public/visualizationRenderer.js` as SVG charts, KPI cards, tables, or infographic sections.
-- Visualization panels are labeled:
-  - `AI 분석 기반 시각화` for LLM-planned outputs
-  - `자동 fallback 시각화` for automatic fallback outputs
-- Chart blocks include icon-only PNG download controls. The visualization panel includes a JSON copy control.
-- Local test fixture:
-  - `llm_performance_dummy.csv`
-  - Useful prompts:
-    - `날짜별 tokens_per_second 추이를 선그래프로 시각화하고 분석해줘`
-    - `latency_ms와 accuracy_percent 관계를 산점도로 시각화하고 분석해줘`
-    - `모델별 accuracy_percent를 막대그래프로 비교하고 분석해줘`
+- CSV and XLSX uploads preserve structured table data.
+- Visual prompts with tabular data call `/api/visualize` instead of `/api/chat`.
+- `/api/visualize` uses a plan-first AI workflow:
+  1. `server/ollama.js#requestVisualizationPlan` asks for strict JSON with `status`, `analysis`, `visualizationPlan`.
+  2. `server/visualization.js#normalizeVisualizationPlan` validates chart type, dataset index, exact columns, aggregation, and numeric requirements.
+  3. `server/visualization.js#executeVisualizationPlan` computes render data from uploaded rows.
+  4. `server/ollama.js#requestVisualizationInterpretation` asks Ollama to interpret the computed result in Korean.
+- Invalid plan JSON is retried once with a repair prompt.
+- Remaining failures fall back to an automatic server chart marked `source: "fallback"` and `fallback: true`.
+- Successful AI-planned specs are marked `source: "llm"` and `fallback: false`.
+- Browser panels label results as:
+  - `AI 분석 기반 시각화`
+  - `자동 fallback 시각화`
 
 ### Persistence
 
-- Conversations, rooms, settings, and room-scoped uploaded document payloads are stored in IndexedDB.
+- Conversations, rooms, settings, room-scoped uploaded documents, active view, and calendar events are stored in IndexedDB.
 - Storage is encrypted with WebCrypto AES-GCM.
-- The local encryption key is stored in IndexedDB as a non-extractable CryptoKey.
-- The encrypted app state is stored in:
+- The local encryption key is stored as a non-extractable CryptoKey.
 
 ```text
 DB name: ollama-chatter-secure
 Object store: records
 Record id: app-state
-```
 
-- Key store:
-
-```text
 Object store: keys
 Record id: local-aes-gcm-key
 ```
 
-Important architectural decision:
+Important:
 
-- Earlier versions kept only file summaries in IndexedDB and full parsed document contents in server memory.
-- That caused uploaded files to disappear after refresh/restart.
-- Current version stores the full parsed document payload in each room's `documents` array.
-- Chat requests send `documents: getActiveDocuments()` with the active room's full client-side document payloads.
-- This allows AI analysis even if the server's in-memory `documentStore` is empty after restart.
-- Chat now re-runs stored document hydration before sending a request, not only during app startup.
-- Stored documents that have `pages` or `sheets` text but a missing aggregate `text` field are normalized client-side before being sent.
-- Save failures go through `persistAppState()` and surface in the UI through `handleLocalSaveError()`, including browser quota failures.
-- Server context building accepts document text from `text`, `pages`, or `sheets`; it no longer depends only on the aggregate `text` field.
-- If a room document is only a summary and no full text/pages/sheets payload can be hydrated from server memory, the content cannot be recovered automatically and the user must re-upload that file.
-
-Limitations:
-
-- Files are stored in the browser's local IndexedDB only.
-- They are not shared across browsers/devices.
-- Very large files or many images may hit browser storage limits.
-- There is no export/import or storage usage meter yet.
-- Existing files that were deleted by old reconcile logic cannot be recovered.
+- Uploaded document payloads are durable only in browser IndexedDB.
+- `server/documentStore.js` is runtime-only memory.
+- Chat requests send `documents: getActiveDocuments()` from the client.
+- `hydrateStoredDocuments()` can recover old summary-only documents only while the server still has them in memory.
+- If a room document only has summary metadata and no full payload can be hydrated, the user must re-upload it.
+- Save failures go through `persistAppState()` and surface in the UI via `handleLocalSaveError()`.
 
 ### Settings / Personalization
 
-Settings are opened from the large gear icon in the chat header, top right.
-
-Settings dialog layout (top to bottom):
-
-- Row 1 (`.field-row`): `시스템 명칭` text input | `시스템 아이콘` (`<fieldset class="field-section icon-section">` containing logo preview, file input, remove button)
-- Row 2 (`.field-row`): `사용자 별명` text input | `AI 별명` text input
-- `테마` section (`<fieldset class="field-section theme-section">`) wrapping a `.field-row`:
-  - `밝기` — sun/moon icon buttons (`.theme-toggle` / `.theme-option`)
-  - `색상` — color palette pill buttons (`.color-theme-toggle` / `.color-theme-option`)
-- `사용자 정의 프롬프트` textarea
-- Hint paragraph (two lines, separated by `<br />`):
-  - `※대화 내용과 설정은 PC 내부에만 암호화되어 저장됨`
-  - `※파일은 해당 대화방에 저장됨`
-- Action row: `취소` / `저장`
-
-Persisted settings shape (`state.settings`):
-
-Current settings keys to keep backward compatible:
-
-- `userTitle`
-- `aiName`
-- `appName`
-- `theme`
-- `colorTheme`
-- `appLogoDataUrl`
-- `appBannerDataUrl`
-- `systemAvatarDataUrl`
-- `userAvatarDataUrl`
-- `customPrompt`
-
-Current avatar behavior:
-
-- Settings includes both user avatar and system avatar pickers.
-- The system avatar is stored as `state.settings.systemAvatarDataUrl`.
-- The user avatar is stored as `state.settings.userAvatarDataUrl`.
-- Message metadata renders the avatar before the speaker name.
-- Message avatars use `.message-meta-avatar` and are 44px by 44px.
-- The assistant/system avatar is used for `role === "assistant"` messages; the user avatar is used for `role === "user"` messages.
-
-- `userTitle` — was previously labeled `사용자 호칭`; UI label is now `사용자 별명`
-- `aiName` — was previously labeled `AI 이름`; UI label is now `AI 별명`
-- `appName` — was previously labeled `프로그램 이름`; UI label is now `시스템 명칭`
-- `theme` — `"light" | "dark"`, set via the 밝기 sun/moon icons; applied as `data-theme` on `<html>`
-- `colorTheme` — `"busan" | "water"`, default `"busan"`; applied as `data-color-theme` on `<html>`
-- `appLogoDataUrl` — data URL stored under the `시스템 아이콘` section (was `프로그램 이미지/아이콘`)
-- `customPrompt` — user-defined prompt addendum
-
-The IndexedDB record key shape is unchanged so existing records continue to load; only the in-dialog labels and layout were renamed/regrouped.
-
-The custom prompt can define:
-
-- AI response tone
-- answer style
-- rules the AI should follow while generating answers
-
-Custom prompt is sent as:
+Current `state.settings` keys:
 
 ```js
-personalization.customPrompt
+{
+  userTitle,
+  aiName,
+  appName,
+  theme,
+  colorTheme,
+  appBannerDataUrl,
+  appLogoDataUrl,
+  systemAvatarDataUrl,
+  userAvatarDataUrl,
+  customPrompt
+}
 ```
 
-Server applies it in `server/ollama.js` after base rules:
+Notes:
 
-- It must not override safety/basic rules.
-- It is truncated to 4,000 characters via `sanitizeCustomPrompt`.
+- `appBannerDataUrl` is used for the sidebar/system banner.
+- `appLogoDataUrl` remains for backward compatibility but is not the current primary settings UI path.
+- The favicon currently stays at `/default-icon.svg`.
+- `systemAvatarDataUrl` is used for assistant message avatars.
+- `userAvatarDataUrl` is used for user message avatars.
+- Message avatars render before the speaker name with `.message-meta-avatar` at 44px.
+- `aiName` is effectively kept aligned to `appName` in current frontend behavior.
+- `customPrompt` is sent as `personalization.customPrompt` and truncated server-side to 4,000 characters.
+- Brightness theme is `light` or `dark`.
+- Color theme is `busan` or `water`.
 
-The system icon (`appLogoDataUrl`):
+## Server API Summary
 
-- appears to the left of the program name in the sidebar
-- is also used as dynamic favicon
-- is stored in encrypted app state as a data URL
+### `GET /api/status`
 
-Brightness (`theme`):
+Returns Ollama status and model list.
 
-- icon-based (`.theme-option`), not a dropdown
-- sun icon selects `light`, moon icon selects `dark`
-- stored as `state.settings.theme`
+### `POST /api/upload`
 
-Color theme (`colorTheme`):
+Accepts one uploaded file through `multer`.
 
-- pill buttons with circular gradient thumbnails (`.color-theme-thumb-busan`, `.color-theme-thumb-water`)
-- swaps `--accent` / `--accent-dark` CSS variables, so any UI piece that uses those variables (buttons, active room item, section title underline, answer section symbol badge) re-tints automatically
-- selecting a swatch immediately updates `data-color-theme` on `<html>` and calls `scheduleSave()`
-- two built-in palettes:
-  - `busan` — Busan CI: magenta/violet/blue (`--accent: #e6007e` light, `#ff3aa6` dark)
-  - `water` — Busan Water Authority CI: blue/green (`--accent: #0098da` light, `#4ec0e6` dark)
-- the dialog form is `display: grid; gap: 12px;` and width is `min(520px, calc(100vw - 32px))` to fit the two-column rows
+Returns a full document payload for client-side encrypted persistence.
 
-## Current Layout
+### `GET /api/documents`
 
-Left sidebar:
+Returns server in-memory document summaries only.
 
-```text
-App logo / app name / green-red status dot
-New chat button
-Room list
-Selected room file titles with per-file delete buttons
+### `GET /api/documents/:id`
+
+Returns a full document payload from server memory if available.
+
+### `DELETE /api/documents/:id`
+
+Deletes from server memory only.
+
+### `POST /api/chat`
+
+Body:
+
+```js
+{
+  model,
+  messages,
+  documents,
+  personalization
+}
 ```
 
-Main panel:
+Streams plain text from Ollama.
 
-```text
-Chat header:
-  room title input
-  gear settings icon
+### `POST /api/visualize`
 
-Messages
+Body:
 
-Prompt composer:
-  + expandable attachment/tool menu
-  paperclip file attach action
-  hidden file input
-  textarea
-  send / stop button
-  upload progress/status line
+```js
+{
+  prompt,
+  model,
+  messages,
+  documents,
+  personalization
+}
 ```
 
-The previous `사용자 ↔ AI` header display was removed because message bubbles already identify the speakers.
+Returns:
+
+```js
+{
+  visualization
+}
+```
+
+### `POST /api/followups`
+
+Body:
+
+```js
+{
+  model,
+  messages,
+  personalization
+}
+```
+
+Returns:
+
+```js
+{
+  suggestions: ["...", "...", "..."]
+}
+```
+
+### `POST /api/agent/intent`
+
+Body:
+
+```js
+{
+  prompt,
+  model,
+  currentDate
+}
+```
+
+Returns:
+
+```js
+{
+  intent: "chat" | "calendar.create" | "calendar.list" | "calendar.delete" | "calendar.update",
+  payload: {},
+  fallbackReason
+}
+```
+
+`fallbackReason` appears only when classification or validation falls back to normal chat.
 
 ## Important Behavior Details
 
 ### Status Indicator
 
-The app title area shows only a circular status light:
-
-- checking: orange
-- connected: green
-- disconnected/error: red
-
-Text is kept only in `aria-label` and `title`.
+- App status is checked with `/api/status`.
+- Current visual status indicator behavior is in the sidebar/brand area and model hint text.
 
 ### Assistant Answer Rendering
 
-The app does not render full Markdown. It uses a lightweight answer renderer in `public/answerRenderer.js`.
+- The app does not use a full Markdown renderer.
+- `public/answerRenderer.js` handles:
+  - plain paragraphs
+  - compact bullet lists
+  - numbered lists
+  - markdown-style tables
+  - short section labels
+- Do not add a full Markdown renderer without checking for regressions in table/list styling.
 
-It intentionally:
-
-- strips common markdown styling for normal prose
-- converts markdown tables into HTML tables
-- converts `-`, `*`, `+`, `•`, `※`, `->` style lines into compact lists
-- converts `1.` / `1)` lines into ordered lists
-- detects short section labels such as `Summary`, `Key points`, `Evidence`, `Caution`, `Next steps`, `요약`, `핵심`, `근거`, `주의점`, `다음 단계`
-- renders section labels with a small visual symbol:
-  - `◆` default
-  - `●` key points
-  - `✓` evidence / checked facts
-  - `※` caution / warning
-  - `→` next steps
-  - `◇` notes
-
-`cleanSectionLabel` strips leading section glyphs (`◆◇◈■□▣▪▫●○◯◎▶▷►▸★☆※→⇒✓✔✗❖`) from the label text before display. This prevents a duplicate symbol when the model itself outputs a leading glyph: only the renderer-chosen, shape-varying badge from `getSectionSymbol` is shown.
-
-The section symbol badge (`.answer-section-symbol`) is a 20×20 rounded square painted with the current `--accent` color (88% mixed with surface), white glyph, and a soft accent-tinted shadow. Because it uses `--accent`, it re-tints with the selected color theme.
-
-Server-side prompt rules in `server/ollama.js` ask the model to produce scan-friendly answers with short section labels, compact lists, and section symbols. The frontend also adds symbols automatically if the model omits them.
+### Generation Stop
 
 Relevant functions:
 
 ```js
-renderAssistantAnswer(container, rawText)
-parseAnswerBlocks(text)
-createSectionTitle(text)
-getSectionSymbol(text)
-createList(items, ordered)
-```
-
-### Generation Stop
-
-Relevant state/function:
-
-```js
-state.abortController
 requestAssistantResponse(room)
+requestTextAssistantResponse(room)
+requestVisualizationResponse(room)
 stopGeneration()
 setBusy(busy)
 ```
 
 Important:
 
-- `fetch("/api/chat")` is called with `signal: state.abortController.signal`.
-- Abort errors are caught and do not create an error bubble.
-- If partial assistant text exists, the bubble remains and copy icon becomes available after abort.
-
-### Thinking Card
-
-Relevant styles/functions:
-
-```js
-appendThinking()
-buildProcessingSteps()
-```
-
-```css
-.messages > *
-.thinking-card
-.thinking-details
-```
-
-Important:
-
-- `appendThinking()` renders the temporary `Thinking...` card and a collapsible `처리 단계 보기` details section.
-- The messages list is a flex column, so direct children use `flex: 0 0 auto` to prevent the thinking card from shrinking below its expanded content height.
-- `.thinking-card` also uses `flex: 0 0 auto`; keep that behavior if changing the message layout or thinking UI.
+- Chat and visualization fetches use `state.abortController.signal`.
+- Abort errors are swallowed and should not create an error bubble.
+- Partial assistant text remains usable after abort.
 
 ### File Attachment UI
 
@@ -563,16 +676,7 @@ handleWindowDrop(event)
 .room-file-remove
 ```
 
-Important:
-
-- The prompt composer owns file attachment through the `+` attach menu and hidden `#fileInput`.
-- Clicking `+` opens a lightweight popover; clicking the paperclip action inside it opens the native file picker.
-- Keep the attach menu extensible because it is intended to hold more composer tools later.
-- The old sidebar upload box and current-room file panel no longer exist.
-- Full-app drag and drop uses `#dropOverlay`; files dropped anywhere over the app are added to the active room.
-- The active room's file titles render under that room in the sidebar.
-- Each file row has an `X` delete button; deletion uses `window.confirm()` and then removes the file from the current room's IndexedDB-backed `documents` array.
-- Keep `event.stopPropagation()` on file delete buttons so file deletion does not behave like room selection.
+Keep the composer `+` menu extensible. It is intended to hold more composer tools later.
 
 ### Document Context Availability
 
@@ -582,353 +686,98 @@ Relevant functions:
 hydrateStoredDocuments()
 hasPersistentDocumentContent(documentItem)
 normalizeStoredDocumentContent(documentItem)
-buildContext(documents)
+buildContext(documents, query)
 collectChunks(documents)
 pageSections(documentItem)
 hasDocumentContext(documentItem)
+pickRelevantChunks(chunks, query, budget)
 ```
 
 Important:
 
-- The sidebar file list only proves that a room has document metadata. AI analysis requires extracted payload content.
-- A usable document payload has at least one of:
+- Sidebar file metadata does not guarantee usable document context.
+- Usable document payload has at least one of:
   - `text`
   - `pages[].text`
   - `sheets[].text`
-- `hydrateStoredDocuments()` attempts to recover summary-only documents from server memory by `/api/documents/:id`.
-- Server memory is temporary; after restart `/api/documents` can be empty, so old summary-only IndexedDB records may be unrecoverable.
-- `normalizeStoredDocumentContent()` rebuilds `text`, `textLength`, and `preview` from existing `pages` or `sheets` when possible.
-- `server/ollama.js` now includes context from `pages` or `sheets` even when aggregate `text` is absent.
-- If the document has no extractable content at all, `server/ollama.js` adds an `[알림]` line naming the unavailable attachment rather than silently dropping it.
+  - `imageBase64` for images
+- Server memory cannot recover files after restart if the browser only has old summary metadata.
 
-### Assistant Completion Time
+## Recent Changes Reflected Here
 
-Relevant functions/styles:
-
-```js
-appendMessage(role, text, options)
-createMessageActions(article, role, createdAt)
-setAssistantAnswerTime(article, createdAt)
-createMessageTime(createdAt)
-formatMessageTime(value)
-```
-
-```css
-.message-actions
-.message-time
-```
-
-Important:
-
-- Assistant messages use their `createdAt` timestamp as answer completion time.
-- New streaming answers call `setAssistantAnswerTime()` after the final answer is rendered and before the message is stored.
-- Previously saved assistant messages pass `message.createdAt` into `appendMessage()` during `renderMessages()`.
-- The displayed format is fixed local `hh:mm` via zero-padded `Date#getHours()` and `Date#getMinutes()`.
-- The time appears in the assistant action row, immediately to the right of the copy button.
-
-### Follow-Up Suggestions
-
-Relevant state/functions:
-
-```js
-attachFollowupSuggestions(room, assistantMessage, assistantArticle)
-requestFollowupSuggestions(room)
-buildLocalFollowupSuggestions(room)
-renderFollowupSuggestions(article, suggestions, options)
-generateFollowupSuggestions({ messages, model, personalization })
-```
-
-Important:
-
-- Follow-up suggestions are generated only after a completed assistant response is saved.
-- The frontend calls `POST /api/followups` with recent room messages and personalization.
-- The server asks Ollama for strict JSON: an array of 1 to 3 Korean question strings.
-- The frontend limits visible suggestions to 3.
-- The request has a 12 second frontend abort timeout.
-- Failed suggestion generation should not break the main chat answer.
-
-## Server API Summary
-
-### `GET /api/status`
-
-Returns Ollama status and model list.
-
-### `POST /api/upload`
-
-Accepts one uploaded file through `multer`.
-
-Returns a full document payload for client-side encrypted persistence:
-
-```js
-{
-  document: {
-    id,
-    createdAt,
-    fileName,
-    fileType,
-    kind,
-    mimeType,
-    imageBase64,
-    text,
-    pages,
-    sheets,
-    pageCount,
-    sheetCount,
-    textLength,
-    preview
-  }
-}
-```
-
-### `GET /api/documents`
-
-Returns server in-memory document summaries only.
-
-### `GET /api/documents/:id`
-
-Returns a full document payload from server memory if available.
-
-Used to hydrate older IndexedDB summaries if the server copy still exists.
-
-### `DELETE /api/documents/:id`
-
-Deletes from server memory only.
-
-Client-side room document deletion is handled in `public/app.js`.
-
-### `POST /api/chat`
-
-Body includes:
-
-```js
-{
-  model,
-  messages,
-  documents,
-  personalization
-}
-```
-
-Server uses the client-sent `documents` array directly. The in-memory `documentStore` remains only for upload summaries and legacy hydration through `/api/documents/:id`.
-
-### `POST /api/followups`
-
-Body includes:
-
-```js
-{
-  model,
-  messages,
-  personalization
-}
-```
-
-Returns:
-
-```js
-{
-  suggestions: [
-    "구체적인 후속 질문 1",
-    "구체적인 후속 질문 2",
-    "구체적인 후속 질문 3"
-  ]
-}
-```
-
-Current behavior:
-
-- Implemented by `generateFollowupSuggestions` in `server/ollama.js`.
-- Uses the last 6 messages, truncated per message, to ground suggestions.
-- Expects strict JSON from Ollama, but includes parser fallbacks for JSON arrays or line-based output.
-- Returns an empty suggestions array with a 500 response if generation fails server-side.
-
-## Recent Changes
-
-- LLM-based visualization planning pipeline was added:
-  - `/api/visualize` no longer depends on the model producing final chart data directly.
-  - `server/ollama.js` first asks the model for `analysis + visualizationPlan` JSON.
-  - The plan prompt explicitly tells the model not to calculate averages, totals, standard deviations, correlations, or chart points.
-  - If the initial plan is invalid, `server/ollama.js` retries once with a repair prompt containing validation errors and the previous model output.
-  - `server/visualization.js` validates exact column names, chart type, dataset index, aggregation, and numeric requirements.
-  - `server/visualization.js` computes render data from the actual CSV/XLSX rows after accepting the LLM plan.
-  - `server/ollama.js` then asks the model for Korean interpretation of the computed result.
-  - Successful specs use `source: "llm"` and `fallback: false`.
-  - Failed/automatic specs use `source: "fallback"` and `fallback: true`.
-  - `public/visualizationRenderer.js` labels panels as `AI 분석 기반 시각화` or `자동 fallback 시각화`.
-- Chart type handling was fixed for fallback and LLM-plan execution:
-  - line chart requests now produce `line` render specs when supported.
-  - scatter plot requests now produce `scatter` render specs with numeric `x` and `y`.
-  - duplicate category labels with `aggregation: "none"` are normalized to a safer default aggregation, usually `average`.
-- Visualization test fixture was added:
-  - `llm_performance_dummy.csv`
-  - contains dummy LLM performance rows with `date`, `model`, `task_category`, `latency_ms`, `tokens_per_second`, `accuracy_percent`, `error_rate_percent`, and related metrics.
-- System/user avatar settings were updated:
-  - settings now includes `systemAvatarDataUrl` for assistant/system messages.
-  - existing `userAvatarDataUrl` is used for user messages.
-  - message avatars appear before speaker names and render at 44px.
-- General chat prompt rules now tell the LLM that this app can render CSV/XLSX-backed visualizations, so it should not claim graphing is impossible just because the language model itself cannot paint pixels.
-- Project folder was renamed from `D:\Dev\ollama_chatter` to `D:\Dev\myAI`.
-- Follow-up question suggestions were added:
-  - `server/index.js` exposes `POST /api/followups`.
-  - `server/ollama.js` includes `generateFollowupSuggestions`.
-  - `public/app.js` renders suggestions under assistant answers and sends clicked suggestions as new prompts.
-  - `public/styles.css` includes follow-up suggestion styling.
-- Thinking card expansion and assistant completion time were improved:
-  - `public/styles.css` prevents message children and `.thinking-card` from shrinking in the flex message list, so expanded processing steps are not clipped.
-  - `public/app.js` shows completed assistant answer time as `hh:mm` next to the copy button.
-- Sidebar file management was simplified:
-  - Removed standalone sidebar upload/current-file panels from `public/index.html`.
-  - Moved file attachment to an expandable prompt composer `+` menu with a paperclip file action.
-  - Added full-app drag and drop overlay.
-  - Added per-file delete buttons under the selected room's file titles with confirmation before deletion.
-- Filename mojibake repair was broadened:
-  - `public/textRepair.js` detects Latin-1 mojibake characters like `ì`, `ê`, `ë` in addition to the earlier patterns.
-  - `public/fileDisplay.js` applies the same style of repair when displaying existing stored filenames.
-  - Thinking processing steps now use repaired display filenames.
-- Document context resilience was improved:
-  - `public/app.js` now normalizes stored document payloads from `pages`/`sheets` into aggregate `text` when possible.
-  - `public/app.js` re-runs stored document hydration immediately before chat requests.
-  - `server/ollama.js` now builds context from `text`, `pages`, or `sheets` and reports attachments that have no recoverable extracted content.
-- Server helpers were split out:
-  - `server/env.js` for project-root `.env` loading.
-  - `server/documents.js` for summary/full document serialization.
-- Frontend helpers were split out:
-  - `public/answerRenderer.js` for lightweight assistant answer rendering.
-  - `public/fileDisplay.js` for file name repair and file type badge display.
-  - `public/textRepair.js` for shared mojibake scoring and repair.
-- Assistant answers were made more scan-friendly:
-  - `server/ollama.js` now asks for short labels, compact bullets, numbered lists, and visual section symbols.
-  - `public/answerRenderer.js` parses labels/lists/tables and adds symbols automatically.
-  - `public/styles.css` styles section labels, symbol badges, lists, and tables inside assistant bubbles.
-- Color themes were added to settings:
-  - `state.settings.colorTheme` (`"busan" | "water"`, default `"busan"`) is persisted in encrypted IndexedDB alongside the other settings.
-  - Applied as `data-color-theme` on `<html>`; CSS variants in `public/styles.css` swap `--accent` / `--accent-dark`.
-  - `setColorTheme`, `renderColorThemeToggle`, `normalizeColorTheme` added to `public/app.js`.
-  - Settings dialog gains a `색상` swatch picker with two pill buttons (`부산 CI` / `부산 상수도`) and circular gradient thumbnails.
-- Sidebar active room item became theme-aware:
-  - `.room-item.active` switched from hardcoded teal (`rgba(15,118,110,0.45)` / `#eaf7f5`) to `color-mix(... var(--accent) ...)`, so the active highlight follows the chosen color palette in both light and dark mode.
-- Section title symbol duplication fix and stronger badge:
-  - `cleanSectionLabel` in `public/answerRenderer.js` now strips leading section glyphs from the model output so only the renderer-chosen symbol is shown.
-  - `.answer-section-symbol` was made more prominent: 20×20, accent-mixed background at 88%, white glyph, soft accent-tinted shadow — and re-tints with the color theme.
-- Linux deployment scaffolding was added under `deploy/`:
-  - `myai.service` — systemd unit with sandboxing (`ProtectSystem=strict`, `NoNewPrivileges`, `MemoryDenyWriteExecute`, etc.) and `ReadWritePaths=/opt/myai/uploads`. Loads env from `/etc/myai.env`.
-  - `myai.env.example` — production env template (defaults to `HOST=127.0.0.1` so the app only listens on loopback behind a proxy).
-  - `Caddyfile` — Caddy reverse proxy with auto-TLS, streaming-friendly `flush_interval -1`, and matching upload size.
-  - `nginx.conf.example` — nginx vhost with certbot hookup, `proxy_buffering off`, 1h timeouts, and `client_max_body_size 40m`.
-  - `DEPLOY.md` — Ubuntu/Debian step-by-step (Node 20 install, Ollama, dedicated `myai` user, env file permissions, systemd, proxy, firewall, troubleshooting).
-- `server/index.js` now reads `HOST` env to control bind interface (default keeps current behavior of binding all interfaces). `package.json` declares `"engines": { "node": ">=20" }`.
-- Project-root `.env` loading was added through `server/env.js`; no external `dotenv` dependency is required.
-- Local IndexedDB save failures now surface in the UI instead of only being logged to the console.
-- README, agents notes, and project analysis were refreshed to match the current default model, file layout, Node.js 20+ requirement, and client-persisted document flow.
-- Settings dialog layout was reorganized to be more compact:
-  - Top row: `시스템 명칭` text input next to a `시스템 아이콘` `<fieldset>` containing the existing logo preview / file input / remove button.
-  - Second row: `사용자 별명` and `AI 별명` side by side.
-  - `테마` `<fieldset>` groups `밝기` (light/dark) and `색상` (color palette) side by side.
-  - Field renames in the UI only (state keys unchanged): `프로그램 이름` → `시스템 명칭`, `사용자 호칭` → `사용자 별명`, `AI 이름` → `AI 별명`, `프로그램 이미지/아이콘` → `시스템 아이콘`, `테마` → `밝기`, `색상 테마` → `색상`.
-  - Hint text replaced with a two-line `※` summary about local encrypted storage and per-room file scope.
-  - Dialog width grew from 460px to 520px to accommodate two-column rows.
-  - New CSS helpers: `.field`, `.field-row`, `.field-section`, `.field-section-title`, `.icon-section .logo-picker` grid areas (`preview` / `file` / `remove`).
+- Added primary `대화` / `캘린더` navigation.
+- Added calendar month view, upcoming event list, event dialog, and event cards.
+- Added local calendar persistence under encrypted app state.
+- Added `/api/agent/intent`.
+- Added `server/calendarAgent.js`.
+- Chat prompt can now trigger calendar CRUD when a calendar intent is detected.
+- Added `server/retrieval.js` to pick relevant document chunks for long documents.
+- README and handoff notes updated to reflect the current live model and calendar state.
 
 ## Known Constraints / Next Improvements
 
 Good next steps:
 
+- Add stronger confirmation UX for AI calendar delete/update operations.
+- Add recurrence, reminders, timezone display, and multi-calendar support.
+- Add external calendar integration only after local CRUD is stable.
+- Split the large `public/app.js` calendar code into focused modules.
+- Add browser smoke tests for chat, upload, visualization, and calendar flows.
 - Add storage usage display for IndexedDB.
-- Add per-room file size and total stored size.
-- Add "export/import encrypted data" feature.
+- Add export/import for encrypted app data.
 - Add password-based encryption option instead of only local CryptoKey.
-- Add RAG / search over stored documents instead of sending all active room documents.
-- Add file re-upload prompt when old summary-only documents cannot be hydrated.
-- Add actual OCR for scanned PDFs/images.
-- Add better filename encoding handling for all upload clients.
-- Add test fixtures for PDF/DOCX/XLSX/PPTX/HWPX parsing.
+- Add OCR for scanned PDFs/images.
+- Restore or replace `llm_performance_dummy.csv` if visualization fixtures are still needed.
 
 Potential issue:
 
-- Because uploaded files are now persisted in browser IndexedDB, very large images or many documents can make encrypted app state large.
-- Browser quota/save failures are surfaced in the UI via `public/app.js#handleLocalSaveError`, but there is still no storage usage meter or export/import recovery workflow.
-- `/api/chat` has JSON body limit configured as:
+- Because uploaded files and calendar data are in browser IndexedDB, large files/images can make encrypted app state large.
+- `/api/chat` uses:
 
 ```js
 app.use(express.json({ limit: process.env.MAX_JSON_BYTES || "80mb" }));
 ```
 
-If users store/send larger files, this may need to be raised or replaced with chunked/RAG transport.
+If users store/send larger payloads, consider chunked transport or a proper local RAG index.
 
 ## Recent Verification
 
-Current verification commands:
+Commands run during this refresh:
 
 ```powershell
 Get-ChildItem -Recurse -Include *.js -Path .\server,.\public | ForEach-Object { node --check $_.FullName }
-node -e "import('./public/answerRenderer.js').then(({parseAnswerBlocks})=>console.log(JSON.stringify(parseAnswerBlocks('요약\n- 첫째\n\n주의점:\n- 조심\n\n다음 단계\n1. 실행'))))"
-node -e "import('./server/env.js').then(({loadLocalEnv})=>{loadLocalEnv('.env.example'); console.log(process.env.OLLAMA_MODEL)})"
-node -e "import('./server/ollama.js').then(({DEFAULT_MODEL})=>console.log(DEFAULT_MODEL))"
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSec 10 | ConvertTo-Json -Depth 5
 ```
 
-Latest local verification additionally used:
+Results:
 
-```powershell
-node -e "import('./server/visualization.js').then(({normalizeVisualizationPlan,executeVisualizationPlan})=>{ /* llm_performance_dummy.csv plan execution smoke test */ })"
-node -e "import('./server/parsers.js').then(async ({parseUpload})=>{ const {generateVisualizationSpec}=await import('./server/ollama.js'); /* live Ollama / visualization plan smoke tests */ })"
-Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSec 10
-```
+- JavaScript syntax check passed with no output.
+- `/api/status` returned `ok: true`, default model `gemma4:e2b`, and models `gemma4:e4b`, `gemma4:e2b`.
 
-Verified visualization behavior:
+Not run in this refresh:
 
-- `날짜별 tokens_per_second 추이를 선그래프로 시각화하고 분석해줘`
-  - `source: "llm"`
-  - `type: "line"`
-  - x: `date`
-  - y: `tokens_per_second`
-- `latency_ms와 accuracy_percent 관계를 산점도로 시각화하고 분석해줘`
-  - `source: "llm"`
-  - `type: "scatter"`
-  - x: `latency_ms`
-  - y: `accuracy_percent`
-- `모델별 accuracy_percent를 막대그래프로 비교하고 분석해줘`
-  - `source: "llm"`
-  - `type: "bar"`
-  - x: `model`
-  - y: `accuracy_percent`
-
-`npm.cmd audit --json` was not rerun in the latest refresh.
-
-Expected status response:
-
-```json
-{
-  "ok": true,
-  "ollamaUrl": "http://127.0.0.1:11434",
-  "defaultModel": "gemma4:e2b",
-  "models": ["gemma4:e4b", "gemma4:e2b"]
-}
-```
+- Browser UI smoke test.
+- Playwright screenshots.
+- `npm audit`.
+- Live calendar intent LLM call.
 
 ## Operational Notes For Next Agent
 
 - Prefer small, focused edits.
 - Use `apply_patch` for file edits.
-- Do not assume uploaded file payloads are server-persistent; client IndexedDB is the durable source.
-- If changing file persistence, be careful not to reintroduce server-memory reconciliation that deletes local room documents.
+- Do not revert uncommitted calendar work unless the user explicitly asks.
+- Do not assume uploaded file payloads are server-persistent. Client IndexedDB is the durable source.
+- If changing file persistence, avoid reintroducing server-memory reconciliation that deletes local room documents.
 - If changing chat generation, preserve abort behavior via `AbortController`.
-- If changing assistant answer rendering, preserve markdown-lite behavior:
-  - no full Markdown renderer unless intentionally added
-  - tables remain supported
-  - section labels should remain visually distinct
-  - bullet and numbered lists should remain compact and scannable
-- If changing message actions, preserve:
-  - user copy/edit hover behavior
-  - inline edit cancel via Esc
-  - inline edit confirm via Enter
-  - assistant copy only after streaming finishes
-- If changing settings, keep `state.settings` backward compatible with old IndexedDB records. The dialog labels were renamed in this session (`프로그램 이름` → `시스템 명칭`, `사용자 호칭` → `사용자 별명`, `AI 이름` → `AI 별명`, `프로그램 이미지/아이콘` → `시스템 아이콘`); the underlying state keys (`appName`, `userTitle`, `aiName`, `appLogoDataUrl`) are unchanged on purpose.
-- Brightness UI is icon-based (`.theme-option`); persisted shape is still `theme: "light" | "dark"`.
-- Color palette UI is swatch-based (`.color-theme-option`); persisted shape is `colorTheme: "busan" | "water"`. Always normalize unknown values via `normalizeColorTheme` (default `"busan"`) before applying or saving.
-- Prefer `--accent` / `--accent-dark` (and `color-mix(... var(--accent) ...)`) over hardcoded brand colors so new UI inherits the active color theme automatically.
+- If changing assistant rendering, preserve markdown-lite behavior and table/list support.
+- If changing settings, keep `state.settings` backward compatible with old IndexedDB records.
+- Prefer `--accent` / `--accent-dark` over hardcoded brand colors for new UI.
 - If changing visualization, preserve the plan-first contract:
   - LLM chooses analytical intent, chart type, columns, and aggregation.
   - Server validates and computes chart data.
-  - Browser only renders the final validated spec.
-  - Do not silently present automatic fallback charts as AI analysis.
-  - Keep `source: "llm"` vs `source: "fallback"` visible and meaningful.
+  - Browser renders the final validated spec.
+  - Keep `source: "llm"` vs `source: "fallback"` visible.
+- If changing calendar, preserve the split:
+  - LLM extracts intent and fields.
+  - Local deterministic code mutates `state.calendar.events`.
+  - Destructive operations should get better confirmation, not less.
