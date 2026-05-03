@@ -210,6 +210,10 @@ Key responsibilities:
   - Assistant answer styling.
   - Primary nav and calendar UI styling.
   - Uses `--accent` / `--accent-dark` theme tokens.
+  - `.calendar-area` uses `display: flex; flex-direction: column` so `.calendar-body` always fills remaining height regardless of whether the command-result panel is shown.
+  - `.calendar-body` has `flex: 1; min-height: 0` and internally uses `grid-template-rows: auto minmax(0, 1fr)`.
+  - `.calendar-grid` uses `grid-auto-rows: minmax(0, 1fr); height: 100%` for dynamic cell heights.
+  - Calendar grid responsive breakpoints use CSS container queries (`@container calendar`) on `.calendar-body`, not viewport media queries.
 
 ## Architecture Summary
 
@@ -308,9 +312,8 @@ Dialogs:
 
 ```text
 eventDialog:
-  title
-  all-day checkbox
-  start / end
+  title  [완료 checkbox — inline right, edit mode only]
+  start / end  [종일 checkbox — inline right of 종료]
   location
   notes
   color picker
@@ -408,6 +411,7 @@ Event shape:
   color,
   reminders,
   notifiedReminders,
+  done,        // boolean — completion state; persisted via normalizeCalendarEvent spread
   createdAt,
   updatedAt
 }
@@ -422,7 +426,7 @@ Current calendar UI:
 - Clicking a day opens the create-event dialog at 09:00-10:00.
 - Clicking an event chip opens the edit dialog.
 - Clicking a month-cell `+N` overflow indicator switches to day view for that date.
-- Sidebar shows up to 8 upcoming events.
+- Sidebar shows upcoming events within 7 days from today (not a fixed count).
 - `Shift+N` is scoped by active primary view:
   - chat view: new chat
   - calendar view: new event
@@ -436,6 +440,11 @@ Current calendar UI:
   - `purple`
   - `red`
 - Manual create/edit checks for time conflicts and asks for confirmation before saving overlapping events.
+- Each event has a `done` boolean toggled via:
+  - A circular check button on each upcoming-event row in the sidebar.
+  - A `완료` checkbox inline in the event edit dialog (hidden during create).
+- Toggling done calls `toggleEventDone(eventId)` which flips `event.done`, calls `renderCalendar()` (re-renders both grid chips and upcoming list), and calls `scheduleSave()`.
+- Done events appear with strikethrough in the upcoming list and with `opacity: 0.55; filter: grayscale(0.35)` on grid chips.
 
 Natural language calendar flow:
 
@@ -792,6 +801,13 @@ Important:
 - Full-month daily create queries such as `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해` are expanded into one event per day.
 - Added `server/retrieval.js` to pick relevant document chunks for long documents.
 - README and handoff notes updated to reflect the current live model and calendar state.
+- Added `done` boolean field to calendar events; persisted transparently via `normalizeCalendarEvent` spread.
+- Upcoming events sidebar now shows only events within 7 days of today (was: up to 8 events with no date cutoff).
+- Added `toggleEventDone(eventId)` — flips `event.done`, re-renders calendar grid chips and upcoming list, and schedules a save.
+- Event edit dialog now shows a `완료` checkbox (hidden in create mode) inline to the right of the title field.
+- `종일` checkbox moved inline to the right of the `종료` field (was a separate row).
+- Fixed calendar cell height: `.calendar-area` changed from `display: grid` with four row tracks to `display: flex; flex-direction: column` so `.calendar-body` always occupies the `flex: 1` remaining space regardless of command-result panel visibility.
+- Calendar grid responsive breakpoints use `@container calendar` container queries instead of `@media` viewport queries.
 
 ## Known Constraints / Next Improvements
 
