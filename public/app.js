@@ -163,6 +163,8 @@ const elements = {
   eventEndInput: document.querySelector("#eventEndInput"),
   eventLocationInput: document.querySelector("#eventLocationInput"),
   eventNotesInput: document.querySelector("#eventNotesInput"),
+  eventDoneInput: document.querySelector("#eventDoneInput"),
+  eventDoneRow: document.querySelector("#eventDoneRow"),
   eventReminderInputs: Array.from(document.querySelectorAll(".event-reminder-input")),
   eventColorOptions: Array.from(document.querySelectorAll(".event-color-option")),
   calendarCommandForm: document.querySelector("#calendarCommandForm"),
@@ -954,6 +956,7 @@ function renderCalendarGrid() {
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "calendar-event-chip";
+        if (event.done) chip.classList.add("done");
         chip.dataset.color = event.color || "accent";
         chip.title = formatEventChipTitle(event);
         chip.textContent = formatEventChipLabel(event);
@@ -1085,10 +1088,15 @@ function renderUpcomingEvents() {
   list.innerHTML = "";
 
   const now = new Date();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() + 7);
+  cutoff.setHours(23, 59, 59, 999);
+
   const upcoming = state.calendar.events
     .filter((event) => {
       const start = parseEventStart(event);
       if (!start) return false;
+      if (start > cutoff) return false;
       if (event.allDay) {
         const endOfDay = new Date(start);
         endOfDay.setHours(23, 59, 59, 999);
@@ -1096,44 +1104,60 @@ function renderUpcomingEvents() {
       }
       return start >= now;
     })
-    .sort((a, b) => String(a.start).localeCompare(String(b.start)))
-    .slice(0, 8);
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
 
   if (!upcoming.length) {
     const empty = document.createElement("div");
     empty.className = "upcoming-event-empty";
-    empty.textContent = "예정된 일정이 없습니다.";
+    empty.textContent = "7일 이내 예정된 일정이 없습니다.";
     list.append(empty);
     return;
   }
 
   for (const event of upcoming) {
-    const item = document.createElement("button");
-    item.type = "button";
+    const item = document.createElement("div");
     item.className = "upcoming-event-item";
-    item.addEventListener("click", () => openEventDialogForEdit(event.id));
+    if (event.done) item.classList.add("done");
 
-    const titleWrap = document.createElement("div");
+    const checkBtn = document.createElement("button");
+    checkBtn.type = "button";
+    checkBtn.className = "upcoming-check-btn";
+    checkBtn.setAttribute("aria-label", event.done ? "완료 취소" : "완료 표시");
+    checkBtn.innerHTML = event.done
+      ? `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.5"/><path d="M5 8l2.2 2.2L11 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      : `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/></svg>`;
+    checkBtn.addEventListener("click", () => toggleEventDone(event.id));
+
+    const content = document.createElement("button");
+    content.type = "button";
+    content.className = "upcoming-event-content";
+    content.addEventListener("click", () => openEventDialogForEdit(event.id));
+
     const title = document.createElement("div");
     title.className = "upcoming-event-title";
     title.textContent = event.title || "(제목 없음)";
     const time = document.createElement("div");
     time.className = "upcoming-event-time";
     time.textContent = formatUpcomingTime(event);
-    titleWrap.append(title, time);
+    content.append(title, time);
 
     const dot = document.createElement("span");
     dot.className = "calendar-event-chip";
     dot.dataset.color = event.color || "accent";
-    dot.style.width = "10px";
-    dot.style.height = "10px";
-    dot.style.padding = "0";
-    dot.style.borderRadius = "50%";
+    dot.style.cssText = "width:10px;height:10px;padding:0;border-radius:50%;flex-shrink:0";
     dot.setAttribute("aria-hidden", "true");
 
-    item.append(titleWrap, dot);
+    item.append(checkBtn, content, dot);
     list.append(item);
   }
+}
+
+async function toggleEventDone(eventId) {
+  const event = state.calendar.events.find((e) => e.id === eventId);
+  if (!event) return;
+  event.done = !event.done;
+  renderCalendar();
+  scheduleSave();
 }
 
 function parseDateISO(value) {
@@ -1170,10 +1194,19 @@ function formatShortDate(date) {
 function groupEventsByDate(events) {
   const eventsByDate = new Map();
   for (const event of events) {
-    const startDate = (event.start ?? "").slice(0, 10);
-    if (!startDate) continue;
-    if (!eventsByDate.has(startDate)) eventsByDate.set(startDate, []);
-    eventsByDate.get(startDate).push(event);
+    const startISO = (event.start ?? "").slice(0, 10);
+    if (!startISO) continue;
+    const endISO = (event.end ?? "").slice(0, 10);
+    const spanEnd = endISO && endISO > startISO ? endISO : startISO;
+
+    let current = startISO;
+    while (current <= spanEnd) {
+      if (!eventsByDate.has(current)) eventsByDate.set(current, []);
+      eventsByDate.get(current).push(event);
+      if (current === spanEnd) break;
+      const [y, m, d] = current.split("-").map(Number);
+      current = formatLocalDate(new Date(y, m - 1, d + 1));
+    }
   }
   for (const list of eventsByDate.values()) {
     list.sort(compareEventsByStart);
@@ -1426,6 +1459,7 @@ function openEventDialogForCreate(dateISO) {
   setEventColor("accent");
   setReminderPicker([]);
   elements.deleteEventButton.hidden = true;
+  elements.eventDoneRow.hidden = true;
   showEventDialog();
 }
 
@@ -1453,6 +1487,8 @@ function openEventDialogForEdit(eventId) {
   setReminderPicker(event.reminders);
   setEventColor(event.color || "accent");
   elements.deleteEventButton.hidden = false;
+  elements.eventDoneRow.hidden = false;
+  elements.eventDoneInput.checked = !!event.done;
   showEventDialog();
 }
 
@@ -1500,6 +1536,7 @@ function submitEventForm(formEvent) {
     return;
   }
 
+  const editingId = state.calendar.editingEventId;
   const payload = {
     title,
     allDay,
@@ -1508,10 +1545,10 @@ function submitEventForm(formEvent) {
     location: elements.eventLocationInput.value.trim(),
     notes: elements.eventNotesInput.value.trim(),
     reminders: getSelectedReminderList(),
-    color: state.calendar.selectedColor || "accent"
+    color: state.calendar.selectedColor || "accent",
+    done: editingId ? elements.eventDoneInput.checked : false
   };
 
-  const editingId = state.calendar.editingEventId;
   const conflicts = findConflictingEvents(payload, editingId);
   if (conflicts.length) {
     const proceed = window.confirm(
@@ -2104,6 +2141,8 @@ function applyCalendarUpdate(payload) {
     reminders: changes.reminders !== undefined ? normalizeReminderList(changes.reminders) : target.reminders,
     updatedAt: new Date().toISOString()
   };
+  if (changes.location === "") delete merged.location;
+  if (changes.notes === "") delete merged.notes;
   state.calendar.events[index] = merged;
   state.calendar.cursorISO = String(merged.start).slice(0, 10);
   maybeRequestNotificationPermission(merged.reminders);

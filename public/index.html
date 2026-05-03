@@ -149,19 +149,20 @@
           <button id="closeEventDialogButton" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
 
-        <div class="field">
-          <label class="field-label" for="eventTitleInput">제목</label>
-          <input id="eventTitleInput" class="text-input" required placeholder="예: 팀 주간 회의" />
+        <div class="field-row field-row-title">
+          <div class="field">
+            <label class="field-label" for="eventTitleInput">제목</label>
+            <input id="eventTitleInput" class="text-input" required placeholder="예: 팀 주간 회의" />
+          </div>
+          <div class="field field-inline-toggle" id="eventDoneRow" hidden>
+            <label class="event-allday-toggle event-done-toggle">
+              <input id="eventDoneInput" type="checkbox" />
+              <span>완료</span>
+            </label>
+          </div>
         </div>
 
-        <div class="field">
-          <label class="event-allday-toggle">
-            <input id="eventAllDayInput" type="checkbox" />
-            <span>종일</span>
-          </label>
-        </div>
-
-        <div class="field-row">
+        <div class="field-row field-row-datetime">
           <div class="field">
             <label class="field-label" for="eventStartInput">시작</label>
             <input id="eventStartInput" class="text-input" type="datetime-local" required />
@@ -169,6 +170,12 @@
           <div class="field">
             <label class="field-label" for="eventEndInput">종료</label>
             <input id="eventEndInput" class="text-input" type="datetime-local" required />
+          </div>
+          <div class="field field-inline-toggle">
+            <label class="event-allday-toggle">
+              <input id="eventAllDayInput" type="checkbox" />
+              <span>종일</span>
+            </label>
           </div>
         </div>
 

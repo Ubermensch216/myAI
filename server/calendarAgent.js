@@ -47,7 +47,7 @@ function buildSystemPrompt(currentDate) {
     "- calendar.create: user wants to add an event/appointment/meeting/reminder",
     "- calendar.list: user wants to view/search their schedule",
     "- calendar.delete: user wants to remove an existing event",
-    "- calendar.update: user wants to modify an existing event (time, title, etc.)",
+    "- calendar.update: user wants to modify or remove a field of an existing event (time, title, location, notes, etc.)",
     "",
     "Output STRICTLY this JSON object (no markdown, no commentary):",
     '{"intent":"<one of above>","payload":{...}}',
@@ -89,6 +89,12 @@ function buildSystemPrompt(currentDate) {
     `User: "5월 전체 일정 보고해"`,
     `→ {"intent":"calendar.list","payload":{"from":"${yyyy}-05-01","to":"${yyyy}-05-31"}}`,
     "",
+    `User: "6월부터 12월까지 일정 알려줘"`,
+    `→ {"intent":"calendar.list","payload":{"from":"${yyyy}-06-01","to":"${yyyy}-12-31"}}`,
+    "",
+    `User: "${yyyy}년도 일정 모두 알려줘"`,
+    `→ {"intent":"calendar.list","payload":{"from":"${yyyy}-01-01","to":"${yyyy}-12-31"}}`,
+    "",
     `User: "5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해"`,
     `→ {"intent":"calendar.create","payload":{"title":"스트레칭","start":"${yyyy}-05-01T09:00","end":"${yyyy}-05-01T09:10","allDay":false,"repeat":{"frequency":"daily","from":"${yyyy}-05-01","to":"${yyyy}-05-31"}}}`,
     "",
@@ -106,6 +112,12 @@ function buildSystemPrompt(currentDate) {
     "",
     `User: "내일 회의 시간을 4시로 바꿔줘"`,
     `→ {"intent":"calendar.update","payload":{"matchTitle":"회의","changes":{"start":"${tomorrowISO}T16:00","end":"${tomorrowISO}T17:00"}}}`,
+    "",
+    `User: "공모전 공문 제출 일정에서 장소는 삭제해"`,
+    `→ {"intent":"calendar.update","payload":{"matchTitle":"공모전 공문 제출","changes":{"location":""}}}`,
+    "",
+    `User: "영업팀 회의 메모 빼줘"`,
+    `→ {"intent":"calendar.update","payload":{"matchTitle":"영업팀 회의","changes":{"notes":""}}}`,
     "",
     `User: "안녕하세요"`,
     `→ {"intent":"chat","payload":{}}`,
@@ -208,14 +220,14 @@ function validateIntent(raw) {
 
 function applyDeterministicCorrections(result, prompt, currentDate) {
   if (result?.intent === "calendar.list") {
-    const monthRange = extractCalendarMonthRange(prompt, currentDate);
-    if (monthRange) {
+    const dateRange = extractCalendarListDateRange(prompt, currentDate);
+    if (dateRange) {
       return {
         ...result,
         payload: {
           ...result.payload,
-          from: monthRange.from,
-          to: monthRange.to
+          from: dateRange.from,
+          to: dateRange.to
         }
       };
     }
@@ -241,6 +253,41 @@ function applyDeterministicCorrections(result, prompt, currentDate) {
     }
   }
   return result;
+}
+
+function extractCalendarListDateRange(prompt, currentDate) {
+  const text = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  const baseDate = new Date(currentDate);
+  const baseYear = Number.isFinite(baseDate.getTime()) ? baseDate.getFullYear() : new Date().getFullYear();
+
+  // Multi-month range: "6월부터 12월까지", "6월~12월", "6월에서 12월"
+  const multiMonth = /(\d{1,2})\s*월\s*(?:부터|에서|~|-)\s*(?:\d{4}\s*년\s*)?(\d{1,2})\s*월/.exec(text);
+  if (multiMonth) {
+    const fromMonth = Number(multiMonth[1]);
+    const toMonth = Number(multiMonth[2]);
+    if (fromMonth >= 1 && fromMonth <= 12 && toMonth >= 1 && toMonth <= 12) {
+      const toYear = toMonth < fromMonth ? baseYear + 1 : baseYear;
+      return {
+        from: buildMonthRange(baseYear, fromMonth).from,
+        to: buildMonthRange(toYear, toMonth).to
+      };
+    }
+  }
+
+  // Year-only: "2026년도", "2026년" with no specific month following
+  const yearMatch = /(\d{4})\s*년(?:도)?/.exec(text);
+  if (yearMatch) {
+    const year = Number(yearMatch[1]);
+    const afterYear = text.slice(yearMatch.index + yearMatch[0].length);
+    if (year >= 2000 && year <= 2100 && !/^\s*\d{1,2}\s*월/.test(afterYear)) {
+      return { from: `${year}-01-01`, to: `${year}-12-31` };
+    }
+  }
+
+  // Fall back to single-month detection
+  return extractCalendarMonthRange(prompt, currentDate);
 }
 
 function extractDailyCreateRange(prompt, currentDate) {
@@ -403,7 +450,9 @@ function normalizeUpdate(payload) {
   const changes = {};
   if (typeof rawChanges.title === "string" && rawChanges.title.trim()) changes.title = rawChanges.title.trim();
   if (typeof rawChanges.location === "string") changes.location = rawChanges.location.trim();
+  else if (rawChanges.location === null) changes.location = "";
   if (typeof rawChanges.notes === "string") changes.notes = rawChanges.notes.trim();
+  else if (rawChanges.notes === null) changes.notes = "";
   if (typeof rawChanges.allDay === "boolean") changes.allDay = rawChanges.allDay;
   if (rawChanges.reminders !== undefined || rawChanges.reminderMinutesBefore !== undefined) {
     changes.reminders = normalizeReminders(rawChanges.reminders ?? rawChanges.reminderMinutesBefore);
