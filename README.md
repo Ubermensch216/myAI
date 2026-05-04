@@ -5,12 +5,13 @@ myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입
 ## Current Local Status
 
 - 실행 URL: <http://localhost:3000>
-- 현재 `/api/status` 확인 결과:
+- 현재 `/api/status` 확인 결과(2026-05-04):
   - `ok: true`
   - `defaultModel: gemma4:e2b`
-  - 사용 가능 모델: `gemma4:e4b`, `gemma4:e2b`
-- 현재 로컬 `.env`는 `OLLAMA_MODEL=gemma4:e2b`를 사용합니다.
+  - 사용 가능 모델: `bge-m3:latest`, `gemma4:e4b`, `gemma4:e2b`
+- 현재 로컬 `.env`는 `OLLAMA_MODEL=gemma4:e2b`, `EMBED_MODEL=nomic-embed-text`를 사용합니다.
 - 코드 fallback(`server/ollama.js`)과 `.env.example`의 기본 모델은 `gemma3n:e2b`입니다. `server/calendarAgent.js`는 이 값들을 `server/ollama.js`에서 직접 import합니다.
+- `.env.example`은 의미 기반 검색용 `EMBED_MODEL=bge-m3`를 설정합니다. 현재 Ollama에는 `bge-m3:latest`가 있지만 `nomic-embed-text`는 없어서, 현재 `.env` 그대로 실행하면 임베딩 호출은 실패하고 BM25 검색으로 fallback합니다.
 - 서버 로그 파일: `server-start.log`
 
 ## Features
@@ -22,7 +23,7 @@ myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입
 - **한국 공휴일과 일정 알림**: 공식 공휴일 API 키가 있으면 한국 공휴일을 표시하고, 키가 없으면 고정 양력 공휴일 fallback을 표시합니다. 일정별 시작 시/30분 전/하루 전/이틀 전/일주일 전 알림을 설정할 수 있습니다.
 - **자연어 일정 처리**: 채팅 입력 또는 캘린더 명령창에서 일정 등록, 조회, 삭제, 수정 요청을 감지하면 `/api/agent/intent`가 Ollama로 의도를 분류하고, 브라우저 코드가 검증된 payload를 실제 캘린더 상태에 적용합니다. tentative 요청은 `calendar.propose`로 보관한 뒤 사용자가 확인해야 실제 저장됩니다.
 - **데이터 시각화**: CSV/XLSX 표 데이터 요청은 `/api/visualize`로 라우팅됩니다. LLM은 `analysis + visualizationPlan` JSON 계획만 만들고, 서버가 실제 컬럼 검증과 차트 데이터를 계산한 뒤 브라우저가 SVG 차트/KPI/표/인포그래픽을 렌더링합니다.
-- **문서 컨텍스트 선별**: 문서가 길면 `server/retrieval.js`의 BM25 기반 선별로 관련 청크를 골라 `MAX_CONTEXT_CHARS` 안에 넣습니다.
+- **문서 컨텍스트 선별**: 문서가 길면 `slidingChunkText()`로 오버랩 청크를 만들고, 임베딩 모델이 가능할 때는 BM25 + 벡터 유사도를 RRF로 결합한 `hybridSelect()`로 `MAX_CONTEXT_CHARS` 안의 관련 청크를 고릅니다. 임베딩이 실패하면 BM25 기반 선별로 fallback합니다.
 - **후속 질문 추천**: 답변 완료 후 `/api/followups`를 통해 1-3개 한국어 후속 질문을 생성하고, 실패 시 로컬 fallback을 사용합니다.
 - **개인화 설정**: 시스템 명칭, 시스템 배너, 시스템 아바타, 사용자 별명, 사용자 아바타, 밝기 테마, 색상 테마, 사용자 정의 프롬프트를 설정할 수 있습니다.
 - **로컬 우선 저장**: 서버는 파일 파싱과 모델 호출을 담당하며, 사용자 데이터의 durable source는 브라우저 IndexedDB입니다.
@@ -43,7 +44,10 @@ ollama pull gemma4:e2b
 
 ```bash
 ollama pull gemma3n:e2b
+ollama pull bge-m3
 ```
+
+`bge-m3`는 `.env.example` 기준 의미 기반 문서 검색용 임베딩 모델입니다. 현재 로컬 `.env`처럼 `EMBED_MODEL=nomic-embed-text`를 쓰려면 `ollama pull nomic-embed-text`가 추가로 필요합니다. 임베딩 모델이 없어도 앱은 동작하지만, 긴 문서 선별은 BM25 중심으로 동작합니다.
 
 ## Quick Start
 
@@ -79,6 +83,8 @@ npm test
 
 테스트는 앱 shell ID 정합성, `/api/status`, 월 범위 캘린더 intent, CSV 파서, 부서노트북 CRUD와 RAG 인용 메타데이터를 확인합니다.
 
+현재 로컬 `.env`처럼 `EMBED_MODEL=nomic-embed-text`를 쓰면서 해당 모델을 pull하지 않은 경우, 테스트 중 노트북 임베딩 생성 실패 경고가 표시될 수 있습니다. 이 경고는 BM25 fallback 경로를 타며, 테스트 자체는 통과할 수 있습니다.
+
 ## Configuration
 
 서버는 시작 시 프로젝트 루트의 `.env`를 `server/env.js`로 읽습니다. 이미 설정된 프로세스 환경변수는 `.env` 값보다 우선합니다.
@@ -89,11 +95,15 @@ npm test
 | `HOST` | 미설정 | HTTP 바인딩 호스트. 미설정 시 모든 인터페이스에서 listen |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API 엔드포인트 |
 | `OLLAMA_MODEL` | `gemma3n:e2b` | 코드 fallback 및 `.env.example`의 기본 모델 |
+| `EMBED_MODEL` | code: `nomic-embed-text`, `.env.example`: `bge-m3` | Ollama `/api/embed`에 사용할 임베딩 모델. 사용할 수 없으면 BM25 검색으로 fallback |
 | `KOREA_HOLIDAY_SERVICE_KEY` | 미설정 | 공공데이터포털 한국천문연구원 특일 정보 API 서비스 키 |
 | `MAX_CONTEXT_CHARS` | `24000` | 한 요청에 포함할 최대 문서 컨텍스트 글자 수 |
 | `CHUNK_WINDOW_CHARS` | `1024` | 슬라이딩 윈도우 청크 크기(≈512 토큰) |
 | `CHUNK_OVERLAP_CHARS` | `256` | 인접 청크 간 오버랩(≈128 토큰). 경계에 걸친 정보 누락을 줄임 |
 | `NOTEBOOK_QUERY_BUDGET` | `12000` | 부서노트북 RAG 응답에 포함할 최대 청크 글자 수 |
+| `QUERY_EXPANSION_ENABLED` | `true` | 부서노트북 검색 전 LLM 기반 질의 변형 생성 사용 여부 |
+| `QUERY_EXPANSION_VARIANTS` | `3` | 원문 질의 외 생성할 검색 변형 수 (1-6으로 clamp) |
+| `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | 질의 확장 LLM 호출 timeout ms (1000-30000으로 clamp) |
 | `ADMIN_TOKEN` | 미설정 | 부서노트북 등록·문서 추가·삭제에 필요한 관리자 토큰. 미설정 시 관리자 엔드포인트는 503 응답 |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |
 | `MAX_UPLOAD_BYTES` | `41943040` | 업로드 파일 1개당 최대 바이트 |
@@ -185,7 +195,9 @@ RAG 처리 흐름:
 ```text
 사용자 입력 + room.selectedNotebookId
 -> POST /api/chat { ..., notebookId }
--> server/notebooks.js#queryNotebook 으로 BM25+CJK bigram 검색
+-> server/queryExpansion.js#expandQuery 로 검색 질의 변형 생성
+-> server/notebooks.js#queryNotebook 으로 multi-query 청크 검색
+   (임베딩 가능 시 multiQueryHybridSelect, 실패 시 BM25+CJK bigram fallback)
 -> 상위 청크를 시스템 메시지의 [노트북 컨텍스트] 블록에 [N] 번호와 함께 주입
 -> Strict 시스템 프롬프트로 "노트북 자료에만 근거" 규칙 강제
 -> 자료 부족 시 "해당 노트북에서 관련 정보를 찾을 수 없습니다."
@@ -201,6 +213,8 @@ RAG 처리 흐름:
 - 문서 파싱은 채팅과 동일한 `server/parsers.js`를 재사용하며 PDF/DOCX/XLSX/CSV/PPTX/HWPX를 지원합니다(이미지는 노트북에 추가 불가).
 
 검색 한도는 `NOTEBOOK_QUERY_BUDGET` (기본 12,000자) 환경변수로 조정합니다. 룸 첨부파일과 노트북 컨텍스트는 함께 시스템 메시지에 들어가며, 시스템 프롬프트가 노트북 우선임을 LLM에 지시합니다.
+
+현재 구현상 노트북 문서 ingest는 임베딩 생성을 시도해 문서 JSON에 저장하지만, 질의 시 `queryNotebook()`의 청크 메타 구성에서 저장된 embedding을 아직 전달하지 않습니다. 따라서 노트북 검색은 질의 확장 + multi-query BM25 중심으로 보는 것이 안전합니다. 개인 업로드 문서의 긴 컨텍스트는 요청 시점에 query+chunk를 batch embedding하여 `hybridSelect()`를 사용합니다.
 
 ## Local Storage Notes
 
@@ -243,13 +257,15 @@ Record id: local-aes-gcm-key
 server/
   index.js           Express 서버, 정적 파일, API 라우트
   env.js             프로젝트 루트 .env 로더
-  ollama.js          Ollama 호출, 채팅, 후속 질문, 시각화 계획/해석, 노트북 컨텍스트 주입
+  ollama.js          Ollama 호출, 채팅, 후속 질문, 시각화 계획/해석, 노트북/문서 컨텍스트 주입
+  embeddings.js      Ollama /api/embed 배치 임베딩 헬퍼
+  queryExpansion.js  부서노트북 검색용 LLM 질의 확장 헬퍼
   calendarAgent.js   자연어 캘린더 intent 분류와 payload 정규화
   holidays.js        한국 공휴일 API/fallback 조회
-  notebooks.js       부서노트북 CRUD, 문서 ingest, BM25 검색, 인용 생성
+  notebooks.js       부서노트북 CRUD, 문서 ingest, 청크/임베딩 저장, 인용 생성
   auth.js            ADMIN_TOKEN 기반 관리자 미들웨어
   parsers.js         업로드 파일 파싱 (룸 파일과 노트북 문서 공통)
-  retrieval.js       BM25 + CJK bigram 기반 청크 선별, greedyFit() 공유 헬퍼
+  retrieval.js       BM25 + CJK bigram, cosineSimilarity, RRF hybridSelect/multiQueryHybridSelect, greedyFit()
   visualization.js   시각화 계획 검증과 차트 데이터 계산
   documents.js       문서 summary/full payload 직렬화, pageSections() 공유 헬퍼
   documentStore.js   서버 런타임 메모리 문서 캐시
@@ -281,6 +297,7 @@ deploy/
 - 일정 알림은 브라우저가 열려 있을 때 동작합니다. 앱/브라우저가 완전히 꺼진 상태의 보장 알림은 PWA/service worker 또는 데스크톱 앱화가 필요합니다.
 - AI 일정 삭제/수정은 LLM 분류 결과를 바탕으로 로컬 이벤트를 변경하지만, 실제 변경 전 사용자 확인을 거칩니다. 시간 변경은 기존 일정과의 충돌도 확인합니다.
 - 파일과 캘린더 데이터는 브라우저 로컬에만 저장됩니다. export/import와 저장 공간 사용량 UI는 아직 없습니다.
+- 개인 업로드 문서의 임베딩은 긴 컨텍스트 요청마다 다시 계산됩니다. 부서노트북도 현재는 JSON 파일을 매 요청 읽는 구조라서 문서가 많아지면 별도 인덱스/벡터 저장소가 필요합니다.
 - 레거시 `.hwp`와 `.xls`는 직접 지원하지 않습니다. HWPX/XLSX 변환을 권장합니다.
 - `llm_performance_dummy.csv`는 현재 작업트리에 없습니다. 시각화 smoke test에 필요하면 새 fixture를 추가하거나 기존 테스트 데이터를 준비하세요.
 

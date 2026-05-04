@@ -82,6 +82,107 @@ export function pickRelevantChunks(chunks, query, budget) {
   return selected.map((item) => item.chunk);
 }
 
+/**
+ * Multi-query hybrid retrieval. For each (query, queryEmbedding) pair we build
+ * a BM25 ranking and (when embeddings exist) a vector ranking, then fuse all
+ * 2*N rankings via Reciprocal Rank Fusion. Empty queries / null embeddings are
+ * skipped. Falls back to single-query hybridSelect when only one query exists,
+ * or to greedyFit when none of the rankings produce a positive score.
+ *
+ * queries: string[] — first entry is the original user query
+ * queryEmbeddings: (float[]|null)[] — same length as queries, null = skip vector
+ */
+export function multiQueryHybridSelect(chunks, queries, queryEmbeddings, budget) {
+  if (!chunks.length || budget <= 0) return [];
+  const validQueries = (queries || []).map((q) => String(q ?? "").trim()).filter(Boolean);
+  if (validQueries.length === 0) return greedyFit(chunks, budget);
+  if (validQueries.length === 1) {
+    return hybridSelect(chunks, validQueries[0], budget, queryEmbeddings?.[0] ?? null);
+  }
+
+  const docTokens = chunks.map((chunk) => tokenize(chunk.text));
+  const docFreq = new Map();
+  for (const tokens of docTokens) {
+    for (const token of new Set(tokens)) {
+      docFreq.set(token, (docFreq.get(token) || 0) + 1);
+    }
+  }
+  const totalDocs = chunks.length;
+  const avgLength = docTokens.reduce((s, t) => s + t.length, 0) / Math.max(1, totalDocs);
+  const hasEmbeddings = chunks.some((c) => c.embedding);
+
+  const rankMaps = [];
+  for (let i = 0; i < validQueries.length; i += 1) {
+    const queryTokens = tokenize(validQueries[i]);
+    if (queryTokens.length) {
+      rankMaps.push(bm25RankMap(chunks, queryTokens, docTokens, docFreq, avgLength, totalDocs));
+    }
+    const qEmbed = queryEmbeddings?.[i];
+    if (hasEmbeddings && qEmbed) {
+      rankMaps.push(vectorRankMap(chunks, qEmbed));
+    }
+  }
+
+  if (!rankMaps.length) return greedyFit(chunks, budget);
+
+  const rrfScored = chunks.map((chunk, index) => {
+    let score = 0;
+    for (const map of rankMaps) {
+      const rank = map.get(index) ?? totalDocs;
+      score += 1 / (RRF_K + rank);
+    }
+    return { chunk, score, index };
+  });
+
+  rrfScored.sort((left, right) => right.score - left.score || left.index - right.index);
+
+  const selected = [];
+  let used = 0;
+  for (const item of rrfScored) {
+    const cost = item.chunk.text.length + HEADER_OVERHEAD;
+    if (used + cost > budget && selected.length) continue;
+    selected.push(item);
+    used += cost;
+    if (used >= budget) break;
+  }
+
+  if (!selected.length) return greedyFit(chunks, budget);
+  selected.sort((left, right) => left.index - right.index);
+  return selected.map((item) => item.chunk);
+}
+
+function bm25RankMap(chunks, queryTokens, docTokens, docFreq, avgLength, totalDocs) {
+  const k1 = 1.5;
+  const b = 0.75;
+  const scores = chunks.map((_, index) => {
+    const tokens = docTokens[index];
+    const tf = new Map();
+    for (const token of tokens) tf.set(token, (tf.get(token) || 0) + 1);
+    let score = 0;
+    for (const qt of queryTokens) {
+      const freq = tf.get(qt);
+      if (!freq) continue;
+      const df = docFreq.get(qt) || 0;
+      const idf = Math.log(1 + (totalDocs - df + 0.5) / (df + 0.5));
+      const num = freq * (k1 + 1);
+      const den = freq + k1 * (1 - b + b * (tokens.length / Math.max(1, avgLength)));
+      score += idf * (num / den);
+    }
+    return { index, score };
+  });
+  const sorted = [...scores].sort((left, right) => right.score - left.score);
+  return new Map(sorted.map((item, rank) => [item.index, rank]));
+}
+
+function vectorRankMap(chunks, queryEmbedding) {
+  const scores = chunks.map((chunk, index) => ({
+    index,
+    sim: chunk.embedding ? cosineSimilarity(queryEmbedding, chunk.embedding) : -1
+  }));
+  const sorted = [...scores].sort((left, right) => right.sim - left.sim);
+  return new Map(sorted.map((item, rank) => [item.index, rank]));
+}
+
 export function greedyFit(chunks, budget) {
   const selected = [];
   let used = 0;

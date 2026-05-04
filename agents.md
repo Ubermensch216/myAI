@@ -10,14 +10,14 @@ Current workspace:
 C:\Dev\myAI
 ```
 
-Current live status checked on 2026-05-03:
+Current live status checked on 2026-05-04:
 
 ```json
 {
   "ok": true,
   "ollamaUrl": "http://127.0.0.1:11434",
   "defaultModel": "gemma4:e2b",
-  "models": ["gemma4:e4b", "gemma4:e2b"]
+  "models": ["bge-m3:latest", "gemma4:e4b", "gemma4:e2b"]
 }
 ```
 
@@ -37,19 +37,26 @@ http://localhost:3000
 Model notes:
 
 - Current local `.env`: `OLLAMA_MODEL=gemma4:e2b`.
+- Current local `.env`: `EMBED_MODEL=nomic-embed-text`. This model is not currently listed by `/api/status`; local smoke test therefore logs embedding 404 warnings and retrieval falls back to BM25.
 - Code fallback in `server/ollama.js`: `gemma3n:e2b`. `server/calendarAgent.js` imports `OLLAMA_URL` and `DEFAULT_MODEL` directly from `server/ollama.js`.
 - `.env.example` also defaults to `gemma3n:e2b`.
+- `.env.example` sets `EMBED_MODEL=bge-m3`. `server/embeddings.js` falls back to `nomic-embed-text` only when no env value is present.
+- Embedding calls use Ollama `/api/embed`. Retrieval catches embedding failures and falls back to BM25 keyword search.
+- `QUERY_EXPANSION_ENABLED` defaults to true. `QUERY_EXPANSION_VARIANTS` defaults to `3`; `QUERY_EXPANSION_TIMEOUT_MS` defaults to `6000`.
 - `KOREA_HOLIDAY_SERVICE_KEY` is optional. If configured, `/api/holidays` uses the official Korean public-holiday API; otherwise it returns a limited fixed-solar-holiday fallback.
 - `ADMIN_TOKEN` is optional but required for department-notebook management endpoints. When unset, all admin routes return 503 and the "부서노트북 관리" UI button stays hidden.
 - `NOTEBOOK_QUERY_BUDGET` (default `12000`) caps how many characters of notebook chunks are inlined per chat turn.
+- `CHUNK_WINDOW_CHARS` (default `1024`) and `CHUNK_OVERLAP_CHARS` (default `256`) control sliding-window chunking for room uploads and notebook ingest. `CHUNK_TARGET_CHARS` is still accepted as a compatibility fallback for the window size.
 
 Current worktree notes at this refresh:
 
-- Uncommitted calendar agent fixes are present:
-  - `public/app.js` adds pending calendar confirmation handling so tentative schedule requests are saved only after user confirmation.
-  - `server/calendarAgent.js` adds `calendar.propose`, recent-message/pending-action context, and deterministic month-range correction.
-  - `server/index.js` passes `messages` and `pendingAction` through `/api/agent/intent`.
-- This documentation refresh updates `agents.md` and `README.md`.
+- Worktree was clean before this documentation refresh.
+- During the refresh, additional code changes appeared that were not made by this docs pass:
+  - `server/queryExpansion.js` (new)
+  - `server/retrieval.js` adds `multiQueryHybridSelect()`
+  - `server/notebooks.js` uses `expandQuery()` + `multiQueryHybridSelect()`
+  Treat them as user/parallel-agent changes unless confirmed otherwise; do not revert them casually.
+- This documentation refresh updates `agents.md` and `README.md` to match current retrieval/embedding code and live `/api/status`.
 
 ## Stack
 
@@ -73,6 +80,8 @@ server/index.js
 server/env.js
 server/documents.js
 server/ollama.js
+server/embeddings.js
+server/queryExpansion.js
 server/calendarAgent.js
 server/holidays.js
 server/notebooks.js
@@ -136,7 +145,21 @@ Key responsibilities:
   - Model/system prompt construction.
   - Personal settings and custom prompt injection.
   - Document/image context attachment.
-  - Uses `server/retrieval.js` to select relevant document chunks when the context exceeds `MAX_CONTEXT_CHARS`.
+  - Uses `slidingChunkText()` to chunk room-uploaded documents with overlap.
+  - When room document context exceeds `MAX_CONTEXT_CHARS`, batch-embeds query + chunks through `server/embeddings.js`, then calls `server/retrieval.js#hybridSelect()`.
+  - Falls back to BM25-only retrieval if the embedding model or `/api/embed` call fails.
+
+- `server/embeddings.js`
+  - Loads `.env` and calls Ollama `/api/embed`.
+  - Exports `embedTexts(texts)` and `embedText(text)`.
+  - Uses `EMBED_MODEL` from env, or `nomic-embed-text` when unset. Current `.env.example` sets `bge-m3`.
+  - Throws on unavailable/invalid embedding responses; callers catch and degrade to BM25.
+
+- `server/queryExpansion.js`
+  - Generates retrieval-friendly variants for department-notebook search via Ollama chat JSON.
+  - Exports `expandQuery(query)` plus `QUERY_EXPANSION_ENABLED` and `QUERY_EXPANSION_MAX_VARIANTS`.
+  - Defaults: enabled, 3 variants, 6s timeout.
+  - Always returns an array starting with the original query; on disabled/timeout/model/parse failure, returns `[original]`.
 
 - `server/calendarAgent.js`
   - LLM-backed calendar intent classifier.
@@ -163,11 +186,15 @@ Key responsibilities:
 - `server/notebooks.js`
   - Department notebook (RAG) storage layer backed by `data/notebooks/<id>/`.
   - `manifest.json` per notebook with `documents[]` summary; one parsed-document JSON file per uploaded document under `docs/<docId>.json`.
-  - Reuses `server/parsers.js` for ingest, `server/parsers.js#chunkText` for chunking, and `server/retrieval.js#pickRelevantChunks` (BM25 + CJK bigram) for query selection.
+  - Reuses `server/parsers.js` for ingest and `server/parsers.js#slidingChunkText` for overlapping chunking.
+  - During ingest, tries to batch-generate chunk embeddings with `server/embeddings.js#embedTexts`; stored document JSON can include `chunks[].embedding`.
+  - During query, calls `server/queryExpansion.js#expandQuery` to produce search variants, then tries `server/embeddings.js#embedTexts` for those variants.
+  - Calls `server/retrieval.js#multiQueryHybridSelect`; embedding failures fall back to multi-query BM25.
   - Uses `server/retrieval.js#greedyFit` as a budget-aware fallback when no query tokens are present.
   - Uses `server/documents.js#pageSections` to map document pages/sheets to section arrays during ingest.
   - `queryNotebook(id, query)` returns ranked chunks tagged with `citationId`, `documentName`, and `locator` (page/sheet/slide).
-  - Pure storage/retrieval — no LLM calls. Caller is responsible for building the prompt context.
+  - Pure storage/retrieval — no chat LLM calls. Caller is responsible for building the prompt context.
+  - Current caveat: `queryNotebook()` does not yet copy `chunk.embedding` from stored records into the `allChunks` objects passed to `multiQueryHybridSelect()`, so notebook vector ranking is effectively disabled until that field is carried through; query-expanded BM25 still works.
 
 - `server/auth.js`
   - `requireAdmin` Express middleware that compares `Authorization: Bearer <token>` against `ADMIN_TOKEN` using a constant-time comparison.
@@ -176,14 +203,18 @@ Key responsibilities:
 
 - `server/parsers.js`
   - Parses uploaded file types into common document objects.
-  - Chunks long text.
+  - Exports both paragraph-oriented `chunkText()` and overlapping `slidingChunkText()`.
+  - `slidingChunkText()` snaps boundaries to paragraph → sentence → whitespace where possible.
   - Extracts text from Office/HWPX ZIP XML formats.
   - Preserves CSV/XLSX tabular data as headers, rows, samples, and column profiles for visualization.
 
 - `server/retrieval.js`
   - Tokenizes text with CJK bigram support.
   - Uses BM25-like scoring to pick relevant document chunks for long-context chat.
-  - Exports `greedyFit(chunks, budget)` — used by `server/notebooks.js` as a fallback when no query tokens are available.
+  - Exports `cosineSimilarity(a, b)` for embedding vectors.
+  - Exports `hybridSelect(chunks, query, budget, queryEmbedding)` using Reciprocal Rank Fusion (BM25 rank + vector rank).
+  - Exports `multiQueryHybridSelect(chunks, queries, queryEmbeddings, budget)` for query-expansion retrieval; it fuses BM25/vector rankings for multiple queries through RRF.
+  - Exports `greedyFit(chunks, budget)` — used as a budget fallback when no useful retrieval signal is available.
 
 - `server/visualization.js`
   - Detects visualization intent keywords.
@@ -260,7 +291,10 @@ user prompt
 room documents in IndexedDB
 -> client sends active room documents
 -> server/ollama.js collects text/pages/sheets
--> if context is too large, server/retrieval.js picks relevant chunks
+-> server/parsers.js#slidingChunkText creates overlapping chunks
+-> if context is too large, server/embeddings.js tries query+chunk embeddings
+-> server/retrieval.js#hybridSelect picks chunks by BM25 + vector RRF
+-> if embedding fails, retrieval falls back to BM25
 -> selected context is injected into the system message
 ```
 
@@ -296,7 +330,10 @@ calendar-like natural language prompt
 chat prompt + room.selectedNotebookId
 -> POST /api/chat { ..., notebookId }
 -> server/ollama.js#streamChat awaits server/notebooks.js#queryNotebook
--> top BM25-ranked chunks tagged with [N] citation IDs
+-> server/queryExpansion.js#expandQuery creates retrieval variants
+-> server/retrieval.js#multiQueryHybridSelect fuses variant BM25/vector rankings
+-> top ranked chunks tagged with [N] citation IDs
+   (query expansion + BM25 currently effective; vector ranking path exists but stored embeddings are not carried through yet)
 -> system message gains [노트북 컨텍스트] block + strict grounding rules
 -> Ollama streams answer
 -> X-Notebook-Meta response header carries base64-JSON {notebook, citations[]}
@@ -308,6 +345,8 @@ Important design points:
 
 - Notebook content lives on the server filesystem. It is shared across users.
 - Per-room state (`selectedNotebookId`) is persisted in encrypted IndexedDB. New rooms default to `null`.
+- Notebook ingest stores chunk JSON under `data/notebooks/<id>/docs/<docId>.json`; embeddings are attempted at ingest time but current query mapping omits `embedding`, so fix that before claiming semantic notebook retrieval quality.
+- Notebook search now has LLM query expansion before retrieval; if expansion fails or is disabled, it uses the original query only.
 - Strict grounding is enforced via system prompt. The LLM is told to answer only from notebook + room files and to say "해당 노트북에서 관련 정보를 찾을 수 없습니다." when the answer cannot be grounded.
 - Room attachments and notebook chunks coexist in the system prompt; the prompt explicitly marks notebook as primary.
 - Admin endpoints are token-gated. Only `GET /api/notebooks` and `GET /api/notebooks/:id` are public so users can pick from the list.
@@ -439,7 +478,11 @@ state.calendar = {
   cursorISO: todayDateISO(),
   viewMode: "month",
   editingEventId: null,
-  selectedColor: "accent"
+  selectedColor: "accent",
+  holidaysByYear: {},
+  holidayWarnings: {},
+  holidayRequests: new Set(),
+  reminderTimer: null
 }
 ```
 
@@ -542,10 +585,9 @@ Calendar limitations and risks:
 - Reminder checks run in the open browser tab at one-minute intervals.
 - No timezone UI. Date/time strings are stored in browser-local form.
 - No multi-calendar account model.
-- AI delete by date range currently deletes matching events immediately after intent classification.
-- AI delete by partial title deletes immediately when exactly one candidate is found; multiple candidates ask for a more specific request.
-- AI update matches by partial title and does not currently perform a conflict check after applying time changes.
-- Before production use, add stronger confirmation UX for destructive calendar operations.
+- AI delete by date range and AI delete by exact single-candidate title now ask through `window.confirm()` before mutation. Multiple title matches ask for a more specific request.
+- AI update matches by partial title, asks for confirmation via `window.confirm()`, and checks time conflicts when `start`, `end`, or `allDay` changes.
+- Before production use, replace destructive `window.confirm()` flows with richer in-app review dialogs.
 
 ### Data Visualization
 
@@ -854,7 +896,12 @@ buildContext(documents, query)         // server/ollama.js
 collectChunks(documents)               // server/ollama.js
 pageSections(documentItem)             // server/documents.js — shared with notebooks.js
 hasDocumentContext(documentItem)       // server/ollama.js
+slidingChunkText(text, options)        // server/parsers.js
+embedTexts(texts), embedText(text)     // server/embeddings.js
+expandQuery(query)                     // server/queryExpansion.js
 pickRelevantChunks(chunks, query, budget)  // server/retrieval.js
+hybridSelect(chunks, query, budget, queryEmbedding)  // server/retrieval.js
+multiQueryHybridSelect(chunks, queries, queryEmbeddings, budget)  // server/retrieval.js
 greedyFit(chunks, budget)             // server/retrieval.js
 ```
 
@@ -878,6 +925,16 @@ Important:
   - Added `extractPersonalization(body)` helper in `server/index.js`; replaced three inline repetitions across `/api/chat`, `/api/visualize`, and `/api/followups`.
   - Removed redundant `normalizeRows` pre-call from `parsers.js#parseCsv` and `readWorksheetRows`; `buildTableFromRows` remains the single normalization point.
 
+- Retrieval and RAG update (2026-05-04):
+  - Added `server/embeddings.js` for Ollama `/api/embed` batch/single embedding calls.
+  - `.env.example` now includes `EMBED_MODEL=bge-m3`; code fallback is `nomic-embed-text`.
+  - Added `server/queryExpansion.js` for LLM-generated retrieval variants with timeout/fallback.
+  - Added `server/parsers.js#slidingChunkText()` with overlap and natural-boundary snapping.
+  - `server/ollama.js` now uses sliding chunks and, for oversized room document context, batch-embeds query + chunks before calling `hybridSelect()`.
+  - `server/retrieval.js` now exports `cosineSimilarity()`, `hybridSelect()`, and `multiQueryHybridSelect()` using Reciprocal Rank Fusion of BM25 rank and vector rank.
+  - `server/notebooks.js` attempts embedding generation during notebook document ingest, stores vectors in document JSON, expands queries at retrieval time, and calls `multiQueryHybridSelect()`.
+  - Current notebook caveat: `queryNotebook()` does not copy stored `chunk.embedding` into the query-time chunk objects, so notebook retrieval is effectively query-expanded BM25 until fixed.
+
 - Added primary `대화` / `캘린더` navigation.
 - Added calendar month view, upcoming event list, event dialog, and event cards.
 - Added local calendar persistence under encrypted app state.
@@ -896,7 +953,7 @@ Important:
 - Added department notebook (RAG) feature:
   - New `server/notebooks.js` and `server/auth.js` modules.
   - 9 new endpoints under `/api/notebooks/...` and `/api/admin/...`.
-  - `streamChat` accepts `notebookId`, fetches BM25-ranked chunks from the chosen notebook, and injects a strict-grounding system prompt that forbids answering outside the notebook + room files.
+  - `streamChat` accepts `notebookId`, fetches ranked chunks from the chosen notebook, and injects a strict-grounding system prompt that forbids answering outside the notebook + room files.
   - `/api/chat` exposes citation metadata via the `X-Notebook-Meta` response header (base64-encoded JSON).
   - Browser UI: '+' menu now has a "부서노트북" entry; active selection is shown as a pill-shaped badge in the composer plus a context bar under the chat header. Each room maintains its own `selectedNotebookId`; new rooms default to `null`.
   - Citations rendered as a structured panel below assistant answers; `[1]`, `[2]` markers stay inline as plain text in the answer body.
@@ -918,6 +975,8 @@ Good next steps:
 - Add external calendar integration only after local CRUD is stable.
 - Split the large `public/app.js` calendar code into focused modules.
 - Add browser smoke tests for chat, upload, visualization, and full calendar UI flows.
+- Fix notebook semantic retrieval by carrying stored `chunk.embedding` through `queryNotebook()` into `multiQueryHybridSelect()`.
+- Add a persistent local retrieval index/vector store when notebook volume grows beyond small JSON-file scans.
 - Add storage usage display for IndexedDB.
 - Add export/import for encrypted app data.
 - Add password-based encryption option instead of only local CryptoKey.
@@ -940,19 +999,23 @@ If users store/send larger payloads, consider chunked transport or a proper loca
 Commands run during this refresh (2026-05-04):
 
 ```powershell
-Get-ChildItem -Recurse -Include *.js -Path .\server,.\public | ForEach-Object { node --check $_.FullName }
-node --input-type=module --eval "import './server/documents.js'; import './server/retrieval.js'; import './server/parsers.js'; import './server/notebooks.js'; import './server/ollama.js'; import './server/calendarAgent.js'; console.log('imports OK')"
+Invoke-RestMethod -Uri 'http://localhost:3000/api/status'
+npm test
 ```
 
 Results:
 
-- JavaScript syntax check passed with no output.
-- All refactored server module imports resolved cleanly.
+- `/api/status` returned `ok: true`, default model `gemma4:e2b`, and models `bge-m3:latest`, `gemma4:e4b`, `gemma4:e2b`.
+- `npm test` passed:
+  - `app shell ids exist`
+  - `GET /api/status`
+  - `POST /api/agent/intent month range`
+  - `parser and notebook CRUD`
+- `npm test` logged three notebook embedding warnings because current local `.env` uses `EMBED_MODEL=nomic-embed-text`, but that model is not installed. The fallback path worked and tests still passed.
 
 Not run in this refresh:
 
-- `/api/status` live check.
-- `npm test`.
+- Full recursive `node --check`.
 - Browser UI smoke test.
 - `npm audit`.
 
@@ -960,7 +1023,7 @@ Not run in this refresh:
 
 - Prefer small, focused edits.
 - Use `apply_patch` for file edits.
-- Do not revert uncommitted calendar work unless the user explicitly asks.
+- Check `git status --short` before editing; do not revert user changes unless explicitly asked.
 - Do not assume uploaded file payloads are server-persistent. Client IndexedDB is the durable source.
 - If changing file persistence, avoid reintroducing server-memory reconciliation that deletes local room documents.
 - If changing chat generation, preserve abort behavior via `AbortController`.

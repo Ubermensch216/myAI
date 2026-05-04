@@ -3,9 +3,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { slidingChunkText } from "./parsers.js";
-import { pickRelevantChunks, hybridSelect, greedyFit } from "./retrieval.js";
+import { multiQueryHybridSelect, greedyFit } from "./retrieval.js";
 import { pageSections } from "./documents.js";
-import { embedTexts, embedText } from "./embeddings.js";
+import { embedTexts } from "./embeddings.js";
+import { expandQuery } from "./queryExpansion.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -307,13 +308,15 @@ export async function queryNotebook(notebookId, query, options = {}) {
 
   let ranked = [];
   if (trimmedQuery) {
-    let queryEmbedding = null;
+    const queries = await expandQuery(trimmedQuery).catch(() => [trimmedQuery]);
+    let queryEmbeddings = queries.map(() => null);
     try {
-      queryEmbedding = await embedText(trimmedQuery);
+      const vectors = await embedTexts(queries);
+      queryEmbeddings = vectors;
     } catch {
-      // BM25 fallback
+      // BM25 fallback — embedding model unavailable
     }
-    ranked = hybridSelect(allChunks, trimmedQuery, budget, queryEmbedding);
+    ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
   }
 
   const selected = ranked.length ? ranked : greedyFit(allChunks, budget);
