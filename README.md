@@ -91,7 +91,8 @@ npm test
 | `OLLAMA_MODEL` | `gemma3n:e2b` | 코드 fallback 및 `.env.example`의 기본 모델 |
 | `KOREA_HOLIDAY_SERVICE_KEY` | 미설정 | 공공데이터포털 한국천문연구원 특일 정보 API 서비스 키 |
 | `MAX_CONTEXT_CHARS` | `24000` | 한 요청에 포함할 최대 문서 컨텍스트 글자 수 |
-| `CHUNK_TARGET_CHARS` | `1800` | 문서 청크 목표 길이 |
+| `CHUNK_WINDOW_CHARS` | `1024` | 슬라이딩 윈도우 청크 크기(≈512 토큰) |
+| `CHUNK_OVERLAP_CHARS` | `256` | 인접 청크 간 오버랩(≈128 토큰). 경계에 걸친 정보 누락을 줄임 |
 | `NOTEBOOK_QUERY_BUDGET` | `12000` | 부서노트북 RAG 응답에 포함할 최대 청크 글자 수 |
 | `ADMIN_TOKEN` | 미설정 | 부서노트북 등록·문서 추가·삭제에 필요한 관리자 토큰. 미설정 시 관리자 엔드포인트는 503 응답 |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |

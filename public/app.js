@@ -454,6 +454,8 @@ function bindEvents() {
     elements.adminNotebookDialog.addEventListener("close", () => {
       resetAdminFileInput();
       adminUiState.selectedId = null;
+      dragDepth = 0;
+      hideDropOverlay();
     });
   }
   if (elements.adminRecheckButton) {
@@ -550,6 +552,8 @@ function bindEvents() {
       event.preventDefault();
       event.stopPropagation();
       elements.adminDropZone.classList.remove("dragover");
+      dragDepth = 0;
+      hideDropOverlay();
       if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
       const files = Array.from(event.dataTransfer?.files || []);
       if (files.length) uploadAdminDocuments(adminUiState.selectedId, files);
@@ -1955,6 +1959,7 @@ async function removeUploadedFile(uploadedFile) {
 
 function handleWindowDragEnter(event) {
   if (!hasDraggedFiles(event)) return;
+  if (isAdminDialogOpen()) return;
   event.preventDefault();
   dragDepth += 1;
   showDropOverlay();
@@ -1962,6 +1967,7 @@ function handleWindowDragEnter(event) {
 
 function handleWindowDragOver(event) {
   if (!hasDraggedFiles(event)) return;
+  if (isAdminDialogOpen()) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
   showDropOverlay();
@@ -1969,6 +1975,11 @@ function handleWindowDragOver(event) {
 
 function handleWindowDragLeave(event) {
   if (!hasDraggedFiles(event)) return;
+  if (isAdminDialogOpen()) {
+    dragDepth = 0;
+    hideDropOverlay();
+    return;
+  }
   event.preventDefault();
   dragDepth = Math.max(0, dragDepth - 1);
   if (dragDepth === 0) hideDropOverlay();
@@ -1976,6 +1987,12 @@ function handleWindowDragLeave(event) {
 
 async function handleWindowDrop(event) {
   if (!hasDraggedFiles(event)) return;
+  if (isAdminDialogOpen()) {
+    event.preventDefault();
+    dragDepth = 0;
+    hideDropOverlay();
+    return;
+  }
   event.preventDefault();
   dragDepth = 0;
   hideDropOverlay();

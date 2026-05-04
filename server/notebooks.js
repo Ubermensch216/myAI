@@ -2,15 +2,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { chunkText } from "./parsers.js";
-import { pickRelevantChunks, greedyFit } from "./retrieval.js";
+import { slidingChunkText } from "./parsers.js";
+import { pickRelevantChunks, hybridSelect, greedyFit } from "./retrieval.js";
 import { pageSections } from "./documents.js";
+import { embedTexts, embedText } from "./embeddings.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const NOTEBOOKS_DIR = path.join(rootDir, "data", "notebooks");
-const CHUNK_TARGET_CHARS = Number(process.env.CHUNK_TARGET_CHARS || 1800);
+const CHUNK_WINDOW_CHARS = Number(process.env.CHUNK_WINDOW_CHARS || process.env.CHUNK_TARGET_CHARS || 1024);
+const CHUNK_OVERLAP_CHARS = Number(process.env.CHUNK_OVERLAP_CHARS || 256);
 const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
 const NOTEBOOK_ID_PATTERN = /^nb_[a-f0-9]{16}$/;
 const DOCUMENT_ID_PATTERN = /^doc_[a-f0-9]{16}$/;
@@ -192,7 +194,10 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
   const chunks = [];
   for (const section of sections) {
     if (!section.text) continue;
-    const pieces = chunkText(section.text, CHUNK_TARGET_CHARS);
+    const pieces = slidingChunkText(section.text, {
+      windowChars: CHUNK_WINDOW_CHARS,
+      overlapChars: CHUNK_OVERLAP_CHARS
+    });
     pieces.forEach((piece, partIndex) => {
       chunks.push({
         index: chunks.length,
@@ -207,6 +212,14 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
 
   if (!chunks.length) {
     throw new Error("문서에서 본문 텍스트를 추출하지 못했습니다.");
+  }
+
+  // Batch-generate embeddings; silently degrade to BM25-only on failure.
+  try {
+    const vectors = await embedTexts(chunks.map((c) => c.text));
+    vectors.forEach((vec, i) => { chunks[i].embedding = vec; });
+  } catch (err) {
+    console.warn(`[notebooks] 임베딩 생성 실패 (BM25 전용 모드로 전환): ${err.message}`);
   }
 
   const now = new Date().toISOString();
@@ -292,9 +305,16 @@ export async function queryNotebook(notebookId, query, options = {}) {
     return { ok: true, notebook: summarizeNotebook(manifest), chunks: [] };
   }
 
-  const ranked = trimmedQuery
-    ? pickRelevantChunks(allChunks, trimmedQuery, budget)
-    : [];
+  let ranked = [];
+  if (trimmedQuery) {
+    let queryEmbedding = null;
+    try {
+      queryEmbedding = await embedText(trimmedQuery);
+    } catch {
+      // BM25 fallback
+    }
+    ranked = hybridSelect(allChunks, trimmedQuery, budget, queryEmbedding);
+  }
 
   const selected = ranked.length ? ranked : greedyFit(allChunks, budget);
 

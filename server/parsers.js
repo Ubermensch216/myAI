@@ -506,6 +506,65 @@ export function chunkText(text, maxLength = 6500) {
   return chunks;
 }
 
+/**
+ * Sliding-window chunking with overlap and natural-boundary snapping.
+ * Defaults target ~512 tokens / ~128 tokens overlap (≈ 1024 / 256 chars for mixed KO/EN).
+ * Boundaries are snapped to paragraph → sentence → whitespace, within a slack window,
+ * to avoid cutting mid-sentence.
+ */
+export function slidingChunkText(text, { windowChars = 1024, overlapChars = 256 } = {}) {
+  const normalized = normalizeText(text);
+  if (!normalized) return [];
+  if (normalized.length <= windowChars) return [normalized];
+
+  let overlap = Math.max(0, Math.min(overlapChars, Math.floor(windowChars * 0.5)));
+  const step = Math.max(1, windowChars - overlap);
+
+  const chunks = [];
+  let start = 0;
+
+  while (start < normalized.length) {
+    const idealEnd = Math.min(start + windowChars, normalized.length);
+    const end = idealEnd >= normalized.length
+      ? idealEnd
+      : alignToBoundary(normalized, start + step, idealEnd);
+
+    const piece = normalized.slice(start, end).trim();
+    if (piece) chunks.push(piece);
+
+    if (end >= normalized.length) break;
+
+    const nextStart = end - overlap;
+    start = nextStart > start ? nextStart : start + step;
+  }
+
+  return chunks;
+}
+
+function alignToBoundary(text, minEnd, idealEnd) {
+  if (idealEnd <= minEnd) return idealEnd;
+  const slice = text.slice(minEnd, idealEnd);
+
+  const para = slice.lastIndexOf("\n\n");
+  if (para >= 0) return minEnd + para + 2;
+
+  const sentenceRegex = /[.!?。…][\s")\]]/g;
+  let lastSentence = -1;
+  let match;
+  while ((match = sentenceRegex.exec(slice)) !== null) {
+    lastSentence = match.index + match[0].length;
+  }
+  if (lastSentence > 0) return minEnd + lastSentence;
+
+  const newline = slice.lastIndexOf("\n");
+  if (newline >= 0) return minEnd + newline + 1;
+
+  const space = slice.lastIndexOf(" ");
+  if (space >= 0) return minEnd + space + 1;
+
+  return idealEnd;
+}
+
 function normalizeText(text) {
   return String(text ?? "")
     .replace(/\r/g, "")

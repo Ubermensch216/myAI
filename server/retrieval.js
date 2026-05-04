@@ -8,6 +8,7 @@ const CJK_RUN = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=K
 const TOKEN_SPLIT = /[^\p{L}\p{N}]+/u;
 const MIN_BIGRAM_RUN = 2;
 const HEADER_OVERHEAD = 80;
+const RRF_K = 60;
 
 export function tokenize(text) {
   const lowered = String(text ?? "").toLowerCase();
@@ -91,4 +92,100 @@ export function greedyFit(chunks, budget) {
     used += cost;
   }
   return selected;
+}
+
+export function cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  const mag = Math.sqrt(magA) * Math.sqrt(magB);
+  return mag === 0 ? 0 : dot / mag;
+}
+
+/**
+ * Hybrid retrieval using Reciprocal Rank Fusion (BM25 + vector similarity).
+ * Falls back to BM25-only when queryEmbedding is null or chunks lack embeddings.
+ *
+ * chunks: array of { text, embedding? (float[]), ...meta }
+ * queryEmbedding: float[] from embedText(query), or null for BM25-only
+ */
+export function hybridSelect(chunks, query, budget, queryEmbedding) {
+  if (!chunks.length || budget <= 0) return [];
+  if (!queryEmbedding) return pickRelevantChunks(chunks, query, budget);
+
+  const queryTokens = tokenize(query);
+  const docTokens = chunks.map((chunk) => tokenize(chunk.text));
+
+  // BM25 scoring
+  const docFreq = new Map();
+  for (const tokens of docTokens) {
+    for (const token of new Set(tokens)) {
+      docFreq.set(token, (docFreq.get(token) || 0) + 1);
+    }
+  }
+  const totalDocs = chunks.length;
+  const avgLength = docTokens.reduce((s, t) => s + t.length, 0) / Math.max(1, totalDocs);
+  const k1 = 1.5;
+  const b = 0.75;
+
+  const bm25Scores = chunks.map((chunk, index) => {
+    const tokens = docTokens[index];
+    const tf = new Map();
+    for (const token of tokens) tf.set(token, (tf.get(token) || 0) + 1);
+    let score = 0;
+    for (const qt of queryTokens) {
+      const freq = tf.get(qt);
+      if (!freq) continue;
+      const df = docFreq.get(qt) || 0;
+      const idf = Math.log(1 + (totalDocs - df + 0.5) / (df + 0.5));
+      const num = freq * (k1 + 1);
+      const den = freq + k1 * (1 - b + b * (tokens.length / Math.max(1, avgLength)));
+      score += idf * (num / den);
+    }
+    return { index, score };
+  });
+
+  const bm25Sorted = [...bm25Scores].sort((left, right) => right.score - left.score);
+  const bm25Rank = new Map(bm25Sorted.map((item, rank) => [item.index, rank]));
+
+  // Vector ranking (skip chunks without embeddings)
+  const hasEmbeddings = chunks.some((c) => c.embedding);
+  let vecRank = null;
+  if (hasEmbeddings) {
+    const vecScores = chunks.map((chunk, index) => ({
+      index,
+      sim: chunk.embedding ? cosineSimilarity(queryEmbedding, chunk.embedding) : -1
+    }));
+    const vecSorted = [...vecScores].sort((left, right) => right.sim - left.sim);
+    vecRank = new Map(vecSorted.map((item, rank) => [item.index, rank]));
+  }
+
+  // RRF combination
+  const rrfScored = chunks.map((chunk, index) => {
+    const br = bm25Rank.get(index) ?? totalDocs;
+    const vr = vecRank ? (vecRank.get(index) ?? totalDocs) : totalDocs;
+    const score = (1 / (RRF_K + br)) + (vecRank ? 1 / (RRF_K + vr) : 0);
+    return { chunk, score, index };
+  });
+
+  rrfScored.sort((left, right) => right.score - left.score || left.index - right.index);
+
+  const selected = [];
+  let used = 0;
+  for (const item of rrfScored) {
+    const cost = item.chunk.text.length + HEADER_OVERHEAD;
+    if (used + cost > budget && selected.length) continue;
+    selected.push(item);
+    used += cost;
+    if (used >= budget) break;
+  }
+
+  if (!selected.length) return greedyFit(chunks, budget);
+
+  selected.sort((left, right) => left.index - right.index);
+  return selected.map((item) => item.chunk);
 }

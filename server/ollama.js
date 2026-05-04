@@ -1,6 +1,7 @@
 import { loadLocalEnv } from "./env.js";
-import { chunkText } from "./parsers.js";
-import { pickRelevantChunks } from "./retrieval.js";
+import { slidingChunkText } from "./parsers.js";
+import { pickRelevantChunks, hybridSelect } from "./retrieval.js";
+import { embedTexts, embedText } from "./embeddings.js";
 import { queryNotebook } from "./notebooks.js";
 import {
   buildVisualizationContext,
@@ -16,7 +17,8 @@ loadLocalEnv();
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const MAX_CONTEXT_CHARS = Number(process.env.MAX_CONTEXT_CHARS || 24000);
-const CHUNK_TARGET_CHARS = Number(process.env.CHUNK_TARGET_CHARS || 1800);
+const CHUNK_WINDOW_CHARS = Number(process.env.CHUNK_WINDOW_CHARS || process.env.CHUNK_TARGET_CHARS || 1024);
+const CHUNK_OVERLAP_CHARS = Number(process.env.CHUNK_OVERLAP_CHARS || 256);
 
 export async function listModels() {
   const response = await fetch(`${OLLAMA_URL}/api/tags`);
@@ -44,7 +46,7 @@ export async function streamChat({
     });
   }
 
-  const ollamaMessages = buildMessages(messages, documents, personalization, notebookContext);
+  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext);
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -454,7 +456,7 @@ function normalizeStringArray(value, limit) {
     .slice(0, limit);
 }
 
-function buildMessages(messages, documents, personalization, notebookContext = null) {
+async function buildMessages(messages, documents, personalization, notebookContext = null) {
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
@@ -514,7 +516,7 @@ function buildMessages(messages, documents, personalization, notebookContext = n
   const imageDocuments = documents.filter((documentItem) => documentItem.kind === "image");
   const latestUserIndex = findLatestUserMessageIndex(messages);
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-  const context = buildContext(documents, latestUserQuery);
+  const context = await buildContext(documents, latestUserQuery);
 
   const mapped = messages.map((message, index) => {
     const mappedMessage = {
@@ -571,7 +573,7 @@ async function loadNotebookContext(notebookId, messages) {
   }
 }
 
-function buildContext(documents, query = "") {
+async function buildContext(documents, query = "") {
   const chunks = collectChunks(documents);
 
   const unavailableDocuments = documents
@@ -586,9 +588,23 @@ function buildContext(documents, query = "") {
   }
 
   const totalLength = chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
-  const selected = totalLength <= MAX_CONTEXT_CHARS
-    ? chunks
-    : pickRelevantChunks(chunks, query, MAX_CONTEXT_CHARS);
+  let selected;
+
+  if (totalLength <= MAX_CONTEXT_CHARS) {
+    selected = chunks;
+  } else {
+    // Batch-embed query + all chunks in two calls; fall back to BM25 on error.
+    let queryEmbedding = null;
+    try {
+      const allTexts = [query, ...chunks.map((c) => c.text)];
+      const vectors = await embedTexts(allTexts);
+      queryEmbedding = vectors[0];
+      vectors.slice(1).forEach((vec, i) => { chunks[i].embedding = vec; });
+    } catch {
+      // BM25 fallback — embedding model not available or request failed
+    }
+    selected = hybridSelect(chunks, query, MAX_CONTEXT_CHARS, queryEmbedding);
+  }
 
   let body = selected.map((chunk) => chunk.text).join("\n\n");
 
@@ -611,7 +627,10 @@ function collectChunks(documents) {
     for (const section of sections) {
       if (!section.text) continue;
       const label = section.label ? `${section.page} / ${section.label}` : section.page;
-      const pieces = chunkText(section.text, CHUNK_TARGET_CHARS);
+      const pieces = slidingChunkText(section.text, {
+        windowChars: CHUNK_WINDOW_CHARS,
+        overlapChars: CHUNK_OVERLAP_CHARS
+      });
       pieces.forEach((piece, index) => {
         const part = pieces.length > 1 ? ` (part ${index + 1}/${pieces.length})` : "";
         const text = `[${documentItem.fileName} - ${label}${part}]\n${piece}`;
