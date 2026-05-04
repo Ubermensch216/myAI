@@ -44,6 +44,10 @@ const upload = multer({
 app.use(express.json({ limit: process.env.MAX_JSON_BYTES || "80mb" }));
 app.use(express.static(publicDir));
 
+function extractPersonalization(body) {
+  return body.personalization && typeof body.personalization === "object" ? body.personalization : {};
+}
+
 app.get("/api/status", async (_request, response) => {
   try {
     const models = await listModels();
@@ -113,9 +117,7 @@ app.post("/api/chat", async (request, response) => {
   const messages = Array.isArray(request.body.messages) ? request.body.messages : [];
   const documents = Array.isArray(request.body.documents) ? request.body.documents : [];
   const model = request.body.model || DEFAULT_MODEL;
-  const personalization = request.body.personalization && typeof request.body.personalization === "object"
-    ? request.body.personalization
-    : {};
+  const personalization = extractPersonalization(request.body);
   const notebookId = typeof request.body.notebookId === "string" && request.body.notebookId
     ? request.body.notebookId
     : null;
@@ -181,9 +183,7 @@ app.post("/api/visualize", async (request, response) => {
   const documents = Array.isArray(request.body.documents) ? request.body.documents : [];
   const model = request.body.model || DEFAULT_MODEL;
   const prompt = request.body.prompt || messages.findLast?.((message) => message.role !== "assistant")?.content || "";
-  const personalization = request.body.personalization && typeof request.body.personalization === "object"
-    ? request.body.personalization
-    : {};
+  const personalization = extractPersonalization(request.body);
 
   if (!String(prompt).trim()) {
     response.status(400).json({ error: "prompt is required." });
@@ -207,9 +207,7 @@ app.post("/api/visualize", async (request, response) => {
 app.post("/api/followups", async (request, response) => {
   const messages = Array.isArray(request.body.messages) ? request.body.messages : [];
   const model = request.body.model || DEFAULT_MODEL;
-  const personalization = request.body.personalization && typeof request.body.personalization === "object"
-    ? request.body.personalization
-    : {};
+  const personalization = extractPersonalization(request.body);
 
   if (!messages.length) {
     response.status(400).json({ error: "messages가 비어 있습니다." });

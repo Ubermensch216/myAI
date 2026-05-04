@@ -81,7 +81,7 @@ export function pickRelevantChunks(chunks, query, budget) {
   return selected.map((item) => item.chunk);
 }
 
-function greedyFit(chunks, budget) {
+export function greedyFit(chunks, budget) {
   const selected = [];
   let used = 0;
   for (const chunk of chunks) {

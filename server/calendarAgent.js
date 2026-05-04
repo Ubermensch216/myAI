@@ -1,9 +1,4 @@
-import { loadLocalEnv } from "./env.js";
-
-loadLocalEnv();
-
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+import { OLLAMA_URL, DEFAULT_MODEL } from "./ollama.js";
 
 const VALID_INTENTS = new Set([
   "chat",
@@ -16,25 +11,30 @@ const VALID_INTENTS = new Set([
 
 const KOREAN_WEEKDAYS = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
 
+function toDateISO(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function buildSystemPrompt(currentDate) {
   const today = new Date(currentDate);
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
   const weekday = KOREAN_WEEKDAYS[today.getDay()];
-  const todayISO = `${yyyy}-${mm}-${dd}`;
+  const todayISO = toDateISO(today);
 
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowISO = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+  const tomorrowISO = toDateISO(tomorrow);
 
-  const sundayOffset = today.getDay();
   const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - sundayOffset);
+  weekStart.setDate(today.getDate() - today.getDay());
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
-  const weekStartISO = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")}`;
-  const weekEndISO = `${weekEnd.getFullYear()}-${String(weekEnd.getMonth() + 1).padStart(2, "0")}-${String(weekEnd.getDate()).padStart(2, "0")}`;
+  const weekStartISO = toDateISO(weekStart);
+  const weekEndISO = toDateISO(weekEnd);
 
   return [
     "You are an intent classifier for a Korean calendar assistant.",
@@ -508,12 +508,9 @@ function addOneHour(iso) {
   if (!m) return iso;
   const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
   date.setHours(date.getHours() + 1);
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
   const hh = String(date.getHours()).padStart(2, "0");
   const min = String(date.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  return `${toDateISO(date)}T${hh}:${min}`;
 }
 
 function compareIso(a, b) {

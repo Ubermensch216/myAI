@@ -3,7 +3,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { chunkText } from "./parsers.js";
-import { pickRelevantChunks } from "./retrieval.js";
+import { pickRelevantChunks, greedyFit } from "./retrieval.js";
+import { pageSections } from "./documents.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -295,7 +296,7 @@ export async function queryNotebook(notebookId, query, options = {}) {
     ? pickRelevantChunks(allChunks, trimmedQuery, budget)
     : [];
 
-  const selected = ranked.length ? ranked : greedyFitWithMeta(allChunks, budget);
+  const selected = ranked.length ? ranked : greedyFit(allChunks, budget);
 
   const citations = selected.map((chunk, index) => ({
     citationId: index + 1,
@@ -314,18 +315,6 @@ export async function queryNotebook(notebookId, query, options = {}) {
   };
 }
 
-function greedyFitWithMeta(chunks, budget) {
-  const selected = [];
-  let used = 0;
-  for (const chunk of chunks) {
-    const cost = chunk.text.length + 80;
-    if (used + cost > budget && selected.length) break;
-    selected.push(chunk);
-    used += cost;
-  }
-  return selected;
-}
-
 function formatLocator(chunk) {
   const parts = [];
   if (chunk.label) parts.push(chunk.label);
@@ -334,14 +323,3 @@ function formatLocator(chunk) {
   return parts.join(" · ");
 }
 
-function pageSections(documentItem) {
-  if (documentItem.pages?.some((page) => page.text)) return documentItem.pages;
-  if (documentItem.sheets?.some((sheet) => sheet.text)) {
-    return documentItem.sheets.map((sheet, index) => ({
-      page: index + 1,
-      label: sheet.name,
-      text: sheet.text
-    }));
-  }
-  return [{ page: 1, text: documentItem.text }];
-}

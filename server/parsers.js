@@ -91,8 +91,7 @@ async function parseDocx(file) {
 async function parseCsv(file) {
   const buffer = await fs.readFile(file.path);
   const content = stripUtf8Bom(buffer.toString("utf8"));
-  const rows = normalizeRows(parseCsvRows(content));
-  const table = buildTableFromRows("CSV", rows);
+  const table = buildTableFromRows("CSV", parseCsvRows(content));
   const text = normalizeText(tableRowsForText(table).map((row) => row.join(", ")).join("\n"));
 
   return {
@@ -189,7 +188,7 @@ function readWorksheetRows(parsed, sharedStrings) {
     return trimTrailingEmpty(values.map((value) => String(value ?? "")));
   });
 
-  return normalizeRows(rows);
+  return rows;
 }
 
 function getCellColumnIndex(reference = "") {

@@ -9,6 +9,7 @@ import {
   normalizeVisualizationPlan,
   parseVisualizationJson
 } from "./visualization.js";
+import { pageSections } from "./documents.js";
 
 loadLocalEnv();
 
@@ -619,18 +620,6 @@ function collectChunks(documents) {
     }
   }
   return chunks;
-}
-
-function pageSections(documentItem) {
-  if (documentItem.pages?.some((page) => page.text)) return documentItem.pages;
-  if (documentItem.sheets?.some((sheet) => sheet.text)) {
-    return documentItem.sheets.map((sheet, index) => ({
-      page: index + 1,
-      label: sheet.name,
-      text: sheet.text
-    }));
-  }
-  return [{ page: 1, text: documentItem.text }];
 }
 
 function hasDocumentContext(documentItem) {
