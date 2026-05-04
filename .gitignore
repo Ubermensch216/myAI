@@ -10,3 +10,4 @@ server.err.log
 .DS_Store
 Thumbs.db
 .env.example
+.env_old
