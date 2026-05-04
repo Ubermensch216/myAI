@@ -2,7 +2,7 @@
 
 ## Project
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX-backed visualizations, a local AI calendar agent, encrypted local persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX-backed visualizations, a local AI calendar agent, department-notebook RAG, whole-document Map-Reduce analysis, encrypted local persistence, and personalized UI settings.
 
 Current workspace:
 
@@ -34,29 +34,37 @@ Open:
 http://localhost:3000
 ```
 
-Model notes:
+Model and env notes:
 
 - Current local `.env`: `OLLAMA_MODEL=gemma4:e2b`.
-- Current local `.env`: `EMBED_MODEL=nomic-embed-text`. This model is not currently listed by `/api/status`; local smoke test therefore logs embedding 404 warnings and retrieval falls back to BM25.
-- Code fallback in `server/ollama.js`: `gemma3n:e2b`. `server/calendarAgent.js` imports `OLLAMA_URL` and `DEFAULT_MODEL` directly from `server/ollama.js`.
-- `.env.example` also defaults to `gemma3n:e2b`.
-- `.env.example` sets `EMBED_MODEL=bge-m3`. `server/embeddings.js` falls back to `nomic-embed-text` only when no env value is present.
-- Embedding calls use Ollama `/api/embed`. Retrieval catches embedding failures and falls back to BM25 keyword search.
+- Current local `.env`: `EMBED_MODEL=nomic-embed-text`. This model is not currently listed by `/api/status`; embedding calls log 404 warnings and retrieval falls back to BM25.
+- Code fallback in `server/ollama.js`: `gemma3n:e2b`.
+- `.env.example` defaults to `OLLAMA_MODEL=gemma3n:e2b` and `EMBED_MODEL=bge-m3`.
+- `server/calendarAgent.js` imports `OLLAMA_URL` and `DEFAULT_MODEL` directly from `server/ollama.js`.
+- Embedding calls use Ollama `/api/embed`. Callers catch failures and degrade to BM25.
 - `QUERY_EXPANSION_ENABLED` defaults to true. `QUERY_EXPANSION_VARIANTS` defaults to `3`; `QUERY_EXPANSION_TIMEOUT_MS` defaults to `6000`.
+- `DOC_ANALYSIS_ENABLED` defaults to true. `DOC_ANALYSIS_MAX_INPUT_CHARS` defaults to `12000`; `DOC_ANALYSIS_TIMEOUT_MS` defaults to `30000`.
+- `MAP_REDUCE_BATCH_CHUNKS` defaults to `4`; `MAP_REDUCE_MAX_CHUNKS` defaults to `80`; `MAP_REDUCE_PARALLELISM` defaults to `2`; `MAP_REDUCE_MAP_TIMEOUT_MS` defaults to `45000`.
 - `KOREA_HOLIDAY_SERVICE_KEY` is optional. If configured, `/api/holidays` uses the official Korean public-holiday API; otherwise it returns a limited fixed-solar-holiday fallback.
-- `ADMIN_TOKEN` is optional but required for department-notebook management endpoints. When unset, all admin routes return 503 and the "부서노트북 관리" UI button stays hidden.
+- `ADMIN_TOKEN` is optional but required for department-notebook management endpoints. When unset, admin routes return 503 and the "부서노트북 관리" UI button stays hidden.
 - `NOTEBOOK_QUERY_BUDGET` (default `12000`) caps how many characters of notebook chunks are inlined per chat turn.
-- `CHUNK_WINDOW_CHARS` (default `1024`) and `CHUNK_OVERLAP_CHARS` (default `256`) control sliding-window chunking for room uploads and notebook ingest. `CHUNK_TARGET_CHARS` is still accepted as a compatibility fallback for the window size.
+- `CHUNK_WINDOW_CHARS` (default `1024`) and `CHUNK_OVERLAP_CHARS` (default `256`) control sliding-window chunking. `CHUNK_TARGET_CHARS` is still accepted as a compatibility fallback for window size.
 
 Current worktree notes at this refresh:
 
-- Worktree was clean before this documentation refresh.
-- During the refresh, additional code changes appeared that were not made by this docs pass:
-  - `server/queryExpansion.js` (new)
-  - `server/retrieval.js` adds `multiQueryHybridSelect()`
-  - `server/notebooks.js` uses `expandQuery()` + `multiQueryHybridSelect()`
-  Treat them as user/parallel-agent changes unless confirmed otherwise; do not revert them casually.
-- This documentation refresh updates `agents.md` and `README.md` to match current retrieval/embedding code and live `/api/status`.
+- The worktree is not clean. Current non-doc code changes were already present and were not made by this documentation pass:
+  - `.env.example`
+  - `public/app.js`
+  - `public/index.html`
+  - `public/styles.css`
+  - `server/documents.js`
+  - `server/index.js`
+  - `server/notebooks.js`
+  - `server/ollama.js`
+  - new `server/documentAnalysis.js`
+  - new `server/mapReduce.js`
+- Treat these as user/parallel-agent changes unless confirmed otherwise; do not revert them casually.
+- This documentation refresh updates `agents.md` and `README.md` to match the current document pre-analysis, retrieval, RAG, and Map-Reduce code.
 
 ## Stack
 
@@ -82,6 +90,8 @@ server/documents.js
 server/ollama.js
 server/embeddings.js
 server/queryExpansion.js
+server/documentAnalysis.js
+server/mapReduce.js
 server/calendarAgent.js
 server/holidays.js
 server/notebooks.js
@@ -112,118 +122,99 @@ Key responsibilities:
 - `server/index.js`
   - Express server and static frontend serving.
   - Loads local `.env` through `server/env.js`.
-  - Routes:
-    - `GET /api/status`
-    - `POST /api/upload`
-    - `GET /api/documents`
-    - `GET /api/documents/:id`
-    - `DELETE /api/documents/:id`
-    - `POST /api/chat`
-    - `POST /api/visualize`
-    - `POST /api/followups`
-    - `POST /api/agent/intent`
-    - `GET /api/holidays`
-    - `GET /api/admin/status`
-    - `POST /api/admin/verify`
-    - `GET /api/notebooks`, `GET /api/notebooks/:id`
-    - `POST /api/notebooks`, `PATCH /api/notebooks/:id`, `DELETE /api/notebooks/:id`
-    - `POST /api/notebooks/:id/documents`, `DELETE /api/notebooks/:id/documents/:documentId`
-  - Delegates upload filename repair and document serialization to shared helpers.
-
-- `server/env.js`
-  - Dependency-free project-root `.env` loader.
-  - Existing process environment variables win over `.env` values.
+  - Parses uploads with `server/parsers.js`, then runs `analyzeDocument()` for normal documents and stores `summary`/`topics` on the parsed payload.
+  - `POST /api/chat` accepts `mode`; only `"map_reduce"` activates the Map-Reduce path, otherwise normal chat.
+  - `X-Notebook-Meta` can include `analysisMode`.
+  - Delegates personalization extraction to `extractPersonalization(body)`.
 
 - `server/documents.js`
   - Common document summary/full-payload serialization helpers.
-  - Exports `pageSections(documentItem)` — maps a parsed document's pages/sheets to a uniform section array. Shared by `server/ollama.js` and `server/notebooks.js`.
+  - `summarizeDocument()` includes `summary` and `topics`.
+  - Exports `pageSections(documentItem)`, mapping pages/sheets/slides to a uniform section array.
 
 - `server/ollama.js`
   - Ollama streaming chat call.
   - Follow-up question generation.
   - LLM visualization plan generation, repair, and interpretation.
-  - Model/system prompt construction.
-  - Personal settings and custom prompt injection.
+  - Model/system prompt construction, personalization, custom prompt injection.
   - Document/image context attachment.
-  - Uses `slidingChunkText()` to chunk room-uploaded documents with overlap.
-  - When room document context exceeds `MAX_CONTEXT_CHARS`, batch-embeds query + chunks through `server/embeddings.js`, then calls `server/retrieval.js#hybridSelect()`.
-  - Falls back to BM25-only retrieval if the embedding model or `/api/embed` call fails.
+  - Injects uploaded-document overviews via `formatAttachmentOverview()`.
+  - Injects cited notebook document summaries via `formatDocumentSummariesBlock()`.
+  - Uses `expandQuery()` and `multiQueryHybridSelect()` for long uploaded document context when needed.
+  - Handles normal notebook RAG through `queryNotebook()`.
+  - Handles `mode: "map_reduce"` through `runMapReduceChat()`, loading notebook chunks with `loadAllNotebookChunks()` or room chunks with `collectChunks()`.
+  - Emits Map-Reduce progress lines and appends a truncation warning if `MAP_REDUCE_MAX_CHUNKS` is exceeded.
 
 - `server/embeddings.js`
   - Loads `.env` and calls Ollama `/api/embed`.
   - Exports `embedTexts(texts)` and `embedText(text)`.
-  - Uses `EMBED_MODEL` from env, or `nomic-embed-text` when unset. Current `.env.example` sets `bge-m3`.
+  - Uses `EMBED_MODEL` from env, or `nomic-embed-text` when unset.
   - Throws on unavailable/invalid embedding responses; callers catch and degrade to BM25.
 
 - `server/queryExpansion.js`
-  - Generates retrieval-friendly variants for department-notebook search via Ollama chat JSON.
-  - Exports `expandQuery(query)` plus `QUERY_EXPANSION_ENABLED` and `QUERY_EXPANSION_MAX_VARIANTS`.
-  - Defaults: enabled, 3 variants, 6s timeout.
-  - Always returns an array starting with the original query; on disabled/timeout/model/parse failure, returns `[original]`.
+  - Generates retrieval-friendly query variants through Ollama JSON output.
+  - Exports `expandQuery(query)` plus config constants.
+  - Always returns an array starting with the original query; disabled/timeout/parse/model failures return `[original]`.
+
+- `server/documentAnalysis.js`
+  - Upload-time and notebook-ingest document pre-analysis.
+  - Exports `analyzeDocument(parsedDocument, { model } = {})`.
+  - Samples document head/tail up to `DOC_ANALYSIS_MAX_INPUT_CHARS`.
+  - Asks Ollama for Korean JSON containing a short `summary` and up to 8 `topics`.
+  - Returns `{ summary: "", topics: [] }` on disabled/no body/timeout/parse failure.
+
+- `server/mapReduce.js`
+  - Whole-document analysis helper used by `/api/chat` with `mode: "map_reduce"`.
+  - Batches chunks by `MAP_REDUCE_BATCH_CHUNKS`.
+  - Runs map calls in parallel according to `MAP_REDUCE_PARALLELISM`.
+  - Streams final reduce answer in Korean.
+  - Exports `streamMapReduceAnalysis()` and Map-Reduce config constants.
 
 - `server/calendarAgent.js`
   - LLM-backed calendar intent classifier.
   - Calls Ollama with `format: "json"` and `think: false`.
-  - Valid intents:
-    - `chat`
-    - `calendar.propose`
-    - `calendar.create`
-    - `calendar.list`
-    - `calendar.delete`
-    - `calendar.update`
-  - Resolves relative Korean dates using `currentDate` from the request.
-  - Accepts recent conversation messages and a pending calendar action so confirmation replies like `응, 추가해줘` can become concrete calendar operations.
-  - Applies deterministic correction for month-range list prompts such as `5월 전체 일정`, `이번 달`, `다음 달`, and `지난달`.
-  - Applies deterministic daily-repeat correction for prompts such as `5월 전체 일정에 ... 등록` and `이번 달 매일 ... 추가`.
-  - Normalizes payload shapes before returning to the browser.
-  - Does not mutate calendar data itself. The browser applies accepted operations to encrypted local state.
+  - Valid intents: `chat`, `calendar.propose`, `calendar.create`, `calendar.list`, `calendar.delete`, `calendar.update`.
+  - Resolves relative Korean dates with `currentDate`.
+  - Accepts recent messages and pending calendar action, so confirmation replies like `응, 추가해줘` can become concrete calendar operations.
+  - Applies deterministic month-range and daily-repeat corrections.
+  - Does not mutate calendar data; the browser owns local calendar state.
 
 - `server/holidays.js`
   - Loads Korean public holidays by year.
-  - Uses the public KASI/Data.go.kr `SpcdeInfoService/getRestDeInfo` endpoint when `KOREA_HOLIDAY_SERVICE_KEY` is configured.
-  - Falls back to fixed solar holidays when no key is configured or the official API fails.
+  - Uses KASI/Data.go.kr `SpcdeInfoService/getRestDeInfo` when `KOREA_HOLIDAY_SERVICE_KEY` is configured.
+  - Falls back to fixed solar holidays.
 
 - `server/notebooks.js`
-  - Department notebook (RAG) storage layer backed by `data/notebooks/<id>/`.
-  - `manifest.json` per notebook with `documents[]` summary; one parsed-document JSON file per uploaded document under `docs/<docId>.json`.
-  - Reuses `server/parsers.js` for ingest and `server/parsers.js#slidingChunkText` for overlapping chunking.
-  - During ingest, tries to batch-generate chunk embeddings with `server/embeddings.js#embedTexts`; stored document JSON can include `chunks[].embedding`.
-  - During query, calls `server/queryExpansion.js#expandQuery` to produce search variants, then tries `server/embeddings.js#embedTexts` for those variants.
-  - Calls `server/retrieval.js#multiQueryHybridSelect`; embedding failures fall back to multi-query BM25.
-  - Uses `server/retrieval.js#greedyFit` as a budget-aware fallback when no query tokens are present.
-  - Uses `server/documents.js#pageSections` to map document pages/sheets to section arrays during ingest.
-  - `queryNotebook(id, query)` returns ranked chunks tagged with `citationId`, `documentName`, and `locator` (page/sheet/slide).
-  - Pure storage/retrieval — no chat LLM calls. Caller is responsible for building the prompt context.
-  - Current caveat: `queryNotebook()` does not yet copy `chunk.embedding` from stored records into the `allChunks` objects passed to `multiQueryHybridSelect()`, so notebook vector ranking is effectively disabled until that field is carried through; query-expanded BM25 still works.
+  - Department notebook storage layer backed by `data/notebooks/<id>/`.
+  - Manifest per notebook plus one parsed-document JSON per uploaded document under `docs/<docId>.json`.
+  - Reuses parsers and `slidingChunkText()` for ingest.
+  - During ingest, tries chunk embeddings and document pre-analysis; stores `summary` and `topics` in both document JSON and manifest document summaries.
+  - During query, expands the query, tries query embeddings, then calls `multiQueryHybridSelect()`.
+  - `queryNotebook(id, query)` returns `{ ok, notebook, chunks, documentSummaries }`; `documentSummaries` includes only cited documents.
+  - Exports `loadAllNotebookChunks(notebookId)` for Map-Reduce.
+  - Exports `getNotebookManifestSummary(notebookId)` for metadata.
+  - Current caveat: query-time chunk objects do not yet carry stored `chunk.embedding`, so notebook vector ranking is effectively disabled until that field is passed through; query-expanded BM25 still works.
 
 - `server/auth.js`
-  - `requireAdmin` Express middleware that compares `Authorization: Bearer <token>` against `ADMIN_TOKEN` using a constant-time comparison.
-  - Returns 503 when `ADMIN_TOKEN` is not configured, 401 on mismatch.
-  - `isAdminConfigured()` is used by `/api/admin/status` so the UI can decide whether to show the admin panel button.
+  - `requireAdmin` middleware compares `Authorization: Bearer <token>` against `ADMIN_TOKEN` using constant-time comparison.
+  - Returns 503 when `ADMIN_TOKEN` is unset, 401 on mismatch.
 
 - `server/parsers.js`
   - Parses uploaded file types into common document objects.
-  - Exports both paragraph-oriented `chunkText()` and overlapping `slidingChunkText()`.
-  - `slidingChunkText()` snaps boundaries to paragraph → sentence → whitespace where possible.
-  - Extracts text from Office/HWPX ZIP XML formats.
-  - Preserves CSV/XLSX tabular data as headers, rows, samples, and column profiles for visualization.
+  - Exports `chunkText()` and overlapping `slidingChunkText()`.
+  - Preserves CSV/XLSX tabular data as headers, rows, samples, and column profiles.
 
 - `server/retrieval.js`
   - Tokenizes text with CJK bigram support.
-  - Uses BM25-like scoring to pick relevant document chunks for long-context chat.
-  - Exports `cosineSimilarity(a, b)` for embedding vectors.
-  - Exports `hybridSelect(chunks, query, budget, queryEmbedding)` using Reciprocal Rank Fusion (BM25 rank + vector rank).
-  - Exports `multiQueryHybridSelect(chunks, queries, queryEmbeddings, budget)` for query-expansion retrieval; it fuses BM25/vector rankings for multiple queries through RRF.
-  - Exports `greedyFit(chunks, budget)` — used as a budget fallback when no useful retrieval signal is available.
+  - Exports BM25 selection, `cosineSimilarity()`, `hybridSelect()`, `multiQueryHybridSelect()`, and `greedyFit()`.
+  - `multiQueryHybridSelect()` fuses rankings for query variants and optional vectors using Reciprocal Rank Fusion.
 
 - `server/visualization.js`
-  - Detects visualization intent keywords.
+  - Detects visualization intent.
   - Builds compact table context for the model.
-  - Normalizes LLM `analysis + visualizationPlan` JSON.
-  - Validates chart type, dataset index, columns, aggregation, and numeric requirements.
+  - Normalizes and validates `analysis + visualizationPlan` JSON.
   - Executes accepted plans against real CSV/XLSX rows.
-  - Computes chart data for `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
-  - Marks specs as `source: "llm"` or `source: "fallback"`.
+  - Computes data for `bar`, `line`, `pie`, `scatter`, `table`, `kpi`, and `infographic`.
 
 - `server/documentStore.js`
   - In-memory server-side document map.
@@ -232,7 +223,8 @@ Key responsibilities:
 - `public/index.html`
   - Main app shell.
   - Left sidebar with brand banner and primary `대화` / `캘린더` navigation.
-  - Chat view, calendar view, event dialog, settings dialog, drop overlay.
+  - Chat view, calendar view, event dialog, settings dialog, notebook dialogs, drop overlay.
+  - Composer includes `deepAnalysisToggle` labeled `전체 분석`.
 
 - `public/app.js`
   - Main frontend state and UI behavior.
@@ -242,34 +234,14 @@ Key responsibilities:
   - Streaming response handling and generation abort.
   - Routes visualizable tabular prompts to `/api/visualize`.
   - Routes suspected calendar prompts to `/api/agent/intent`.
+  - Sends `mode: "map_reduce"` when `state.deepAnalysisEnabled` is true, then resets the toggle after the request.
   - Executes local calendar CRUD and renders event cards.
   - Follow-up suggestion rendering and click-to-send behavior.
 
-- `public/answerRenderer.js`
-  - Lightweight assistant answer renderer.
-  - Parses plain paragraphs, markdown-style tables, bullet lists, numbered lists, and section labels.
-
-- `public/visualizationRenderer.js`
-  - Renders validated visualization JSON as SVG charts, KPI cards, tables, and infographic sections.
-  - Provides chart PNG download and visualization JSON copy controls.
-
-- `public/fileDisplay.js`
-  - Frontend file display helpers.
-  - Repairs previously stored mojibake filenames at display time.
-  - Maps uploaded files to sidebar badges.
-
-- `public/textRepair.js`
-  - Mojibake scoring/repair helper shared by browser display code and server upload filename normalization.
-
 - `public/styles.css`
   - Layout, themes, message UI, thinking UI, buttons, settings modal.
-  - Assistant answer styling.
-  - Primary nav and calendar UI styling.
+  - Primary nav, calendar UI, notebook UI, and `deep-analysis-toggle` styles.
   - Uses `--accent` / `--accent-dark` theme tokens.
-  - `.calendar-area` uses `display: flex; flex-direction: column` so `.calendar-body` always fills remaining height regardless of whether the command-result panel is shown.
-  - `.calendar-body` has `flex: 1; min-height: 0` and internally uses `grid-template-rows: auto minmax(0, 1fr)`.
-  - `.calendar-grid` uses `grid-auto-rows: minmax(0, 1fr); height: 100%` for dynamic cell heights.
-  - Calendar grid responsive breakpoints use CSS container queries (`@container calendar`) on `.calendar-body`, not viewport media queries.
 
 ## Architecture Summary
 
@@ -285,6 +257,17 @@ user prompt
 -> /api/followups generates suggestions
 ```
 
+### Document Pre-Analysis
+
+```text
+POST /api/upload or notebook document ingest
+-> server/parsers.js parses document
+-> server/documentAnalysis.js samples document text
+-> Ollama returns { summary, topics[] }
+-> summary/topics are stored in document payload and summaries
+-> later chat context can include [첨부 파일 개요] or [문서 개요]
+```
+
 ### Long Document Context
 
 ```text
@@ -292,11 +275,57 @@ room documents in IndexedDB
 -> client sends active room documents
 -> server/ollama.js collects text/pages/sheets
 -> server/parsers.js#slidingChunkText creates overlapping chunks
--> if context is too large, server/embeddings.js tries query+chunk embeddings
--> server/retrieval.js#hybridSelect picks chunks by BM25 + vector RRF
--> if embedding fails, retrieval falls back to BM25
+-> server/queryExpansion.js#expandQuery creates retrieval variants
+-> server/embeddings.js tries query+chunk embeddings
+-> server/retrieval.js#multiQueryHybridSelect or hybridSelect picks chunks
+-> if embedding fails, retrieval falls back to BM25/CJK bigram
 -> selected context is injected into the system message
 ```
+
+### Map-Reduce Whole Analysis
+
+```text
+composer "전체 분석" enabled
+-> POST /api/chat { mode: "map_reduce", notebookId?, documents? }
+-> server/ollama.js#runMapReduceChat
+-> selected notebook: server/notebooks.js#loadAllNotebookChunks
+-> no notebook: server/ollama.js#collectChunks over room documents
+-> server/mapReduce.js#streamMapReduceAnalysis
+-> map batches run with bounded parallelism
+-> reduce answer streams to the browser
+```
+
+Important:
+
+- This path is for full-document or full-notebook analysis, not normal fast chat.
+- It is slower and may truncate at `MAP_REDUCE_MAX_CHUNKS`.
+- If no analyzable chunks exist, it answers: `사용자님, 분석할 자료를 먼저 업로드하거나 부서노트북을 선택해 주세요.`
+
+### Department Notebook (RAG)
+
+```text
+chat prompt + room.selectedNotebookId
+-> POST /api/chat { ..., notebookId }
+-> server/ollama.js#streamChat awaits server/notebooks.js#queryNotebook
+-> server/queryExpansion.js#expandQuery creates retrieval variants
+-> server/retrieval.js#multiQueryHybridSelect fuses variant BM25/vector rankings
+-> top ranked chunks tagged with [N] citation IDs
+-> cited document summaries/topics are injected as [문서 개요]
+-> system message gains [노트북 컨텍스트] block + strict grounding rules
+-> Ollama streams answer
+-> X-Notebook-Meta response header carries base64-JSON { notebook, citations[], analysisMode }
+-> public/app.js renders inline [N] markers and a citations panel
+-> assistantMessage.citations is persisted with the room in encrypted IndexedDB
+```
+
+Important design points:
+
+- Notebook content lives on the server filesystem. It is shared across users.
+- Per-room state (`selectedNotebookId`) is persisted in encrypted IndexedDB. New rooms default to `null`.
+- Strict grounding is enforced via system prompt. The model is told to answer only from notebook + room files and to say `해당 노트북에서 관련 정보를 찾을 수 없습니다.` when the answer cannot be grounded.
+- Room attachments and notebook chunks coexist in the system prompt; notebook is marked primary.
+- Admin endpoints are token-gated. Only `GET /api/notebooks` and `GET /api/notebooks/:id` are public.
+- Notebook ingest stores embeddings, summaries, and topics, but query-time vector ranking remains incomplete until stored `chunk.embedding` is passed into selection.
 
 ### Visualization
 
@@ -324,41 +353,6 @@ calendar-like natural language prompt
 -> UI refreshes calendar grid, upcoming list, command result, and chat event cards
 ```
 
-### Department Notebook (RAG)
-
-```text
-chat prompt + room.selectedNotebookId
--> POST /api/chat { ..., notebookId }
--> server/ollama.js#streamChat awaits server/notebooks.js#queryNotebook
--> server/queryExpansion.js#expandQuery creates retrieval variants
--> server/retrieval.js#multiQueryHybridSelect fuses variant BM25/vector rankings
--> top ranked chunks tagged with [N] citation IDs
-   (query expansion + BM25 currently effective; vector ranking path exists but stored embeddings are not carried through yet)
--> system message gains [노트북 컨텍스트] block + strict grounding rules
--> Ollama streams answer
--> X-Notebook-Meta response header carries base64-JSON {notebook, citations[]}
--> public/app.js renders inline [N] markers in body and a citations panel below
--> assistantMessage.citations is persisted with the room in encrypted IndexedDB
-```
-
-Important design points:
-
-- Notebook content lives on the server filesystem. It is shared across users.
-- Per-room state (`selectedNotebookId`) is persisted in encrypted IndexedDB. New rooms default to `null`.
-- Notebook ingest stores chunk JSON under `data/notebooks/<id>/docs/<docId>.json`; embeddings are attempted at ingest time but current query mapping omits `embedding`, so fix that before claiming semantic notebook retrieval quality.
-- Notebook search now has LLM query expansion before retrieval; if expansion fails or is disabled, it uses the original query only.
-- Strict grounding is enforced via system prompt. The LLM is told to answer only from notebook + room files and to say "해당 노트북에서 관련 정보를 찾을 수 없습니다." when the answer cannot be grounded.
-- Room attachments and notebook chunks coexist in the system prompt; the prompt explicitly marks notebook as primary.
-- Admin endpoints are token-gated. Only `GET /api/notebooks` and `GET /api/notebooks/:id` are public so users can pick from the list.
-
-Important design point:
-
-- The LLM classifies intent and extracts fields.
-- Deterministic code corrects known brittle cases, especially month-range queries.
-- The browser owns local calendar state and mutates it.
-- Calendar success messages are generated only after local mutation succeeds.
-- There is no server-side calendar database.
-
 ## Current Layout
 
 Left sidebar:
@@ -384,38 +378,37 @@ Main panel:
 ```text
 대화 view:
   Chat header with room title and settings button
-  Notebook context bar (visible only when room.selectedNotebookId is set)
+  Notebook context bar when room.selectedNotebookId is set
   Messages
-  Prompt composer with + menu (file attach, notebook select) + active-notebook badge
+  Prompt composer with + menu, active-notebook badge, and 전체 분석 toggle
 
 캘린더 view:
-  Month toolbar: previous / today / next / month label
+  Month/week/day toolbar
   AI calendar command bar
   Command result panel
-  Month grid
+  Calendar grid/agenda
 ```
 
 Dialogs:
 
 ```text
 eventDialog:
-  title  [완료 checkbox — inline right, edit mode only]
-  start / end  [종일 checkbox — inline right of 종료]
+  title  [완료 checkbox, edit mode only]
+  start / end  [종일 checkbox]
   location
   notes
   color picker
   delete / cancel / save
 
 notebookSelectorDialog:
-  list of notebooks (with "사용 안 함" sentinel as first item)
-  click to select → selection persisted on the active room
+  list of notebooks with "사용 안 함" sentinel
+  click to select, persisted on active room
 
-adminNotebookDialog (visible only when ADMIN_TOKEN is configured server-side):
-  step 1: ADMIN_TOKEN input → POST /api/admin/verify
-  step 2: notebook list with name/description/document list
-          + 새 노트북 form (name + description)
-          + 문서 추가 (file picker per notebook)
-          + 문서 삭제 + 노트북 삭제 (with confirm)
+adminNotebookDialog:
+  visible only when ADMIN_TOKEN is configured
+  token verification
+  notebook CRUD
+  document upload/delete
 
 settingsDialog:
   system banner
@@ -432,8 +425,7 @@ settingsDialog:
 ### Chat
 
 - Multiple chat rooms.
-- Room creation and deletion.
-- Room title editing.
+- Room creation, deletion, and title editing.
 - Empty/new room shows a centered waiting screen using the user title.
 - User and assistant messages render as chat bubbles.
 - Assistant responses stream from Ollama.
@@ -448,18 +440,12 @@ settingsDialog:
 - Editing a user prompt happens inline and regenerates from the edited point.
 - Follow-up suggestions are requested after completed assistant answers.
 - Clicking a follow-up suggestion sends it as the next user prompt.
+- `전체 분석` toggle sends `mode: "map_reduce"` for the next text chat request and resets afterward.
 
 ### Files
 
 - Files are scoped to the active chat room.
-- Supported:
-  - PDF
-  - DOCX
-  - XLSX
-  - CSV
-  - PPTX
-  - HWPX
-  - PNG/JPG/JPEG/WEBP/GIF
+- Supported: PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG/JPG/JPEG/WEBP/GIF.
 - Upload methods:
   - composer `+` menu, then paperclip
   - drag and drop over the app
@@ -467,6 +453,7 @@ settingsDialog:
 - Active room file titles render under the selected room in the chat sidebar.
 - File deletion asks for confirmation and removes from current room IndexedDB state.
 - Upload filenames are normalized server-side; stored mojibake names are repaired at display time.
+- Normal document uploads now try to store `summary` and `topics` from `server/documentAnalysis.js`.
 
 ### Calendar
 
@@ -478,24 +465,7 @@ state.calendar = {
   cursorISO: todayDateISO(),
   viewMode: "month",
   editingEventId: null,
-  selectedColor: "accent",
-  holidaysByYear: {},
-  holidayWarnings: {},
-  holidayRequests: new Set(),
-  reminderTimer: null
-}
-```
-
-Persisted app state adds:
-
-```js
-{
-  activeView: "chat" | "calendar",
-  calendar: {
-    events,
-    cursorISO,
-    viewMode
-  }
+  selectedColor: "accent"
 }
 ```
 
@@ -513,7 +483,7 @@ Event shape:
   color,
   reminders,
   notifiedReminders,
-  done,        // boolean — completion state; persisted via normalizeCalendarEvent spread
+  done,
   createdAt,
   updatedAt
 }
@@ -523,70 +493,38 @@ Current calendar UI:
 
 - Primary navigation switches between `대화` and `캘린더`.
 - Calendar supports `month`, `week`, and `day` view modes.
-- Month grid always renders 42 day cells.
-- Previous/today/next controls move by month, week, or day depending on the active view mode.
+- Previous/today/next controls move by current view mode.
 - Clicking a day opens the create-event dialog at 09:00-10:00.
 - Clicking an event chip opens the edit dialog.
-- Clicking a month-cell `+N` overflow indicator switches to day view for that date.
-- Sidebar shows upcoming events within 7 days from today (not a fixed count).
+- Sidebar shows upcoming events within 7 days from today.
 - `Shift+N` is scoped by active primary view:
   - chat view: new chat
   - calendar view: new event
-- Korean holidays render in calendar cells and agenda columns.
+- Korean holidays render in cells and agenda columns.
 - Event reminders support start time, 30 minutes before, 1 day before, 2 days before, and 1 week before.
-- Event colors:
-  - `accent`
-  - `blue`
-  - `green`
-  - `orange`
-  - `purple`
-  - `red`
-- Manual create/edit checks for time conflicts and asks for confirmation before saving overlapping events.
-- Each event has a `done` boolean toggled via:
-  - A circular check button on each upcoming-event row in the sidebar.
-  - A `완료` checkbox inline in the event edit dialog (hidden during create).
-- Toggling done calls `toggleEventDone(eventId)` which flips `event.done`, calls `renderCalendar()` (re-renders both grid chips and upcoming list), and calls `scheduleSave()`.
-- Done events appear with strikethrough in the upcoming list and with `opacity: 0.55; filter: grayscale(0.35)` on grid chips.
+- Event colors: `accent`, `blue`, `green`, `orange`, `purple`, `red`.
+- Manual create/edit checks for conflicts and asks for confirmation before saving overlapping events.
+- Done events appear with strikethrough in the upcoming list and reduced opacity/grayscale on grid chips.
+- AI delete/update operations ask for confirmation before mutation; update checks time conflicts when time fields change.
 
-Natural language calendar flow:
+Natural-language calendar flow:
 
 - `public/app.js#hasCalendarKeyword` prefilters likely calendar prompts.
 - `public/app.js#classifyMessageIntent` calls `POST /api/agent/intent`.
 - `server/calendarAgent.js#classifyIntent` returns normalized `{ intent, payload }`.
-- Supported intents are:
-  - `chat`
-  - `calendar.propose`
-  - `calendar.create`
-  - `calendar.list`
-  - `calendar.delete`
-  - `calendar.update`
-- `calendar.propose` means the user is discussing or asking whether an event can be scheduled, but has not clearly asked to save it yet.
-- `public/app.js#handleCalendarProposal` stores the proposed create payload in `room.pendingCalendarAction` and asks for confirmation.
-- Confirmation messages such as `응`, `좋아`, `추가해줘`, `등록해줘`, or `진행해` are classified with both recent messages and `pendingCalendarAction`.
-- If the model still returns `chat` but a pending action exists and the user confirms, `public/app.js` falls back to executing the pending action directly.
-- Rejection messages such as `아니`, `취소`, or `하지마` clear the pending calendar action.
-- `server/calendarAgent.js#applyDeterministicCorrections` forces full-month ranges for prompts like `5월 전체 일정 보고해`, `이번 달 일정`, `다음 달 일정`, and `지난달 일정`.
-- Full-month daily create prompts are represented as `repeat: { frequency: "daily", from, to }`; `public/app.js#applyDailyRepeatCalendarCreateAsync` expands them into individual local events.
-- `public/app.js#executeCalendarIntent` dispatches to:
-  - `applyCalendarCreateAsync`
-  - `applyCalendarList`
-  - `applyCalendarDelete`
-  - `applyCalendarUpdate`
-- Calendar commands work from:
-  - the calendar command bar
-  - the normal chat prompt, when a calendar intent is detected
-- Chat responses for calendar operations can include inline event cards.
-- Clicking an event card switches to calendar view and opens the event dialog if the event still exists.
+- `calendar.propose` stores a pending create action and asks for confirmation.
+- Confirmation messages can execute `room.pendingCalendarAction`.
+- Rejection messages clear the pending action.
+- Full-month range prompts are deterministically corrected.
+- Full-month daily create prompts are represented as `repeat: { frequency: "daily", from, to }` and expanded by the browser.
 
 Calendar limitations and risks:
 
 - Local-only calendar. No Google/Outlook/ICS sync.
 - No recurrence model.
 - Reminder checks run in the open browser tab at one-minute intervals.
-- No timezone UI. Date/time strings are stored in browser-local form.
+- No timezone UI.
 - No multi-calendar account model.
-- AI delete by date range and AI delete by exact single-candidate title now ask through `window.confirm()` before mutation. Multiple title matches ask for a more specific request.
-- AI update matches by partial title, asks for confirmation via `window.confirm()`, and checks time conflicts when `start`, `end`, or `allDay` changes.
 - Before production use, replace destructive `window.confirm()` flows with richer in-app review dialogs.
 
 ### Data Visualization
@@ -599,17 +537,13 @@ Calendar limitations and risks:
   3. `server/visualization.js#executeVisualizationPlan` computes render data from uploaded rows.
   4. `server/ollama.js#requestVisualizationInterpretation` asks Ollama to interpret the computed result in Korean.
 - Invalid plan JSON is retried once with a repair prompt.
-- Remaining failures fall back to an automatic server chart marked `source: "fallback"` and `fallback: true`.
-- Successful AI-planned specs are marked `source: "llm"` and `fallback: false`.
-- Browser panels label results as:
-  - `AI 분석 기반 시각화`
-  - `자동 fallback 시각화`
+- Remaining failures fall back to an automatic server chart marked `source: "fallback"`.
+- Successful AI-planned specs are marked `source: "llm"`.
 
 ### Persistence
 
 - Conversations, rooms, settings, room-scoped uploaded documents, active view, and calendar events are stored in IndexedDB.
 - Storage is encrypted with WebCrypto AES-GCM.
-- The local encryption key is stored as a non-extractable CryptoKey.
 
 ```text
 DB name: ollama-chatter-secure
@@ -625,7 +559,6 @@ Important:
 - Uploaded document payloads are durable only in browser IndexedDB.
 - `server/documentStore.js` is runtime-only memory.
 - Chat requests send `documents: getActiveDocuments()` from the client.
-- `hydrateStoredDocuments()` can recover old summary-only documents only while the server still has them in memory.
 - If a room document only has summary metadata and no full payload can be hydrated, the user must re-upload it.
 - Save failures go through `persistAppState()` and surface in the UI via `handleLocalSaveError()`.
 
@@ -651,11 +584,10 @@ Current `state.settings` keys:
 Notes:
 
 - `appBannerDataUrl` is used for the sidebar/system banner.
-- `appLogoDataUrl` remains for backward compatibility but is not the current primary settings UI path.
+- `appLogoDataUrl` remains for backward compatibility.
 - The favicon currently stays at `/default-icon.svg`.
 - `systemAvatarDataUrl` is used for assistant message avatars.
 - `userAvatarDataUrl` is used for user message avatars.
-- Message avatars render before the speaker name with `.message-meta-avatar` at 44px.
 - `aiName` is effectively kept aligned to `appName` in current frontend behavior.
 - `customPrompt` is sent as `personalization.customPrompt` and truncated server-side to 4,000 characters.
 - Brightness theme is `light` or `dark`.
@@ -671,7 +603,7 @@ Returns Ollama status and model list.
 
 Accepts one uploaded file through `multer`.
 
-Returns a full document payload for client-side encrypted persistence.
+Returns a full document payload for client-side encrypted persistence. Normal documents include best-effort `summary` and `topics`.
 
 ### `GET /api/documents`
 
@@ -695,20 +627,22 @@ Body:
   messages,
   documents,
   personalization,
-  notebookId        // optional; activates RAG mode against a specific notebook
+  notebookId,      // optional; activates RAG mode
+  mode             // optional; "map_reduce" activates whole-analysis mode
 }
 ```
 
 Streams plain text from Ollama.
 
-When `notebookId` resolves to a notebook with chunks, the response includes an `X-Notebook-Meta` header containing a base64-encoded JSON object:
+When notebook or analysis metadata exists, the response includes an `X-Notebook-Meta` header containing base64 JSON:
 
 ```js
 {
   notebook: { id, name, description, documentCount, updatedAt },
   citations: [
     { citationId, documentId, documentName, documentType, locator }
-  ]
+  ],
+  analysisMode: "map_reduce" // or null
 }
 ```
 
@@ -726,13 +660,7 @@ Body:
 }
 ```
 
-Returns:
-
-```js
-{
-  visualization
-}
-```
+Returns `{ visualization }`.
 
 ### `POST /api/followups`
 
@@ -746,13 +674,7 @@ Body:
 }
 ```
 
-Returns:
-
-```js
-{
-  suggestions: ["...", "...", "..."]
-}
-```
+Returns `{ suggestions: ["...", "...", "..."] }`.
 
 ### `POST /api/agent/intent`
 
@@ -778,48 +700,23 @@ Returns:
 }
 ```
 
-`fallbackReason` appears only when classification or validation falls back to normal chat.
-
-`messages` is optional recent chat context. `pendingAction` is optional and normally shaped like:
-
-```js
-{
-  intent: "calendar.create",
-  payload: {
-    title,
-    start,
-    end,
-    allDay,
-    location,
-    notes,
-    reminders
-  }
-}
-```
-
 ### `GET /api/holidays`
 
-Query:
+Query: `{ year }`.
 
-```js
-{
-  year
-}
-```
-
-Returns Korean public holidays for the requested year. Uses official public-data API when `KOREA_HOLIDAY_SERVICE_KEY` is set; otherwise returns a limited fixed-solar fallback with `source: "fallback"`.
+Returns Korean public holidays for the requested year.
 
 ### Department Notebook endpoints
 
-- `GET /api/admin/status` — `{ configured: boolean }`. Public.
-- `POST /api/admin/verify` — admin-only. Returns 200 if the bearer token matches `ADMIN_TOKEN`, else 401.
-- `GET /api/notebooks` — public. Returns `{ notebooks: [{id, name, description, documentCount, updatedAt}] }`.
-- `GET /api/notebooks/:id` — public. Returns the manifest plus `documents[]` summary.
-- `POST /api/notebooks` — admin. Body `{ name, description? }`. Returns the new summary.
-- `PATCH /api/notebooks/:id` — admin. Body `{ name?, description? }`.
-- `DELETE /api/notebooks/:id` — admin. Removes the entire `data/notebooks/<id>/` directory.
-- `POST /api/notebooks/:id/documents` — admin, multipart `file`. Parses with `server/parsers.js` and stores chunks under the notebook. Images are rejected.
-- `DELETE /api/notebooks/:id/documents/:documentId` — admin. Removes a single document.
+- `GET /api/admin/status` - `{ configured: boolean }`. Public.
+- `POST /api/admin/verify` - admin-only. Returns 200 if the bearer token matches `ADMIN_TOKEN`, else 401.
+- `GET /api/notebooks` - public notebook summaries.
+- `GET /api/notebooks/:id` - public manifest plus document summaries.
+- `POST /api/notebooks` - admin. Body `{ name, description? }`.
+- `PATCH /api/notebooks/:id` - admin. Body `{ name?, description? }`.
+- `DELETE /api/notebooks/:id` - admin. Removes the entire `data/notebooks/<id>/` directory.
+- `POST /api/notebooks/:id/documents` - admin multipart `file`; parses and stores chunks. Images are rejected.
+- `DELETE /api/notebooks/:id/documents/:documentId` - admin. Removes a single document.
 
 ## Important Behavior Details
 
@@ -831,13 +728,8 @@ Returns Korean public holidays for the requested year. Uses official public-data
 ### Assistant Answer Rendering
 
 - The app does not use a full Markdown renderer.
-- `public/answerRenderer.js` handles:
-  - plain paragraphs
-  - compact bullet lists
-  - numbered lists
-  - markdown-style tables
-  - short section labels
-- Do not add a full Markdown renderer without checking for regressions in table/list styling.
+- `public/answerRenderer.js` handles paragraphs, markdown-style tables, bullets, numbered lists, and section labels.
+- Do not add a full Markdown renderer without checking regressions in table/list styling.
 
 ### Generation Stop
 
@@ -853,7 +745,7 @@ setBusy(busy)
 
 Important:
 
-- Chat and visualization fetches use `state.abortController.signal`.
+- Chat, visualization, and Map-Reduce fetches use `state.abortController.signal`.
 - Abort errors are swallowed and should not create an error bubble.
 - Partial assistant text remains usable after abort.
 
@@ -880,6 +772,7 @@ handleWindowDrop(event)
 .drop-overlay-panel
 .room-file-title
 .room-file-remove
+.deep-analysis-toggle
 ```
 
 Keep the composer `+` menu extensible. It is intended to hold more composer tools later.
@@ -892,9 +785,14 @@ Relevant functions:
 hydrateStoredDocuments()
 hasPersistentDocumentContent(documentItem)
 normalizeStoredDocumentContent(documentItem)
+analyzeDocument(parsedDocument)        // server/documentAnalysis.js
 buildContext(documents, query)         // server/ollama.js
 collectChunks(documents)               // server/ollama.js
-pageSections(documentItem)             // server/documents.js — shared with notebooks.js
+formatAttachmentOverview(documents)    // server/ollama.js
+formatDocumentSummariesBlock(items)    // server/ollama.js
+runMapReduceChat(options)              // server/ollama.js
+streamMapReduceAnalysis(options)       // server/mapReduce.js
+pageSections(documentItem)             // server/documents.js
 hasDocumentContext(documentItem)       // server/ollama.js
 slidingChunkText(text, options)        // server/parsers.js
 embedTexts(texts), embedText(text)     // server/embeddings.js
@@ -902,7 +800,10 @@ expandQuery(query)                     // server/queryExpansion.js
 pickRelevantChunks(chunks, query, budget)  // server/retrieval.js
 hybridSelect(chunks, query, budget, queryEmbedding)  // server/retrieval.js
 multiQueryHybridSelect(chunks, queries, queryEmbeddings, budget)  // server/retrieval.js
-greedyFit(chunks, budget)             // server/retrieval.js
+greedyFit(chunks, budget)              // server/retrieval.js
+queryNotebook(id, query)               // server/notebooks.js
+loadAllNotebookChunks(notebookId)      // server/notebooks.js
+getNotebookManifestSummary(notebookId) // server/notebooks.js
 ```
 
 Important:
@@ -914,85 +815,74 @@ Important:
   - `sheets[].text`
   - `imageBase64` for images
 - Server memory cannot recover files after restart if the browser only has old summary metadata.
+- Document summaries/topics help orient the prompt but are not a replacement for chunk-level grounding.
 
 ## Recent Changes Reflected Here
 
 - Server-side refactoring (2026-05-04):
-  - Extracted `pageSections()` from `server/ollama.js` and `server/notebooks.js` into `server/documents.js` (was duplicated identically in both). Both modules now import it.
-  - Exported `greedyFit()` from `server/retrieval.js`. Replaced `greedyFitWithMeta` in `server/notebooks.js` with the shared export.
-  - Removed `loadLocalEnv()` call and independent `OLLAMA_URL`/`DEFAULT_MODEL` declarations from `server/calendarAgent.js`. Now imports both from `server/ollama.js`.
-  - Added `toDateISO(date)` helper in `server/calendarAgent.js` to replace repeated `padStart`-based date formatting in `buildSystemPrompt` and `addOneHour`.
-  - Added `extractPersonalization(body)` helper in `server/index.js`; replaced three inline repetitions across `/api/chat`, `/api/visualize`, and `/api/followups`.
-  - Removed redundant `normalizeRows` pre-call from `parsers.js#parseCsv` and `readWorksheetRows`; `buildTableFromRows` remains the single normalization point.
+  - Extracted `pageSections()` into `server/documents.js`.
+  - Exported `greedyFit()` from `server/retrieval.js`.
+  - `server/calendarAgent.js` now imports `OLLAMA_URL` and `DEFAULT_MODEL` from `server/ollama.js`.
+  - Added `extractPersonalization(body)` in `server/index.js`.
+  - Removed redundant row-normalization pre-calls in CSV/XLSX parsing.
 
 - Retrieval and RAG update (2026-05-04):
-  - Added `server/embeddings.js` for Ollama `/api/embed` batch/single embedding calls.
-  - `.env.example` now includes `EMBED_MODEL=bge-m3`; code fallback is `nomic-embed-text`.
-  - Added `server/queryExpansion.js` for LLM-generated retrieval variants with timeout/fallback.
-  - Added `server/parsers.js#slidingChunkText()` with overlap and natural-boundary snapping.
-  - `server/ollama.js` now uses sliding chunks and, for oversized room document context, batch-embeds query + chunks before calling `hybridSelect()`.
-  - `server/retrieval.js` now exports `cosineSimilarity()`, `hybridSelect()`, and `multiQueryHybridSelect()` using Reciprocal Rank Fusion of BM25 rank and vector rank.
-  - `server/notebooks.js` attempts embedding generation during notebook document ingest, stores vectors in document JSON, expands queries at retrieval time, and calls `multiQueryHybridSelect()`.
-  - Current notebook caveat: `queryNotebook()` does not copy stored `chunk.embedding` into the query-time chunk objects, so notebook retrieval is effectively query-expanded BM25 until fixed.
+  - Added `server/embeddings.js` for Ollama `/api/embed`.
+  - Added `server/queryExpansion.js` for LLM-generated retrieval variants.
+  - Added `server/parsers.js#slidingChunkText()`.
+  - `server/retrieval.js` exports `cosineSimilarity()`, `hybridSelect()`, and `multiQueryHybridSelect()`.
+  - `server/notebooks.js` attempts embedding generation during ingest and uses query expansion at retrieval time.
+  - Current notebook caveat: stored `chunk.embedding` is not passed into query-time chunk objects, so semantic notebook retrieval is not complete.
 
-- Added primary `대화` / `캘린더` navigation.
-- Added calendar month view, upcoming event list, event dialog, and event cards.
-- Added local calendar persistence under encrypted app state.
-- Added `/api/agent/intent`.
-- Added `/api/holidays`.
-- Added `server/calendarAgent.js`.
-- Added `server/holidays.js`.
-- Chat prompt can now trigger calendar CRUD when a calendar intent is detected.
-- Calendar now supports month/week/day views, Korean holiday display, scoped `Shift+N`, and browser-tab reminder checks.
-- Calendar natural-language handling now uses `calendar.propose` for tentative schedule requests and stores pending create actions until the user confirms.
-- `/api/agent/intent` now accepts recent messages and `pendingAction` to handle follow-up confirmations.
-- Month-range schedule queries such as `5월 전체 일정 보고해` are deterministically corrected to the first and last day of that month.
-- Full-month daily create queries such as `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해` are expanded into one event per day.
-- Added `server/retrieval.js` to pick relevant document chunks for long documents.
-- README and handoff notes updated to reflect the current live model and calendar state.
-- Added department notebook (RAG) feature:
-  - New `server/notebooks.js` and `server/auth.js` modules.
-  - 9 new endpoints under `/api/notebooks/...` and `/api/admin/...`.
-  - `streamChat` accepts `notebookId`, fetches ranked chunks from the chosen notebook, and injects a strict-grounding system prompt that forbids answering outside the notebook + room files.
-  - `/api/chat` exposes citation metadata via the `X-Notebook-Meta` response header (base64-encoded JSON).
-  - Browser UI: '+' menu now has a "부서노트북" entry; active selection is shown as a pill-shaped badge in the composer plus a context bar under the chat header. Each room maintains its own `selectedNotebookId`; new rooms default to `null`.
-  - Citations rendered as a structured panel below assistant answers; `[1]`, `[2]` markers stay inline as plain text in the answer body.
-  - Admin panel reachable from settings dialog when `ADMIN_TOKEN` is configured. Token is held in `sessionStorage` (cleared on tab close).
-- Added `done` boolean field to calendar events; persisted transparently via `normalizeCalendarEvent` spread.
-- Upcoming events sidebar now shows only events within 7 days of today (was: up to 8 events with no date cutoff).
-- Added `toggleEventDone(eventId)` — flips `event.done`, re-renders calendar grid chips and upcoming list, and schedules a save.
-- Event edit dialog now shows a `완료` checkbox (hidden in create mode) inline to the right of the title field.
-- `종일` checkbox moved inline to the right of the `종료` field (was a separate row).
-- Fixed calendar cell height: `.calendar-area` changed from `display: grid` with four row tracks to `display: flex; flex-direction: column` so `.calendar-body` always occupies the `flex: 1` remaining space regardless of command-result panel visibility.
-- Calendar grid responsive breakpoints use `@container calendar` container queries instead of `@media` viewport queries.
+- Document analysis and whole-analysis update (2026-05-04):
+  - Added `server/documentAnalysis.js`.
+  - `/api/upload` now tries to generate document `summary` and `topics`.
+  - Notebook document ingest also stores `summary` and `topics`.
+  - `server/documents.js#summarizeDocument()` includes `summary` and `topics`.
+  - `server/ollama.js` can inject uploaded-file overviews and cited notebook document summaries into prompts.
+  - Added `server/mapReduce.js`.
+  - `/api/chat` accepts `mode: "map_reduce"`.
+  - `public/index.html`, `public/app.js`, and `public/styles.css` add the composer `전체 분석` toggle.
+  - `X-Notebook-Meta` may include `analysisMode`.
+
+- Calendar and UI:
+  - Added primary `대화` / `캘린더` navigation.
+  - Calendar supports month/week/day views, Korean holidays, scoped `Shift+N`, reminders, done state, and event cards.
+  - Natural-language calendar handling uses `calendar.propose` for tentative schedule requests and stores pending create actions until user confirmation.
+  - `/api/agent/intent` accepts recent messages and `pendingAction`.
+  - Month-range and daily-repeat prompts have deterministic corrections.
+  - Destructive calendar delete/update flows now ask for confirmation.
+
+- Department notebook:
+  - `server/notebooks.js` and `server/auth.js` provide notebook storage and admin gating.
+  - `/api/notebooks/...` and `/api/admin/...` endpoints support notebook selection and admin CRUD.
+  - `streamChat` accepts `notebookId`, fetches ranked chunks, and injects strict grounding rules.
+  - Browser UI includes notebook selection in the composer `+` menu, an active notebook badge/context bar, citation panels, and admin management when `ADMIN_TOKEN` is configured.
 
 ## Known Constraints / Next Improvements
 
 Good next steps:
 
-- Replace simple `window.confirm` calendar delete/update confirmations with a richer in-app review dialog if this becomes production-facing.
-- Add recurrence, richer reminder options, timezone display, and multi-calendar support.
-- Add external calendar integration only after local CRUD is stable.
-- Split the large `public/app.js` calendar code into focused modules.
-- Add browser smoke tests for chat, upload, visualization, and full calendar UI flows.
 - Fix notebook semantic retrieval by carrying stored `chunk.embedding` through `queryNotebook()` into `multiQueryHybridSelect()`.
-- Add a persistent local retrieval index/vector store when notebook volume grows beyond small JSON-file scans.
+- Add a persistent retrieval index/vector store when notebook volume grows beyond small JSON-file scans.
+- Improve document-analysis reliability with structured schema validation and retry/repair.
+- Add a richer in-app review dialog for destructive calendar operations instead of `window.confirm()`.
+- Add recurrence, richer reminders, timezone display, and multi-calendar support.
+- Add external calendar integration only after local CRUD remains stable.
+- Split the large `public/app.js` calendar/chat/notebook logic into focused modules.
+- Add browser smoke tests for chat, upload, visualization, notebook selection, Map-Reduce, and full calendar UI flows.
 - Add storage usage display for IndexedDB.
 - Add export/import for encrypted app data.
 - Add password-based encryption option instead of only local CryptoKey.
 - Add OCR for scanned PDFs/images.
-- Restore or replace `llm_performance_dummy.csv` if visualization fixtures are still needed.
 
-Potential issue:
+Potential issues:
 
-- Because uploaded files and calendar data are in browser IndexedDB, large files/images can make encrypted app state large.
-- `/api/chat` uses:
-
-```js
-app.use(express.json({ limit: process.env.MAX_JSON_BYTES || "80mb" }));
-```
-
-If users store/send larger payloads, consider chunked transport or a proper local RAG index.
+- Uploaded files and calendar data live in browser IndexedDB, so large files/images can make encrypted app state large.
+- `/api/chat` uses `app.use(express.json({ limit: process.env.MAX_JSON_BYTES || "80mb" }))`; larger payloads may need chunked transport or a local retrieval index.
+- Upload-time document analysis adds LLM latency.
+- Map-Reduce analysis is slower than normal RAG and truncates beyond `MAP_REDUCE_MAX_CHUNKS`.
+- The local `.env` currently points `EMBED_MODEL` to an unavailable model; use `bge-m3` or pull `nomic-embed-text` to enable embedding calls.
 
 ## Recent Verification
 
@@ -1006,7 +896,9 @@ npm test
 Results:
 
 - `/api/status` returned `ok: true`, default model `gemma4:e2b`, and models `bge-m3:latest`, `gemma4:e4b`, `gemma4:e2b`.
-- `npm test` passed:
+- First `npm test` attempt failed because the app server was not running on `127.0.0.1:3000`.
+- Started the app server in the background for verification. PID from `Start-Process`: `14476`.
+- Second `npm test` passed:
   - `app shell ids exist`
   - `GET /api/status`
   - `POST /api/agent/intent month range`
@@ -1015,9 +907,8 @@ Results:
 
 Not run in this refresh:
 
-- Full recursive `node --check`.
-- Browser UI smoke test.
-- `npm audit`.
+- Full browser UI smoke test was not run.
+- `npm audit` was not run.
 
 ## Operational Notes For Next Agent
 
@@ -1027,6 +918,7 @@ Not run in this refresh:
 - Do not assume uploaded file payloads are server-persistent. Client IndexedDB is the durable source.
 - If changing file persistence, avoid reintroducing server-memory reconciliation that deletes local room documents.
 - If changing chat generation, preserve abort behavior via `AbortController`.
+- If changing Map-Reduce, preserve progress streaming and truncation disclosure.
 - If changing assistant rendering, preserve markdown-lite behavior and table/list support.
 - If changing settings, keep `state.settings` backward compatible with old IndexedDB records.
 - Prefer `--accent` / `--accent-dark` over hardcoded brand colors for new UI.

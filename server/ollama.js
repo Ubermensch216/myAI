@@ -1,8 +1,10 @@
 import { loadLocalEnv } from "./env.js";
 import { slidingChunkText } from "./parsers.js";
-import { pickRelevantChunks, hybridSelect } from "./retrieval.js";
-import { embedTexts, embedText } from "./embeddings.js";
-import { queryNotebook } from "./notebooks.js";
+import { multiQueryHybridSelect } from "./retrieval.js";
+import { embedTexts } from "./embeddings.js";
+import { expandQuery } from "./queryExpansion.js";
+import { queryNotebook, loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
+import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -34,9 +36,23 @@ export async function streamChat({
   model = DEFAULT_MODEL,
   personalization = {},
   notebookId = null,
+  mode = "chat",
   onChunk,
   onMeta
 }) {
+  if (mode === "map_reduce") {
+    await runMapReduceChat({
+      messages,
+      documents,
+      model,
+      personalization,
+      notebookId,
+      onChunk,
+      onMeta
+    });
+    return;
+  }
+
   const notebookContext = await loadNotebookContext(notebookId, messages);
 
   if (typeof onMeta === "function") {
@@ -81,6 +97,93 @@ export async function streamChat({
       if (content) onChunk(content);
       if (event.done) return;
     }
+  }
+}
+
+async function runMapReduceChat({ messages, documents, model, personalization, notebookId, onChunk, onMeta }) {
+  const userTitle = sanitizeName(personalization.userTitle, "사용자님");
+  const aiName = sanitizeName(personalization.aiName, "AI");
+
+  const latestUserIndex = findLatestUserMessageIndex(messages);
+  const userQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "").trim() : "";
+
+  let chunks = [];
+  let notebookSummary = null;
+  if (notebookId) {
+    const [allChunks, summary] = await Promise.all([
+      loadAllNotebookChunks(notebookId).catch(() => []),
+      getNotebookManifestSummary(notebookId).catch(() => null)
+    ]);
+    chunks = allChunks;
+    notebookSummary = summary;
+  } else {
+    chunks = collectChunks(documents).map((chunk, index) => ({
+      text: chunk.text,
+      documentName: chunk.fileName,
+      page: chunk.page,
+      chunkIndex: index,
+      locator: chunk.page != null ? `${chunk.page}쪽` : ""
+    }));
+  }
+
+  if (typeof onMeta === "function") {
+    onMeta({
+      notebook: notebookSummary,
+      citations: [],
+      analysisMode: "map_reduce"
+    });
+  }
+
+  if (!chunks.length) {
+    onChunk(`${userTitle}, 분석할 자료를 먼저 업로드하거나 부서노트북을 선택해 주세요.`);
+    return;
+  }
+
+  let progressLineActive = false;
+  const emitProgress = (message) => {
+    const prefix = progressLineActive ? "\n" : "";
+    onChunk(`${prefix}[분석 진행] ${message}`);
+    progressLineActive = true;
+  };
+
+  emitProgress(`총 ${chunks.length}청크. ${notebookSummary ? `노트북 "${notebookSummary.name}"` : "첨부 파일"} 전체를 Map-Reduce로 분석합니다.`);
+
+  let reduceStarted = false;
+  const directive = [
+    `사용자의 호칭은 "${userTitle}"이며, 답변 첫 문장에 자연스럽게 한 번 부른다.`,
+    `너의 이름은 "${aiName}"이다.`,
+    "한국어로 명확하고 근거 중심으로 답한다.",
+    "내부 사고 과정 전문을 공개하지 말고, 답변에는 결론과 근거만 제공한다."
+  ].join("\n");
+
+  try {
+    const result = await streamMapReduceAnalysis({
+      chunks,
+      query: userQuery || "이 자료의 핵심을 정리해주세요.",
+      model,
+      systemDirective: directive,
+      onProgress: ({ stage, current, total, message }) => {
+        if (stage === "map" || stage === "start") {
+          emitProgress(message || `${stage} ${current}/${total}`);
+        } else if (stage === "reduce") {
+          emitProgress("부분 결과 통합 중 (Reduce 단계)...");
+        }
+      },
+      onChunk: (text) => {
+        if (!reduceStarted) {
+          onChunk("\n\n");
+          reduceStarted = true;
+        }
+        onChunk(text);
+      }
+    });
+
+    if (result.truncated) {
+      onChunk(`\n\n[알림] 분석 한도(${MAP_REDUCE_MAX_CHUNKS}청크)에 따라 앞쪽 ${result.chunkCount}개 청크만 처리했습니다. 더 깊은 분석이 필요하면 자료를 분할하거나 MAP_REDUCE_MAX_CHUNKS를 조정하세요.`);
+    }
+  } catch (err) {
+    if (!reduceStarted) onChunk("\n\n");
+    onChunk(`[오류] Map-Reduce 분석 실패: ${err.message}`);
   }
 }
 
@@ -462,6 +565,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
   const notebook = notebookContext?.notebook ?? null;
   const notebookChunks = notebookContext?.chunks ?? [];
+  const notebookDocumentSummaries = notebookContext?.documentSummaries ?? [];
 
   const systemParts = [
     "너는 로컬 Ollama 기반 문서/이미지 분석 도우미다.",
@@ -535,19 +639,24 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const systemSegments = [system];
 
   if (notebookChunks.length) {
+    const summaryBlock = formatDocumentSummariesBlock(notebookDocumentSummaries);
     const notebookBlock = notebookChunks
       .map((chunk) => {
         const locator = chunk.locator ? ` · ${chunk.locator}` : "";
         return `[${chunk.citationId}] (출처: ${chunk.documentName}${locator})\n${chunk.text}`;
       })
       .join("\n\n");
-    systemSegments.push(
-      `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 사용자 질문과 가장 관련 있는 ${notebookChunks.length}개 청크입니다. 답변에 [N] 형식으로 인용하세요.\n\n${notebookBlock}`
-    );
+    const header = `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 사용자 질문과 가장 관련 있는 ${notebookChunks.length}개 청크입니다. 답변에 [N] 형식으로 인용하세요.`;
+    systemSegments.push([header, summaryBlock, notebookBlock].filter(Boolean).join("\n\n"));
   } else if (notebook) {
     systemSegments.push(
       `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 이 질문과 관련된 자료를 찾지 못했습니다. "해당 노트북에서 관련 정보를 찾을 수 없습니다."라고만 답하세요.`
     );
+  }
+
+  const attachmentOverview = formatAttachmentOverview(documents);
+  if (attachmentOverview) {
+    systemSegments.push(attachmentOverview);
   }
 
   if (context) {
@@ -593,17 +702,17 @@ async function buildContext(documents, query = "") {
   if (totalLength <= MAX_CONTEXT_CHARS) {
     selected = chunks;
   } else {
-    // Batch-embed query + all chunks in two calls; fall back to BM25 on error.
-    let queryEmbedding = null;
+    const queries = await expandQuery(query).catch(() => [query].filter(Boolean));
+    let queryEmbeddings = queries.map(() => null);
     try {
-      const allTexts = [query, ...chunks.map((c) => c.text)];
+      const allTexts = [...queries, ...chunks.map((c) => c.text)];
       const vectors = await embedTexts(allTexts);
-      queryEmbedding = vectors[0];
-      vectors.slice(1).forEach((vec, i) => { chunks[i].embedding = vec; });
+      queryEmbeddings = vectors.slice(0, queries.length);
+      vectors.slice(queries.length).forEach((vec, i) => { chunks[i].embedding = vec; });
     } catch {
       // BM25 fallback — embedding model not available or request failed
     }
-    selected = hybridSelect(chunks, query, MAX_CONTEXT_CHARS, queryEmbedding);
+    selected = multiQueryHybridSelect(chunks, queries, queryEmbeddings, MAX_CONTEXT_CHARS);
   }
 
   let body = selected.map((chunk) => chunk.text).join("\n\n");
@@ -617,6 +726,38 @@ async function buildContext(documents, query = "") {
   }
 
   return body;
+}
+
+function formatDocumentSummariesBlock(summaries) {
+  if (!Array.isArray(summaries) || !summaries.length) return "";
+  const lines = ["[문서 개요] 인용된 자료의 사전 분석 요약입니다. 답변의 사실 근거가 아니라 맥락 파악용으로만 활용하세요."];
+  for (const entry of summaries) {
+    const summary = String(entry.summary ?? "").trim();
+    const topics = Array.isArray(entry.topics) ? entry.topics.filter(Boolean) : [];
+    if (!summary && !topics.length) continue;
+    const parts = [`- ${entry.documentName}`];
+    if (summary) parts.push(`  요약: ${summary}`);
+    if (topics.length) parts.push(`  토픽: ${topics.join(", ")}`);
+    lines.push(parts.join("\n"));
+  }
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+
+function formatAttachmentOverview(documents) {
+  if (!Array.isArray(documents) || !documents.length) return "";
+  const lines = [];
+  for (const documentItem of documents) {
+    if (documentItem.kind !== "document") continue;
+    const summary = String(documentItem.summary ?? "").trim();
+    const topics = Array.isArray(documentItem.topics) ? documentItem.topics.filter(Boolean) : [];
+    if (!summary && !topics.length) continue;
+    const parts = [`- ${documentItem.fileName}`];
+    if (summary) parts.push(`  요약: ${summary}`);
+    if (topics.length) parts.push(`  토픽: ${topics.join(", ")}`);
+    lines.push(parts.join("\n"));
+  }
+  if (!lines.length) return "";
+  return ["[첨부 파일 개요] 사용자가 첨부한 문서의 사전 분석 요약입니다. 사용자가 \"이 문서 뭐야?\" 같이 전체를 묻는 경우 이 개요를 우선 활용하고, 세부 사실은 아래 추출된 컨텍스트로 검증하세요.", ...lines].join("\n");
 }
 
 function collectChunks(documents) {

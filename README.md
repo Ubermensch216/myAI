@@ -1,43 +1,41 @@
 # myAI
 
-myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입니다. 대화, 문서/이미지 분석, CSV/XLSX 기반 데이터 시각화, AI 캘린더 에이전트, 개인화 UI를 제공합니다. 대화와 설정, 업로드 문서, 캘린더 일정은 브라우저 IndexedDB에 WebCrypto AES-GCM으로 암호화되어 저장됩니다.
+myAI는 로컬 Ollama를 백엔드로 사용하는 개인 AI 비서 웹앱입니다. 채팅, 문서/이미지 분석, CSV/XLSX 기반 시각화, 로컬 AI 캘린더 에이전트, 부서노트북 RAG, 브라우저 암호화 저장, 사용자 맞춤 UI를 제공합니다.
 
 ## Current Local Status
 
 - 실행 URL: <http://localhost:3000>
-- 현재 `/api/status` 확인 결과(2026-05-04):
-  - `ok: true`
-  - `defaultModel: gemma4:e2b`
-  - 사용 가능 모델: `bge-m3:latest`, `gemma4:e4b`, `gemma4:e2b`
-- 현재 로컬 `.env`는 `OLLAMA_MODEL=gemma4:e2b`, `EMBED_MODEL=nomic-embed-text`를 사용합니다.
-- 코드 fallback(`server/ollama.js`)과 `.env.example`의 기본 모델은 `gemma3n:e2b`입니다. `server/calendarAgent.js`는 이 값들을 `server/ollama.js`에서 직접 import합니다.
-- `.env.example`은 의미 기반 검색용 `EMBED_MODEL=bge-m3`를 설정합니다. 현재 Ollama에는 `bge-m3:latest`가 있지만 `nomic-embed-text`는 없어서, 현재 `.env` 그대로 실행하면 임베딩 호출은 실패하고 BM25 검색으로 fallback합니다.
-- 서버 로그 파일: `server-start.log`
+- `/api/status` 확인일: 2026-05-04
+- 현재 기본 모델: `gemma4:e2b`
+- 현재 사용 가능 모델: `bge-m3:latest`, `gemma4:e4b`, `gemma4:e2b`
+- 현재 로컬 `.env`: `OLLAMA_MODEL=gemma4:e2b`, `EMBED_MODEL=nomic-embed-text`
+- 코드 fallback 모델: `gemma3n:e2b`
+- `.env.example`의 임베딩 모델은 `bge-m3`입니다. 현재 Ollama에는 `bge-m3:latest`가 있지만, 로컬 `.env`의 `nomic-embed-text`는 설치되어 있지 않아 임베딩 호출은 404를 기록하고 BM25 검색으로 fallback됩니다.
 
 ## Features
 
-- **대화방 기반 채팅**: 여러 대화방, 방 제목 편집, 메시지 복사/편집, 스트리밍 응답, `중지` 버튼과 `Esc` 중단을 지원합니다.
-- **파일 분석**: PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, GIF 업로드를 지원합니다.
-- **AI 캘린더 에이전트**: 왼쪽 1차 메뉴의 `대화` / `캘린더` 구조를 사용합니다. 캘린더 화면에서는 월/주/일 보기, 오늘 기준 7일 이내 예정 일정 목록, 새 일정 다이얼로그, 자연어 일정 명령 입력창을 제공합니다. 각 일정은 완료 처리를 할 수 있으며, 완료 상태는 사이드바 예정 일정, 캘린더 날짜 셀 칩, 일정 편집 다이얼로그에 모두 반영됩니다.
-- **부서노트북 (RAG)**: 부서가 공유하는 지식 자료를 주제별 노트북으로 묶어 등록할 수 있습니다. 컴포저 `+` 메뉴에서 노트북을 선택하면 해당 대화방은 RAG 모드로 전환되어 그 노트북 자료에만 근거하여 답변합니다. 자료 외 질문에는 "해당 노트북에서 관련 정보를 찾을 수 없습니다"라고 답합니다. 모든 답변에는 `[1]`, `[2]` 형식의 인라인 인용과 하단 출처 패널이 표시됩니다. 노트북 등록·문서 추가·삭제는 `ADMIN_TOKEN`을 보유한 관리자만 가능합니다.
-- **한국 공휴일과 일정 알림**: 공식 공휴일 API 키가 있으면 한국 공휴일을 표시하고, 키가 없으면 고정 양력 공휴일 fallback을 표시합니다. 일정별 시작 시/30분 전/하루 전/이틀 전/일주일 전 알림을 설정할 수 있습니다.
-- **자연어 일정 처리**: 채팅 입력 또는 캘린더 명령창에서 일정 등록, 조회, 삭제, 수정 요청을 감지하면 `/api/agent/intent`가 Ollama로 의도를 분류하고, 브라우저 코드가 검증된 payload를 실제 캘린더 상태에 적용합니다. tentative 요청은 `calendar.propose`로 보관한 뒤 사용자가 확인해야 실제 저장됩니다.
-- **데이터 시각화**: CSV/XLSX 표 데이터 요청은 `/api/visualize`로 라우팅됩니다. LLM은 `analysis + visualizationPlan` JSON 계획만 만들고, 서버가 실제 컬럼 검증과 차트 데이터를 계산한 뒤 브라우저가 SVG 차트/KPI/표/인포그래픽을 렌더링합니다.
-- **문서 컨텍스트 선별**: 문서가 길면 `slidingChunkText()`로 오버랩 청크를 만들고, 임베딩 모델이 가능할 때는 BM25 + 벡터 유사도를 RRF로 결합한 `hybridSelect()`로 `MAX_CONTEXT_CHARS` 안의 관련 청크를 고릅니다. 임베딩이 실패하면 BM25 기반 선별로 fallback합니다.
-- **후속 질문 추천**: 답변 완료 후 `/api/followups`를 통해 1-3개 한국어 후속 질문을 생성하고, 실패 시 로컬 fallback을 사용합니다.
-- **개인화 설정**: 시스템 명칭, 시스템 배너, 시스템 아바타, 사용자 별명, 사용자 아바타, 밝기 테마, 색상 테마, 사용자 정의 프롬프트를 설정할 수 있습니다.
-- **로컬 우선 저장**: 서버는 파일 파싱과 모델 호출을 담당하며, 사용자 데이터의 durable source는 브라우저 IndexedDB입니다.
+- **대화형 채팅**: 여러 대화방, 방 제목 편집, 사용자 메시지 복사/편집, 스트리밍 응답, `중지` 버튼과 `Esc` 중단, 후속 질문 추천을 지원합니다.
+- **파일 분석**: PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG/JPG/JPEG/WEBP/GIF 업로드를 지원합니다.
+- **문서 사전 분석**: 업로드된 일반 문서는 `server/documentAnalysis.js`가 Ollama로 짧은 요약과 주요 토픽을 생성해 문서 payload에 저장합니다. 이 개요는 이후 첨부 파일 컨텍스트와 부서노트북 컨텍스트 보강에 사용됩니다.
+- **전체 분석(Map-Reduce)**: 채팅 composer의 `전체 분석` 토글을 켜면 `/api/chat`이 `mode: "map_reduce"`로 호출됩니다. 선택된 부서노트북 전체 청크 또는 현재 방의 업로드 문서 전체 청크를 map/reduce 방식으로 분석하며, 긴 자료를 일부 검색 청크만으로 답하는 한계를 줄이기 위한 모드입니다.
+- **부서노트북 RAG**: 서버 파일시스템의 `data/notebooks/<id>/`에 저장되는 공유 지식 노트북입니다. 사용자는 방마다 노트북을 선택하고, AI는 해당 노트북과 현재 방 파일을 근거로 답변하며 `[1]`, `[2]` 형식의 인용과 출처 패널을 제공합니다.
+- **질의 확장 및 검색**: 부서노트북 검색은 `server/queryExpansion.js`로 검색 변형을 만들고 `multiQueryHybridSelect()`로 BM25/CJK bigram 및 벡터 랭킹을 결합하려고 시도합니다. 임베딩 실패 시 BM25 기반으로 fallback됩니다.
+- **AI 캘린더 에이전트**: 자연어 일정 등록/조회/수정/삭제를 `/api/agent/intent`로 분류하고, 실제 일정 데이터 변경은 브라우저의 결정적 코드가 IndexedDB 상태에 적용합니다.
+- **한국 공휴일 및 알림**: `KOREA_HOLIDAY_SERVICE_KEY`가 있으면 공공데이터 API를 사용하고, 없으면 고정 양력 공휴일 fallback을 사용합니다. 일정 알림은 열린 브라우저 탭에서 동작합니다.
+- **데이터 시각화**: CSV/XLSX 기반 시각화 요청은 `/api/visualize`로 라우팅됩니다. LLM은 분석 의도와 시각화 계획 JSON을 만들고, 서버가 실제 컬럼/행으로 검증 및 계산한 뒤 브라우저가 SVG 차트/KPI/표/인포그래픽을 렌더링합니다.
+- **암호화 로컬 저장**: 대화, 설정, 업로드 문서 payload, 캘린더 일정은 브라우저 IndexedDB에 WebCrypto AES-GCM으로 암호화되어 저장됩니다.
 
 ## Requirements
 
 - Node.js 20 이상
-- Ollama 로컬 데몬: <https://ollama.com/download>
-- 사용할 Ollama 모델을 미리 pull
+- 로컬 Ollama: <https://ollama.com/download>
+- 사용할 Ollama 모델 사전 pull
 
-현재 로컬 환경 기준:
+현재 로컬 상태와 맞추려면:
 
 ```bash
 ollama pull gemma4:e2b
+ollama pull bge-m3
 ```
 
 `.env.example` 기본값을 그대로 쓰려면:
@@ -47,7 +45,11 @@ ollama pull gemma3n:e2b
 ollama pull bge-m3
 ```
 
-`bge-m3`는 `.env.example` 기준 의미 기반 문서 검색용 임베딩 모델입니다. 현재 로컬 `.env`처럼 `EMBED_MODEL=nomic-embed-text`를 쓰려면 `ollama pull nomic-embed-text`가 추가로 필요합니다. 임베딩 모델이 없어도 앱은 동작하지만, 긴 문서 선별은 BM25 중심으로 동작합니다.
+현재 `.env`처럼 `EMBED_MODEL=nomic-embed-text`를 유지하려면 다음도 필요합니다.
+
+```bash
+ollama pull nomic-embed-text
+```
 
 ## Quick Start
 
@@ -75,212 +77,206 @@ npm start
 
 ## Smoke Test
 
-앱 서버와 Ollama가 실행 중인 상태에서 기본 smoke test를 실행할 수 있습니다.
+서버와 Ollama가 실행 중인 상태에서:
 
 ```bash
 npm test
 ```
 
-테스트는 앱 shell ID 정합성, `/api/status`, 월 범위 캘린더 intent, CSV 파서, 부서노트북 CRUD와 RAG 인용 메타데이터를 확인합니다.
+테스트는 앱 shell ID, `/api/status`, 캘린더 intent, parser, 부서노트북 CRUD와 RAG 인용 메타데이터를 확인합니다. 현재 로컬 `.env`의 `EMBED_MODEL=nomic-embed-text` 모델이 설치되어 있지 않으면 임베딩 404 경고가 뜰 수 있지만, BM25 fallback 경로가 동작하면 테스트는 통과할 수 있습니다.
 
-현재 로컬 `.env`처럼 `EMBED_MODEL=nomic-embed-text`를 쓰면서 해당 모델을 pull하지 않은 경우, 테스트 중 노트북 임베딩 생성 실패 경고가 표시될 수 있습니다. 이 경고는 BM25 fallback 경로를 타며, 테스트 자체는 통과할 수 있습니다.
+최근 확인(2026-05-04): 앱 서버를 띄운 상태에서 `npm test`가 통과했습니다. 현재 로컬 `.env` 기준으로는 `nomic-embed-text` 미설치 때문에 노트북 임베딩 404 경고가 3회 기록되지만, BM25 fallback으로 테스트는 성공했습니다.
 
 ## Configuration
 
-서버는 시작 시 프로젝트 루트의 `.env`를 `server/env.js`로 읽습니다. 이미 설정된 프로세스 환경변수는 `.env` 값보다 우선합니다.
+서버 시작 시 프로젝트 루트의 `.env`를 `server/env.js`가 읽습니다. 이미 존재하는 프로세스 환경변수가 `.env`보다 우선합니다.
 
 | 변수 | 기본값 | 설명 |
 |---|---:|---|
 | `PORT` | `3000` | HTTP 포트 |
-| `HOST` | 미설정 | HTTP 바인딩 호스트. 미설정 시 모든 인터페이스에서 listen |
-| `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API 엔드포인트 |
-| `OLLAMA_MODEL` | `gemma3n:e2b` | 코드 fallback 및 `.env.example`의 기본 모델 |
-| `EMBED_MODEL` | code: `nomic-embed-text`, `.env.example`: `bge-m3` | Ollama `/api/embed`에 사용할 임베딩 모델. 사용할 수 없으면 BM25 검색으로 fallback |
-| `KOREA_HOLIDAY_SERVICE_KEY` | 미설정 | 공공데이터포털 한국천문연구원 특일 정보 API 서비스 키 |
-| `MAX_CONTEXT_CHARS` | `24000` | 한 요청에 포함할 최대 문서 컨텍스트 글자 수 |
-| `CHUNK_WINDOW_CHARS` | `1024` | 슬라이딩 윈도우 청크 크기(≈512 토큰) |
-| `CHUNK_OVERLAP_CHARS` | `256` | 인접 청크 간 오버랩(≈128 토큰). 경계에 걸친 정보 누락을 줄임 |
-| `NOTEBOOK_QUERY_BUDGET` | `12000` | 부서노트북 RAG 응답에 포함할 최대 청크 글자 수 |
-| `QUERY_EXPANSION_ENABLED` | `true` | 부서노트북 검색 전 LLM 기반 질의 변형 생성 사용 여부 |
-| `QUERY_EXPANSION_VARIANTS` | `3` | 원문 질의 외 생성할 검색 변형 수 (1-6으로 clamp) |
-| `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | 질의 확장 LLM 호출 timeout ms (1000-30000으로 clamp) |
-| `ADMIN_TOKEN` | 미설정 | 부서노트북 등록·문서 추가·삭제에 필요한 관리자 토큰. 미설정 시 관리자 엔드포인트는 503 응답 |
-| `MAX_JSON_BYTES` | `80mb` | Express JSON body 한도 |
-| `MAX_UPLOAD_BYTES` | `41943040` | 업로드 파일 1개당 최대 바이트 |
+| `HOST` | unset | HTTP listen host. unset이면 모든 인터페이스 |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `gemma3n:e2b` | 기본 채팅/분석 모델 |
+| `EMBED_MODEL` | code: `nomic-embed-text`, `.env.example`: `bge-m3` | Ollama `/api/embed`용 임베딩 모델 |
+| `KOREA_HOLIDAY_SERVICE_KEY` | unset | 한국 공휴일 공공데이터 API 서비스키 |
+| `ADMIN_TOKEN` | unset | 부서노트북 관리 API용 bearer token |
+| `MAX_JSON_BYTES` | `80mb` | Express JSON body 제한 |
+| `MAX_UPLOAD_BYTES` | `41943040` | 업로드 파일 1개 최대 바이트 |
+| `MAX_CONTEXT_CHARS` | `24000` | 일반 채팅에 주입할 최대 문서 컨텍스트 |
+| `CHUNK_WINDOW_CHARS` | `1024` | 슬라이딩 청크 크기 |
+| `CHUNK_OVERLAP_CHARS` | `256` | 슬라이딩 청크 overlap |
+| `NOTEBOOK_QUERY_BUDGET` | `12000` | 부서노트북 RAG 컨텍스트 문자 예산 |
+| `QUERY_EXPANSION_ENABLED` | `true` | RAG 검색 전 LLM 질의 확장 사용 여부 |
+| `QUERY_EXPANSION_VARIANTS` | `3` | 원문 외 생성할 검색 변형 수 |
+| `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | 질의 확장 timeout ms |
+| `DOC_ANALYSIS_ENABLED` | `true` | 업로드/노트북 ingest 시 문서 요약/토픽 생성 여부 |
+| `DOC_ANALYSIS_MAX_INPUT_CHARS` | `12000` | 문서 사전 분석에 보낼 최대 본문 길이 |
+| `DOC_ANALYSIS_TIMEOUT_MS` | `30000` | 문서 사전 분석 timeout ms |
+| `MAP_REDUCE_BATCH_CHUNKS` | `4` | Map-Reduce map 호출 1회당 청크 수 |
+| `MAP_REDUCE_MAX_CHUNKS` | `80` | 전체 분석에서 처리할 최대 청크 수 |
+| `MAP_REDUCE_PARALLELISM` | `2` | Map 단계 병렬 호출 수 |
+| `MAP_REDUCE_MAP_TIMEOUT_MS` | `45000` | Map 단계 호출 timeout ms |
 
-운영 환경에서는 `HOST=127.0.0.1`로 묶고 Caddy/nginx 같은 리버스 프록시 뒤에 두는 구성이 권장됩니다.
+## Architecture
 
-## Calendar Agent
-
-캘린더 데이터는 `state.calendar`에 저장되고, 기존 앱 상태와 함께 암호화된 `app-state` record에 들어갑니다.
-
-```js
-state.calendar = {
-  events: [
-    {
-      id,
-      title,
-      allDay,
-      start,
-      end,
-      location,
-      notes,
-      color,
-      reminders,
-      notifiedReminders,
-      done,
-      createdAt,
-      updatedAt
-    }
-  ],
-  cursorISO,
-  viewMode
-}
-```
-
-자연어 명령 흐름:
+### Chat
 
 ```text
-사용자 입력
--> 프론트엔드 키워드 감지
--> POST /api/agent/intent
--> server/calendarAgent.js가 Ollama에 strict JSON 의도 분류 요청
--> intent/payload 정규화와 날짜 범위 보정
--> tentative 요청은 room.pendingCalendarAction에 보관
--> 사용자의 확인 응답이 오면 pending action을 calendar.create로 실행
--> public/app.js가 create/list/delete/update를 실제 IndexedDB 상태에 적용
--> 캘린더 UI와 채팅 이벤트 카드 갱신
+user prompt
+-> public/app.js sends /api/chat
+-> server/ollama.js builds system prompt and document/image context
+-> Ollama streams chunks
+-> browser renders answer incrementally
+-> answer is saved in encrypted IndexedDB
+-> /api/followups generates suggestions
 ```
 
-이 구조에서 LLM은 자연어를 구조화된 JSON으로 바꾸는 역할만 합니다. 실제 일정 추가/조회/삭제/수정은 `public/app.js`의 결정적 코드가 로컬 `state.calendar.events`에 적용합니다. 그래서 성공 메시지는 실제 로컬 변경이 끝난 뒤에만 생성됩니다.
-
-현재 지원 intent:
-
-- `calendar.propose`
-- `calendar.create`
-- `calendar.list`
-- `calendar.delete`
-- `calendar.update`
-- `chat`
-
-`calendar.propose`는 “5월 4일 점심 일정 잡을 수 있나?”처럼 아직 저장을 명확히 지시하지 않은 후보 일정입니다. 사용자가 `응`, `좋아`, `추가해줘`, `등록해줘`처럼 확인하면 최근 대화와 `pendingAction`을 함께 분류해 실제 `calendar.create`로 전환합니다.
-
-월 범위 조회는 LLM 결과에만 의존하지 않습니다. `5월 전체 일정`, `이번 달`, `다음 달`, `지난달` 같은 표현은 서버가 최종적으로 해당 월의 1일~말일 범위로 보정합니다.
-
-월 전체/매일 등록도 단일 이벤트로 축약하지 않습니다. 예를 들어 `5월 전체 일정에 오전 9시부터 10분간 스트레칭을 등록해`는 `repeat: { frequency: "daily", from: "2026-05-01", to: "2026-05-31" }` payload로 보정되고, 브라우저가 각 날짜의 개별 이벤트로 확장해 저장합니다.
-
-## Department Notebooks (RAG)
-
-부서노트북은 부서 공용 자료를 주제별로 묶어둔 RAG 지식 창고입니다. 사용자별 IndexedDB가 아니라 서버 파일시스템(`data/notebooks/<id>/`)에 저장되며, 모든 사용자가 같은 노트북을 공유합니다.
-
-저장 구조:
+### Document Context
 
 ```text
-data/notebooks/
-  <notebookId>/
-    manifest.json           노트북 메타와 문서 목록
-    docs/
-      <docId>.json          파싱·청크된 문서 payload
+room documents in IndexedDB
+-> client sends active room documents
+-> server/ollama.js collects text/pages/sheets/images
+-> server/parsers.js#slidingChunkText creates overlapping chunks
+-> server/queryExpansion.js may create query variants
+-> server/embeddings.js tries query/chunk embeddings
+-> server/retrieval.js#multiQueryHybridSelect or hybridSelect selects chunks
+-> embedding failures fall back to BM25/CJK bigram
+-> selected context plus document summaries/topics are injected into the system message
 ```
 
-대화방 단위 운영 모델:
-
-- 각 대화방은 자신의 `selectedNotebookId`를 독립적으로 가집니다.
-- 새 대화방의 디폴트는 `null` (일반 대화).
-- 컴포저 `+` 메뉴 → "부서노트북 선택" 또는 활성 배지를 클릭해 변경할 수 있습니다.
-- 노트북이 활성화되면 채팅 헤더 아래 컨텍스트 바와 컴포저 라인의 알약 배지가 동시에 표시됩니다.
-
-RAG 처리 흐름:
+### Whole Document Analysis (Map-Reduce)
 
 ```text
-사용자 입력 + room.selectedNotebookId
+composer "전체 분석" toggle
+-> POST /api/chat { mode: "map_reduce", notebookId?, documents? }
+-> if notebookId exists, server/notebooks.js#loadAllNotebookChunks loads notebook chunks
+-> otherwise server/ollama.js#collectChunks uses active room documents
+-> server/mapReduce.js batches chunks and runs map calls in parallel
+-> reduce step streams the final Korean answer
+-> X-Notebook-Meta may include analysisMode: "map_reduce"
+```
+
+이 모드는 검색으로 뽑힌 일부 청크가 아니라 전체 자료를 넓게 훑기 위한 기능입니다. 시간이 더 오래 걸리고 `MAP_REDUCE_MAX_CHUNKS`를 넘는 자료는 잘릴 수 있습니다.
+
+### Department Notebooks (RAG)
+
+```text
+chat prompt + room.selectedNotebookId
 -> POST /api/chat { ..., notebookId }
--> server/queryExpansion.js#expandQuery 로 검색 질의 변형 생성
--> server/notebooks.js#queryNotebook 으로 multi-query 청크 검색
-   (임베딩 가능 시 multiQueryHybridSelect, 실패 시 BM25+CJK bigram fallback)
--> 상위 청크를 시스템 메시지의 [노트북 컨텍스트] 블록에 [N] 번호와 함께 주입
--> Strict 시스템 프롬프트로 "노트북 자료에만 근거" 규칙 강제
--> 자료 부족 시 "해당 노트북에서 관련 정보를 찾을 수 없습니다."
--> 응답 시 X-Notebook-Meta 헤더에 base64-JSON 인용 메타를 첨부
--> 브라우저가 인라인 [N] 마커와 하단 출처 패널을 렌더
+-> server/notebooks.js#queryNotebook
+-> expandQuery() creates search variants
+-> multiQueryHybridSelect() ranks chunks
+-> top chunks get [N] citation IDs
+-> cited document summaries/topics are also injected
+-> strict grounding prompt tells the model to answer only from notebook + room files
+-> X-Notebook-Meta returns notebook, citations[], analysisMode?
+-> browser renders inline [N] markers and a citations panel
 ```
 
-관리자 운영:
+부서노트북 문서는 `data/notebooks/<id>/docs/<docId>.json`에 저장됩니다. ingest 시 파싱, 청킹, 임베딩 시도, 요약/토픽 생성이 함께 수행됩니다. 현재 구현은 저장된 `chunks[].embedding`을 검색 시 `multiQueryHybridSelect()`에 전달하는 연결이 아직 빠져 있어, 부서노트북 벡터 검색 품질을 주장하기 전 이 부분을 먼저 고쳐야 합니다. 현재 실효 경로는 질의 확장 + BM25/CJK bigram fallback입니다.
 
-- 노트북 등록/수정/삭제, 문서 업로드/삭제는 `ADMIN_TOKEN`을 가진 관리자만 가능합니다.
-- 설정 다이얼로그 하단의 "부서노트북 관리" 버튼은 서버에 `ADMIN_TOKEN`이 설정되어 있을 때만 보입니다.
-- 토큰은 브라우저 `sessionStorage`에 저장되어 탭 종료 시 사라집니다.
-- 문서 파싱은 채팅과 동일한 `server/parsers.js`를 재사용하며 PDF/DOCX/XLSX/CSV/PPTX/HWPX를 지원합니다(이미지는 노트북에 추가 불가).
-
-검색 한도는 `NOTEBOOK_QUERY_BUDGET` (기본 12,000자) 환경변수로 조정합니다. 룸 첨부파일과 노트북 컨텍스트는 함께 시스템 메시지에 들어가며, 시스템 프롬프트가 노트북 우선임을 LLM에 지시합니다.
-
-현재 구현상 노트북 문서 ingest는 임베딩 생성을 시도해 문서 JSON에 저장하지만, 질의 시 `queryNotebook()`의 청크 메타 구성에서 저장된 embedding을 아직 전달하지 않습니다. 따라서 노트북 검색은 질의 확장 + multi-query BM25 중심으로 보는 것이 안전합니다. 개인 업로드 문서의 긴 컨텍스트는 요청 시점에 query+chunk를 batch embedding하여 `hybridSelect()`를 사용합니다.
-
-## Local Storage Notes
-
-대화, 설정, 업로드 문서 payload, 캘린더 일정은 서버가 아니라 브라우저 IndexedDB에 저장됩니다.
+### Calendar Agent
 
 ```text
-DB name: ollama-chatter-secure
-Object store: records
-Record id: app-state
-
-Object store: keys
-Record id: local-aes-gcm-key
+calendar-like natural language prompt
+-> public/app.js keyword prefilter
+-> POST /api/agent/intent
+-> server/calendarAgent.js asks Ollama for strict JSON
+-> server normalizes intent/payload and deterministic date corrections
+-> browser applies create/list/delete/update to local state.calendar.events
+-> UI refreshes grid, upcoming list, command result, and chat event cards
 ```
 
-브라우저 프로필을 삭제하거나 다른 브라우저/기기로 이동하면 기존 데이터는 자동으로 따라가지 않습니다. 큰 이미지나 문서를 많이 저장하면 브라우저 quota에 걸릴 수 있고, 이 경우 앱 화면에 저장 실패 안내가 표시됩니다.
+LLM은 intent와 필드 추출만 담당합니다. 실제 일정 변경은 브라우저 로컬 상태에 적용되며, 삭제/수정처럼 파괴적일 수 있는 작업은 현재 `window.confirm()` 확인을 거칩니다.
+
+### Visualization
+
+```text
+chart/graph prompt + CSV/XLSX table data
+-> public/app.js calls /api/visualize
+-> LLM returns analysis + visualizationPlan JSON
+-> server/visualization.js validates exact columns and chart requirements
+-> server computes final chart data from real rows
+-> LLM optionally interprets the computed spec in Korean
+-> browser renders SVG/table/KPI/infographic
+```
 
 ## Server API
 
 - `GET /api/status`: Ollama 연결 상태, 기본 모델, 모델 목록
-- `POST /api/upload`: 파일 1개 파싱 후 full document payload 반환
+- `POST /api/upload`: 파일 1개 파싱, 일반 문서는 요약/토픽 사전 분석 후 full document payload 반환
 - `GET /api/documents`: 서버 메모리 문서 summary 목록
 - `GET /api/documents/:id`: 서버 메모리의 full document payload 조회
 - `DELETE /api/documents/:id`: 서버 메모리 문서 삭제
-- `POST /api/chat`: Ollama 스트리밍 채팅. 선택적 `notebookId`를 받으면 부서노트북 RAG 모드로 전환되고, 응답은 `X-Notebook-Meta` 헤더에 base64-JSON 인용 메타를 포함
+- `POST /api/chat`: Ollama 스트리밍 채팅. 선택적 `notebookId`와 `mode`를 받음. `mode: "map_reduce"`이면 전체 분석 경로 사용
 - `POST /api/visualize`: CSV/XLSX 기반 plan-first 시각화 생성
 - `POST /api/followups`: 후속 질문 추천
-- `POST /api/agent/intent`: 캘린더/일반 대화 intent 분류. `prompt`, `model`, `currentDate`와 선택적 `messages`, `pendingAction`을 받을 수 있음
-- `GET /api/holidays`: 연도별 한국 공휴일 조회. API 키가 없으면 고정 양력 공휴일 fallback 반환
-- `GET /api/admin/status`: `ADMIN_TOKEN` 설정 여부 반환
-- `POST /api/admin/verify`: 관리자 토큰 검증 (Bearer 헤더)
-- `GET /api/notebooks`: 부서노트북 목록 (id, name, description, documentCount)
-- `GET /api/notebooks/:id`: 노트북 상세와 문서 목록
-- `POST /api/notebooks` / `PATCH /api/notebooks/:id` / `DELETE /api/notebooks/:id`: 노트북 CRUD (관리자)
-- `POST /api/notebooks/:id/documents`: 노트북 문서 업로드 (관리자, multipart `file`)
-- `DELETE /api/notebooks/:id/documents/:documentId`: 노트북 문서 삭제 (관리자)
+- `POST /api/agent/intent`: 캘린더/일반 대화 intent 분류
+- `GET /api/holidays`: 연도별 한국 공휴일 조회
+- `GET /api/admin/status`: `ADMIN_TOKEN` 설정 여부
+- `POST /api/admin/verify`: 관리자 bearer token 검증
+- `GET /api/notebooks`, `GET /api/notebooks/:id`: 공개 노트북 조회
+- `POST /api/notebooks`, `PATCH /api/notebooks/:id`, `DELETE /api/notebooks/:id`: 관리자 노트북 CRUD
+- `POST /api/notebooks/:id/documents`, `DELETE /api/notebooks/:id/documents/:documentId`: 관리자 노트북 문서 추가/삭제
+
+`POST /api/chat` body:
+
+```js
+{
+  model,
+  messages,
+  documents,
+  personalization,
+  notebookId, // optional
+  mode        // optional: "chat" | "map_reduce"
+}
+```
+
+노트북 또는 전체 분석 메타가 있을 때 `X-Notebook-Meta` 헤더는 base64-JSON으로 다음 형태를 가집니다.
+
+```js
+{
+  notebook: { id, name, description, documentCount, updatedAt },
+  citations: [
+    { citationId, documentId, documentName, documentType, locator }
+  ],
+  analysisMode: "map_reduce" // or null
+}
+```
 
 ## Project Structure
 
 ```text
 server/
-  index.js           Express 서버, 정적 파일, API 라우트
-  env.js             프로젝트 루트 .env 로더
-  ollama.js          Ollama 호출, 채팅, 후속 질문, 시각화 계획/해석, 노트북/문서 컨텍스트 주입
-  embeddings.js      Ollama /api/embed 배치 임베딩 헬퍼
-  queryExpansion.js  부서노트북 검색용 LLM 질의 확장 헬퍼
-  calendarAgent.js   자연어 캘린더 intent 분류와 payload 정규화
-  holidays.js        한국 공휴일 API/fallback 조회
-  notebooks.js       부서노트북 CRUD, 문서 ingest, 청크/임베딩 저장, 인용 생성
-  auth.js            ADMIN_TOKEN 기반 관리자 미들웨어
-  parsers.js         업로드 파일 파싱 (룸 파일과 노트북 문서 공통)
-  retrieval.js       BM25 + CJK bigram, cosineSimilarity, RRF hybridSelect/multiQueryHybridSelect, greedyFit()
-  visualization.js   시각화 계획 검증과 차트 데이터 계산
-  documents.js       문서 summary/full payload 직렬화, pageSections() 공유 헬퍼
-  documentStore.js   서버 런타임 메모리 문서 캐시
+  index.js             Express server, static files, API routes
+  env.js               project-root .env loader
+  ollama.js            Ollama chat, followups, visualization calls, context building, RAG and map-reduce dispatch
+  embeddings.js        Ollama /api/embed helpers
+  queryExpansion.js    LLM query expansion for retrieval
+  documentAnalysis.js  upload-time document summary/topic extraction
+  mapReduce.js         whole-document map/reduce analysis
+  calendarAgent.js     natural-language calendar intent classifier
+  holidays.js          Korean holiday API/fallback
+  notebooks.js         department notebook storage, ingest, retrieval, all-chunk loading
+  auth.js              ADMIN_TOKEN middleware
+  parsers.js           file parsers and chunking
+  retrieval.js         BM25/CJK bigram, cosine, RRF hybrid retrieval
+  visualization.js     visualization plan validation and chart data computation
+  documents.js         document serializers and pageSections()
+  documentStore.js     runtime-only server memory document cache
 
 public/
-  index.html         앱 shell, 대화/캘린더 화면, 설정/일정/노트북 다이얼로그
-  app.js             프론트엔드 상태, IndexedDB 암호화 저장, 채팅/캘린더/노트북 UI
-  answerRenderer.js  마크다운-lite 답변 렌더러
-  visualizationRenderer.js  SVG 차트/KPI/표/인포그래픽 렌더러
-  fileDisplay.js     파일명 표시, 복구, 타입 배지
-  textRepair.js      mojibake 점수 계산과 복구 헬퍼
-  styles.css         테마 토큰, 레이아웃, 메시지/설정/캘린더/노트북 UI
+  index.html           app shell and dialogs
+  app.js               frontend state, IndexedDB encryption, chat/calendar/notebook UI
+  answerRenderer.js    markdown-lite answer renderer
+  visualizationRenderer.js
+  fileDisplay.js
+  textRepair.js
+  styles.css
 
 data/
-  notebooks/         부서노트북 manifest와 문서 payload (gitignored)
+  notebooks/           department notebook manifests and document payloads (gitignored)
 
 deploy/
   DEPLOY.md
@@ -292,25 +288,26 @@ deploy/
 
 ## Known Constraints
 
-- 캘린더는 현재 로컬 IndexedDB 전용입니다. Google Calendar, Outlook, ICS 동기화는 없습니다.
-- 반복 일정, 여러 캘린더 계정, timezone UI는 아직 없습니다.
-- 일정 알림은 브라우저가 열려 있을 때 동작합니다. 앱/브라우저가 완전히 꺼진 상태의 보장 알림은 PWA/service worker 또는 데스크톱 앱화가 필요합니다.
-- AI 일정 삭제/수정은 LLM 분류 결과를 바탕으로 로컬 이벤트를 변경하지만, 실제 변경 전 사용자 확인을 거칩니다. 시간 변경은 기존 일정과의 충돌도 확인합니다.
-- 파일과 캘린더 데이터는 브라우저 로컬에만 저장됩니다. export/import와 저장 공간 사용량 UI는 아직 없습니다.
-- 개인 업로드 문서의 임베딩은 긴 컨텍스트 요청마다 다시 계산됩니다. 부서노트북도 현재는 JSON 파일을 매 요청 읽는 구조라서 문서가 많아지면 별도 인덱스/벡터 저장소가 필요합니다.
-- 레거시 `.hwp`와 `.xls`는 직접 지원하지 않습니다. HWPX/XLSX 변환을 권장합니다.
-- `llm_performance_dummy.csv`는 현재 작업트리에 없습니다. 시각화 smoke test에 필요하면 새 fixture를 추가하거나 기존 테스트 데이터를 준비하세요.
+- 캘린더는 현재 브라우저 IndexedDB 전용입니다. Google Calendar, Outlook, ICS 동기화는 없습니다.
+- 반복 일정, 다중 캘린더 계정, timezone UI는 아직 없습니다.
+- 일정 알림은 브라우저 탭이 열려 있을 때만 동작합니다.
+- 업로드 파일과 캘린더 데이터의 durable source는 브라우저 IndexedDB입니다. 서버 메모리 문서 캐시는 재시작 후 유지되지 않습니다.
+- 부서노트북은 서버 파일 JSON 스캔 구조입니다. 문서량이 커지면 별도 인덱스/벡터 저장소가 필요합니다.
+- 부서노트북 ingest는 임베딩을 저장하지만, 현재 query-time chunk 객체에 저장 embedding을 전달하지 않아 semantic vector ranking은 아직 완성 상태가 아닙니다.
+- 문서 사전 분석은 업로드/노트북 문서 추가 시 LLM 호출을 늘리므로 큰 문서나 느린 로컬 모델에서는 업로드 지연이 생길 수 있습니다.
+- Map-Reduce 전체 분석은 일반 RAG보다 느리고 토큰/시간 비용이 큽니다. `MAP_REDUCE_MAX_CHUNKS`를 넘는 자료는 일부만 처리됩니다.
+- `.hwp`, `.xls` 구형 바이너리 형식은 직접 지원하지 않습니다. HWPX/XLSX 변환을 권장합니다.
 
 ## Deployment
 
 Linux 서버 배포는 [`deploy/DEPLOY.md`](./deploy/DEPLOY.md)에 정리되어 있습니다.
 
-핵심 주의사항:
+주의사항:
 
-- HTTPS가 필요합니다. 프론트엔드 WebCrypto는 `https://` 또는 `http://localhost` 같은 보안 컨텍스트에서 동작합니다.
-- 리버스 프록시는 스트리밍을 막지 않도록 구성해야 합니다.
-- 프록시 업로드 한도와 `MAX_UPLOAD_BYTES`를 맞춰야 합니다.
-- CPU 전용 Ollama 추론은 느릴 수 있습니다. 실사용 환경은 GPU 권장입니다.
+- WebCrypto는 `https://` 또는 `http://localhost` 같은 보안 컨텍스트가 필요합니다.
+- reverse proxy는 스트리밍 응답을 버퍼링하지 않도록 설정해야 합니다.
+- proxy 업로드 제한은 `MAX_UPLOAD_BYTES`와 맞춰야 합니다.
+- CPU 전용 Ollama 추론은 느릴 수 있습니다. 실사용 환경은 GPU를 권장합니다.
 
 ## License
 

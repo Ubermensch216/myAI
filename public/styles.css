@@ -2740,6 +2740,46 @@ textarea {
   white-space: nowrap;
 }
 
+.deep-analysis-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 4px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text-muted, var(--text));
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.deep-analysis-toggle:hover,
+.deep-analysis-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.deep-analysis-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.deep-analysis-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.deep-analysis-label {
+  white-space: nowrap;
+}
+
 /* Notebook selector dialog — compact, list-focused */
 .notebook-selector-dialog {
   width: min(420px, 90vw);

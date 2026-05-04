@@ -21,7 +21,9 @@ export function summarizeDocument(document) {
     sheetCount: document.sheets?.length ?? 0,
     tableCount: document.tables?.length ?? document.sheets?.filter((sheet) => sheet.rows?.length).length ?? 0,
     textLength: document.text?.length ?? 0,
-    preview: document.text?.slice(0, 280) ?? ""
+    preview: document.text?.slice(0, 280) ?? "",
+    summary: document.summary || "",
+    topics: Array.isArray(document.topics) ? document.topics : []
   };
 }
 

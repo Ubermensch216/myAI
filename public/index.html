@@ -117,6 +117,13 @@
               </svg>
               <span id="notebookBadgeName" class="notebook-badge-name">노트북</span>
             </button>
+            <button id="deepAnalysisToggle" class="deep-analysis-toggle" type="button" aria-pressed="false" aria-label="전체 분석 모드 (Map-Reduce)" title="자료 전체를 Map-Reduce로 분석합니다 (시간이 오래 걸림)">
+              <svg class="deep-analysis-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
+                <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+              </svg>
+              <span class="deep-analysis-label">전체 분석</span>
+            </button>
           </div>
           <input id="fileInput" type="file" multiple hidden />
           <textarea

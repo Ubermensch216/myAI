@@ -7,6 +7,7 @@ import { multiQueryHybridSelect, greedyFit } from "./retrieval.js";
 import { pageSections } from "./documents.js";
 import { embedTexts } from "./embeddings.js";
 import { expandQuery } from "./queryExpansion.js";
+import { analyzeDocument } from "./documentAnalysis.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,7 +109,9 @@ function summarizeDocument(documentEntry) {
     type: documentEntry.type,
     chunkCount: documentEntry.chunkCount || 0,
     sizeBytes: documentEntry.sizeBytes || 0,
-    addedAt: documentEntry.addedAt
+    addedAt: documentEntry.addedAt,
+    summary: documentEntry.summary || "",
+    topics: Array.isArray(documentEntry.topics) ? documentEntry.topics : []
   };
 }
 
@@ -223,6 +226,11 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
     console.warn(`[notebooks] 임베딩 생성 실패 (BM25 전용 모드로 전환): ${err.message}`);
   }
 
+  const analysis = await analyzeDocument(parsedDocument).catch((err) => {
+    console.warn(`[notebooks] 문서 사전 분석 실패 (요약 없이 진행): ${err.message}`);
+    return { summary: "", topics: [] };
+  });
+
   const now = new Date().toISOString();
   const documentRecord = {
     id,
@@ -231,6 +239,8 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
     type: parsedDocument.fileType,
     addedAt: now,
     chunkCount: chunks.length,
+    summary: analysis.summary,
+    topics: analysis.topics,
     chunks
   };
 
@@ -245,7 +255,9 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
     type: documentRecord.type,
     addedAt: now,
     chunkCount: chunks.length,
-    sizeBytes: Buffer.byteLength(serialized, "utf8")
+    sizeBytes: Buffer.byteLength(serialized, "utf8"),
+    summary: analysis.summary,
+    topics: analysis.topics
   });
   manifest.updatedAt = now;
   await writeManifest(notebookId, manifest);
@@ -303,7 +315,7 @@ export async function queryNotebook(notebookId, query, options = {}) {
   }
 
   if (!allChunks.length) {
-    return { ok: true, notebook: summarizeNotebook(manifest), chunks: [] };
+    return { ok: true, notebook: summarizeNotebook(manifest), chunks: [], documentSummaries: [] };
   }
 
   let ranked = [];
@@ -331,10 +343,21 @@ export async function queryNotebook(notebookId, query, options = {}) {
     chunkIndex: chunk.chunkIndex
   }));
 
+  const citedIds = new Set(citations.map((c) => c.documentId));
+  const documentSummaries = (manifest.documents || [])
+    .filter((entry) => citedIds.has(entry.id) && (entry.summary || (entry.topics || []).length))
+    .map((entry) => ({
+      documentId: entry.id,
+      documentName: entry.name,
+      summary: entry.summary || "",
+      topics: Array.isArray(entry.topics) ? entry.topics : []
+    }));
+
   return {
     ok: true,
     notebook: summarizeNotebook(manifest),
-    chunks: citations
+    chunks: citations,
+    documentSummaries
   };
 }
 
@@ -344,5 +367,42 @@ function formatLocator(chunk) {
   if (chunk.page != null) parts.push(`${chunk.page}쪽`);
   if (chunk.part) parts.push(`part ${chunk.part}/${chunk.partTotal}`);
   return parts.join(" · ");
+}
+
+/**
+ * Return every chunk in a notebook, flattened across documents.
+ * Used by Map-Reduce analysis where retrieval is bypassed and the entire
+ * notebook is processed in batches. Returns [] if the notebook is missing
+ * or empty.
+ */
+export async function loadAllNotebookChunks(notebookId) {
+  const manifest = await readManifest(notebookId);
+  if (!manifest) return [];
+  const out = [];
+  for (const entry of manifest.documents || []) {
+    const record = await loadDocumentRecord(notebookId, entry.id);
+    if (!record) continue;
+    for (const chunk of record.chunks || []) {
+      out.push({
+        text: chunk.text,
+        documentId: entry.id,
+        documentName: entry.name,
+        documentType: entry.type,
+        page: chunk.page,
+        label: chunk.label,
+        part: chunk.part,
+        partTotal: chunk.partTotal,
+        chunkIndex: chunk.index,
+        locator: formatLocator(chunk)
+      });
+    }
+  }
+  return out;
+}
+
+export async function getNotebookManifestSummary(notebookId) {
+  const manifest = await readManifest(notebookId);
+  if (!manifest) return null;
+  return summarizeNotebook(manifest);
 }
 

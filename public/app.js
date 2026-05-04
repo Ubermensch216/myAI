@@ -48,12 +48,20 @@ const state = {
   db: null,
   cryptoKey: null,
   notebooks: [],
+  deepAnalysisEnabled: false,
   admin: {
     configured: false,
     token: null,
     authenticated: false
   }
 };
+
+function setDeepAnalysisEnabled(enabled) {
+  state.deepAnalysisEnabled = Boolean(enabled);
+  if (elements.deepAnalysisToggle) {
+    elements.deepAnalysisToggle.setAttribute("aria-pressed", state.deepAnalysisEnabled ? "true" : "false");
+  }
+}
 
 function todayDateISO() {
   const now = new Date();
@@ -183,6 +191,7 @@ const elements = {
   attachNotebookButton: document.querySelector("#attachNotebookButton"),
   notebookBadge: document.querySelector("#notebookBadge"),
   notebookBadgeName: document.querySelector("#notebookBadgeName"),
+  deepAnalysisToggle: document.querySelector("#deepAnalysisToggle"),
   notebookSelectorDialog: document.querySelector("#notebookSelectorDialog"),
   closeNotebookSelectorButton: document.querySelector("#closeNotebookSelectorButton"),
   notebookList: document.querySelector("#notebookList"),
@@ -421,6 +430,12 @@ function bindEvents() {
     elements.notebookBadge.addEventListener("click", (event) => {
       event.preventDefault();
       openNotebookSelector();
+    });
+  }
+  if (elements.deepAnalysisToggle) {
+    elements.deepAnalysisToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      setDeepAnalysisEnabled(!state.deepAnalysisEnabled);
     });
   }
   if (elements.closeNotebookSelectorButton) {
@@ -2886,6 +2901,7 @@ async function requestTextAssistantResponse(room) {
   let answer = "";
 
   try {
+    const useDeepAnalysis = state.deepAnalysisEnabled;
     const response = await fetch("/api/chat", {
       method: "POST",
       signal: state.abortController.signal,
@@ -2895,9 +2911,11 @@ async function requestTextAssistantResponse(room) {
         messages: room.messages.map(({ role, content }) => ({ role, content })),
         documents: getActiveDocuments(),
         personalization: getPersonalizationSettings(),
-        notebookId: room.selectedNotebookId || null
+        notebookId: room.selectedNotebookId || null,
+        ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
       })
     });
+    if (useDeepAnalysis) setDeepAnalysisEnabled(false);
 
     if (!response.ok || !response.body) {
       const errorText = await response.text();

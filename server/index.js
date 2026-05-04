@@ -9,6 +9,7 @@ import { serializeDocumentForClient as serializeClientDocument } from "./documen
 import { normalizeUploadFileName as repairUploadFileName } from "../public/textRepair.js";
 import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, generateVisualizationSpec, listModels, streamChat } from "./ollama.js";
 import { parseUpload } from "./parsers.js";
+import { analyzeDocument } from "./documentAnalysis.js";
 import { classifyIntent } from "./calendarAgent.js";
 import { getKoreanHolidays } from "./holidays.js";
 import {
@@ -99,6 +100,11 @@ app.post("/api/upload", upload.single("file"), async (request, response) => {
   try {
     request.file.originalname = repairUploadFileName(request.file.originalname);
     const parsed = await parseUpload(request.file);
+    if (parsed.kind === "document") {
+      const analysis = await analyzeDocument(parsed).catch(() => ({ summary: "", topics: [] }));
+      parsed.summary = analysis.summary;
+      parsed.topics = analysis.topics;
+    }
     const summary = addDocument(parsed);
     response.json({ document: serializeClientDocument(getDocument(summary.id)) });
   } catch (error) {
@@ -121,6 +127,7 @@ app.post("/api/chat", async (request, response) => {
   const notebookId = typeof request.body.notebookId === "string" && request.body.notebookId
     ? request.body.notebookId
     : null;
+  const mode = request.body.mode === "map_reduce" ? "map_reduce" : "chat";
 
   if (!messages.length) {
     response.status(400).json({ error: "messages가 비어 있습니다." });
@@ -150,10 +157,12 @@ app.post("/api/chat", async (request, response) => {
       model,
       personalization,
       notebookId,
+      mode,
       onMeta: (meta) => {
-        if (meta && (meta.notebook || (meta.citations && meta.citations.length))) {
+        if (meta && (meta.notebook || (meta.citations && meta.citations.length) || meta.analysisMode)) {
           pendingMeta = {
             notebook: meta.notebook,
+            analysisMode: meta.analysisMode || null,
             citations: (meta.citations || []).map((chunk) => ({
               citationId: chunk.citationId,
               documentId: chunk.documentId,
