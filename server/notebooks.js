@@ -11,13 +11,16 @@ const rootDir = path.resolve(__dirname, "..");
 const NOTEBOOKS_DIR = path.join(rootDir, "data", "notebooks");
 const CHUNK_TARGET_CHARS = Number(process.env.CHUNK_TARGET_CHARS || 1800);
 const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
+const NOTEBOOK_ID_PATTERN = /^nb_[a-f0-9]{16}$/;
+const DOCUMENT_ID_PATTERN = /^doc_[a-f0-9]{16}$/;
 
 async function ensureNotebooksDir() {
   await fs.mkdir(NOTEBOOKS_DIR, { recursive: true });
 }
 
 function notebookDir(notebookId) {
-  return path.join(NOTEBOOKS_DIR, notebookId);
+  const id = requireNotebookId(notebookId);
+  return resolveInsideNotebooks(id);
 }
 
 function manifestPath(notebookId) {
@@ -29,14 +32,47 @@ function docsDir(notebookId) {
 }
 
 function docPath(notebookId, documentId) {
-  return path.join(docsDir(notebookId), `${documentId}.json`);
+  const id = requireDocumentId(documentId);
+  return path.join(docsDir(notebookId), `${id}.json`);
 }
 
 function generateId(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString("hex")}`;
 }
 
+function normalizeNotebookId(value) {
+  const id = String(value ?? "").trim();
+  return NOTEBOOK_ID_PATTERN.test(id) ? id : null;
+}
+
+function normalizeDocumentId(value) {
+  const id = String(value ?? "").trim();
+  return DOCUMENT_ID_PATTERN.test(id) ? id : null;
+}
+
+function requireNotebookId(value) {
+  const id = normalizeNotebookId(value);
+  if (!id) throw new Error("Invalid notebook id.");
+  return id;
+}
+
+function requireDocumentId(value) {
+  const id = normalizeDocumentId(value);
+  if (!id) throw new Error("Invalid document id.");
+  return id;
+}
+
+function resolveInsideNotebooks(...segments) {
+  const root = path.resolve(NOTEBOOKS_DIR);
+  const target = path.resolve(root, ...segments);
+  if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
+    throw new Error("Notebook path escaped storage root.");
+  }
+  return target;
+}
+
 async function readManifest(notebookId) {
+  if (!normalizeNotebookId(notebookId)) return null;
   try {
     const raw = await fs.readFile(manifestPath(notebookId), "utf8");
     return JSON.parse(raw);
@@ -256,19 +292,10 @@ export async function queryNotebook(notebookId, query, options = {}) {
   }
 
   const ranked = trimmedQuery
-    ? pickRelevantChunks(
-        allChunks.map((chunk) => ({ text: chunk.text })),
-        trimmedQuery,
-        budget
-      )
+    ? pickRelevantChunks(allChunks, trimmedQuery, budget)
     : [];
 
-  // pickRelevantChunks returns chunks objects without our metadata, so re-map by text identity
-  const selected = ranked.length
-    ? ranked
-        .map((picked) => allChunks.find((chunk) => chunk.text === picked.text))
-        .filter(Boolean)
-    : greedyFitWithMeta(allChunks, budget);
+  const selected = ranked.length ? ranked : greedyFitWithMeta(allChunks, budget);
 
   const citations = selected.map((chunk, index) => ({
     citationId: index + 1,

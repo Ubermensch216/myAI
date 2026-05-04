@@ -224,6 +224,14 @@ const elements = {
 let saveTimer = null;
 let titleTimer = null;
 let dragDepth = 0;
+let adminDetailSaveTimer = null;
+
+const adminUiState = {
+  notebooks: [],
+  selectedId: null,
+  selectedNotebook: null,
+  mobileView: "list"
+};
 
 init();
 
@@ -2287,6 +2295,14 @@ function applyCalendarDelete(payload) {
   }
 
   if (!matchTitle) {
+    const confirmed = confirmCalendarDelete(candidates, payload, fromISO, toISO);
+    if (!confirmed) {
+      return {
+        text: "삭제를 취소했습니다.",
+        kind: "warning",
+        eventCards: candidates.slice(0, 10)
+      };
+    }
     const ids = new Set(candidates.map((event) => event.id));
     state.calendar.events = state.calendar.events.filter((event) => !ids.has(event.id));
     const dateLabel = formatDateRangeLabel(fromISO, toISO);
@@ -2305,12 +2321,33 @@ function applyCalendarDelete(payload) {
   }
 
   const target = candidates[0];
+  const confirmed = confirmCalendarDelete(candidates, payload, fromISO, toISO);
+  if (!confirmed) {
+    return {
+      text: "삭제를 취소했습니다.",
+      kind: "warning",
+      eventCards: [target]
+    };
+  }
   state.calendar.events = state.calendar.events.filter((event) => event.id !== target.id);
   return {
     mutated: true,
     text: `✓ 일정을 삭제했습니다: ${formatEventOneLine(target)}`,
     eventCards: []
   };
+}
+
+function confirmCalendarDelete(candidates, payload, fromISO, toISO) {
+  const count = candidates.length;
+  const scope = payload?.matchTitle
+    ? `"${payload.matchTitle}"`
+    : formatDateRangeLabel(fromISO, toISO);
+  const preview = formatEventPreviewList(candidates, 6);
+  return window.confirm([
+    `${scope} 조건과 일치하는 일정 ${count}건을 삭제합니다.`,
+    preview,
+    "계속할까요?"
+  ].filter(Boolean).join("\n\n"));
 }
 
 function formatDateRangeLabel(fromISO, toISO) {
@@ -2358,14 +2395,90 @@ function applyCalendarUpdate(payload) {
   };
   if (changes.location === "") delete merged.location;
   if (changes.notes === "") delete merged.notes;
+
+  const conflicts = hasCalendarTimeChange(changes)
+    ? findConflictingEvents({
+        start: merged.start,
+        end: merged.end || merged.start,
+        allDay: !!merged.allDay
+      }, target.id)
+    : [];
+  const confirmed = confirmCalendarUpdate(target, merged, changes, conflicts);
+  if (!confirmed) {
+    return {
+      text: "일정 수정을 취소했습니다.",
+      kind: "warning",
+      eventCards: [target, ...conflicts.slice(0, 3)]
+    };
+  }
+
   state.calendar.events[index] = merged;
   state.calendar.cursorISO = String(merged.start).slice(0, 10);
   maybeRequestNotificationPermission(merged.reminders);
-  return {
+  const result = {
     mutated: true,
     text: `✓ 일정을 수정했습니다: ${formatEventOneLine(merged)}`,
     eventCards: [merged]
   };
+  if (conflicts.length) {
+    result.kind = "warning";
+    result.text = `${result.text} (기존 일정과 시간이 겹칩니다)`;
+    result.eventCards = [merged, ...conflicts.slice(0, 3)];
+  }
+  return result;
+}
+
+function confirmCalendarUpdate(target, merged, changes, conflicts) {
+  const sections = [
+    `다음 일정을 수정합니다:\n${formatEventOneLine(target)}`,
+    `변경 내용:\n${formatCalendarChangeList(target, merged, changes)}`
+  ];
+  if (conflicts.length) {
+    sections.push(`다만 아래 기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}`);
+  }
+  sections.push("계속할까요?");
+  return window.confirm(sections.join("\n\n"));
+}
+
+function hasCalendarTimeChange(changes) {
+  return Object.prototype.hasOwnProperty.call(changes, "start")
+    || Object.prototype.hasOwnProperty.call(changes, "end")
+    || Object.prototype.hasOwnProperty.call(changes, "allDay");
+}
+
+function formatCalendarChangeList(before, after, changes) {
+  const rows = [];
+  const addRow = (label, previous, next) => {
+    rows.push(`· ${label}: ${previous || "-"} → ${next || "-"}`);
+  };
+  if (Object.prototype.hasOwnProperty.call(changes, "title")) {
+    addRow("제목", before.title, after.title);
+  }
+  if (hasCalendarTimeChange(changes)) {
+    addRow("시간", formatEventOneLine(before), formatEventOneLine(after));
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, "location")) {
+    addRow("장소", before.location, after.location);
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, "notes")) {
+    addRow("메모", before.notes, after.notes);
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, "reminders")) {
+    addRow("알림", formatReminderSummary(before.reminders), formatReminderSummary(after.reminders));
+  }
+  return rows.length ? rows.join("\n") : "· 세부 항목 변경";
+}
+
+function formatReminderSummary(reminders) {
+  const values = normalizeReminderList(reminders).map((reminder) => reminder.minutesBefore);
+  if (!values.length) return "";
+  return values.map((minutes) => {
+    if (minutes === 0) return "시작 시";
+    if (minutes < 60) return `${minutes}분 전`;
+    if (minutes % 1440 === 0) return `${minutes / 1440}일 전`;
+    if (minutes % 60 === 0) return `${minutes / 60}시간 전`;
+    return `${minutes}분 전`;
+  }).join(", ");
 }
 
 function formatEventOneLine(event) {
@@ -2399,6 +2512,12 @@ function buildConflictWarning(conflicts) {
     .slice(0, 3)
     .map((event) => `· ${formatEventOneLine(event)}`)
     .join("\n");
+}
+
+function formatEventPreviewList(events, limit = 5) {
+  const visible = events.slice(0, limit).map((event) => `· ${formatEventOneLine(event)}`);
+  if (events.length > limit) visible.push(`· 외 ${events.length - limit}건`);
+  return visible.join("\n");
 }
 
 async function submitCalendarCommand(formEvent) {
@@ -3551,6 +3670,7 @@ async function loadAdminStatus() {
   } catch (error) {
     state.admin.configured = false;
   }
+  renderAdminEntry();
 }
 
 function restoreAdminTokenSession() {
@@ -3563,6 +3683,7 @@ function restoreAdminTokenSession() {
   } catch {
     // sessionStorage may be blocked; ignore.
   }
+  renderAdminEntry();
 }
 
 function findNotebookSummary(notebookId) {
@@ -3771,55 +3892,81 @@ function adminAuthHeader() {
   return state.admin.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
 }
 
+function renderAdminEntry() {
+  if (!elements.openAdminNotebookButton) return;
+  elements.openAdminNotebookButton.hidden = !state.admin.configured;
+  const status = state.admin.authenticated && state.admin.token
+    ? "active"
+    : state.admin.configured
+      ? "locked"
+      : "unavailable";
+  elements.openAdminNotebookButton.dataset.status = status;
+  elements.openAdminNotebookButton.title = state.admin.authenticated
+    ? "부서노트북 관리"
+    : "부서노트북 관리 (관리자 인증 필요)";
+}
+
 async function openAdminNotebookDialog() {
   if (!elements.adminNotebookDialog) return;
   closeSettings();
   // Refresh server admin status in case it was just configured.
   await loadAdminStatus();
-  if (!state.admin.configured) {
-    showAdminUnconfigured();
-  } else if (state.admin.authenticated && state.admin.token) {
-    showAdminContent();
-    await refreshAdminNotebooks();
-  } else {
-    showAdminLogin();
-  }
+  await renderAdminDialogState();
   if (!elements.adminNotebookDialog.open) elements.adminNotebookDialog.showModal();
 }
 
-function showAdminUnconfigured() {
-  if (elements.adminTokenSection) elements.adminTokenSection.hidden = false;
-  if (elements.adminNotebookContent) elements.adminNotebookContent.hidden = true;
-  if (elements.adminTokenInput) {
-    elements.adminTokenInput.value = "";
-    elements.adminTokenInput.disabled = true;
+async function renderAdminDialogState() {
+  if (!state.admin.configured) {
+    showAdminUnconfigured();
+    return;
   }
-  if (elements.adminTokenSubmitButton) elements.adminTokenSubmitButton.disabled = true;
-  if (elements.adminTokenError) {
-    elements.adminTokenError.hidden = false;
-    elements.adminTokenError.textContent = "서버에 ADMIN_TOKEN이 설정되어 있지 않습니다. .env에 ADMIN_TOKEN을 추가하고 서버를 재시작하세요.";
+  if (state.admin.authenticated && state.admin.token) {
+    showAdminContent();
+    await refreshAdminNotebooks();
+    return;
   }
+  showAdminLogin();
 }
 
 function closeAdminNotebookDialog() {
   if (elements.adminNotebookDialog?.open) elements.adminNotebookDialog.close();
 }
 
+function showAdminUnconfigured() {
+  clearAdminDetailSaveTimer();
+  if (elements.adminUnconfiguredSection) elements.adminUnconfiguredSection.hidden = false;
+  if (elements.adminAuthSection) elements.adminAuthSection.hidden = true;
+  if (elements.adminWorkspace) elements.adminWorkspace.hidden = true;
+  if (elements.adminLogoutButton) elements.adminLogoutButton.hidden = true;
+  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "서버 설정 필요";
+  if (elements.adminTokenError) elements.adminTokenError.hidden = true;
+}
+
 function showAdminLogin() {
-  if (elements.adminTokenSection) elements.adminTokenSection.hidden = false;
-  if (elements.adminNotebookContent) elements.adminNotebookContent.hidden = true;
+  clearAdminDetailSaveTimer();
+  if (elements.adminUnconfiguredSection) elements.adminUnconfiguredSection.hidden = true;
+  if (elements.adminAuthSection) elements.adminAuthSection.hidden = false;
+  if (elements.adminWorkspace) elements.adminWorkspace.hidden = true;
+  if (elements.adminLogoutButton) elements.adminLogoutButton.hidden = true;
+  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "인증 필요";
   if (elements.adminTokenInput) {
     elements.adminTokenInput.value = "";
     elements.adminTokenInput.disabled = false;
   }
   if (elements.adminTokenSubmitButton) elements.adminTokenSubmitButton.disabled = false;
   if (elements.adminTokenError) elements.adminTokenError.hidden = true;
+  queueMicrotask(() => elements.adminTokenInput?.focus());
 }
 
 function showAdminContent() {
-  if (elements.adminTokenSection) elements.adminTokenSection.hidden = true;
-  if (elements.adminNotebookContent) elements.adminNotebookContent.hidden = false;
-  hideNewNotebookForm();
+  if (elements.adminUnconfiguredSection) elements.adminUnconfiguredSection.hidden = true;
+  if (elements.adminAuthSection) elements.adminAuthSection.hidden = true;
+  if (elements.adminWorkspace) elements.adminWorkspace.hidden = false;
+  if (elements.adminLogoutButton) elements.adminLogoutButton.hidden = false;
+  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "공유 지식 자료";
+  applyAdminMobileView();
+  renderAdminList();
+  renderAdminDetail();
 }
 
 async function submitAdminToken() {
@@ -3844,6 +3991,7 @@ async function submitAdminToken() {
     } catch {
       // sessionStorage may be blocked; the token still works for this tab.
     }
+    renderAdminEntry();
     showAdminContent();
     await refreshAdminNotebooks();
   } catch (error) {
@@ -3860,24 +4008,36 @@ function showAdminTokenError(message) {
 function adminLogout() {
   state.admin.token = null;
   state.admin.authenticated = false;
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
   try {
     sessionStorage.removeItem(ADMIN_TOKEN_SESSION_KEY);
   } catch {
     // ignore
   }
+  renderAdminEntry();
   showAdminLogin();
 }
 
-function showNewNotebookForm() {
+function showAdminNewNotebookForm() {
+  clearAdminDetailSaveTimer();
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
+  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
+  if (elements.adminDetailSaveStatus) elements.adminDetailSaveStatus.textContent = "";
+  applyAdminMobileView();
   if (elements.adminNewNotebookName) {
     elements.adminNewNotebookName.value = "";
-    elements.adminNewNotebookName.focus();
   }
   if (elements.adminNewNotebookDescription) elements.adminNewNotebookDescription.value = "";
+  queueMicrotask(() => elements.adminNewNotebookName?.focus());
 }
 
-function hideNewNotebookForm() {
+function hideAdminNewNotebookForm() {
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
 }
 
@@ -3898,7 +4058,11 @@ async function adminCreateNotebook() {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || "노트북 생성 실패");
     }
-    hideNewNotebookForm();
+    const result = await response.json().catch(() => ({}));
+    const createdId = result.notebook?.id || null;
+    adminUiState.selectedId = createdId;
+    adminUiState.mobileView = "detail";
+    hideAdminNewNotebookForm();
     await refreshAdminNotebooks();
     await loadNotebooks();
   } catch (error) {
@@ -3917,6 +4081,11 @@ async function adminDeleteNotebook(notebookId, notebookName) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || "삭제 실패");
     }
+    if (adminUiState.selectedId === notebookId) {
+      adminUiState.selectedId = null;
+      adminUiState.selectedNotebook = null;
+      adminUiState.mobileView = "list";
+    }
     await refreshAdminNotebooks();
     await loadNotebooks();
     for (const room of state.rooms) {
@@ -3929,42 +4098,65 @@ async function adminDeleteNotebook(notebookId, notebookName) {
   }
 }
 
-let pendingAdminUploadNotebookId = null;
-
-function triggerAdminDocumentUpload(notebookId) {
-  if (!elements.adminNotebookFileInput) return;
-  pendingAdminUploadNotebookId = notebookId;
-  elements.adminNotebookFileInput.value = "";
-  elements.adminNotebookFileInput.click();
-}
-
-async function handleAdminDocumentUploadChange(event) {
-  const file = event.target.files?.[0];
-  const notebookId = pendingAdminUploadNotebookId;
-  pendingAdminUploadNotebookId = null;
-  event.target.value = "";
-  if (!file || !notebookId) return;
-  await adminUploadDocument(notebookId, file);
-}
-
 async function adminUploadDocument(notebookId, file) {
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
-    const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}/documents`, {
-      method: "POST",
-      headers: adminAuthHeader(),
-      body: formData
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || "업로드 실패");
-    }
-    await refreshAdminNotebooks();
-    await loadNotebooks();
-  } catch (error) {
-    alert(`업로드 실패: ${error.message}`);
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}/documents`, {
+    method: "POST",
+    headers: adminAuthHeader(),
+    body: formData
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "업로드 실패");
   }
+  return response.json().catch(() => ({}));
+}
+
+async function uploadAdminDocuments(notebookId, files) {
+  const uploadFiles = Array.from(files || []).filter(Boolean);
+  if (!notebookId || !uploadFiles.length) return;
+
+  adminUiState.selectedId = notebookId;
+  adminUiState.mobileView = "detail";
+  if (elements.adminUploadProgress) elements.adminUploadProgress.innerHTML = "";
+
+  let completed = 0;
+  for (const file of uploadFiles) {
+    const row = buildAdminUploadProgressRow(file.name);
+    elements.adminUploadProgress?.append(row.element);
+    try {
+      await adminUploadDocument(notebookId, file);
+      completed += 1;
+      row.element.classList.add("done");
+      row.status.textContent = "완료";
+    } catch (error) {
+      row.element.classList.add("error");
+      row.status.textContent = error.message;
+    }
+  }
+
+  await refreshAdminNotebooks();
+  await loadNotebooks();
+  if (!completed && uploadFiles.length === 1) {
+    return;
+  }
+}
+
+function buildAdminUploadProgressRow(fileName) {
+  const element = document.createElement("div");
+  element.className = "admin-upload-progress-row";
+
+  const name = document.createElement("span");
+  name.className = "admin-upload-progress-name";
+  name.textContent = fileName || "파일";
+
+  const status = document.createElement("span");
+  status.className = "admin-upload-progress-status";
+  status.textContent = "업로드 중...";
+
+  element.append(name, status);
+  return { element, status };
 }
 
 async function adminDeleteDocument(notebookId, documentId, documentName) {
@@ -3978,6 +4170,7 @@ async function adminDeleteDocument(notebookId, documentId, documentName) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || "삭제 실패");
     }
+    adminUiState.selectedId = notebookId;
     await refreshAdminNotebooks();
     await loadNotebooks();
   } catch (error) {
@@ -3987,9 +4180,10 @@ async function adminDeleteDocument(notebookId, documentId, documentName) {
 
 async function refreshAdminNotebooks() {
   if (!elements.adminNotebookList) return;
-  elements.adminNotebookList.innerHTML = "<div class='admin-notebook-empty'>불러오는 중...</div>";
+  elements.adminNotebookList.innerHTML = "<div class='admin-list-empty'>불러오는 중...</div>";
   try {
     const listResponse = await fetch("/api/notebooks");
+    if (!listResponse.ok) throw new Error("노트북 목록 요청 실패");
     const listResult = await listResponse.json();
     const summaries = Array.isArray(listResult.notebooks) ? listResult.notebooks : [];
 
@@ -4006,104 +4200,238 @@ async function refreshAdminNotebooks() {
       })
     );
 
-    elements.adminNotebookList.innerHTML = "";
-    if (!detailedNotebooks.length) {
-      const empty = document.createElement("div");
-      empty.className = "admin-notebook-empty";
-      empty.textContent = "등록된 노트북이 없습니다. 새 노트북을 만드세요.";
-      elements.adminNotebookList.append(empty);
-      return;
+    adminUiState.notebooks = detailedNotebooks;
+    adminUiState.selectedNotebook = adminUiState.notebooks.find((item) => item.id === adminUiState.selectedId) ?? null;
+    if (adminUiState.selectedId && !adminUiState.selectedNotebook) {
+      adminUiState.selectedId = null;
     }
-
-    for (const notebook of detailedNotebooks) {
-      elements.adminNotebookList.append(buildAdminNotebookCard(notebook));
-    }
+    renderAdminList();
+    renderAdminDetail();
+    applyAdminMobileView();
   } catch (error) {
     elements.adminNotebookList.innerHTML = "";
     const errorBox = document.createElement("div");
-    errorBox.className = "admin-notebook-empty";
+    errorBox.className = "admin-list-empty";
     errorBox.textContent = `목록을 불러오지 못했습니다: ${error.message}`;
     elements.adminNotebookList.append(errorBox);
   }
 }
 
-function buildAdminNotebookCard(notebook) {
-  const card = document.createElement("div");
-  card.className = "admin-notebook-card";
-
-  const header = document.createElement("div");
-  header.className = "admin-notebook-card-header";
-
-  const title = document.createElement("div");
-  title.className = "admin-notebook-card-title";
-  const name = document.createElement("span");
-  name.className = "admin-notebook-card-name";
-  name.textContent = notebook.name;
-  title.append(name);
-  if (notebook.description) {
-    const desc = document.createElement("span");
-    desc.className = "admin-notebook-card-description";
-    desc.textContent = notebook.description;
-    title.append(desc);
-  }
-
-  const actions = document.createElement("div");
-  actions.className = "admin-notebook-card-actions";
-  const deleteButton = document.createElement("button");
-  deleteButton.type = "button";
-  deleteButton.className = "ghost-button";
-  deleteButton.textContent = "삭제";
-  deleteButton.addEventListener("click", () => adminDeleteNotebook(notebook.id, notebook.name));
-  actions.append(deleteButton);
-
-  header.append(title, actions);
-  card.append(header);
-
-  const body = document.createElement("div");
-  body.className = "admin-notebook-card-body";
-
-  const documents = Array.isArray(notebook.documents) ? notebook.documents : [];
-  if (!documents.length) {
+function renderAdminList() {
+  if (!elements.adminNotebookList) return;
+  elements.adminNotebookList.innerHTML = "";
+  if (!adminUiState.notebooks.length) {
     const empty = document.createElement("div");
-    empty.className = "admin-notebook-doc-empty";
-    empty.textContent = "등록된 문서가 없습니다.";
-    body.append(empty);
-  } else {
-    const list = document.createElement("ul");
-    list.className = "admin-notebook-doc-list";
-    for (const doc of documents) {
-      const item = document.createElement("li");
-      item.className = "admin-notebook-doc-item";
-
-      const docName = document.createElement("span");
-      docName.className = "admin-notebook-doc-name";
-      docName.textContent = doc.name;
-
-      const meta = document.createElement("span");
-      meta.className = "admin-notebook-doc-meta";
-      const sizeKb = doc.sizeBytes ? `${Math.max(1, Math.round(doc.sizeBytes / 1024))} KB` : "";
-      const chunkInfo = doc.chunkCount ? `${doc.chunkCount} chunks` : "";
-      meta.textContent = [chunkInfo, sizeKb].filter(Boolean).join(" · ");
-
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "admin-notebook-doc-remove";
-      remove.textContent = "삭제";
-      remove.addEventListener("click", () => adminDeleteDocument(notebook.id, doc.id, doc.name));
-
-      item.append(docName, meta, remove);
-      list.append(item);
-    }
-    body.append(list);
+    empty.className = "admin-list-empty";
+    empty.textContent = "등록된 노트북이 없습니다.";
+    elements.adminNotebookList.append(empty);
+    return;
   }
 
-  const addDoc = document.createElement("button");
-  addDoc.type = "button";
-  addDoc.className = "ghost-button admin-notebook-add-doc";
-  addDoc.textContent = "+ 문서 추가";
-  addDoc.addEventListener("click", () => triggerAdminDocumentUpload(notebook.id));
-  body.append(addDoc);
+  for (const notebook of adminUiState.notebooks) {
+    elements.adminNotebookList.append(buildAdminListItem(notebook));
+  }
+}
 
-  card.append(body);
-  return card;
+function buildAdminListItem(notebook) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "admin-list-item";
+  if (notebook.id === adminUiState.selectedId) button.classList.add("active");
+
+  const content = document.createElement("span");
+  content.className = "admin-list-item-content";
+
+  const name = document.createElement("span");
+  name.className = "admin-list-item-name";
+  name.textContent = notebook.name || "이름 없는 노트북";
+  content.append(name);
+
+  if (notebook.description) {
+    const description = document.createElement("span");
+    description.className = "admin-list-item-description";
+    description.textContent = notebook.description;
+    content.append(description);
+  }
+
+  const meta = document.createElement("span");
+  meta.className = "admin-list-item-meta";
+  meta.textContent = `문서 ${notebook.documentCount ?? notebook.documents?.length ?? 0}`;
+
+  button.append(content, meta);
+  button.addEventListener("click", () => selectAdminNotebook(notebook.id));
+  return button;
+}
+
+function selectAdminNotebook(notebookId) {
+  clearAdminDetailSaveTimer();
+  hideAdminNewNotebookForm();
+  adminUiState.selectedId = notebookId;
+  adminUiState.selectedNotebook = adminUiState.notebooks.find((notebook) => notebook.id === notebookId) ?? null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  renderAdminDetail();
+  applyAdminMobileView();
+}
+
+function renderAdminDetail() {
+  if (!elements.adminDetailEmpty || !elements.adminDetailContent) return;
+  const notebook = adminUiState.selectedNotebook;
+  const creating = elements.adminNewNotebookForm && !elements.adminNewNotebookForm.hidden;
+  if (creating) return;
+
+  if (!notebook) {
+    elements.adminDetailEmpty.hidden = false;
+    elements.adminDetailContent.hidden = true;
+    if (elements.adminDocsTableBody) elements.adminDocsTableBody.innerHTML = "";
+    if (elements.adminDocsEmpty) elements.adminDocsEmpty.hidden = true;
+    if (elements.adminDocsCount) elements.adminDocsCount.textContent = "0";
+    if (elements.adminDetailSaveStatus) elements.adminDetailSaveStatus.textContent = "";
+    return;
+  }
+
+  elements.adminDetailEmpty.hidden = true;
+  elements.adminDetailContent.hidden = false;
+  if (elements.adminDetailNameInput) elements.adminDetailNameInput.value = notebook.name || "";
+  if (elements.adminDetailDescriptionInput) elements.adminDetailDescriptionInput.value = notebook.description || "";
+  if (elements.adminDetailSaveStatus) {
+    elements.adminDetailSaveStatus.textContent = "";
+    elements.adminDetailSaveStatus.className = "admin-save-status";
+  }
+  renderAdminDocuments(notebook);
+}
+
+function renderAdminDocuments(notebook) {
+  const documents = Array.isArray(notebook?.documents) ? notebook.documents : [];
+  if (elements.adminDocsCount) elements.adminDocsCount.textContent = String(documents.length);
+  if (elements.adminDocsEmpty) elements.adminDocsEmpty.hidden = documents.length > 0;
+  if (!elements.adminDocsTableBody) return;
+  elements.adminDocsTableBody.innerHTML = "";
+
+  for (const doc of documents) {
+    const row = document.createElement("tr");
+
+    const nameCell = document.createElement("td");
+    nameCell.className = "admin-docs-name-cell";
+    nameCell.textContent = doc.name || "문서";
+
+    const typeCell = document.createElement("td");
+    typeCell.className = "admin-docs-col-type";
+    typeCell.textContent = String(doc.type || "").toUpperCase();
+
+    const sizeCell = document.createElement("td");
+    sizeCell.className = "admin-docs-col-size";
+    sizeCell.textContent = formatFileSize(doc.sizeBytes);
+
+    const chunkCell = document.createElement("td");
+    chunkCell.className = "admin-docs-col-chunks";
+    chunkCell.textContent = String(doc.chunkCount ?? 0);
+
+    const dateCell = document.createElement("td");
+    dateCell.className = "admin-docs-col-date";
+    dateCell.textContent = formatAdminDate(doc.addedAt);
+
+    const actionCell = document.createElement("td");
+    actionCell.className = "admin-docs-col-actions";
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "admin-docs-doc-remove";
+    removeButton.textContent = "삭제";
+    removeButton.addEventListener("click", () => adminDeleteDocument(notebook.id, doc.id, doc.name));
+    actionCell.append(removeButton);
+
+    row.append(nameCell, typeCell, sizeCell, chunkCell, dateCell, actionCell);
+    elements.adminDocsTableBody.append(row);
+  }
+}
+
+function scheduleAdminDetailSave() {
+  clearTimeout(adminDetailSaveTimer);
+  setAdminSaveStatus("저장 중...", "saving");
+  adminDetailSaveTimer = setTimeout(() => {
+    commitAdminDetailSave();
+  }, 650);
+}
+
+async function commitAdminDetailSave() {
+  clearAdminDetailSaveTimer();
+  const notebook = adminUiState.selectedNotebook;
+  if (!notebook) return;
+
+  const name = (elements.adminDetailNameInput?.value ?? "").trim();
+  const description = (elements.adminDetailDescriptionInput?.value ?? "").trim();
+  if (!name) {
+    setAdminSaveStatus("이름 필요", "error");
+    return;
+  }
+  if (name === (notebook.name || "") && description === (notebook.description || "")) {
+    setAdminSaveStatus("", "");
+    return;
+  }
+
+  setAdminSaveStatus("저장 중...", "saving");
+  try {
+    const response = await fetch(`/api/notebooks/${encodeURIComponent(notebook.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+      body: JSON.stringify({ name, description })
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "저장 실패");
+    }
+    const result = await response.json().catch(() => ({}));
+    const updated = result.notebook || { id: notebook.id, name, description };
+    const nextNotebook = {
+      ...notebook,
+      ...updated,
+      documents: notebook.documents || []
+    };
+    adminUiState.notebooks = adminUiState.notebooks.map((item) =>
+      item.id === notebook.id ? nextNotebook : item
+    );
+    adminUiState.selectedNotebook = nextNotebook;
+    renderAdminList();
+    await loadNotebooks();
+    setAdminSaveStatus("저장됨", "saved");
+  } catch (error) {
+    setAdminSaveStatus(error.message, "error");
+  }
+}
+
+function clearAdminDetailSaveTimer() {
+  clearTimeout(adminDetailSaveTimer);
+  adminDetailSaveTimer = null;
+}
+
+function setAdminSaveStatus(text, kind) {
+  if (!elements.adminDetailSaveStatus) return;
+  elements.adminDetailSaveStatus.className = "admin-save-status";
+  if (kind) elements.adminDetailSaveStatus.classList.add(kind);
+  elements.adminDetailSaveStatus.textContent = text;
+}
+
+function applyAdminMobileView() {
+  if (!elements.adminWorkspace) return;
+  const view = adminUiState.mobileView === "detail" ? "detail" : "list";
+  elements.adminWorkspace.dataset.mobileView = view;
+  const isMobile = window.matchMedia?.("(max-width: 720px)")?.matches ?? false;
+  if (elements.adminBackToListButton) {
+    elements.adminBackToListButton.hidden = !(isMobile && view === "detail");
+  }
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatAdminDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

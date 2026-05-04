@@ -69,6 +69,16 @@ npm start
 
 브라우저에서 <http://localhost:3000>을 엽니다. 개발 중 자동 재시작은 `npm run dev`를 사용할 수 있습니다.
 
+## Smoke Test
+
+앱 서버와 Ollama가 실행 중인 상태에서 기본 smoke test를 실행할 수 있습니다.
+
+```bash
+npm test
+```
+
+테스트는 앱 shell ID 정합성, `/api/status`, 월 범위 캘린더 intent, CSV 파서, 부서노트북 CRUD와 RAG 인용 메타데이터를 확인합니다.
+
 ## Configuration
 
 서버는 시작 시 프로젝트 루트의 `.env`를 `server/env.js`로 읽습니다. 이미 설정된 프로세스 환경변수는 `.env` 값보다 우선합니다.
@@ -268,7 +278,7 @@ deploy/
 - 캘린더는 현재 로컬 IndexedDB 전용입니다. Google Calendar, Outlook, ICS 동기화는 없습니다.
 - 반복 일정, 여러 캘린더 계정, timezone UI는 아직 없습니다.
 - 일정 알림은 브라우저가 열려 있을 때 동작합니다. 앱/브라우저가 완전히 꺼진 상태의 보장 알림은 PWA/service worker 또는 데스크톱 앱화가 필요합니다.
-- AI 일정 삭제/수정은 LLM 분류 결과를 바탕으로 로컬 이벤트를 변경합니다. 운영 수준의 안전성을 위해서는 삭제/대량 수정 확인 UX를 더 강화하는 것이 좋습니다.
+- AI 일정 삭제/수정은 LLM 분류 결과를 바탕으로 로컬 이벤트를 변경하지만, 실제 변경 전 사용자 확인을 거칩니다. 시간 변경은 기존 일정과의 충돌도 확인합니다.
 - 파일과 캘린더 데이터는 브라우저 로컬에만 저장됩니다. export/import와 저장 공간 사용량 UI는 아직 없습니다.
 - 레거시 `.hwp`와 `.xls`는 직접 지원하지 않습니다. HWPX/XLSX 변환을 권장합니다.
 - `llm_performance_dummy.csv`는 현재 작업트리에 없습니다. 시각화 smoke test에 필요하면 새 fixture를 추가하거나 기존 테스트 데이터를 준비하세요.

@@ -900,11 +900,11 @@ Important:
 
 Good next steps:
 
-- Add stronger confirmation UX for AI calendar delete/update operations.
+- Replace simple `window.confirm` calendar delete/update confirmations with a richer in-app review dialog if this becomes production-facing.
 - Add recurrence, richer reminder options, timezone display, and multi-calendar support.
 - Add external calendar integration only after local CRUD is stable.
 - Split the large `public/app.js` calendar code into focused modules.
-- Add browser smoke tests for chat, upload, visualization, and calendar flows.
+- Add browser smoke tests for chat, upload, visualization, and full calendar UI flows.
 - Add storage usage display for IndexedDB.
 - Add export/import for encrypted app data.
 - Add password-based encryption option instead of only local CryptoKey.
@@ -930,6 +930,7 @@ Commands run during this refresh:
 Get-ChildItem -Recurse -Include *.js -Path .\server,.\public | ForEach-Object { node --check $_.FullName }
 Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSec 10 | ConvertTo-Json -Depth 5
 Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/agent/intent' -Method Post -ContentType 'application/json; charset=utf-8' -Body '{"prompt":"5월 전체 일정 보고해.","model":"gemma4:e2b","currentDate":"2026-05-03T11:00:00+09:00"}' | ConvertTo-Json -Depth 6
+npm test
 ```
 
 Results:
@@ -937,6 +938,7 @@ Results:
 - JavaScript syntax check passed with no output.
 - `/api/status` returned `ok: true`, default model `gemma4:e2b`, and models `gemma4:e4b`, `gemma4:e2b`.
 - `/api/agent/intent` returned `calendar.list` with `from: "2026-05-01"` and `to: "2026-05-31"` for `5월 전체 일정 보고해.`
+- `npm test` passed. It checks app shell ID consistency, `/api/status`, month-range calendar intent, CSV parsing, notebook CRUD, and RAG citation metadata for duplicate chunk text.
 
 Not run in this refresh:
 

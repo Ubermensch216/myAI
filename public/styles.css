@@ -52,6 +52,11 @@
   box-sizing: border-box;
 }
 
+[hidden],
+dialog:not([open]) {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;

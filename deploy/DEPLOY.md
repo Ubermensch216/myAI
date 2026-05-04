@@ -43,6 +43,7 @@ sudo chown myai:myai /opt/myai
 sudo -u myai git clone https://github.com/Ubermensch216/myAI.git /opt/myai
 cd /opt/myai
 sudo -u myai npm ci --omit=dev
+sudo -u myai mkdir -p /opt/myai/uploads /opt/myai/data/notebooks
 ```
 
 ## 5. 환경변수 파일
@@ -66,7 +67,7 @@ sudo systemctl status myai.service
 journalctl -u myai -f          # 실시간 로그
 ```
 
-서비스 유닛은 `ProtectSystem=strict`, `NoNewPrivileges`, 메모리/시스템콜 제한 등 기본 샌드박싱이 적용되어 있습니다. `uploads/` 디렉토리만 쓰기 허용.
+서비스 유닛은 `ProtectSystem=strict`, `NoNewPrivileges`, 메모리/시스템콜 제한 등 기본 샌드박싱이 적용되어 있습니다. `uploads/`와 부서노트북 저장소인 `data/`만 쓰기 허용.
 
 ## 7. 리버스 프록시 + TLS
 
@@ -136,10 +137,11 @@ sudo systemctl restart myai
 서버에는 영속 데이터가 거의 없습니다. 챙길 것:
 
 - `/etc/myai.env` — 운영 설정
+- `/opt/myai/data/notebooks/` — 부서노트북 manifest와 파싱된 문서 청크
 - `/etc/caddy/Caddyfile` 또는 `/etc/nginx/sites-available/myai` — 프록시 설정
 - `/var/lib/caddy/.local/share/caddy/` (Caddy ACME 데이터) 또는 `/etc/letsencrypt/` (certbot)
 
-사용자 대화/파일은 각 사용자 브라우저에만 있으므로 서버 백업으로는 복구되지 않습니다.
+사용자 대화/룸 첨부파일은 각 사용자 브라우저에만 있으므로 서버 백업으로는 복구되지 않습니다.
 
 ## 12. 트러블슈팅
 
