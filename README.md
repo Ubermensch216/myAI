@@ -10,7 +10,7 @@ myAI는 로컬 Ollama를 백엔드로 사용하는 개인용 AI 비서 웹앱입
   - `defaultModel: gemma4:e2b`
   - 사용 가능 모델: `gemma4:e4b`, `gemma4:e2b`
 - 현재 로컬 `.env`는 `OLLAMA_MODEL=gemma4:e2b`를 사용합니다.
-- 코드 fallback과 `.env.example`의 기본 모델은 `gemma3n:e2b`입니다.
+- 코드 fallback(`server/ollama.js`)과 `.env.example`의 기본 모델은 `gemma3n:e2b`입니다. `server/calendarAgent.js`는 이 값들을 `server/ollama.js`에서 직접 import합니다.
 - 서버 로그 파일: `server-start.log`
 
 ## Features
@@ -248,9 +248,9 @@ server/
   notebooks.js       부서노트북 CRUD, 문서 ingest, BM25 검색, 인용 생성
   auth.js            ADMIN_TOKEN 기반 관리자 미들웨어
   parsers.js         업로드 파일 파싱 (룸 파일과 노트북 문서 공통)
-  retrieval.js       BM25 + CJK bigram 기반 청크 선별
+  retrieval.js       BM25 + CJK bigram 기반 청크 선별, greedyFit() 공유 헬퍼
   visualization.js   시각화 계획 검증과 차트 데이터 계산
-  documents.js       문서 summary/full payload 직렬화
+  documents.js       문서 summary/full payload 직렬화, pageSections() 공유 헬퍼
   documentStore.js   서버 런타임 메모리 문서 캐시
 
 public/

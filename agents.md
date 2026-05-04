@@ -37,7 +37,7 @@ http://localhost:3000
 Model notes:
 
 - Current local `.env`: `OLLAMA_MODEL=gemma4:e2b`.
-- Code fallback in `server/ollama.js` and `server/calendarAgent.js`: `gemma3n:e2b`.
+- Code fallback in `server/ollama.js`: `gemma3n:e2b`. `server/calendarAgent.js` imports `OLLAMA_URL` and `DEFAULT_MODEL` directly from `server/ollama.js`.
 - `.env.example` also defaults to `gemma3n:e2b`.
 - `KOREA_HOLIDAY_SERVICE_KEY` is optional. If configured, `/api/holidays` uses the official Korean public-holiday API; otherwise it returns a limited fixed-solar-holiday fallback.
 - `ADMIN_TOKEN` is optional but required for department-notebook management endpoints. When unset, all admin routes return 503 and the "부서노트북 관리" UI button stays hidden.
@@ -127,6 +127,7 @@ Key responsibilities:
 
 - `server/documents.js`
   - Common document summary/full-payload serialization helpers.
+  - Exports `pageSections(documentItem)` — maps a parsed document's pages/sheets to a uniform section array. Shared by `server/ollama.js` and `server/notebooks.js`.
 
 - `server/ollama.js`
   - Ollama streaming chat call.
@@ -163,6 +164,8 @@ Key responsibilities:
   - Department notebook (RAG) storage layer backed by `data/notebooks/<id>/`.
   - `manifest.json` per notebook with `documents[]` summary; one parsed-document JSON file per uploaded document under `docs/<docId>.json`.
   - Reuses `server/parsers.js` for ingest, `server/parsers.js#chunkText` for chunking, and `server/retrieval.js#pickRelevantChunks` (BM25 + CJK bigram) for query selection.
+  - Uses `server/retrieval.js#greedyFit` as a budget-aware fallback when no query tokens are present.
+  - Uses `server/documents.js#pageSections` to map document pages/sheets to section arrays during ingest.
   - `queryNotebook(id, query)` returns ranked chunks tagged with `citationId`, `documentName`, and `locator` (page/sheet/slide).
   - Pure storage/retrieval — no LLM calls. Caller is responsible for building the prompt context.
 
@@ -180,6 +183,7 @@ Key responsibilities:
 - `server/retrieval.js`
   - Tokenizes text with CJK bigram support.
   - Uses BM25-like scoring to pick relevant document chunks for long-context chat.
+  - Exports `greedyFit(chunks, budget)` — used by `server/notebooks.js` as a fallback when no query tokens are available.
 
 - `server/visualization.js`
   - Detects visualization intent keywords.
@@ -846,11 +850,12 @@ Relevant functions:
 hydrateStoredDocuments()
 hasPersistentDocumentContent(documentItem)
 normalizeStoredDocumentContent(documentItem)
-buildContext(documents, query)
-collectChunks(documents)
-pageSections(documentItem)
-hasDocumentContext(documentItem)
-pickRelevantChunks(chunks, query, budget)
+buildContext(documents, query)         // server/ollama.js
+collectChunks(documents)               // server/ollama.js
+pageSections(documentItem)             // server/documents.js — shared with notebooks.js
+hasDocumentContext(documentItem)       // server/ollama.js
+pickRelevantChunks(chunks, query, budget)  // server/retrieval.js
+greedyFit(chunks, budget)             // server/retrieval.js
 ```
 
 Important:
@@ -864,6 +869,14 @@ Important:
 - Server memory cannot recover files after restart if the browser only has old summary metadata.
 
 ## Recent Changes Reflected Here
+
+- Server-side refactoring (2026-05-04):
+  - Extracted `pageSections()` from `server/ollama.js` and `server/notebooks.js` into `server/documents.js` (was duplicated identically in both). Both modules now import it.
+  - Exported `greedyFit()` from `server/retrieval.js`. Replaced `greedyFitWithMeta` in `server/notebooks.js` with the shared export.
+  - Removed `loadLocalEnv()` call and independent `OLLAMA_URL`/`DEFAULT_MODEL` declarations from `server/calendarAgent.js`. Now imports both from `server/ollama.js`.
+  - Added `toDateISO(date)` helper in `server/calendarAgent.js` to replace repeated `padStart`-based date formatting in `buildSystemPrompt` and `addOneHour`.
+  - Added `extractPersonalization(body)` helper in `server/index.js`; replaced three inline repetitions across `/api/chat`, `/api/visualize`, and `/api/followups`.
+  - Removed redundant `normalizeRows` pre-call from `parsers.js#parseCsv` and `readWorksheetRows`; `buildTableFromRows` remains the single normalization point.
 
 - Added primary `대화` / `캘린더` navigation.
 - Added calendar month view, upcoming event list, event dialog, and event cards.
@@ -924,26 +937,23 @@ If users store/send larger payloads, consider chunked transport or a proper loca
 
 ## Recent Verification
 
-Commands run during this refresh:
+Commands run during this refresh (2026-05-04):
 
 ```powershell
 Get-ChildItem -Recurse -Include *.js -Path .\server,.\public | ForEach-Object { node --check $_.FullName }
-Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSec 10 | ConvertTo-Json -Depth 5
-Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/agent/intent' -Method Post -ContentType 'application/json; charset=utf-8' -Body '{"prompt":"5월 전체 일정 보고해.","model":"gemma4:e2b","currentDate":"2026-05-03T11:00:00+09:00"}' | ConvertTo-Json -Depth 6
-npm test
+node --input-type=module --eval "import './server/documents.js'; import './server/retrieval.js'; import './server/parsers.js'; import './server/notebooks.js'; import './server/ollama.js'; import './server/calendarAgent.js'; console.log('imports OK')"
 ```
 
 Results:
 
 - JavaScript syntax check passed with no output.
-- `/api/status` returned `ok: true`, default model `gemma4:e2b`, and models `gemma4:e4b`, `gemma4:e2b`.
-- `/api/agent/intent` returned `calendar.list` with `from: "2026-05-01"` and `to: "2026-05-31"` for `5월 전체 일정 보고해.`
-- `npm test` passed. It checks app shell ID consistency, `/api/status`, month-range calendar intent, CSV parsing, notebook CRUD, and RAG citation metadata for duplicate chunk text.
+- All refactored server module imports resolved cleanly.
 
 Not run in this refresh:
 
+- `/api/status` live check.
+- `npm test`.
 - Browser UI smoke test.
-- Playwright screenshots.
 - `npm audit`.
 
 ## Operational Notes For Next Agent
