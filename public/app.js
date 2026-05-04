@@ -437,13 +437,22 @@ function bindEvents() {
     elements.openAdminNotebookButton.addEventListener("click", openAdminNotebookDialog);
   }
   if (elements.closeAdminNotebookButton) {
-    elements.closeAdminNotebookButton.addEventListener("click", closeAdminNotebookDialog);
+    elements.closeAdminNotebookButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAdminNotebookDialog();
+    });
   }
   if (elements.adminNotebookDialog) {
     elements.adminNotebookDialog.addEventListener("click", (event) => {
-      if (event.target === elements.adminNotebookDialog) closeAdminNotebookDialog();
+      if (event.target === elements.adminNotebookDialog) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeAdminNotebookDialog();
+      }
     });
     elements.adminNotebookDialog.addEventListener("close", () => {
+      resetAdminFileInput();
       adminUiState.selectedId = null;
     });
   }
@@ -514,18 +523,21 @@ function bindEvents() {
     });
   }
   if (elements.adminDropZone) {
-    elements.adminDropZone.addEventListener("click", () => {
-      if (!adminUiState.selectedId) return;
-      elements.adminFileInput?.click();
+    elements.adminDropZone.addEventListener("click", (event) => {
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestAdminFileSelection();
     });
     elements.adminDropZone.addEventListener("keydown", (event) => {
-      if ((event.key === "Enter" || event.key === " ") && adminUiState.selectedId) {
-        event.preventDefault();
-        elements.adminFileInput?.click();
-      }
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestAdminFileSelection();
     });
     elements.adminDropZone.addEventListener("dragover", (event) => {
-      if (!adminUiState.selectedId) return;
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
       event.preventDefault();
       event.stopPropagation();
       elements.adminDropZone.classList.add("dragover");
@@ -538,17 +550,21 @@ function bindEvents() {
       event.preventDefault();
       event.stopPropagation();
       elements.adminDropZone.classList.remove("dragover");
-      if (!adminUiState.selectedId) return;
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
       const files = Array.from(event.dataTransfer?.files || []);
       if (files.length) uploadAdminDocuments(adminUiState.selectedId, files);
     });
   }
   if (elements.adminFileInput) {
+    elements.adminFileInput.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
     elements.adminFileInput.addEventListener("change", (event) => {
       const files = Array.from(event.target.files || []);
       const notebookId = adminUiState.selectedId;
       event.target.value = "";
-      if (notebookId && files.length) uploadAdminDocuments(notebookId, files);
+      if (!isAdminDialogOpen() || !notebookId || !files.length) return;
+      uploadAdminDocuments(notebookId, files);
     });
   }
   document.addEventListener("click", (event) => {
@@ -3906,6 +3922,20 @@ function renderAdminEntry() {
     : "부서노트북 관리 (관리자 인증 필요)";
 }
 
+function isAdminDialogOpen() {
+  return Boolean(elements.adminNotebookDialog?.open);
+}
+
+function resetAdminFileInput() {
+  if (elements.adminFileInput) elements.adminFileInput.value = "";
+}
+
+function requestAdminFileSelection() {
+  if (!isAdminDialogOpen() || !adminUiState.selectedId || !elements.adminFileInput) return;
+  resetAdminFileInput();
+  elements.adminFileInput.click();
+}
+
 async function openAdminNotebookDialog() {
   if (!elements.adminNotebookDialog) return;
   closeSettings();
@@ -3929,6 +3959,7 @@ async function renderAdminDialogState() {
 }
 
 function closeAdminNotebookDialog() {
+  resetAdminFileInput();
   if (elements.adminNotebookDialog?.open) elements.adminNotebookDialog.close();
 }
 
@@ -4138,6 +4169,7 @@ async function uploadAdminDocuments(notebookId, files) {
 
   await refreshAdminNotebooks();
   await loadNotebooks();
+  resetAdminFileInput();
   if (!completed && uploadFiles.length === 1) {
     return;
   }
