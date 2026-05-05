@@ -1,6 +1,6 @@
 # Architecture
 
-myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server and local Ollama. The browser owns private per-user state, while the server owns shared notebook storage and model orchestration.
+myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server and local Ollama. The browser owns private per-user state, while the server owns shared notebook storage and model orchestration. In a department deployment, the server and `data/notebooks/` should live on the department workstation/GPU box, while personal room uploads stay in each user's encrypted browser IndexedDB.
 
 ## Main Flows
 
@@ -115,4 +115,3 @@ data/notebooks/<notebookId>/docs/<documentId>.json
 ```
 
 Notebook data is shared server-side state and is protected for writes by `ADMIN_TOKEN`.
-

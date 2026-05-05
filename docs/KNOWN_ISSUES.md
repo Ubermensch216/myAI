@@ -2,7 +2,6 @@
 
 ## High Priority
 
-- Ensure notebook semantic retrieval passes stored `chunk.embedding` into query-time chunk objects before `multiQueryHybridSelect()`.
 - Split tests into fast deterministic smoke tests and slower live Ollama integration tests.
 - Add browser-level smoke tests for upload, chat, visualization, notebook selection, citations, Map-Reduce, and calendar flows.
 - Replace destructive `window.confirm()` flows with in-app review dialogs that show the target objects and consequences.
@@ -12,7 +11,7 @@
 
 - Uploaded room files are durable in browser IndexedDB, not server memory.
 - `/api/chat` sends active document payloads in JSON; large documents/images can hit browser or `MAX_JSON_BYTES` limits.
-- Department notebooks are JSON-file based. Large collections should move toward a persistent retrieval index/vector store.
+- Department notebooks are still JSON-file based with an in-memory chunk cache. Large collections should move toward a persistent retrieval index/vector store.
 - Document summaries/topics orient the model but are not a replacement for chunk-level grounding.
 - Query expansion adds an extra local LLM call per RAG turn and may increase latency.
 
@@ -36,4 +35,3 @@
 - For production-like deployment, bind the app to `127.0.0.1` behind a reverse proxy and add external auth.
 - Reverse proxies must not buffer streaming chat responses.
 - CPU-only Ollama can be slow for document analysis and Map-Reduce.
-

@@ -115,7 +115,8 @@ export function multiQueryHybridSelect(chunks, queries, queryEmbeddings, budget)
   for (let i = 0; i < validQueries.length; i += 1) {
     const queryTokens = tokenize(validQueries[i]);
     if (queryTokens.length) {
-      rankMaps.push(bm25RankMap(chunks, queryTokens, docTokens, docFreq, avgLength, totalDocs));
+      const bm25Map = bm25RankMap(chunks, queryTokens, docTokens, docFreq, avgLength, totalDocs);
+      if (bm25Map) rankMaps.push(bm25Map);
     }
     const qEmbed = queryEmbeddings?.[i];
     if (hasEmbeddings && qEmbed) {
@@ -170,6 +171,7 @@ function bm25RankMap(chunks, queryTokens, docTokens, docFreq, avgLength, totalDo
     }
     return { index, score };
   });
+  if (!scores.some((item) => item.score > 0)) return null;
   const sorted = [...scores].sort((left, right) => right.score - left.score);
   return new Map(sorted.map((item, rank) => [item.index, rank]));
 }
@@ -250,8 +252,13 @@ export function hybridSelect(chunks, query, budget, queryEmbedding) {
     return { index, score };
   });
 
-  const bm25Sorted = [...bm25Scores].sort((left, right) => right.score - left.score);
-  const bm25Rank = new Map(bm25Sorted.map((item, rank) => [item.index, rank]));
+  const hasBm25Scores = bm25Scores.some((item) => item.score > 0);
+  const bm25Sorted = hasBm25Scores
+    ? [...bm25Scores].sort((left, right) => right.score - left.score)
+    : [];
+  const bm25Rank = hasBm25Scores
+    ? new Map(bm25Sorted.map((item, rank) => [item.index, rank]))
+    : null;
 
   // Vector ranking (skip chunks without embeddings)
   const hasEmbeddings = chunks.some((c) => c.embedding);
@@ -265,11 +272,13 @@ export function hybridSelect(chunks, query, budget, queryEmbedding) {
     vecRank = new Map(vecSorted.map((item, rank) => [item.index, rank]));
   }
 
+  if (!bm25Rank && !vecRank) return greedyFit(chunks, budget);
+
   // RRF combination
   const rrfScored = chunks.map((chunk, index) => {
-    const br = bm25Rank.get(index) ?? totalDocs;
+    const br = bm25Rank ? (bm25Rank.get(index) ?? totalDocs) : totalDocs;
     const vr = vecRank ? (vecRank.get(index) ?? totalDocs) : totalDocs;
-    const score = (1 / (RRF_K + br)) + (vecRank ? 1 / (RRF_K + vr) : 0);
+    const score = (bm25Rank ? 1 / (RRF_K + br) : 0) + (vecRank ? 1 / (RRF_K + vr) : 0);
     return { chunk, score, index };
   });
 

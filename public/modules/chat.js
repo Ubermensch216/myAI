@@ -1,0 +1,906 @@
+import { renderAssistantAnswer as renderAssistantContent } from "../answerRenderer.js";
+import { formatVisualizationText, renderVisualizationSpec } from "../visualizationRenderer.js";
+import { displayFileName as formatDisplayFileName } from "../fileDisplay.js";
+import { state, elements, getActiveRoom } from "./state.js";
+import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persistence.js";
+import {
+  hasCalendarKeyword, isCalendarConfirmation, isCalendarRejection,
+  isLikelyCalendarActionPrompt, classifyMessageIntent, clearPendingCalendarAction,
+  executeCalendarIntent, renderCalendar, renderEventCardList, findConflictingEvents,
+  buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
+} from "./calendar.js";
+
+// ===== Busy / abort =====
+
+export function setBusy(busy) {
+  state.busy = busy;
+  elements.sendButton.disabled = false;
+  elements.sendButton.textContent = busy ? "중지" : "전송";
+  elements.sendButton.classList.toggle("stop-button", busy);
+  elements.fileInput.disabled = busy;
+}
+
+export function stopGeneration() {
+  state.abortController?.abort();
+}
+
+export function scrollToBottom() {
+  elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
+export function setDeepAnalysisEnabled(enabled) {
+  state.deepAnalysisEnabled = Boolean(enabled);
+  if (elements.deepAnalysisToggle) {
+    elements.deepAnalysisToggle.setAttribute("aria-pressed", state.deepAnalysisEnabled ? "true" : "false");
+  }
+}
+
+// ===== Active room helpers =====
+
+export function getActiveDocuments() {
+  const room = getActiveRoom();
+  if (!room) return [];
+  if (!Array.isArray(room.documents)) room.documents = [];
+  return room.documents;
+}
+
+export function getPersonalizationSettings() {
+  const appName = state.settings.appName || "Ollama Chatter";
+  return {
+    userTitle: state.settings.userTitle || "사용자님",
+    aiName: appName,
+    appName,
+    customPrompt: state.settings.customPrompt || ""
+  };
+}
+
+// ===== File upload =====
+
+export async function uploadFiles(files) {
+  if (!files.length) return;
+  const room = getActiveRoom();
+  if (!room) return;
+  if (!Array.isArray(room.documents)) room.documents = [];
+
+  for (const file of files) {
+    elements.uploadProgress.textContent = `${file.name} 처리 중...`;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const response = await fetch("/api/upload", { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "업로드 실패");
+      room.documents.push(result.document);
+      room.updatedAt = new Date().toISOString();
+      const saved = await persistAppState();
+      // renderRooms triggered via custom event so chat.js doesn't import app.js
+      window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+      if (saved) elements.uploadProgress.textContent = `${file.name} 분석 준비 완료`;
+    } catch (error) {
+      elements.uploadProgress.textContent = `${file.name}: ${error.message}`;
+    }
+  }
+}
+
+export async function confirmAndRemoveUploadedFile(uploadedFile) {
+  const fileName = formatDisplayFileName(uploadedFile);
+  const confirmed = window.confirm(`"${fileName}" 자료를 현재 대화방에서 삭제할까요?`);
+  if (!confirmed) return;
+  await removeUploadedFile(uploadedFile);
+}
+
+export async function removeUploadedFile(uploadedFile) {
+  await fetch(`/api/documents/${uploadedFile.id}`, { method: "DELETE" }).catch(() => {});
+  const room = getActiveRoom();
+  if (!room) return;
+  room.documents = getActiveDocuments().filter((f) => f.id !== uploadedFile.id);
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+}
+
+// ===== Send message =====
+
+export async function sendMessage(prompt) {
+  const room = getActiveRoom();
+  if (!room) return;
+
+  const userMessage = { role: "user", content: prompt, createdAt: new Date().toISOString() };
+  room.messages.push(userMessage);
+  room.updatedAt = userMessage.createdAt;
+  if (room.title === "새 대화") room.title = createTitleFromPrompt(prompt);
+  scheduleSave();
+
+  if (room.messages.length === 1) window.dispatchEvent(new CustomEvent("myai:rendermessages"));
+  else appendMessage("user", prompt, {
+    persist: false,
+    messageIndex: room.messages.length - 1,
+    createdAt: userMessage.createdAt
+  });
+
+  if (room.pendingCalendarAction && isCalendarRejection(prompt)) {
+    clearPendingCalendarAction(room);
+    await handleCalendarStatusMessage(room, "알겠습니다. 보류 중이던 일정 등록은 취소했습니다.");
+    return;
+  }
+
+  const shouldTryCalendarIntent = hasCalendarKeyword(prompt)
+    || !!room.pendingCalendarAction
+    || isCalendarConfirmation(prompt);
+
+  if (shouldTryCalendarIntent) {
+    const intentResult = await classifyMessageIntent(prompt, room);
+    if (intentResult && intentResult.intent && intentResult.intent !== "chat") {
+      if (intentResult.intent === "calendar.propose") {
+        await handleCalendarProposal(room, intentResult);
+        return;
+      }
+      await handleCalendarIntent(room, intentResult);
+      return;
+    }
+    if (room.pendingCalendarAction && isCalendarConfirmation(prompt)) {
+      await handleCalendarIntent(room, room.pendingCalendarAction);
+      return;
+    }
+    if (hasCalendarKeyword(prompt) && isLikelyCalendarActionPrompt(prompt)) {
+      await handleCalendarStatusMessage(
+        room,
+        "일정 요청으로 보이지만 날짜, 시간, 제목을 확정하지 못했습니다. 실제 캘린더에는 아직 반영하지 않았습니다. 예: \"5월 4일 오후 12시에 월클라우드 점심 식사 추가해줘\"처럼 다시 말씀해주세요."
+      );
+      return;
+    }
+  }
+
+  await requestAssistantResponse(room);
+}
+
+export async function requestAssistantResponse(room) {
+  if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  if (shouldRequestVisualizationResponse(room)) {
+    await requestVisualizationResponse(room);
+    return;
+  }
+  await requestTextAssistantResponse(room);
+}
+
+export async function requestTextAssistantResponse(room) {
+  setBusy(true);
+  state.abortController = new AbortController();
+  const thinking = appendThinking();
+  advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
+  let assistant = null;
+  let assistantBody = null;
+  let answer = "";
+
+  try {
+    const useDeepAnalysis = state.deepAnalysisEnabled;
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      signal: state.abortController.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: elements.modelInput.value.trim() || "gemma3n:e2b",
+        messages: room.messages.map(({ role, content }) => ({ role, content })),
+        documents: getActiveDocuments(),
+        personalization: getPersonalizationSettings(),
+        notebookId: room.selectedNotebookId || null,
+        ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
+      })
+    });
+    if (useDeepAnalysis) setDeepAnalysisEnabled(false);
+
+    if (!response.ok || !response.body) {
+      const errorText = await response.text();
+      throw new Error(errorText || "응답 생성 실패");
+    }
+
+    const notebookMeta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
+    const citations = Array.isArray(notebookMeta?.citations) ? notebookMeta.citations : [];
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      answer += decoder.decode(value, { stream: true });
+      advanceThinkingProgress(thinking, getThinkingStepCount(thinking) - 1);
+      if (!assistant) {
+        assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+        assistantBody = assistant.querySelector(".message-body");
+      }
+      assistant.dataset.copyText = answer;
+      renderAssistantContent(assistantBody, answer);
+      scrollToBottom();
+    }
+
+    answer += decoder.decode();
+    const finalAnswer = ensureAddressedAnswer(answer || "응답이 비어 있습니다.");
+    if (!assistant) {
+      assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+      assistantBody = assistant.querySelector(".message-body");
+    }
+    assistant.dataset.copyText = finalAnswer;
+    renderAssistantContent(assistantBody, finalAnswer);
+    assistant.classList.remove("streaming");
+    advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
+
+    const assistantMessage = { role: "assistant", content: finalAnswer, createdAt: new Date().toISOString() };
+    if (citations.length) {
+      assistantMessage.citations = citations;
+      assistantMessage.notebook = notebookMeta?.notebook ?? null;
+      renderCitationsPanel(assistant, citations);
+    }
+    setAssistantAnswerTime(assistant, assistantMessage.createdAt);
+    room.messages.push(assistantMessage);
+    room.updatedAt = new Date().toISOString();
+    scheduleSave();
+    window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+    renderFollowupSuggestions(assistant, [], { loading: true });
+    attachFollowupSuggestions(room, assistantMessage, assistant).finally(scrollToBottom);
+  } catch (error) {
+    if (error.name === "AbortError") {
+      if (assistant) assistant.classList.remove("streaming");
+      return;
+    }
+    if (!assistant) {
+      assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+      assistantBody = assistant.querySelector(".message-body");
+    }
+    const errorText = `[오류] ${error.message}`;
+    assistant.dataset.copyText = errorText;
+    renderAssistantContent(assistantBody, errorText);
+    assistant.classList.remove("streaming");
+  } finally {
+    removeThinking(thinking);
+    state.abortController = null;
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+export async function requestVisualizationResponse(room) {
+  setBusy(true);
+  state.abortController = new AbortController();
+  const thinking = appendThinking();
+  advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
+  let assistant = null;
+  let assistantBody = null;
+
+  try {
+    const prompt = getLastUserPrompt(room);
+    const response = await fetch("/api/visualize", {
+      method: "POST",
+      signal: state.abortController.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        model: elements.modelInput.value.trim() || "gemma3n:e2b",
+        messages: room.messages.map(({ role, content }) => ({ role, content })),
+        documents: getActiveDocuments(),
+        personalization: getPersonalizationSettings()
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "visualization generation failed");
+    advanceThinkingProgress(thinking, getThinkingStepCount(thinking) - 1);
+
+    const visualization = result.visualization;
+    const finalAnswer = ensureAddressedAnswer(formatVisualizationText(visualization));
+    assistant = appendMessage("assistant", finalAnswer, { persist: false, visualization });
+    advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
+    const assistantMessage = { role: "assistant", content: finalAnswer, visualization, createdAt: new Date().toISOString() };
+    setAssistantAnswerTime(assistant, assistantMessage.createdAt);
+    room.messages.push(assistantMessage);
+    room.updatedAt = assistantMessage.createdAt;
+    scheduleSave();
+    window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+    renderFollowupSuggestions(assistant, [], { loading: true });
+    attachFollowupSuggestions(room, assistantMessage, assistant).finally(scrollToBottom);
+  } catch (error) {
+    if (error.name === "AbortError") {
+      if (assistant) assistant.classList.remove("streaming");
+      return;
+    }
+    if (!assistant) {
+      assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+      assistantBody = assistant.querySelector(".message-body");
+    }
+    const errorText = `[오류] ${error.message}`;
+    assistant.dataset.copyText = errorText;
+    renderAssistantContent(assistantBody, errorText);
+    assistant.classList.remove("streaming");
+  } finally {
+    removeThinking(thinking);
+    state.abortController = null;
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+// ===== Calendar message handlers (need chat rendering + calendar logic) =====
+
+export async function handleCalendarIntent(room, intentResult) {
+  setBusy(true);
+  const thinking = appendThinking();
+  try {
+    const outcome = await executeCalendarIntent(intentResult);
+    if (outcome.mutated) { scheduleSave(); renderCalendar(); }
+    if (outcome.mutated && ["calendar.create", "calendar.delete", "calendar.update"].includes(intentResult.intent)) {
+      clearPendingCalendarAction(room);
+    }
+    appendCalendarAssistantMessage(room, outcome.text, { eventCards: outcome.eventCards ?? [] });
+  } finally {
+    removeThinking(thinking);
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+export async function handleCalendarProposal(room, intentResult) {
+  setBusy(true);
+  const thinking = appendThinking();
+  try {
+    const payload = intentResult?.payload || {};
+    if (!payload.title || !payload.start) {
+      appendCalendarAssistantMessage(room, "일정 후보를 만들기에는 정보가 부족합니다. 날짜, 시간, 제목을 함께 알려주세요.");
+      return;
+    }
+    const pendingAction = { intent: "calendar.create", payload, createdAt: new Date().toISOString() };
+    room.pendingCalendarAction = pendingAction;
+    room.updatedAt = pendingAction.createdAt;
+    scheduleSave();
+    const conflicts = findConflictingEvents({
+      start: payload.start,
+      end: payload.end || payload.start,
+      allDay: !!payload.allDay
+    });
+    const text = buildCalendarProposalText(payload, conflicts);
+    appendCalendarAssistantMessage(room, text, { eventCards: conflicts.slice(0, 3) });
+  } finally {
+    removeThinking(thinking);
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+export async function handleCalendarStatusMessage(room, text) {
+  setBusy(true);
+  const thinking = appendThinking();
+  try {
+    appendCalendarAssistantMessage(room, text);
+  } finally {
+    removeThinking(thinking);
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+export function appendCalendarAssistantMessage(room, text, { eventCards = [] } = {}) {
+  const createdAt = new Date().toISOString();
+  const assistantMessage = { role: "assistant", content: text, createdAt, eventCards };
+  room.messages.push(assistantMessage);
+  room.updatedAt = createdAt;
+  scheduleSave();
+  window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  const article = appendMessage("assistant", text, {
+    persist: false,
+    messageIndex: room.messages.length - 1,
+    createdAt,
+    eventCards
+  });
+  setAssistantAnswerTime(article, createdAt);
+  return article;
+}
+
+// ===== Follow-up suggestions =====
+
+export async function attachFollowupSuggestions(room, assistantMessage, assistantArticle) {
+  const suggestions = await requestFollowupSuggestions(room).catch((error) => {
+    console.warn("Follow-up suggestions could not be generated.", error);
+    return buildLocalFollowupSuggestions(room);
+  });
+  const visibleSuggestions = suggestions.length ? suggestions : buildLocalFollowupSuggestions(room);
+  if (!visibleSuggestions.length) {
+    assistantArticle.querySelector(".followup-suggestions")?.remove();
+    return;
+  }
+  assistantMessage.suggestions = visibleSuggestions;
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  renderFollowupSuggestions(assistantArticle, visibleSuggestions);
+}
+
+async function requestFollowupSuggestions(room) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  const response = await fetch("/api/followups", {
+    method: "POST",
+    signal: controller.signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: elements.modelInput.value.trim() || "gemma3n:e2b",
+      messages: room.messages.map(({ role, content }) => ({ role, content })),
+      personalization: getPersonalizationSettings()
+    })
+  }).finally(() => clearTimeout(timeout));
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "follow-up suggestion failed");
+  return Array.isArray(result.suggestions) ? result.suggestions.slice(0, 3) : [];
+}
+
+function buildLocalFollowupSuggestions(room) {
+  const lastUserMessage = [...room.messages].reverse().find((m) => m.role !== "assistant");
+  const topic = createFollowupTopic(lastUserMessage?.content);
+  return [
+    `${topic}을 더 구체적으로 설명해줘`,
+    `${topic}에서 꼭 확인해야 할 점은 뭐야?`,
+    "다음 단계로 무엇을 확인하면 좋을까?"
+  ];
+}
+
+function createFollowupTopic(content) {
+  const topic = String(content || "")
+    .replace(/\s+/g, " ")
+    .replace(/[.!?。？！]+$/g, "")
+    .trim()
+    .slice(0, 42);
+  return topic ? `"${topic}"` : "이 내용";
+}
+
+// ===== Message rendering =====
+
+export function appendMessage(role, text, options = {}) {
+  const article = document.createElement("article");
+  article.className = `message ${role}`;
+  if (options.streaming) article.classList.add("streaming");
+  article.dataset.copyText = text;
+  if (Number.isInteger(options.messageIndex)) article.dataset.messageIndex = String(options.messageIndex);
+  if (options.createdAt) article.dataset.createdAt = options.createdAt;
+
+  const meta = document.createElement("div");
+  meta.className = "message-meta";
+  const metaLabel = document.createElement("span");
+  metaLabel.textContent = role === "user" ? state.settings.userTitle : state.settings.aiName;
+  const avatarSrc = role === "user" ? state.settings.userAvatarDataUrl : state.settings.systemAvatarDataUrl;
+  if (avatarSrc) {
+    const avatar = document.createElement("img");
+    avatar.className = "message-meta-avatar";
+    avatar.src = avatarSrc;
+    avatar.alt = "";
+    meta.append(avatar, metaLabel);
+  } else {
+    meta.append(metaLabel);
+  }
+
+  const body = document.createElement("div");
+  body.className = "message-body";
+  if (role === "assistant") {
+    renderAssistantContent(body, text);
+    if (options.visualization) {
+      body.append(renderVisualizationSpec(options.visualization));
+      body.classList.add("has-visualization");
+      const visualText = formatVisualizationText(options.visualization);
+      if (visualText) article.dataset.copyText = `${text}\n\n${visualText}`;
+    }
+    if (Array.isArray(options.eventCards) && options.eventCards.length) {
+      body.append(renderEventCardList(options.eventCards));
+      body.classList.add("has-event-cards");
+      const cardText = options.eventCards.map(formatEventOneLine).join("\n");
+      const currentText = article.dataset.copyText || text;
+      article.dataset.copyText = `${currentText}\n\n${cardText}`;
+    }
+  } else {
+    body.textContent = text;
+  }
+
+  article.append(meta, body);
+  article.append(createMessageActions(article, role, options.createdAt));
+  if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
+  if (role === "assistant" && Array.isArray(options.citations) && options.citations.length) {
+    renderCitationsPanel(article, options.citations);
+  }
+  elements.messages.append(article);
+  scrollToBottom();
+  return article;
+}
+
+export function renderFollowupSuggestions(article, suggestions = [], options = {}) {
+  article.querySelector(".followup-suggestions")?.remove();
+  const items = Array.isArray(suggestions)
+    ? suggestions.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
+    : [];
+  if (!items.length && !options.loading) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "followup-suggestions";
+  const label = document.createElement("div");
+  label.className = "followup-label";
+  label.textContent = "이어서 물어볼 만한 질문";
+  wrapper.append(label);
+
+  if (options.loading) {
+    const status = document.createElement("div");
+    status.className = "followup-status";
+    status.textContent = "추천 질문을 준비하는 중...";
+    wrapper.append(status);
+    article.append(wrapper);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "followup-list";
+  for (const question of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "followup-question";
+    button.textContent = question;
+    button.addEventListener("click", async () => {
+      if (state.busy) return;
+      elements.promptInput.value = "";
+      elements.promptInput.style.height = "auto";
+      await sendMessage(question);
+    });
+    list.append(button);
+  }
+  wrapper.append(list);
+  article.append(wrapper);
+}
+
+export function renderCitationsPanel(article, citations) {
+  if (!article) return;
+  article.querySelector(".message-citations")?.remove();
+  if (!Array.isArray(citations) || !citations.length) return;
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-citations";
+  const title = document.createElement("div");
+  title.className = "message-citations-title";
+  title.textContent = "출처";
+  wrapper.append(title);
+  const list = document.createElement("ol");
+  list.className = "message-citations-list";
+  for (const citation of citations) {
+    const item = document.createElement("li");
+    item.className = "message-citation-item";
+    const marker = document.createElement("span");
+    marker.className = "message-citation-marker";
+    marker.textContent = `[${citation.citationId}]`;
+    const source = document.createElement("span");
+    source.className = "message-citation-source";
+    const docName = document.createElement("span");
+    docName.className = "citation-doc";
+    docName.textContent = citation.documentName || "출처 미상";
+    source.append(docName);
+    if (citation.locator) {
+      const locator = document.createElement("span");
+      locator.className = "citation-locator";
+      locator.textContent = `· ${citation.locator}`;
+      source.append(locator);
+    }
+    item.append(marker, source);
+    list.append(item);
+  }
+  wrapper.append(list);
+  article.append(wrapper);
+}
+
+export function createMessageActions(article, role, createdAt = "") {
+  const actions = document.createElement("div");
+  actions.className = "message-actions";
+  actions.append(createCopyButton(article, role));
+  if (role === "user") actions.append(createEditButton(article));
+  if (role === "assistant" && createdAt) actions.append(createMessageTime(createdAt));
+  return actions;
+}
+
+export function setAssistantAnswerTime(article, createdAt) {
+  if (!article || !createdAt) return;
+  article.dataset.createdAt = createdAt;
+  const actions = article.querySelector(".message-actions");
+  if (!actions || actions.querySelector(".message-time")) return;
+  actions.append(createMessageTime(createdAt));
+}
+
+function createMessageTime(createdAt) {
+  const time = document.createElement("time");
+  time.className = "message-time";
+  time.dateTime = createdAt;
+  time.textContent = formatMessageTime(createdAt);
+  return time;
+}
+
+function formatMessageTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function createCopyButton(article, role) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button copy-answer-button";
+  button.title = role === "user" ? "프롬프트 복사" : "답변 복사";
+  button.setAttribute("aria-label", role === "user" ? "프롬프트 복사" : "답변 복사");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="9" width="10" height="10" rx="2"></rect>
+      <path d="M5 15V7a2 2 0 0 1 2-2h8"></path>
+    </svg>
+    <span class="copy-feedback">copied</span>
+  `;
+  button.addEventListener("click", async () => {
+    const text = article.dataset.copyText || article.querySelector(".message-body")?.innerText || "";
+    await copyTextToClipboard(text);
+    button.classList.add("copied");
+    setTimeout(() => button.classList.remove("copied"), 900);
+  });
+  return button;
+}
+
+function createEditButton(article) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button edit-prompt-button";
+  button.title = "프롬프트 수정";
+  button.setAttribute("aria-label", "프롬프트 수정");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 20h9"></path>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+    </svg>
+  `;
+  button.addEventListener("click", () => editUserPrompt(article));
+  return button;
+}
+
+export function editUserPrompt(article) {
+  const room = getActiveRoom();
+  const messageIndex = Number(article.dataset.messageIndex);
+  if (!room || !Number.isInteger(messageIndex) || messageIndex < 0) return;
+  const message = room.messages[messageIndex];
+  if (!message || message.role !== "user") return;
+
+  article.classList.add("editing");
+  article.dataset.originalText = message.content;
+  const body = article.querySelector(".message-body");
+  const actions = article.querySelector(".message-actions");
+  if (!body || !actions) return;
+
+  body.innerHTML = "";
+  const textarea = document.createElement("textarea");
+  textarea.className = "prompt-edit-input";
+  textarea.value = message.content;
+  textarea.rows = Math.max(2, Math.min(8, message.content.split(/\r?\n/).length));
+  textarea.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { event.preventDefault(); cancelPromptEdit(article); return; }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitPromptEdit(article, textarea.value); }
+  });
+  body.append(textarea);
+  actions.innerHTML = "";
+  actions.append(createCancelEditButton(article));
+  actions.append(createConfirmEditButton(article, textarea));
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
+
+function createCancelEditButton(article) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button cancel-edit-button";
+  button.title = "수정 취소";
+  button.setAttribute("aria-label", "수정 취소");
+  button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>`;
+  button.addEventListener("click", () => cancelPromptEdit(article));
+  return button;
+}
+
+function createConfirmEditButton(article, textarea) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button confirm-edit-button";
+  button.title = "수정 완료";
+  button.setAttribute("aria-label", "수정 완료");
+  button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 10 4 15l5 5"></path><path d="M20 4v7a4 4 0 0 1-4 4H4"></path></svg>`;
+  button.addEventListener("click", () => submitPromptEdit(article, textarea.value));
+  return button;
+}
+
+function cancelPromptEdit(article) {
+  const originalText = article.dataset.originalText || article.dataset.copyText || "";
+  const body = article.querySelector(".message-body");
+  const actions = article.querySelector(".message-actions");
+  if (!body || !actions) return;
+  article.classList.remove("editing");
+  article.dataset.copyText = originalText;
+  delete article.dataset.originalText;
+  body.textContent = originalText;
+  actions.innerHTML = "";
+  actions.append(createCopyButton(article, "user"));
+  actions.append(createEditButton(article));
+}
+
+export async function submitPromptEdit(article, nextContent) {
+  const room = getActiveRoom();
+  const messageIndex = Number(article.dataset.messageIndex);
+  const content = nextContent.trim();
+  if (!room || !Number.isInteger(messageIndex) || !content || state.busy) return;
+  const message = room.messages[messageIndex];
+  if (!message || message.role !== "user") return;
+
+  message.content = content;
+  message.updatedAt = new Date().toISOString();
+  room.messages = room.messages.slice(0, messageIndex + 1);
+  room.updatedAt = new Date().toISOString();
+  if (messageIndex === 0) room.title = createTitleFromPrompt(content);
+  scheduleSave();
+  window.dispatchEvent(new CustomEvent("myai:renderall"));
+  await requestAssistantResponse(room);
+}
+
+// ===== Thinking card =====
+
+export function appendThinking() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "thinking-card";
+  const row = document.createElement("div");
+  row.className = "thinking-row";
+  const dots = document.createElement("span");
+  dots.className = "thinking-dots";
+  dots.setAttribute("aria-hidden", "true");
+  dots.innerHTML = "<span></span><span></span><span></span>";
+  const text = document.createElement("span");
+  text.className = "thinking-text";
+  text.textContent = "Thinking...";
+  row.append(dots, text);
+
+  const details = document.createElement("details");
+  details.className = "thinking-details";
+  const summary = document.createElement("summary");
+  summary.textContent = "처리 단계 보기";
+  const list = document.createElement("ul");
+  const steps = buildProcessingSteps();
+  for (const [index, step] of steps.entries()) {
+    const item = document.createElement("li");
+    item.dataset.stepIndex = String(index);
+    const marker = document.createElement("span");
+    marker.className = "thinking-step-marker";
+    marker.textContent = "▷";
+    const label = document.createElement("span");
+    label.className = "thinking-step-label";
+    label.textContent = step;
+    item.append(marker, label);
+    list.append(item);
+  }
+  details.append(summary, list);
+  wrapper.append(row, details);
+  wrapper.dataset.completedSteps = "0";
+  elements.messages.append(wrapper);
+  updateThinkingProgress(wrapper, 0);
+  scrollToBottom();
+  return wrapper;
+}
+
+export function removeThinking(thinking) {
+  thinking?.remove();
+}
+
+export function updateThinkingProgress(thinking, completedCount) {
+  if (!thinking) return;
+  const items = Array.from(thinking.querySelectorAll(".thinking-details li"));
+  const safeCount = Math.max(0, Math.min(completedCount, items.length));
+  thinking.dataset.completedSteps = String(safeCount);
+  for (const [index, item] of items.entries()) {
+    item.classList.toggle("done", index < safeCount);
+    item.classList.toggle("active", index === safeCount);
+    const marker = item.querySelector(".thinking-step-marker");
+    if (marker) marker.textContent = "▷";
+  }
+}
+
+export function advanceThinkingProgress(thinking, completedCount = null) {
+  if (!thinking) return;
+  const nextCount = completedCount ?? Number(thinking.dataset.completedSteps || 0) + 1;
+  updateThinkingProgress(thinking, nextCount);
+}
+
+export function getThinkingStepCount(thinking) {
+  return thinking?.querySelectorAll(".thinking-details li").length ?? 0;
+}
+
+function buildProcessingSteps() {
+  const steps = ["사용자 질문 확인", "대화 맥락 정리"];
+  const { displayFileName: fmt } = { displayFileName: formatDisplayFileName };
+  const documents = getActiveDocuments().filter((f) => f.kind === "document");
+  const images = getActiveDocuments().filter((f) => f.kind === "image");
+  if (documents.length) steps.push(`문서 컨텍스트 구성: ${documents.map(fmt).join(", ")}`);
+  if (images.length) steps.push(`이미지 입력 포함: ${images.map(fmt).join(", ")}`);
+  steps.push("Ollama 스트리밍 응답 수신");
+  steps.push("근거 중심 답변 표시");
+  return steps;
+}
+
+// ===== Visualization helpers =====
+
+function shouldRequestVisualizationResponse(room) {
+  return hasVisualizationIntent(getLastUserPrompt(room)) && hasVisualizableDocuments();
+}
+
+function getLastUserPrompt(room) {
+  const message = [...(room?.messages ?? [])].reverse().find((item) => item.role !== "assistant");
+  return String(message?.content ?? "");
+}
+
+function hasVisualizationIntent(prompt) {
+  return /chart|graph|plot|dashboard|visuali[sz]e|visuali[sz]ation|infographic|차트|그래프|도표|시각화|인포그래픽|대시보드|막대|원형|선그래프/i.test(String(prompt ?? ""));
+}
+
+function hasVisualizableDocuments() {
+  return getActiveDocuments().some((doc) => {
+    const tables = Array.isArray(doc.tables) ? doc.tables : [];
+    const sheets = Array.isArray(doc.sheets) ? doc.sheets : [];
+    if ([...tables, ...sheets].some((t) => Array.isArray(t?.rows) && t.rows.length > 0)) return true;
+    const fileType = String(doc.fileType || "").toLowerCase();
+    return ["csv", "xlsx"].includes(fileType)
+      && (sheets.some((s) => isTableLikeText(s?.text)) || isTableLikeText(doc.text));
+  });
+}
+
+function isTableLikeText(value) {
+  const lines = String(value ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8);
+  return lines.filter((l) => l.includes(",") || l.includes("\t")).length >= 2;
+}
+
+// ===== Misc helpers =====
+
+export function createTitleFromPrompt(prompt) {
+  return prompt.replace(/\s+/g, " ").slice(0, 28) || "새 대화";
+}
+
+function ensureAddressedAnswer(answer) {
+  const userTitle = state.settings.userTitle;
+  if (!userTitle || answer.startsWith("[오류]")) return answer;
+  if (answer.slice(0, 120).includes(userTitle)) return answer;
+  return `${userTitle}, ${answer}`;
+}
+
+function decodeNotebookMetaHeader(headerValue) {
+  if (!headerValue) return null;
+  try {
+    const json = atob(headerValue);
+    const decoded = decodeURIComponent(escape(json));
+    const parsed = JSON.parse(decoded);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    try {
+      const parsed = JSON.parse(atob(headerValue));
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+export function extractImageFilesFromPaste(event) {
+  const items = Array.from(event.clipboardData?.items ?? []);
+  return items
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item, index) => {
+      const file = item.getAsFile();
+      if (!file) return null;
+      const extension = file.type.split("/")[1] || "png";
+      return new File([file], `clipboard-image-${Date.now()}-${index}.${extension}`, { type: file.type });
+    })
+    .filter(Boolean);
+}

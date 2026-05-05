@@ -112,6 +112,7 @@ The smoke test covers app shell IDs, `/api/status`, calendar intent classificati
 | `CHUNK_WINDOW_CHARS` | `1024` | sliding chunk size |
 | `CHUNK_OVERLAP_CHARS` | `256` | sliding chunk overlap |
 | `NOTEBOOK_QUERY_BUDGET` | `12000` | notebook RAG context budget |
+| `NOTEBOOK_CHUNK_CACHE_MAX` | `4` | hot notebook chunk caches kept in server memory |
 | `QUERY_EXPANSION_ENABLED` | `true` | enable LLM query expansion |
 | `QUERY_EXPANSION_VARIANTS` | `3` | generated query variants |
 | `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | query expansion timeout |

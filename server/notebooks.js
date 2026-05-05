@@ -16,8 +16,10 @@ const NOTEBOOKS_DIR = path.join(rootDir, "data", "notebooks");
 const CHUNK_WINDOW_CHARS = Number(process.env.CHUNK_WINDOW_CHARS || process.env.CHUNK_TARGET_CHARS || 1024);
 const CHUNK_OVERLAP_CHARS = Number(process.env.CHUNK_OVERLAP_CHARS || 256);
 const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
+const NOTEBOOK_CHUNK_CACHE_MAX = Number(process.env.NOTEBOOK_CHUNK_CACHE_MAX || 4);
 const NOTEBOOK_ID_PATTERN = /^nb_[a-f0-9]{16}$/;
 const DOCUMENT_ID_PATTERN = /^doc_[a-f0-9]{16}$/;
+const notebookChunkCache = new Map();
 
 async function ensureNotebooksDir() {
   await fs.mkdir(NOTEBOOKS_DIR, { recursive: true });
@@ -115,6 +117,68 @@ function summarizeDocument(documentEntry) {
   };
 }
 
+function notebookCacheKey(manifest) {
+  const documents = manifest.documents || [];
+  return [
+    manifest.updatedAt || manifest.createdAt || "",
+    ...documents.map((entry) => `${entry.id}:${entry.chunkCount || 0}:${entry.sizeBytes || 0}`)
+  ].join("|");
+}
+
+function invalidateNotebookCache(notebookId) {
+  const id = normalizeNotebookId(notebookId);
+  if (id) notebookChunkCache.delete(id);
+}
+
+function touchNotebookCache(notebookId, cacheEntry) {
+  notebookChunkCache.delete(notebookId);
+  notebookChunkCache.set(notebookId, cacheEntry);
+  while (notebookChunkCache.size > NOTEBOOK_CHUNK_CACHE_MAX) {
+    const oldestKey = notebookChunkCache.keys().next().value;
+    notebookChunkCache.delete(oldestKey);
+  }
+}
+
+function flattenNotebookChunk(entry, chunk) {
+  const flattened = {
+    text: chunk.text,
+    documentId: entry.id,
+    documentName: entry.name,
+    documentType: entry.type,
+    page: chunk.page,
+    label: chunk.label,
+    part: chunk.part,
+    partTotal: chunk.partTotal,
+    chunkIndex: chunk.index,
+    locator: formatLocator(chunk)
+  };
+  if (Array.isArray(chunk.embedding)) {
+    flattened.embedding = chunk.embedding;
+  }
+  return flattened;
+}
+
+async function loadNotebookChunks(notebookId, manifest) {
+  const cacheKey = notebookCacheKey(manifest);
+  const cached = notebookChunkCache.get(notebookId);
+  if (cached?.key === cacheKey) {
+    touchNotebookCache(notebookId, cached);
+    return cached.chunks;
+  }
+
+  const chunks = [];
+  for (const entry of manifest.documents || []) {
+    const record = await loadDocumentRecord(notebookId, entry.id);
+    if (!record) continue;
+    for (const chunk of record.chunks || []) {
+      chunks.push(flattenNotebookChunk(entry, chunk));
+    }
+  }
+
+  touchNotebookCache(notebookId, { key: cacheKey, chunks });
+  return chunks;
+}
+
 export async function listNotebooks() {
   await ensureNotebooksDir();
   const entries = await fs.readdir(NOTEBOOKS_DIR, { withFileTypes: true });
@@ -183,6 +247,7 @@ export async function deleteNotebook(notebookId) {
   const manifest = await readManifest(notebookId);
   if (!manifest) return false;
   await fs.rm(notebookDir(notebookId), { recursive: true, force: true });
+  invalidateNotebookCache(notebookId);
   return true;
 }
 
@@ -261,6 +326,7 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
   });
   manifest.updatedAt = now;
   await writeManifest(notebookId, manifest);
+  invalidateNotebookCache(notebookId);
 
   return summarizeDocument(manifest.documents.at(-1));
 }
@@ -275,6 +341,7 @@ export async function removeNotebookDocument(notebookId, documentId) {
   manifest.updatedAt = new Date().toISOString();
   await writeManifest(notebookId, manifest);
   await fs.unlink(docPath(notebookId, documentId)).catch(() => {});
+  invalidateNotebookCache(notebookId);
   return true;
 }
 
@@ -295,24 +362,7 @@ export async function queryNotebook(notebookId, query, options = {}) {
   const budget = Number.isFinite(options.budget) ? options.budget : NOTEBOOK_QUERY_BUDGET;
   const trimmedQuery = String(query ?? "").trim();
 
-  const allChunks = [];
-  for (const entry of manifest.documents || []) {
-    const record = await loadDocumentRecord(notebookId, entry.id);
-    if (!record) continue;
-    for (const chunk of record.chunks || []) {
-      allChunks.push({
-        text: chunk.text,
-        documentId: entry.id,
-        documentName: entry.name,
-        documentType: entry.type,
-        page: chunk.page,
-        label: chunk.label,
-        part: chunk.part,
-        partTotal: chunk.partTotal,
-        chunkIndex: chunk.index
-      });
-    }
-  }
+  const allChunks = await loadNotebookChunks(notebookId, manifest);
 
   if (!allChunks.length) {
     return { ok: true, notebook: summarizeNotebook(manifest), chunks: [], documentSummaries: [] };
@@ -378,26 +428,7 @@ function formatLocator(chunk) {
 export async function loadAllNotebookChunks(notebookId) {
   const manifest = await readManifest(notebookId);
   if (!manifest) return [];
-  const out = [];
-  for (const entry of manifest.documents || []) {
-    const record = await loadDocumentRecord(notebookId, entry.id);
-    if (!record) continue;
-    for (const chunk of record.chunks || []) {
-      out.push({
-        text: chunk.text,
-        documentId: entry.id,
-        documentName: entry.name,
-        documentType: entry.type,
-        page: chunk.page,
-        label: chunk.label,
-        part: chunk.part,
-        partTotal: chunk.partTotal,
-        chunkIndex: chunk.index,
-        locator: formatLocator(chunk)
-      });
-    }
-  }
-  return out;
+  return loadNotebookChunks(notebookId, manifest);
 }
 
 export async function getNotebookManifestSummary(notebookId) {

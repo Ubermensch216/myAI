@@ -69,7 +69,7 @@ Query flow:
 
 ```text
 queryNotebook(notebookId, query)
--> load notebook document records
+-> load notebook chunks from in-memory cache or document records
 -> expand query variants
 -> embed query variants
 -> multiQueryHybridSelect()
@@ -78,19 +78,11 @@ queryNotebook(notebookId, query)
 
 The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them into the system prompt, and `server/index.js` exposes citation metadata through `X-Notebook-Meta`.
 
-## Important Retrieval Caveat
+## Notebook Chunk Cache
 
-Notebook ingest stores `chunks[].embedding`. Semantic vector ranking only works if query-time chunk objects include the stored embedding before calling `multiQueryHybridSelect()`.
+Notebook ingest stores `chunks[].embedding`, and `server/notebooks.js` carries those embeddings into query-time chunk objects before calling `multiQueryHybridSelect()`. This enables BM25/CJK bigram ranking and semantic vector ranking to be fused with RRF when the query embedding call succeeds.
 
-When checking or modifying notebook retrieval, verify `server/notebooks.js#queryNotebook()` carries:
-
-```js
-embedding: chunk.embedding
-```
-
-into `allChunks`.
-
-Without that connection, notebook search is effectively query expansion + BM25/CJK bigram, even when `bge-m3` is installed.
+Notebook query and whole-notebook Map-Reduce share a small in-memory chunk cache keyed by the notebook manifest. The cache avoids re-reading and parsing every document JSON on repeated turns. `NOTEBOOK_CHUNK_CACHE_MAX` controls how many notebooks can stay hot in memory; document add/delete and notebook delete invalidate the related entry.
 
 ## Map-Reduce Whole Analysis
 
@@ -116,4 +108,3 @@ chunks
 ```
 
 This mode is intended for full-document/full-notebook analysis, not normal fast chat.
-
