@@ -79,6 +79,7 @@ Delete, update, conflict, repeated-event, and ICS import flows use an in-app rev
 - Reminders run in the open browser tab.
 - Calendar is fixed to Asia/Seoul. ICS export writes `TZID=Asia/Seoul`, and `/api/agent/intent` always interprets dates in Asia/Seoul.
 - Event edit supports simple recurrence: daily, weekly, monthly, and yearly, with an optional end date.
+- ICS import/export is accessed through the gear-icon settings menu in the calendar header, placed to the right of the month/week/day view toggle. Each menu item shows a short Korean description of what the action does.
 - ICS export writes local events as `VEVENT` entries, including `RRULE` when present.
 - ICS import reads common `VEVENT` fields (`SUMMARY`, `DTSTART`, `DTEND`, `LOCATION`, `DESCRIPTION`, `RRULE`) and asks for review before saving.
 

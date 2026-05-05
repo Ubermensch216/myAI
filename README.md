@@ -162,7 +162,7 @@ server/
 
 public/
   index.html
-  app.js               orchestrator (~776 lines)
+  app.js               orchestrator (~848 lines)
   modules/
     state.js           global state, DOM refs, shared utilities
     persistence.js     IndexedDB + WebCrypto AES-GCM

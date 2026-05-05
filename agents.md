@@ -59,7 +59,7 @@ Server:
 Frontend:
 
 - `public/index.html` - app shell and dialogs.
-- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI; ~709 lines after modularization.
+- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI; ~848 lines after modularization.
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities. No imports.
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
@@ -159,7 +159,7 @@ CSV/XLSX prompt
 - Calendar data is local-only. There is no Google/Outlook/ICS sync.
 - Destructive calendar/notebook/file actions still mostly use `window.confirm()`. Rich in-app review dialogs are a good next step.
 - Visualization is plan-first and server-validated. XLSX QA now covers date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, and chart spec regression, but XLSX parsing is still not a complete spreadsheet engine.
-- `public/app.js` is the orchestrator (~709 lines). Heavy logic lives in `public/modules/`. Cross-module signals use `window.dispatchEvent(new CustomEvent("myai:..."))` to avoid circular imports.
+- `public/app.js` is the orchestrator (~848 lines). Heavy logic lives in `public/modules/`. Cross-module signals use `window.dispatchEvent(new CustomEvent("myai:..."))` to avoid circular imports.
 
 ## Editing Rules For Future Agents
 
