@@ -2,7 +2,7 @@ import { loadLocalEnv } from "./env.js";
 
 loadLocalEnv();
 
-const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
+const EMBED_MODEL = process.env.EMBED_MODEL || "bge-m3";
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 
 /**
@@ -10,9 +10,10 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
  * Returns float[][] — one vector per input text.
  * Throws if the model is unavailable; callers should catch and fall back to BM25.
  */
-export async function embedTexts(texts) {
+export async function embedTexts(texts, { signal } = {}) {
   const response = await fetch(`${OLLAMA_URL}/api/embed`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, input: texts })
   });
@@ -27,7 +28,7 @@ export async function embedTexts(texts) {
   return data.embeddings;
 }
 
-export async function embedText(text) {
-  const results = await embedTexts([String(text)]);
+export async function embedText(text, options = {}) {
+  const results = await embedTexts([String(text)], options);
   return results[0];
 }

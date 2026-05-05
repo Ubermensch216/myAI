@@ -349,12 +349,18 @@ export async function queryNotebook(notebookId, query, options = {}) {
 
   let ranked = [];
   if (trimmedQuery) {
-    const queries = await expandQuery(trimmedQuery).catch(() => [trimmedQuery]);
+    let queries = [trimmedQuery];
+    try {
+      queries = await expandQuery(trimmedQuery, { signal: options.signal });
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+    }
     let queryEmbeddings = queries.map(() => null);
     try {
-      const vectors = await embedTexts(queries);
+      const vectors = await embedTexts(queries, { signal: options.signal });
       queryEmbeddings = vectors;
-    } catch {
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
       // BM25 fallback — embedding model unavailable
     }
     ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);

@@ -1,19 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { parseUpload } from "../server/parsers.js";
-import {
-  addNotebookDocument,
-  createNotebook,
-  deleteNotebook,
-  getNotebook,
-  queryNotebook,
-  removeNotebookDocument,
-  updateNotebook
-} from "../server/notebooks.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseUrl = process.env.MYAI_SMOKE_BASE_URL || "http://127.0.0.1:3000";
@@ -22,7 +10,6 @@ let failureCount = 0;
 await run("app shell ids exist", testAppShellIds);
 const status = await run("GET /api/status", testStatus);
 await run("POST /api/agent/intent month range", () => testCalendarIntent(status));
-await run("parser and notebook CRUD", testParserAndNotebookCrud);
 
 if (failureCount > 0) {
   process.exitCode = 1;
@@ -44,8 +31,9 @@ async function run(name, fn) {
 async function testAppShellIds() {
   const html = await fs.readFile(path.join(rootDir, "public", "index.html"), "utf8");
   const app = await fs.readFile(path.join(rootDir, "public", "app.js"), "utf8");
+  const state = await fs.readFile(path.join(rootDir, "public", "modules", "state.js"), "utf8");
   const ids = new Set();
-  for (const match of app.matchAll(/document\.querySelector\("#([^"]+)"\)/g)) {
+  for (const match of `${app}\n${state}`.matchAll(/document\.querySelector\("#([^"]+)"\)/g)) {
     ids.add(match[1]);
   }
 
@@ -88,72 +76,6 @@ async function testCalendarIntent(status) {
   assert.equal(result.intent, "calendar.list");
   assert.equal(result.payload?.from, "2026-05-01");
   assert.equal(result.payload?.to, "2026-05-31");
-}
-
-async function testParserAndNotebookCrud() {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "myai-smoke-"));
-  const csvPath = path.join(tempDir, "sales.csv");
-  let notebookId = null;
-
-  try {
-    await fs.writeFile(csvPath, "제품,금액\nA,10\nB,20\n", "utf8");
-    const parsedCsv = await parseUpload({
-      path: csvPath,
-      originalname: "sales.csv",
-      mimetype: "text/csv"
-    });
-    assert.equal(parsedCsv.kind, "document");
-    assert.equal(parsedCsv.tables?.[0]?.headers?.[0], "제품");
-
-    const created = await createNotebook({
-      name: `Smoke Test ${Date.now()}`,
-      description: "temporary smoke-test notebook"
-    });
-    notebookId = created.id;
-    assert.match(notebookId, /^nb_[a-f0-9]{16}$/);
-
-    const loaded = await getNotebook(notebookId);
-    assert.equal(loaded.id, notebookId);
-
-    const updated = await updateNotebook(notebookId, {
-      name: `${created.name} Updated`,
-      description: "updated"
-    });
-    assert.equal(updated.name, `${created.name} Updated`);
-
-    const csvDoc = await addNotebookDocument(notebookId, parsedCsv);
-    assert.match(csvDoc.id, /^doc_[a-f0-9]{16}$/);
-
-    const duplicateA = await addNotebookDocument(notebookId, {
-      kind: "document",
-      fileName: "duplicate-a.txt",
-      fileType: "txt",
-      text: "shared duplicate keyword",
-      pages: [{ page: 1, text: "shared duplicate keyword" }]
-    });
-    const duplicateB = await addNotebookDocument(notebookId, {
-      kind: "document",
-      fileName: "duplicate-b.txt",
-      fileType: "txt",
-      text: "shared duplicate keyword",
-      pages: [{ page: 1, text: "shared duplicate keyword" }]
-    });
-
-    const queryResult = await queryNotebook(notebookId, "duplicate keyword", { budget: 10000 });
-    assert.equal(queryResult.ok, true);
-    const duplicateIds = new Set(
-      queryResult.chunks
-        .filter((chunk) => chunk.text === "shared duplicate keyword")
-        .map((chunk) => chunk.documentId)
-    );
-    assert.ok(duplicateIds.has(duplicateA.id));
-    assert.ok(duplicateIds.has(duplicateB.id));
-
-    assert.equal(await removeNotebookDocument(notebookId, csvDoc.id), true);
-  } finally {
-    if (notebookId) await deleteNotebook(notebookId).catch(() => {});
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
 }
 
 async function fetchJson(route, options = {}) {

@@ -85,13 +85,27 @@ Check the app server:
 curl.exe -s http://127.0.0.1:3000/api/status
 ```
 
-Run smoke tests while the app server and Ollama are running:
+Run fast smoke tests while the app server is running:
 
 ```powershell
 npm.cmd test
 ```
 
-The smoke test covers app shell IDs, `/api/status`, calendar intent classification, parser behavior, notebook CRUD, and notebook query metadata. Live tests can be slower because document analysis, query expansion, and embeddings call local Ollama.
+The smoke test covers app shell IDs, `/api/status`, and calendar intent classification. Run deterministic XLSX/visualization regression tests without Ollama:
+
+```powershell
+npm.cmd run test:xlsx
+```
+
+Run the slower live tests when Ollama is running and you want to exercise parser behavior, notebook CRUD, embeddings, document analysis, and notebook query metadata:
+
+```powershell
+npm.cmd run test:live
+```
+
+Uploaded room files are stored in the browser's encrypted IndexedDB and are sent back in `/api/chat` requests as JSON. The UI shows approximate room/attachment storage, warns before large uploads, provides an active-room attachment cleanup action, and blocks chat requests that are too close to the server JSON body limit.
+
+The XLSX regression test covers Excel date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, and server-computed chart specs.
 
 ## Configuration
 
@@ -103,7 +117,7 @@ The smoke test covers app shell IDs, `/api/status`, calendar intent classificati
 | `HOST` | unset | HTTP bind host; unset listens on all interfaces |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API endpoint |
 | `OLLAMA_MODEL` | `gemma3n:e2b` | default chat/analysis model |
-| `EMBED_MODEL` | code fallback: `nomic-embed-text`; project example: `bge-m3` | Ollama `/api/embed` model |
+| `EMBED_MODEL` | `bge-m3` | Ollama `/api/embed` model |
 | `KOREA_HOLIDAY_SERVICE_KEY` | unset | optional Korean public-holiday API key |
 | `ADMIN_TOKEN` | unset | bearer token for notebook management APIs |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body limit |
@@ -166,6 +180,7 @@ docs/
   API.md
   RAG.md
   CALENDAR.md
+  SECURITY.md
   KNOWN_ISSUES.md
 ```
 
@@ -175,6 +190,7 @@ docs/
 - [API](docs/API.md)
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
+- [Security and Deployment Boundary](docs/SECURITY.md)
 - [Known Issues](docs/KNOWN_ISSUES.md)
 - [Deployment](deploy/DEPLOY.md)
 
@@ -186,12 +202,14 @@ myAI uses a two-tier design:
 - **Personal PC (browser-only)**: each user's browser holds private data (rooms, uploads, calendar, settings) in encrypted IndexedDB. Personal documents are parsed server-side, returned in the API response, and persisted in the browser. The server stores no personal copy.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhost or a trusted LAN.
 
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
 - Department notebooks are stored as JSON files under `data/notebooks/`; large collections will eventually need a persistent vector index.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
+- `ADMIN_TOKEN` protects notebook management only. Use reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.
 - Map-Reduce is slower than normal chat and truncates beyond `MAP_REDUCE_MAX_CHUNKS`.
 - Legacy binary `.hwp` and `.xls` are not parsed directly. Use HWPX/XLSX.

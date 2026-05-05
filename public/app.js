@@ -5,13 +5,15 @@ import {
   renderCalendar, shiftCalendarMonth, jumpCalendarToToday, setCalendarViewMode,
   openEventDialogForCreate, openEventDialogForEdit, closeEventDialog, submitEventForm,
   deleteCurrentEvent, applyAllDayUiState, setEventColor,
-  submitCalendarCommand, hideCalendarCommandResult, startReminderWatcher
+  submitCalendarCommand, hideCalendarCommandResult, startReminderWatcher,
+  exportCalendarIcs, importCalendarIcsFile
 } from "./modules/calendar.js";
 import {
   setBusy, stopGeneration, scrollToBottom, setDeepAnalysisEnabled,
   sendMessage, uploadFiles, confirmAndRemoveUploadedFile,
   appendMessage, renderFollowupSuggestions, extractImageFilesFromPaste,
-  createTitleFromPrompt, submitPromptEdit
+  createTitleFromPrompt, submitPromptEdit, confirmAndClearRoomDocuments,
+  estimateAllRoomsStorageBytes, estimateDocumentBytes, estimateRoomStorageBytes, formatBytes
 } from "./modules/chat.js";
 import {
   loadNotebooks, loadAdminStatus, restoreAdminTokenSession,
@@ -139,6 +141,11 @@ function applyActiveView(view) {
 
 function renderRooms() {
   elements.roomList.innerHTML = "";
+  const storageSummary = document.createElement("div");
+  storageSummary.className = "room-storage-summary";
+  storageSummary.textContent = `브라우저 저장 ${formatBytes(estimateAllRoomsStorageBytes())}`;
+  elements.roomList.append(storageSummary);
+
   for (const room of state.rooms) {
     const item = document.createElement("button");
     item.type = "button";
@@ -156,6 +163,10 @@ function renderRooms() {
     const count = document.createElement("span");
     count.className = "room-item-count";
     count.textContent = `${room.messages?.length ?? 0}`;
+
+    const storage = document.createElement("span");
+    storage.className = "room-item-storage";
+    storage.textContent = formatBytes(estimateRoomStorageBytes(room));
 
     const fileIcons = document.createElement("span");
     fileIcons.className = "room-file-icons";
@@ -179,18 +190,37 @@ function renderRooms() {
     deleteButton.title = "대화방 삭제";
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", (event) => { event.stopPropagation(); deleteRoom(room.id); });
-    item.append(title, fileIcons, count, deleteButton);
+    item.append(title, storage, fileIcons, count, deleteButton);
     elements.roomList.append(item);
 
     if (room.id === state.activeRoomId && roomDocs.length) {
       const files = document.createElement("div");
       files.className = "room-file-titles";
+      const fileToolbar = document.createElement("div");
+      fileToolbar.className = "room-file-toolbar";
+      const fileSummary = document.createElement("span");
+      fileSummary.className = "room-file-summary";
+      const documentBytes = roomDocs.reduce((sum, doc) => sum + estimateDocumentBytes(doc), 0);
+      fileSummary.textContent = `첨부 ${roomDocs.length}개 · ${formatBytes(documentBytes)}`;
+      const clearButton = document.createElement("button");
+      clearButton.className = "room-file-clear";
+      clearButton.type = "button";
+      clearButton.textContent = "첨부 정리";
+      clearButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        await confirmAndClearRoomDocuments(room);
+      });
+      fileToolbar.append(fileSummary, clearButton);
+      files.append(fileToolbar);
       for (const doc of roomDocs) {
         const file = document.createElement("div");
         file.className = "room-file-title";
         const label = document.createElement("span");
         label.className = "room-file-title-text";
         label.textContent = `${getFileTypeIcon(doc)} ${formatDisplayFileName(doc)}`;
+        const size = document.createElement("span");
+        size.className = "room-file-size";
+        size.textContent = formatBytes(estimateDocumentBytes(doc));
         const removeButton = document.createElement("button");
         removeButton.className = "room-file-remove";
         removeButton.type = "button";
@@ -201,7 +231,7 @@ function renderRooms() {
           event.stopPropagation();
           await confirmAndRemoveUploadedFile(doc);
         });
-        file.append(label, removeButton);
+        file.append(label, size, removeButton);
         files.append(file);
       }
       elements.roomList.append(files);
@@ -374,6 +404,24 @@ function closeAttachMenu() {
   elements.attachFileButton.setAttribute("aria-expanded", "false");
 }
 
+function toggleCalendarSettingsMenu() {
+  if (!elements.calendarSettingsMenu) return;
+  if (elements.calendarSettingsMenu.hidden) openCalendarSettingsMenu();
+  else closeCalendarSettingsMenu();
+}
+
+function openCalendarSettingsMenu() {
+  if (!elements.calendarSettingsMenu) return;
+  elements.calendarSettingsMenu.hidden = false;
+  elements.calendarSettingsButton?.setAttribute("aria-expanded", "true");
+}
+
+function closeCalendarSettingsMenu() {
+  if (!elements.calendarSettingsMenu) return;
+  elements.calendarSettingsMenu.hidden = true;
+  elements.calendarSettingsButton?.setAttribute("aria-expanded", "false");
+}
+
 function showDropOverlay() {
   elements.dropOverlay.hidden = false;
   elements.dropOverlay.classList.add("active");
@@ -416,6 +464,21 @@ function bindEvents() {
   }
   if (elements.calendarCommandForm) elements.calendarCommandForm.addEventListener("submit", submitCalendarCommand);
   if (elements.calendarCommandResultClose) elements.calendarCommandResultClose.addEventListener("click", hideCalendarCommandResult);
+  if (elements.calendarSettingsButton) {
+    elements.calendarSettingsButton.addEventListener("click", (event) => { event.stopPropagation(); toggleCalendarSettingsMenu(); });
+  }
+  if (elements.calendarExportButton) {
+    elements.calendarExportButton.addEventListener("click", () => { closeCalendarSettingsMenu(); exportCalendarIcs(); });
+  }
+  if (elements.calendarImportButton) {
+    elements.calendarImportButton.addEventListener("click", () => { closeCalendarSettingsMenu(); elements.calendarImportInput?.click(); });
+  }
+  if (elements.calendarImportInput) {
+    elements.calendarImportInput.addEventListener("change", async (event) => {
+      await importCalendarIcsFile(event.target.files?.[0]);
+      event.target.value = "";
+    });
+  }
 
   // Rooms
   elements.newRoomButton.addEventListener("click", createNewRoom);
@@ -683,6 +746,14 @@ function bindEvents() {
     closeAttachMenu();
   });
 
+  // Calendar settings menu close on outside click
+  document.addEventListener("click", (event) => {
+    if (!elements.calendarSettingsMenu || elements.calendarSettingsMenu.hidden) return;
+    if (event.target === elements.calendarSettingsButton || elements.calendarSettingsButton?.contains(event.target)) return;
+    if (elements.calendarSettingsMenu.contains(event.target)) return;
+    closeCalendarSettingsMenu();
+  });
+
   // Drag & drop
   window.addEventListener("dragenter", (event) => {
     if (!hasDraggedFiles(event)) return;
@@ -760,6 +831,7 @@ function bindEvents() {
       }
     }
     if (event.key === "Escape" && !elements.attachMenu.hidden) { closeAttachMenu(); return; }
+    if (event.key === "Escape" && elements.calendarSettingsMenu && !elements.calendarSettingsMenu.hidden) { closeCalendarSettingsMenu(); return; }
     if (event.key === "Escape" && state.busy) { event.preventDefault(); stopGeneration(); }
   });
 

@@ -1,10 +1,17 @@
 import {
   state, elements,
   KOREAN_SHORT_WEEKDAYS,
-  formatLocalDate, normalizeCalendarViewMode, normalizeReminderList,
+  formatLocalDate, normalizeCalendarViewMode, normalizeReminderList, normalizeRecurrence,
   DEFAULT_FAVICON_HREF, getActiveRoom
 } from "./state.js";
 import { scheduleSave } from "./persistence.js";
+
+const RECURRENCE_LABELS = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  yearly: "Yearly"
+};
 
 // ===== Date helpers =====
 
@@ -17,6 +24,15 @@ export function parseDateISO(value) {
 
 export function addDays(date, days) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+export function addMonths(date, months) {
+  const next = new Date(date);
+  const day = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + months);
+  next.setDate(Math.min(day, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()));
+  return next;
 }
 
 export function startOfWeek(date) {
@@ -110,6 +126,7 @@ export function formatEventChipTitle(event) {
     if (start && end) lines.push(`${formatDateTime(start)} – ${formatDateTime(end)}`);
   }
   if (event.location) lines.push(`장소: ${event.location}`);
+  if (event.recurrence) lines.push(`Repeat: ${formatRecurrenceSummary(event.recurrence)}`);
   return lines.join("\n");
 }
 
@@ -166,6 +183,13 @@ export function formatEventOneLine(event) {
   return `${dateLabel} ${hh}:${mm} · ${event.title || "(제목 없음)"}`;
 }
 
+export function formatRecurrenceSummary(recurrence) {
+  const normalized = normalizeRecurrence(recurrence);
+  if (!normalized) return "";
+  const label = RECURRENCE_LABELS[normalized.frequency] || normalized.frequency;
+  return normalized.until ? `${label} until ${normalized.until}` : label;
+}
+
 // ===== Event data helpers =====
 
 export function groupEventsByDate(events) {
@@ -188,10 +212,79 @@ export function groupEventsByDate(events) {
   return map;
 }
 
+export function getCalendarEventsForDate(dateISO) {
+  const date = parseDateISO(dateISO);
+  if (!date) return [];
+  const events = [];
+  for (const event of state.calendar.events) {
+    const occurrences = expandEventOccurrences(event, dateISO, dateISO);
+    events.push(...occurrences);
+  }
+  return events.sort(compareEventsByStart);
+}
+
+export function getCalendarEventsForRange(fromISO, toISO) {
+  const events = [];
+  for (const event of state.calendar.events) {
+    events.push(...expandEventOccurrences(event, fromISO, toISO));
+  }
+  return events.sort(compareEventsByStart);
+}
+
+export function expandEventOccurrences(event, fromISO, toISO) {
+  const recurrence = normalizeRecurrence(event.recurrence);
+  if (!recurrence) {
+    const startISO = String(event.start || "").slice(0, 10);
+    const endISO = String(event.end || event.start || "").slice(0, 10) || startISO;
+    if (fromISO && endISO < fromISO) return [];
+    if (toISO && startISO > toISO) return [];
+    return [event];
+  }
+  const baseStart = parseEventStart(event);
+  const baseEnd = parseEventEnd(event) || baseStart;
+  if (!baseStart) return [];
+  const rangeStart = parseDateISO(fromISO || String(event.start).slice(0, 10)) || baseStart;
+  const rangeEnd = parseDateISO(toISO || recurrence.until || fromISO || String(event.start).slice(0, 10)) || rangeStart;
+  const untilDate = parseDateISO(recurrence.until || "");
+  const exceptions = new Set(event.recurrenceExceptions || []);
+  const durationMs = baseEnd ? Math.max(0, baseEnd.getTime() - baseStart.getTime()) : 0;
+  const out = [];
+  let cursor = new Date(baseStart);
+  let index = 0;
+  const max = Math.min(recurrence.count || 730, 730);
+  while (index < max) {
+    const occurrenceISO = formatLocalDate(cursor);
+    if (untilDate && cursor > addDays(untilDate, 1)) break;
+    if (cursor > addDays(rangeEnd, 1)) break;
+    if (cursor >= rangeStart && !exceptions.has(occurrenceISO)) {
+      const start = event.allDay ? occurrenceISO : toLocalInputValue(cursor);
+      const endAt = new Date(cursor.getTime() + durationMs);
+      const end = event.allDay ? formatLocalDate(endAt) : toLocalInputValue(endAt);
+      out.push({
+        ...event,
+        id: `${event.id}#${occurrenceISO}`,
+        masterEventId: event.id,
+        occurrenceDate: occurrenceISO,
+        start,
+        end
+      });
+    }
+    cursor = nextRecurrenceDate(cursor, recurrence);
+    index += 1;
+  }
+  return out;
+}
+
+function nextRecurrenceDate(date, recurrence) {
+  const interval = recurrence.interval || 1;
+  if (recurrence.frequency === "weekly") return addDays(date, 7 * interval);
+  if (recurrence.frequency === "monthly") return addMonths(date, interval);
+  if (recurrence.frequency === "yearly") return addMonths(date, 12 * interval);
+  return addDays(date, interval);
+}
+
 export function getEventsForDate(dateISO) {
-  return state.calendar.events
-    .filter((e) => String(e.start || "").slice(0, 10) === dateISO)
-    .sort(compareEventsByStart);
+  return getCalendarEventsForDate(dateISO);
 }
 
 export function compareEventsByStart(a, b) {
@@ -252,8 +345,10 @@ export function findConflictingEvents({ start, end, allDay }, excludeId) {
   const newEndRaw = end || start;
   const newEndMs = (allDay ? new Date(`${String(newEndRaw).slice(0, 10)}T23:59`) : new Date(newEndRaw)).getTime();
   if (Number.isNaN(newStartMs) || Number.isNaN(newEndMs)) return [];
-  return state.calendar.events.filter((event) => {
-    if (event.id === excludeId) return false;
+  const fromISO = String(start).slice(0, 10);
+  const toISO = String(newEndRaw).slice(0, 10) || fromISO;
+  return getCalendarEventsForRange(fromISO, toISO).filter((event) => {
+    if (event.id === excludeId || event.masterEventId === excludeId) return false;
     const existingStart = parseEventStart(event);
     const existingEnd = parseEventEnd(event) || existingStart;
     if (!existingStart || !existingEnd) return false;
@@ -282,18 +377,23 @@ export function dedupeEvents(events) {
   return out;
 }
 
-export function confirmCalendarDelete(candidates, payload, fromISO, toISO) {
+export async function confirmCalendarDelete(candidates, payload, fromISO, toISO) {
   const count = candidates.length;
   const scope = payload?.matchTitle ? `"${payload.matchTitle}"` : formatDateRangeLabel(fromISO, toISO);
   const preview = formatEventPreviewList(candidates, 6);
-  return window.confirm([
+  return await showCalendarConfirm({
+    title: "Delete calendar events",
+    body: [
     `${scope} 조건과 일치하는 일정 ${count}건을 삭제합니다.`,
     preview,
     "계속할까요?"
-  ].filter(Boolean).join("\n\n"));
+    ].filter(Boolean).join("\n\n"),
+    okText: "Delete",
+    danger: true
+  });
 }
 
-export function confirmCalendarUpdate(target, merged, changes, conflicts) {
+export async function confirmCalendarUpdate(target, merged, changes, conflicts) {
   const sections = [
     `다음 일정을 수정합니다:\n${formatEventOneLine(target)}`,
     `변경 내용:\n${formatCalendarChangeList(target, merged, changes)}`
@@ -302,7 +402,11 @@ export function confirmCalendarUpdate(target, merged, changes, conflicts) {
     sections.push(`다만 아래 기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}`);
   }
   sections.push("계속할까요?");
-  return window.confirm(sections.join("\n\n"));
+  return await showCalendarConfirm({
+    title: "Update calendar event",
+    body: sections.join("\n\n"),
+    okText: "Update"
+  });
 }
 
 export function hasCalendarTimeChange(changes) {
@@ -324,6 +428,45 @@ export function formatCalendarChangeList(before, after, changes) {
   return rows.length ? rows.join("\n") : "· 세부 항목 변경";
 }
 
+export function showCalendarConfirm({ title = "Confirm", body = "", okText = "Continue", cancelText = "Cancel", danger = false } = {}) {
+  const dialog = elements.calendarConfirmDialog;
+  if (!dialog || typeof dialog.showModal !== "function") return Promise.resolve(window.confirm(body || title));
+  return new Promise((resolve) => {
+    elements.calendarConfirmTitle.textContent = title;
+    elements.calendarConfirmBody.innerHTML = "";
+    const lines = Array.isArray(body) ? body : String(body || "").split("\n");
+    for (const line of lines.filter(Boolean)) {
+      const row = document.createElement(line.startsWith("•") || line.startsWith("쨌") ? "li" : "p");
+      row.textContent = line;
+      elements.calendarConfirmBody.append(row);
+    }
+    elements.calendarConfirmOkButton.textContent = okText;
+    elements.calendarConfirmCancelButton.textContent = cancelText;
+    elements.calendarConfirmOkButton.classList.toggle("danger-action", !!danger);
+
+    const cleanup = () => {
+      elements.calendarConfirmOkButton.removeEventListener("click", onOk);
+      elements.calendarConfirmCancelButton.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("close", onClose);
+    };
+    const finish = (value) => {
+      cleanup();
+      if (dialog.open) dialog.close(value ? "ok" : "cancel");
+      resolve(value);
+    };
+    const onOk = (event) => { event.preventDefault(); finish(true); };
+    const onCancel = (event) => { event.preventDefault(); finish(false); };
+    const onClose = () => { cleanup(); resolve(dialog.returnValue === "ok"); };
+
+    elements.calendarConfirmOkButton.addEventListener("click", onOk);
+    elements.calendarConfirmCancelButton.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+  });
+}
+
 // ===== Calendar event CRUD =====
 
 export function createCalendarEventFromPayload(payload, nowIso = new Date().toISOString()) {
@@ -335,6 +478,8 @@ export function createCalendarEventFromPayload(payload, nowIso = new Date().toIS
     end: payload.end || payload.start,
     location: payload.location || "",
     notes: payload.notes || "",
+    recurrence: normalizeRecurrence(payload.recurrence || payload.repeat),
+    recurrenceExceptions: [],
     reminders: normalizeReminderList(payload.reminders),
     notifiedReminders: [],
     color: "accent",
@@ -363,7 +508,7 @@ export function applyCalendarList(payload) {
   const fromISO = payload?.from ? String(payload.from).slice(0, 10) : null;
   const toISO = payload?.to ? String(payload.to).slice(0, 10) : null;
   const query = (payload?.query || "").toLowerCase();
-  const matches = state.calendar.events
+  const matches = getCalendarEventsForRange(fromISO || "1900-01-01", toISO || "2999-12-31")
     .filter((event) => {
       const d = String(event.start).slice(0, 10);
       if (fromISO && d < fromISO) return false;
@@ -379,14 +524,17 @@ export function applyCalendarList(payload) {
   return { text: `${matches.length}개의 일정을 찾았습니다.`, eventCards: matches.slice(0, 20) };
 }
 
-export function applyCalendarDelete(payload) {
+export async function applyCalendarDelete(payload) {
   const matchTitle = (payload?.matchTitle || "").toLowerCase();
   const fromISO = payload?.from ? String(payload.from).slice(0, 10) : null;
   const toISO = payload?.to ? String(payload.to).slice(0, 10) : null;
   if (!matchTitle && !fromISO && !toISO) {
     return { text: "삭제할 일정의 제목 또는 날짜를 알려주세요.", eventCards: [] };
   }
-  const candidates = state.calendar.events.filter((event) => {
+  const sourceEvents = fromISO || toISO
+    ? getCalendarEventsForRange(fromISO || "1900-01-01", toISO || "2999-12-31")
+    : state.calendar.events;
+  const candidates = sourceEvents.filter((event) => {
     if (matchTitle && !(event.title || "").toLowerCase().includes(matchTitle)) return false;
     const d = String(event.start).slice(0, 10);
     if (fromISO && d < fromISO) return false;
@@ -398,9 +546,9 @@ export function applyCalendarDelete(payload) {
     return { text: `${desc} 와 일치하는 일정을 찾지 못했습니다.`, eventCards: [] };
   }
   if (!matchTitle) {
-    const confirmed = confirmCalendarDelete(candidates, payload, fromISO, toISO);
+    const confirmed = await confirmCalendarDelete(candidates, payload, fromISO, toISO);
     if (!confirmed) return { text: "삭제를 취소했습니다.", kind: "warning", eventCards: candidates.slice(0, 10) };
-    const ids = new Set(candidates.map((e) => e.id));
+    const ids = new Set(candidates.map((e) => e.masterEventId || e.id));
     state.calendar.events = state.calendar.events.filter((e) => !ids.has(e.id));
     return {
       mutated: true,
@@ -415,13 +563,13 @@ export function applyCalendarDelete(payload) {
     };
   }
   const target = candidates[0];
-  const confirmed = confirmCalendarDelete(candidates, payload, fromISO, toISO);
+  const confirmed = await confirmCalendarDelete(candidates, payload, fromISO, toISO);
   if (!confirmed) return { text: "삭제를 취소했습니다.", kind: "warning", eventCards: [target] };
-  state.calendar.events = state.calendar.events.filter((e) => e.id !== target.id);
+  state.calendar.events = state.calendar.events.filter((e) => e.id !== (target.masterEventId || target.id));
   return { mutated: true, text: `✓ 일정을 삭제했습니다: ${formatEventOneLine(target)}`, eventCards: [] };
 }
 
-export function applyCalendarUpdate(payload) {
+export async function applyCalendarUpdate(payload) {
   const matchTitle = (payload?.matchTitle || "").toLowerCase();
   const changes = payload?.changes || {};
   if (!matchTitle) return { text: "수정할 일정의 제목을 알려주세요.", eventCards: [] };
@@ -449,7 +597,7 @@ export function applyCalendarUpdate(payload) {
   const conflicts = hasCalendarTimeChange(changes)
     ? findConflictingEvents({ start: merged.start, end: merged.end || merged.start, allDay: !!merged.allDay }, target.id)
     : [];
-  const confirmed = confirmCalendarUpdate(target, merged, changes, conflicts);
+  const confirmed = await confirmCalendarUpdate(target, merged, changes, conflicts);
   if (!confirmed) {
     return { text: "일정 수정을 취소했습니다.", kind: "warning", eventCards: [target, ...conflicts.slice(0, 3)] };
   }
@@ -473,10 +621,22 @@ export async function applyCalendarCreateAsync(payload) {
   if (!payload?.title || !payload?.start) {
     return { text: "일정 정보를 이해하지 못했습니다. 제목과 시간을 다시 알려주세요.", eventCards: [] };
   }
-  if (isDailyRepeatCreatePayload(payload)) return await applyDailyRepeatCalendarCreateAsync(payload);
+  if (isDailyRepeatCreatePayload(payload)) {
+    payload = {
+      ...payload,
+      start: moveEventPayloadDate(payload.start, payload.repeat.from, !!payload.allDay),
+      end: moveEventPayloadDate(payload.end || payload.start, payload.repeat.from, !!payload.allDay),
+      recurrence: { frequency: "daily", interval: 1, until: payload.repeat.to },
+      repeat: undefined
+    };
+  }
   const conflicts = findConflictingEvents({ start: payload.start, end: payload.end || payload.start, allDay: !!payload.allDay });
   if (conflicts.length) {
-    const proceed = window.confirm(`기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 추가할까요?`);
+    const proceed = await showCalendarConfirm({
+      title: "Conflicting event",
+      body: `기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 추가할까요?`,
+      okText: "Add anyway"
+    });
     if (!proceed) return { text: "기존 일정과 겹쳐 추가하지 않았습니다.", kind: "warning", eventCards: conflicts.slice(0, 3) };
   }
   const result = applyCalendarCreate(payload);
@@ -493,6 +653,14 @@ export function isDailyRepeatCreatePayload(payload) {
     && /^\d{4}-\d{2}-\d{2}$/.test(String(payload.repeat.to || ""));
 }
 
+export function moveEventPayloadDate(value, dateISO, allDay) {
+  const date = String(dateISO || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return value;
+  if (allDay) return date;
+  const time = extractTimePart(value) || "09:00";
+  return `${date}T${time}`;
+}
+
 export async function applyDailyRepeatCalendarCreateAsync(payload) {
   const eventPayloads = expandDailyRepeatPayloads(payload);
   if (!eventPayloads.length) return { text: "반복 등록할 날짜 범위를 이해하지 못했습니다.", eventCards: [] };
@@ -502,9 +670,11 @@ export async function applyDailyRepeatCalendarCreateAsync(payload) {
   }
   if (conflicts.length) {
     const unique = dedupeEvents(conflicts);
-    const proceed = window.confirm(
-      `반복 등록 중 기존 일정과 겹치는 항목이 ${unique.length}건 있습니다:\n${buildConflictWarning(unique)}\n\n그래도 모두 추가할까요?`
-    );
+    const proceed = await showCalendarConfirm({
+      title: "Conflicts in repeated events",
+      body: `반복 등록 중 기존 일정과 겹치는 항목이 ${unique.length}건 있습니다:\n${buildConflictWarning(unique)}\n\n그래도 모두 추가할까요?`,
+      okText: "Add all"
+    });
     if (!proceed) {
       return { text: "기존 일정과 겹쳐 반복 일정을 추가하지 않았습니다.", kind: "warning", eventCards: unique.slice(0, 5) };
     }
@@ -557,8 +727,8 @@ export async function executeCalendarIntent(intentResult) {
   const { intent, payload } = intentResult;
   if (intent === "calendar.create") return await applyCalendarCreateAsync(payload);
   if (intent === "calendar.list") return applyCalendarList(payload);
-  if (intent === "calendar.delete") return applyCalendarDelete(payload);
-  if (intent === "calendar.update") return applyCalendarUpdate(payload);
+  if (intent === "calendar.delete") return await applyCalendarDelete(payload);
+  if (intent === "calendar.update") return await applyCalendarUpdate(payload);
   return { text: "처리할 수 없는 일정 의도입니다.", eventCards: [] };
 }
 
@@ -675,8 +845,9 @@ function renderCalendarGrid() {
   const firstOfMonth = new Date(year, month, 1);
   const startOffset = firstOfMonth.getDay();
   const gridStart = new Date(year, month, 1 - startOffset);
+  const gridEnd = addDays(gridStart, 41);
   const todayISO = formatLocalDate(new Date());
-  const eventsByDate = groupEventsByDate(state.calendar.events);
+  const eventsByDate = groupEventsByDate(getCalendarEventsForRange(formatLocalDate(gridStart), formatLocalDate(gridEnd)));
 
   for (let cellIndex = 0; cellIndex < 42; cellIndex += 1) {
     const cellDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + cellIndex);
@@ -822,6 +993,12 @@ function createAgendaEventCard(event) {
     remindersEl.textContent = normalizeReminderList(event.reminders).map(formatReminderLabel).join(", ");
     card.append(remindersEl);
   }
+  if (event.recurrence) {
+    const repeatEl = document.createElement("div");
+    repeatEl.className = "calendar-agenda-event-reminders";
+    repeatEl.textContent = formatRecurrenceSummary(event.recurrence);
+    card.append(repeatEl);
+  }
   return card;
 }
 
@@ -833,7 +1010,7 @@ export function renderUpcomingEvents() {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + 7);
   cutoff.setHours(23, 59, 59, 999);
-  const upcoming = state.calendar.events
+  const upcoming = getCalendarEventsForRange(formatLocalDate(now), formatLocalDate(cutoff))
     .filter((event) => {
       const start = parseEventStart(event);
       if (!start) return false;
@@ -891,7 +1068,8 @@ export function renderUpcomingEvents() {
 }
 
 export async function toggleEventDone(eventId) {
-  const event = state.calendar.events.find((e) => e.id === eventId);
+  const masterId = String(eventId || "").split("#")[0];
+  const event = state.calendar.events.find((e) => e.id === masterId);
   if (!event) return;
   event.done = !event.done;
   renderCalendar();
@@ -924,13 +1102,14 @@ export function renderEventCardList(events) {
     card.dataset.color = event.color || "accent";
     card.title = "캘린더에서 편집";
     card.addEventListener("click", () => {
-      const exists = state.calendar.events.some((item) => item.id === event.id);
+      const targetId = event.masterEventId || event.id;
+      const exists = state.calendar.events.some((item) => item.id === targetId);
       if (!exists) return;
       // Navigate to calendar view - imported dynamically to avoid circular dep
       state.activeView = "calendar";
       state.calendar.cursorISO = String(event.start).slice(0, 10);
       renderCalendar();
-      openEventDialogForEdit(event.id);
+      openEventDialogForEdit(targetId);
       // Trigger nav update via custom event
       window.dispatchEvent(new CustomEvent("myai:setview", { detail: "calendar" }));
     });
@@ -998,6 +1177,22 @@ export function getSelectedReminderList() {
   );
 }
 
+export function setRecurrencePicker(recurrence) {
+  const normalized = normalizeRecurrence(recurrence);
+  if (elements.eventRecurrenceSelect) elements.eventRecurrenceSelect.value = normalized?.frequency || "";
+  if (elements.eventRecurrenceUntilInput) elements.eventRecurrenceUntilInput.value = normalized?.until || "";
+}
+
+export function getSelectedRecurrence() {
+  const frequency = elements.eventRecurrenceSelect?.value || "";
+  if (!frequency) return null;
+  return normalizeRecurrence({
+    frequency,
+    interval: 1,
+    until: elements.eventRecurrenceUntilInput?.value || undefined
+  });
+}
+
 export function applyAllDayUiState(allDay) {
   const startValue = elements.eventStartInput.value;
   const endValue = elements.eventEndInput.value;
@@ -1030,6 +1225,7 @@ export function openEventDialogForCreate(dateISO) {
   end.setHours(start.getHours() + 1);
   elements.eventStartInput.value = toLocalInputValue(start);
   elements.eventEndInput.value = toLocalInputValue(end);
+  setRecurrencePicker(null);
   setEventColor("accent");
   setReminderPicker([]);
   elements.deleteEventButton.hidden = true;
@@ -1038,7 +1234,8 @@ export function openEventDialogForCreate(dateISO) {
 }
 
 export function openEventDialogForEdit(eventId) {
-  const event = state.calendar.events.find((item) => item.id === eventId);
+  const masterId = String(eventId || "").split("#")[0];
+  const event = state.calendar.events.find((item) => item.id === masterId);
   if (!event) return;
   state.calendar.editingEventId = event.id;
   elements.eventDialogTitle.textContent = "일정 편집";
@@ -1058,6 +1255,7 @@ export function openEventDialogForEdit(eventId) {
   }
   elements.eventLocationInput.value = event.location || "";
   elements.eventNotesInput.value = event.notes || "";
+  setRecurrencePicker(event.recurrence);
   setReminderPicker(event.reminders);
   setEventColor(event.color || "accent");
   elements.deleteEventButton.hidden = false;
@@ -1084,7 +1282,7 @@ export function closeEventDialog() {
   state.calendar.editingEventId = null;
 }
 
-export function submitEventForm(formEvent) {
+export async function submitEventForm(formEvent) {
   formEvent.preventDefault();
   const title = elements.eventTitleInput.value.trim();
   if (!title) { elements.eventTitleInput.focus(); return; }
@@ -1105,6 +1303,7 @@ export function submitEventForm(formEvent) {
     end: allDay ? endRaw.slice(0, 10) : endRaw.slice(0, 16),
     location: elements.eventLocationInput.value.trim(),
     notes: elements.eventNotesInput.value.trim(),
+    recurrence: getSelectedRecurrence(),
     reminders: getSelectedReminderList(),
     color: state.calendar.selectedColor || "accent",
     done: editingId ? elements.eventDoneInput.checked : false
@@ -1112,7 +1311,11 @@ export function submitEventForm(formEvent) {
 
   const conflicts = findConflictingEvents(payload, editingId);
   if (conflicts.length) {
-    const proceed = window.confirm(`기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 저장할까요?`);
+    const proceed = await showCalendarConfirm({
+      title: "Conflicting event",
+      body: `기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 저장할까요?`,
+      okText: "Save anyway"
+    });
     if (!proceed) return;
   }
 
@@ -1144,10 +1347,20 @@ export function submitEventForm(formEvent) {
   renderCalendar();
 }
 
-export function deleteCurrentEvent() {
+export async function deleteCurrentEvent() {
   const editingId = state.calendar.editingEventId;
   if (!editingId) return;
-  if (!window.confirm("이 일정을 삭제할까요?")) return;
+  const target = state.calendar.events.find((item) => item.id === editingId);
+  if (!target) return;
+  const ok = await showCalendarConfirm({
+    title: target.recurrence ? "Delete repeated event" : "Delete event",
+    body: target.recurrence
+      ? `이 반복 일정을 모두 삭제합니다.\n${formatEventOneLine(target)}`
+      : `이 일정을 삭제할까요?\n${formatEventOneLine(target)}`,
+    okText: "Delete",
+    danger: true
+  });
+  if (!ok) return;
   state.calendar.events = state.calendar.events.filter((item) => item.id !== editingId);
   closeEventDialog();
   scheduleSave();
@@ -1235,6 +1448,182 @@ export function hideCalendarCommandResult() {
   if (!elements.calendarCommandResult) return;
   elements.calendarCommandResult.hidden = true;
   elements.calendarCommandResultBody.innerHTML = "";
+}
+
+// ===== ICS import / export =====
+
+export function exportCalendarIcs() {
+  const ics = buildIcsCalendar(state.calendar.events);
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `myai-calendar-${formatLocalDate(new Date())}.ics`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+}
+
+export async function importCalendarIcsFile(file) {
+  if (!file) return;
+  const text = await file.text();
+  const events = parseIcsCalendar(text);
+  if (!events.length) {
+    showCalendarCommandResult({ text: "ICS file has no supported events.", kind: "warning", events: [] });
+    return;
+  }
+  const ok = await showCalendarConfirm({
+    title: "Import ICS events",
+    body: `Import ${events.length} event(s)?\n${formatEventPreviewList(events, 8)}`,
+    okText: "Import"
+  });
+  if (!ok) return;
+  state.calendar.events.push(...events);
+  state.calendar.cursorISO = String(events[0].start).slice(0, 10);
+  scheduleSave();
+  renderCalendar();
+  showCalendarCommandResult({ text: `Imported ${events.length} event(s).`, kind: "info", events: events.slice(0, 10) });
+}
+
+function buildIcsCalendar(events) {
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//myAI//Local Calendar//EN",
+    ...events.flatMap(formatIcsEvent),
+    "END:VCALENDAR",
+    ""
+  ].join("\r\n");
+}
+
+function formatIcsEvent(event) {
+  const lines = [
+    "BEGIN:VEVENT",
+    `UID:${escapeIcsText(event.uid || event.id || crypto.randomUUID())}`,
+    `DTSTAMP:${formatIcsUtc(new Date())}`,
+    `SUMMARY:${escapeIcsText(event.title || "(untitled)")}`
+  ];
+  if (event.allDay) {
+    lines.push(`DTSTART;VALUE=DATE:${toIcsDate(event.start)}`);
+    lines.push(`DTEND;VALUE=DATE:${toIcsDate(addDays(parseDateISO(event.end || event.start), 1))}`);
+  } else {
+    lines.push(`DTSTART;TZID=Asia/Seoul:${toIcsLocal(event.start)}`);
+    lines.push(`DTEND;TZID=Asia/Seoul:${toIcsLocal(event.end || event.start)}`);
+  }
+  if (event.location) lines.push(`LOCATION:${escapeIcsText(event.location)}`);
+  if (event.notes) lines.push(`DESCRIPTION:${escapeIcsText(event.notes)}`);
+  const recurrence = normalizeRecurrence(event.recurrence);
+  if (recurrence) lines.push(`RRULE:${formatIcsRRule(recurrence)}`);
+  lines.push("END:VEVENT");
+  return lines;
+}
+
+function parseIcsCalendar(text) {
+  const blocks = unfoldIcsLines(text).join("\n").split("BEGIN:VEVENT").slice(1);
+  const nowIso = new Date().toISOString();
+  return blocks.map((block) => parseIcsEvent(block, nowIso)).filter(Boolean);
+}
+
+function parseIcsEvent(block, nowIso) {
+  const props = new Map();
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line === "END:VEVENT") continue;
+    const idx = line.indexOf(":");
+    if (idx < 0) continue;
+    const key = line.slice(0, idx).toUpperCase();
+    const name = key.split(";")[0];
+    props.set(name, { key, value: line.slice(idx + 1) });
+  }
+  const startProp = props.get("DTSTART");
+  if (!startProp) return null;
+  const allDay = /VALUE=DATE/.test(startProp.key);
+  const start = parseIcsDateValue(startProp.value, allDay);
+  let end = parseIcsDateValue(props.get("DTEND")?.value || startProp.value, allDay);
+  if (allDay && props.get("DTEND")?.value) {
+    const endDate = parseDateISO(end);
+    if (endDate) end = formatLocalDate(addDays(endDate, -1));
+  }
+  if (!start) return null;
+  return {
+    id: crypto.randomUUID(),
+    uid: unescapeIcsText(props.get("UID")?.value || ""),
+    title: unescapeIcsText(props.get("SUMMARY")?.value || "(untitled)"),
+    allDay,
+    start,
+    end,
+    location: unescapeIcsText(props.get("LOCATION")?.value || ""),
+    notes: unescapeIcsText(props.get("DESCRIPTION")?.value || ""),
+    recurrence: parseIcsRRule(props.get("RRULE")?.value || ""),
+    recurrenceExceptions: [],
+    reminders: [],
+    notifiedReminders: [],
+    color: "accent",
+    done: false,
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
+}
+
+function unfoldIcsLines(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const out = [];
+  for (const line of lines) {
+    if (/^[ \t]/.test(line) && out.length) out[out.length - 1] += line.slice(1);
+    else out.push(line);
+  }
+  return out;
+}
+
+function parseIcsDateValue(value, allDay) {
+  const text = String(value || "");
+  if (allDay) return text.replace(/(\d{4})(\d{2})(\d{2}).*/, "$1-$2-$3");
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(text);
+  if (!match) return "";
+  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`;
+}
+
+function parseIcsRRule(value) {
+  const parts = Object.fromEntries(String(value || "").split(";").map((part) => {
+    const [key, val] = part.split("=");
+    return [key, val];
+  }));
+  const frequency = String(parts.FREQ || "").toLowerCase();
+  return normalizeRecurrence({
+    frequency,
+    interval: Number(parts.INTERVAL || 1),
+    until: parts.UNTIL ? parseIcsDateValue(parts.UNTIL, true) : undefined,
+    count: parts.COUNT ? Number(parts.COUNT) : undefined
+  });
+}
+
+function formatIcsRRule(recurrence) {
+  const parts = [`FREQ=${String(recurrence.frequency).toUpperCase()}`];
+  if (recurrence.interval && recurrence.interval !== 1) parts.push(`INTERVAL=${recurrence.interval}`);
+  if (recurrence.until) parts.push(`UNTIL=${toIcsDate(recurrence.until)}T235959Z`);
+  if (recurrence.count) parts.push(`COUNT=${recurrence.count}`);
+  return parts.join(";");
+}
+
+function toIcsDate(value) {
+  if (value instanceof Date) return `${value.getFullYear()}${String(value.getMonth() + 1).padStart(2, "0")}${String(value.getDate()).padStart(2, "0")}`;
+  return String(value || "").slice(0, 10).replaceAll("-", "");
+}
+
+function toIcsLocal(value) {
+  return String(value || "").replace(/[-:]/g, "").slice(0, 13) + "00";
+}
+
+function formatIcsUtc(date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function escapeIcsText(value) {
+  return String(value || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
+function unescapeIcsText(value) {
+  return String(value || "").replace(/\\n/g, "\n").replace(/\\([\\,;])/g, "$1");
 }
 
 // ===== Reminders =====

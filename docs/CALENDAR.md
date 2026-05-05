@@ -27,6 +27,8 @@ Event shape:
   notes,
   color,
   reminders,
+  recurrence,
+  recurrenceExceptions,
   notifiedReminders,
   done,
   createdAt,
@@ -61,7 +63,7 @@ The server classifies intent and normalizes payloads. It does not write calendar
 
 `calendar.propose` stores a pending create action in the active room. Confirmation messages such as "응, 추가해줘" can become `calendar.create` using that pending payload. Rejection clears the pending action.
 
-Delete and update flows ask for confirmation before mutation. Today this mostly uses `window.confirm()`; a richer in-app review dialog is a known improvement.
+Delete, update, conflict, repeated-event, and ICS import flows use an in-app review dialog before mutation.
 
 ## UI Behavior
 
@@ -75,12 +77,16 @@ Delete and update flows ask for confirmation before mutation. Today this mostly 
   - calendar view: new event
 - Korean holidays render in calendar cells and agenda columns.
 - Reminders run in the open browser tab.
+- Calendar is fixed to Asia/Seoul. ICS export writes `TZID=Asia/Seoul`, and `/api/agent/intent` always interprets dates in Asia/Seoul.
+- Event edit supports simple recurrence: daily, weekly, monthly, and yearly, with an optional end date.
+- ICS export writes local events as `VEVENT` entries, including `RRULE` when present.
+- ICS import reads common `VEVENT` fields (`SUMMARY`, `DTSTART`, `DTEND`, `LOCATION`, `DESCRIPTION`, `RRULE`) and asks for review before saving.
 
 ## Constraints
 
 - No Google Calendar, Outlook, or ICS sync.
-- No recurrence model.
-- No timezone UI.
+- ICS support is file import/export only; it is not account sync.
+- Recurring event editing applies to the stored series as a whole.
 - No multi-calendar account model.
 - Reminder checks only run while the browser tab is open.
 

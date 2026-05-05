@@ -12,6 +12,7 @@ import { parseUpload } from "./parsers.js";
 import { analyzeDocument } from "./documentAnalysis.js";
 import { classifyIntent } from "./calendarAgent.js";
 import { getKoreanHolidays } from "./holidays.js";
+import { createAbortError } from "./abort.js";
 import {
   listNotebooks,
   getNotebook,
@@ -119,6 +120,29 @@ app.delete("/api/documents/:id", (request, response) => {
   response.json({ removed });
 });
 
+function createRequestAbortController(request, response) {
+  const controller = new AbortController();
+  const abort = (message) => {
+    if (!controller.signal.aborted) controller.abort(createAbortError(message));
+  };
+
+  const handleRequestAborted = () => abort("Client aborted the chat request.");
+  const handleResponseClosed = () => {
+    if (!response.writableEnded) abort("Client disconnected before the chat response completed.");
+  };
+
+  request.on("aborted", handleRequestAborted);
+  response.on("close", handleResponseClosed);
+
+  return {
+    signal: controller.signal,
+    cleanup() {
+      request.off("aborted", handleRequestAborted);
+      response.off("close", handleResponseClosed);
+    }
+  };
+}
+
 app.post("/api/chat", async (request, response) => {
   const messages = Array.isArray(request.body.messages) ? request.body.messages : [];
   const documents = Array.isArray(request.body.documents) ? request.body.documents : [];
@@ -134,6 +158,8 @@ app.post("/api/chat", async (request, response) => {
     return;
   }
 
+  const chatAbort = createRequestAbortController(request, response);
+  const signal = chatAbort.signal;
   let pendingMeta = null;
   const writeHeadOnce = () => {
     if (response.headersSent) return;
@@ -158,6 +184,7 @@ app.post("/api/chat", async (request, response) => {
       personalization,
       notebookId,
       mode,
+      signal,
       onMeta: (meta) => {
         if (meta && (meta.notebook || (meta.citations && meta.citations.length) || meta.analysisMode)) {
           pendingMeta = {
@@ -174,16 +201,21 @@ app.post("/api/chat", async (request, response) => {
         }
       },
       onChunk: (chunk) => {
+        if (signal.aborted || response.destroyed) return;
         writeHeadOnce();
         response.write(chunk);
       }
     });
+    if (signal.aborted || response.destroyed) return;
     writeHeadOnce();
     response.end();
   } catch (error) {
+    if (signal.aborted || response.destroyed) return;
     writeHeadOnce();
     response.write(`\n\n[오류] ${error.message}`);
     response.end();
+  } finally {
+    chatAbort.cleanup();
   }
 });
 

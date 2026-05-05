@@ -46,10 +46,24 @@ export function normalizeReminderList(value) {
   return reminders.sort((left, right) => right.minutesBefore - left.minutesBefore);
 }
 
+export function normalizeRecurrence(value) {
+  if (!value || typeof value !== "object") return null;
+  const frequency = String(value.frequency || "").toLowerCase();
+  if (!["daily", "weekly", "monthly", "yearly"].includes(frequency)) return null;
+  const interval = Math.max(1, Math.min(365, Math.round(Number(value.interval) || 1)));
+  const out = { frequency, interval };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value.until || ""))) out.until = String(value.until);
+  const count = Math.round(Number(value.count));
+  if (Number.isFinite(count) && count > 0) out.count = Math.min(999, count);
+  return out;
+}
+
 export function normalizeCalendarEvent(event) {
   if (!event || typeof event !== "object") return null;
   return {
     ...event,
+    recurrence: normalizeRecurrence(event.recurrence),
+    recurrenceExceptions: Array.isArray(event.recurrenceExceptions) ? event.recurrenceExceptions : [],
     reminders: normalizeReminderList(event.reminders),
     notifiedReminders: Array.isArray(event.notifiedReminders) ? event.notifiedReminders : []
   };
@@ -152,6 +166,11 @@ export const elements = {
   calendarNextButton: document.querySelector("#calendarNextButton"),
   calendarTodayButton: document.querySelector("#calendarTodayButton"),
   calendarViewOptions: Array.from(document.querySelectorAll(".calendar-view-option")),
+  calendarSettingsButton: document.querySelector("#calendarSettingsButton"),
+  calendarSettingsMenu: document.querySelector("#calendarSettingsMenu"),
+  calendarExportButton: document.querySelector("#calendarExportButton"),
+  calendarImportButton: document.querySelector("#calendarImportButton"),
+  calendarImportInput: document.querySelector("#calendarImportInput"),
   calendarGrid: document.querySelector("#calendarGrid"),
   newEventButton: document.querySelector("#newEventButton"),
   upcomingEventsList: document.querySelector("#upcomingEventsList"),
@@ -165,12 +184,19 @@ export const elements = {
   eventAllDayInput: document.querySelector("#eventAllDayInput"),
   eventStartInput: document.querySelector("#eventStartInput"),
   eventEndInput: document.querySelector("#eventEndInput"),
+  eventRecurrenceSelect: document.querySelector("#eventRecurrenceSelect"),
+  eventRecurrenceUntilInput: document.querySelector("#eventRecurrenceUntilInput"),
   eventLocationInput: document.querySelector("#eventLocationInput"),
   eventNotesInput: document.querySelector("#eventNotesInput"),
   eventDoneInput: document.querySelector("#eventDoneInput"),
   eventDoneRow: document.querySelector("#eventDoneRow"),
   eventReminderInputs: Array.from(document.querySelectorAll(".event-reminder-input")),
   eventColorOptions: Array.from(document.querySelectorAll(".event-color-option")),
+  calendarConfirmDialog: document.querySelector("#calendarConfirmDialog"),
+  calendarConfirmTitle: document.querySelector("#calendarConfirmTitle"),
+  calendarConfirmBody: document.querySelector("#calendarConfirmBody"),
+  calendarConfirmCancelButton: document.querySelector("#calendarConfirmCancelButton"),
+  calendarConfirmOkButton: document.querySelector("#calendarConfirmOkButton"),
   calendarCommandForm: document.querySelector("#calendarCommandForm"),
   calendarCommandInput: document.querySelector("#calendarCommandInput"),
   calendarCommandSendButton: document.querySelector("#calendarCommandSendButton"),

@@ -1,4 +1,5 @@
 import { loadLocalEnv } from "./env.js";
+import { createLinkedAbortController, throwIfAborted } from "./abort.js";
 
 loadLocalEnv();
 
@@ -35,8 +36,10 @@ export async function streamMapReduceAnalysis({
   model = DEFAULT_MODEL,
   systemDirective = "",
   onProgress = () => {},
-  onChunk
+  onChunk,
+  signal
 }) {
+  throwIfAborted(signal);
   if (typeof onChunk !== "function") {
     throw new Error("streamMapReduceAnalysis requires onChunk callback for Reduce streaming.");
   }
@@ -56,7 +59,8 @@ export async function streamMapReduceAnalysis({
     batches,
     query: trimmedQuery,
     model,
-    onProgress
+    onProgress,
+    signal
   });
 
   const usable = partials.filter((p) => p && p.text);
@@ -71,7 +75,8 @@ export async function streamMapReduceAnalysis({
     query: trimmedQuery,
     model,
     systemDirective,
-    onChunk
+    onChunk,
+    signal
   });
 
   onProgress({ stage: "done", current: batches.length, total: batches.length, message: "분석 완료" });
@@ -92,19 +97,21 @@ function chunkBatches(items, batchSize) {
   return out;
 }
 
-async function runMapStage({ batches, query, model, onProgress }) {
+async function runMapStage({ batches, query, model, onProgress, signal }) {
   const partials = new Array(batches.length).fill(null);
   let cursor = 0;
   let completed = 0;
 
   async function worker() {
     while (true) {
+      throwIfAborted(signal);
       const index = cursor++;
       if (index >= batches.length) return;
       try {
-        const text = await runMapBatch({ batch: batches[index], query, model, batchIndex: index });
+        const text = await runMapBatch({ batch: batches[index], query, model, batchIndex: index, signal });
         partials[index] = { batchIndex: index, text };
       } catch (err) {
+        if (signal?.aborted) throw err;
         partials[index] = { batchIndex: index, text: "", error: err.message };
         console.warn(`[mapReduce] map batch ${index + 1}/${batches.length} 실패: ${err.message}`);
       } finally {
@@ -124,9 +131,9 @@ async function runMapStage({ batches, query, model, onProgress }) {
   return partials;
 }
 
-async function runMapBatch({ batch, query, model, batchIndex }) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), MAP_TIMEOUT_MS);
+async function runMapBatch({ batch, query, model, batchIndex, signal }) {
+  throwIfAborted(signal);
+  const controller = createLinkedAbortController(signal, MAP_TIMEOUT_MS, "Map batch timed out.");
   try {
     const chunkBlock = batch.map((chunk, localIndex) => {
       const locator = formatChunkLocator(chunk);
@@ -178,11 +185,12 @@ async function runMapBatch({ batch, query, model, batchIndex }) {
     const text = String(payload.message?.content ?? "").trim().slice(0, MAP_PARTIAL_MAX_CHARS);
     return text;
   } finally {
-    clearTimeout(timer);
+    controller.cleanup();
   }
 }
 
-async function runReduceStream({ partials, query, model, systemDirective, onChunk }) {
+async function runReduceStream({ partials, query, model, systemDirective, onChunk, signal }) {
+  throwIfAborted(signal);
   const block = partials.map((p, i) => `[부분 결과 ${i + 1}]\n${p.text}`).join("\n\n");
   const systemParts = [
     "너는 Map 단계의 부분 분석 결과들을 사용자 질문에 답하는 하나의 한국어 응답으로 통합하는 분석가다.",
@@ -197,6 +205,7 @@ async function runReduceStream({ partials, query, model, systemDirective, onChun
 
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -227,6 +236,7 @@ async function runReduceStream({ partials, query, model, systemDirective, onChun
   const decoder = new TextDecoder();
   let buffer = "";
   for await (const raw of response.body) {
+    throwIfAborted(signal);
     buffer += decoder.decode(raw, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";

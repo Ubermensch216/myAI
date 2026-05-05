@@ -144,12 +144,33 @@
             <button id="calendarNextButton" class="icon-button calendar-nav-button" type="button" aria-label="다음 달" title="다음 달">›</button>
             <h2 id="calendarMonthLabel" class="calendar-month-label">2026년 5월</h2>
           </div>
-          <div id="calendarViewToggle" class="calendar-view-toggle" role="group" aria-label="캘린더 보기">
-            <button class="calendar-view-option active" type="button" data-calendar-view="month" aria-pressed="true">월</button>
-            <button class="calendar-view-option" type="button" data-calendar-view="week" aria-pressed="false">주</button>
-            <button class="calendar-view-option" type="button" data-calendar-view="day" aria-pressed="false">일</button>
+          <div class="calendar-header-trailing">
+            <div id="calendarViewToggle" class="calendar-view-toggle" role="group" aria-label="캘린더 보기">
+              <button class="calendar-view-option active" type="button" data-calendar-view="month" aria-pressed="true">월</button>
+              <button class="calendar-view-option" type="button" data-calendar-view="week" aria-pressed="false">주</button>
+              <button class="calendar-view-option" type="button" data-calendar-view="day" aria-pressed="false">일</button>
+            </div>
+            <div class="calendar-settings-wrap">
+              <button id="calendarSettingsButton" class="icon-button calendar-settings-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="캘린더 설정" title="캘린더 설정">
+                <svg class="calendar-settings-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+              <div id="calendarSettingsMenu" class="calendar-settings-menu" hidden role="menu" aria-label="캘린더 설정">
+                <button id="calendarImportButton" class="calendar-settings-item" type="button" role="menuitem">
+                  <span class="calendar-settings-item-title">ICS 가져오기</span>
+                  <span class="calendar-settings-item-desc">.ics 파일에서 일정을 읽어와 이 캘린더에 추가합니다. Google 캘린더, Outlook, 네이버 캘린더 등 다른 앱에서 내보낸 일정 파일을 불러올 때 사용하세요. 가져오기 전 미리보기로 확인합니다.</span>
+                </button>
+                <button id="calendarExportButton" class="calendar-settings-item" type="button" role="menuitem">
+                  <span class="calendar-settings-item-title">ICS 내보내기</span>
+                  <span class="calendar-settings-item-desc">현재 캘린더의 모든 일정을 .ics 파일로 저장합니다. 다른 캘린더 앱(Google, Outlook 등)으로 옮기거나 백업할 때 사용하세요. 시간대는 Asia/Seoul로 기록됩니다.</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+        <input id="calendarImportInput" type="file" accept=".ics,text/calendar" hidden />
 
         <form id="calendarCommandForm" class="calendar-command-bar">
           <input
@@ -218,6 +239,23 @@
           <input id="eventLocationInput" class="text-input" placeholder="예: 회의실 A" />
         </div>
 
+        <div class="field-row field-row-calendar-options">
+          <div class="field">
+            <label class="field-label" for="eventRecurrenceSelect">Repeat</label>
+            <select id="eventRecurrenceSelect" class="text-input">
+              <option value="">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="eventRecurrenceUntilInput">Repeat until</label>
+            <input id="eventRecurrenceUntilInput" class="text-input" type="date" />
+          </div>
+        </div>
+
         <div class="field">
           <label class="field-label" for="eventNotesInput">메모 (선택)</label>
           <textarea id="eventNotesInput" class="text-input custom-prompt-input" rows="3" placeholder="안건, 참석자, 링크 등"></textarea>
@@ -266,6 +304,19 @@
           <span class="dialog-actions-spacer"></span>
           <button class="ghost-button" type="button" id="cancelEventButton">취소</button>
           <button class="send-button" type="submit">저장</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="calendarConfirmDialog" class="settings-dialog calendar-confirm-dialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <h2 id="calendarConfirmTitle">Confirm</h2>
+        </div>
+        <div id="calendarConfirmBody" class="calendar-confirm-body"></div>
+        <div class="dialog-actions">
+          <button id="calendarConfirmCancelButton" class="ghost-button" type="button">Cancel</button>
+          <button id="calendarConfirmOkButton" class="send-button" type="submit">Continue</button>
         </div>
       </form>
     </dialog>

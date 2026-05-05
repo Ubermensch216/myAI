@@ -4,8 +4,9 @@
 
 - Split tests into fast deterministic smoke tests and slower live Ollama integration tests.
 - Add browser-level smoke tests for upload, chat, visualization, notebook selection, citations, Map-Reduce, and calendar flows.
-- Replace destructive `window.confirm()` flows with in-app review dialogs that show the target objects and consequences.
+- Extend rich in-app review dialogs to remaining non-calendar destructive flows.
 - Add storage usage and large-file warnings for encrypted IndexedDB state.
+- Keep expanding XLSX/visualization regression fixtures beyond the current date serial, cached formula, merged cell, blank cell, mixed type, and chart spec cases.
 
 ## Data And Retrieval
 
@@ -18,10 +19,10 @@
 ## Calendar
 
 - Calendar is local-only.
-- No recurrence model.
-- No external calendar sync.
+- Calendar recurrence supports simple full-series rules; single-occurrence exceptions and advanced RRULE patterns are still limited.
+- No external calendar account sync.
 - Reminder checks depend on an open browser tab.
-- No timezone UI.
+- Calendar is fixed to Asia/Seoul. There is no timezone selection UI.
 
 ## UI And Code Organization
 
@@ -32,7 +33,8 @@
 ## Operations
 
 - `ADMIN_TOKEN` protects notebook management routes only.
-- For production-like deployment, bind the app to `127.0.0.1` behind a reverse proxy and add external auth.
+- The security boundary and deployment checklist now live in `docs/SECURITY.md`.
+- For production-like deployment, bind the app to `127.0.0.1` behind a reverse proxy and add TLS, external auth, body-size limits, and rate limits.
 - Reverse proxies must not buffer streaming chat responses.
 - CPU-only Ollama can be slow for document analysis and Map-Reduce.
 

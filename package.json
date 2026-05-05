@@ -9,7 +9,11 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node scripts/smoke-test.mjs"
+    "test": "npm run test:smoke",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "test:xlsx": "node scripts/xlsx-visualization-test.mjs",
+    "test:live": "node scripts/live-test.mjs",
+    "test:ci": "npm run test:xlsx && npm run test:smoke"
   },
   "dependencies": {
     "express": "^4.18.3",

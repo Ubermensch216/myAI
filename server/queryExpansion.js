@@ -1,4 +1,5 @@
 import { loadLocalEnv } from "./env.js";
+import { createLinkedAbortController } from "./abort.js";
 
 loadLocalEnv();
 
@@ -19,14 +20,13 @@ function clampInt(raw, fallback, min, max) {
  * Returns an array starting with the original query, followed by 0..MAX_VARIANTS
  * paraphrases. On any failure (disabled, timeout, parse error) returns [original].
  */
-export async function expandQuery(query, { model = DEFAULT_MODEL } = {}) {
+export async function expandQuery(query, { model = DEFAULT_MODEL, signal } = {}) {
   const original = String(query ?? "").trim();
   if (!original) return [];
   if (!ENABLED || MAX_VARIANTS <= 0) return [original];
   if (original.length > 500) return [original];
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const controller = createLinkedAbortController(signal, TIMEOUT_MS, "Query expansion timed out.");
 
   try {
     const response = await fetch(`${OLLAMA_URL}/api/chat`, {
@@ -67,10 +67,11 @@ export async function expandQuery(query, { model = DEFAULT_MODEL } = {}) {
     const payload = await response.json();
     const variants = parseVariants(payload.message?.content ?? "", original);
     return [original, ...variants];
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     return [original];
   } finally {
-    clearTimeout(timer);
+    controller.cleanup();
   }
 }
 

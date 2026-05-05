@@ -1,4 +1,5 @@
 import { loadLocalEnv } from "./env.js";
+import { throwIfAborted } from "./abort.js";
 import { chunkDocumentSections } from "./chunking.js";
 import { multiQueryHybridSelect } from "./retrieval.js";
 import { embedTexts } from "./embeddings.js";
@@ -35,8 +36,10 @@ export async function streamChat({
   notebookId = null,
   mode = "chat",
   onChunk,
-  onMeta
+  onMeta,
+  signal
 }) {
+  throwIfAborted(signal);
   if (mode === "map_reduce") {
     await runMapReduceChat({
       messages,
@@ -45,12 +48,14 @@ export async function streamChat({
       personalization,
       notebookId,
       onChunk,
-      onMeta
+      onMeta,
+      signal
     });
     return;
   }
 
-  const notebookContext = await loadNotebookContext(notebookId, messages);
+  const notebookContext = await loadNotebookContext(notebookId, messages, { signal });
+  throwIfAborted(signal);
 
   if (typeof onMeta === "function") {
     onMeta({
@@ -59,9 +64,11 @@ export async function streamChat({
     });
   }
 
-  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext);
+  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, { signal });
+  throwIfAborted(signal);
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -83,6 +90,7 @@ export async function streamChat({
   let buffer = "";
 
   for await (const rawChunk of response.body) {
+    throwIfAborted(signal);
     buffer += decoder.decode(rawChunk, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
@@ -97,7 +105,8 @@ export async function streamChat({
   }
 }
 
-async function runMapReduceChat({ messages, documents, model, personalization, notebookId, onChunk, onMeta }) {
+async function runMapReduceChat({ messages, documents, model, personalization, notebookId, onChunk, onMeta, signal }) {
+  throwIfAborted(signal);
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
 
@@ -159,6 +168,7 @@ async function runMapReduceChat({ messages, documents, model, personalization, n
       query: userQuery || "이 자료의 핵심을 정리해주세요.",
       model,
       systemDirective: directive,
+      signal,
       onProgress: ({ stage, current, total, message }) => {
         if (stage === "map" || stage === "start") {
           emitProgress(message || `${stage} ${current}/${total}`);
@@ -179,6 +189,7 @@ async function runMapReduceChat({ messages, documents, model, personalization, n
       onChunk(`\n\n[알림] 분석 한도(${MAP_REDUCE_MAX_CHUNKS}청크)에 따라 앞쪽 ${result.chunkCount}개 청크만 처리했습니다. 더 깊은 분석이 필요하면 자료를 분할하거나 MAP_REDUCE_MAX_CHUNKS를 조정하세요.`);
     }
   } catch (err) {
+    if (signal?.aborted) throw err;
     if (!reduceStarted) onChunk("\n\n");
     onChunk(`[오류] Map-Reduce 분석 실패: ${err.message}`);
   }
@@ -556,7 +567,7 @@ function normalizeStringArray(value, limit) {
     .slice(0, limit);
 }
 
-async function buildMessages(messages, documents, personalization, notebookContext = null) {
+async function buildMessages(messages, documents, personalization, notebookContext = null, { signal } = {}) {
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
@@ -617,7 +628,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const imageDocuments = documents.filter((documentItem) => documentItem.kind === "image");
   const latestUserIndex = findLatestUserMessageIndex(messages);
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-  const context = await buildContext(documents, latestUserQuery);
+  const context = await buildContext(documents, latestUserQuery, { signal });
 
   const mapped = messages.map((message, index) => {
     const mappedMessage = {
@@ -665,21 +676,23 @@ async function buildMessages(messages, documents, personalization, notebookConte
   return mapped;
 }
 
-async function loadNotebookContext(notebookId, messages) {
+async function loadNotebookContext(notebookId, messages, { signal } = {}) {
   if (!notebookId || typeof notebookId !== "string") return null;
   try {
     const latestUserIndex = findLatestUserMessageIndex(messages);
     const query = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-    const result = await queryNotebook(notebookId, query);
+    const result = await queryNotebook(notebookId, query, { signal });
     if (!result.ok) return null;
     return result;
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.warn(`Notebook context load failed for ${notebookId}: ${error.message}`);
     return null;
   }
 }
 
-async function buildContext(documents, query = "") {
+async function buildContext(documents, query = "", { signal } = {}) {
+  throwIfAborted(signal);
   const chunks = collectChunks(documents);
 
   const unavailableDocuments = documents
@@ -699,14 +712,20 @@ async function buildContext(documents, query = "") {
   if (totalLength <= MAX_CONTEXT_CHARS) {
     selected = chunks;
   } else {
-    const queries = await expandQuery(query).catch(() => [query].filter(Boolean));
+    let queries = [query].filter(Boolean);
+    try {
+      queries = await expandQuery(query, { signal });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+    }
     let queryEmbeddings = queries.map(() => null);
     try {
       const allTexts = [...queries, ...chunks.map((c) => c.text)];
-      const vectors = await embedTexts(allTexts);
+      const vectors = await embedTexts(allTexts, { signal });
       queryEmbeddings = vectors.slice(0, queries.length);
       vectors.slice(queries.length).forEach((vec, i) => { chunks[i].embedding = vec; });
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) throw error;
       // BM25 fallback — embedding model not available or request failed
     }
     selected = multiQueryHybridSelect(chunks, queries, queryEmbeddings, MAX_CONTEXT_CHARS);

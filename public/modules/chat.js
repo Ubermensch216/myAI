@@ -10,6 +10,12 @@ import {
   buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
 } from "./calendar.js";
 
+const MB = 1024 * 1024;
+const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
+const LARGE_FILE_WARNING_BYTES = 10 * MB;
+const CHAT_PAYLOAD_WARNING_BYTES = 60 * MB;
+const CHAT_PAYLOAD_LIMIT_BYTES = 72 * MB;
+
 // ===== Busy / abort =====
 
 export function setBusy(busy) {
@@ -28,6 +34,15 @@ export function scrollToBottom() {
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
+function isMessagesNearBottom(threshold = 80) {
+  const { scrollTop, scrollHeight, clientHeight } = elements.messages;
+  return scrollHeight - scrollTop - clientHeight <= threshold;
+}
+
+function maybeScrollToBottom(shouldScroll = isMessagesNearBottom()) {
+  if (shouldScroll) scrollToBottom();
+}
+
 export function setDeepAnalysisEnabled(enabled) {
   state.deepAnalysisEnabled = Boolean(enabled);
   if (elements.deepAnalysisToggle) {
@@ -42,6 +57,44 @@ export function getActiveDocuments() {
   if (!room) return [];
   if (!Array.isArray(room.documents)) room.documents = [];
   return room.documents;
+}
+
+export function estimateJsonBytes(value) {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  } catch {
+    return 0;
+  }
+}
+
+export function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) return "0 KB";
+  if (value >= MB) return `${(value / MB).toFixed(value >= 10 * MB ? 1 : 2)} MB`;
+  if (value >= 1024) return `${Math.ceil(value / 1024)} KB`;
+  return `${Math.ceil(value)} B`;
+}
+
+export function estimateDocumentBytes(documentItem) {
+  return estimateJsonBytes(documentItem);
+}
+
+export function estimateRoomStorageBytes(room) {
+  if (!room) return 0;
+  return estimateJsonBytes({
+    messages: room.messages || [],
+    documents: room.documents || [],
+    selectedNotebookId: room.selectedNotebookId || null,
+    pendingCalendarAction: room.pendingCalendarAction || null
+  });
+}
+
+export function estimateAllRoomsStorageBytes() {
+  return estimateJsonBytes({
+    rooms: state.rooms,
+    calendar: state.calendar,
+    settings: state.settings
+  });
 }
 
 export function getPersonalizationSettings() {
@@ -63,6 +116,7 @@ export async function uploadFiles(files) {
   if (!Array.isArray(room.documents)) room.documents = [];
 
   for (const file of files) {
+    if (!shouldUploadFile(file)) continue;
     elements.uploadProgress.textContent = `${file.name} 처리 중...`;
     const formData = new FormData();
     formData.append("file", file);
@@ -82,6 +136,18 @@ export async function uploadFiles(files) {
   }
 }
 
+function shouldUploadFile(file) {
+  const size = Number(file?.size || 0);
+  if (size > DEFAULT_MAX_UPLOAD_BYTES) {
+    elements.uploadProgress.textContent = `${file.name}: ${formatBytes(size)} 파일은 업로드 한도 ${formatBytes(DEFAULT_MAX_UPLOAD_BYTES)}를 넘습니다.`;
+    return false;
+  }
+  if (size >= LARGE_FILE_WARNING_BYTES) {
+    return window.confirm(`${file.name}은 ${formatBytes(size)}입니다. 큰 파일은 브라우저 저장소와 채팅 전송 용량을 빠르게 사용합니다. 계속 업로드할까요?`);
+  }
+  return true;
+}
+
 export async function confirmAndRemoveUploadedFile(uploadedFile) {
   const fileName = formatDisplayFileName(uploadedFile);
   const confirmed = window.confirm(`"${fileName}" 자료를 현재 대화방에서 삭제할까요?`);
@@ -97,6 +163,20 @@ export async function removeUploadedFile(uploadedFile) {
   room.updatedAt = new Date().toISOString();
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+}
+
+export async function confirmAndClearRoomDocuments(room = getActiveRoom()) {
+  if (!room || !Array.isArray(room.documents) || !room.documents.length) return;
+  const totalBytes = room.documents.reduce((sum, doc) => sum + estimateDocumentBytes(doc), 0);
+  const confirmed = window.confirm(`현재 대화방의 첨부 ${room.documents.length}개(${formatBytes(totalBytes)})를 정리할까요? 대화 내용은 유지됩니다.`);
+  if (!confirmed) return;
+  const documents = [...room.documents];
+  await Promise.all(documents.map((doc) => fetch(`/api/documents/${doc.id}`, { method: "DELETE" }).catch(() => {})));
+  room.documents = [];
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  elements.uploadProgress.textContent = "현재 대화방의 첨부를 정리했습니다.";
 }
 
 // ===== Send message =====
@@ -174,18 +254,20 @@ export async function requestTextAssistantResponse(room) {
 
   try {
     const useDeepAnalysis = state.deepAnalysisEnabled;
+    const payload = {
+      model: elements.modelInput.value.trim() || "gemma3n:e2b",
+      messages: room.messages.map(({ role, content }) => ({ role, content })),
+      documents: getActiveDocuments(),
+      personalization: getPersonalizationSettings(),
+      notebookId: room.selectedNotebookId || null,
+      ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
+    };
+    validateChatPayloadSize(payload);
     const response = await fetch("/api/chat", {
       method: "POST",
       signal: state.abortController.signal,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: elements.modelInput.value.trim() || "gemma3n:e2b",
-        messages: room.messages.map(({ role, content }) => ({ role, content })),
-        documents: getActiveDocuments(),
-        personalization: getPersonalizationSettings(),
-        notebookId: room.selectedNotebookId || null,
-        ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
-      })
+      body: JSON.stringify(payload)
     });
     if (useDeepAnalysis) setDeepAnalysisEnabled(false);
 
@@ -202,21 +284,23 @@ export async function requestTextAssistantResponse(room) {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
+      const stickToBottom = isMessagesNearBottom();
       answer += decoder.decode(value, { stream: true });
       advanceThinkingProgress(thinking, getThinkingStepCount(thinking) - 1);
       if (!assistant) {
-        assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+        assistant = appendMessage("assistant", "", { persist: false, streaming: true, autoScroll: stickToBottom });
         assistantBody = assistant.querySelector(".message-body");
       }
       assistant.dataset.copyText = answer;
       renderAssistantContent(assistantBody, answer);
-      scrollToBottom();
+      maybeScrollToBottom(stickToBottom);
     }
 
     answer += decoder.decode();
     const finalAnswer = ensureAddressedAnswer(answer || "응답이 비어 있습니다.");
     if (!assistant) {
-      assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+      const stickToBottom = isMessagesNearBottom();
+      assistant = appendMessage("assistant", "", { persist: false, streaming: true, autoScroll: stickToBottom });
       assistantBody = assistant.querySelector(".message-body");
     }
     assistant.dataset.copyText = finalAnswer;
@@ -236,14 +320,15 @@ export async function requestTextAssistantResponse(room) {
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
     renderFollowupSuggestions(assistant, [], { loading: true });
-    attachFollowupSuggestions(room, assistantMessage, assistant).finally(scrollToBottom);
+    attachFollowupSuggestions(room, assistantMessage, assistant);
   } catch (error) {
     if (error.name === "AbortError") {
       if (assistant) assistant.classList.remove("streaming");
       return;
     }
     if (!assistant) {
-      assistant = appendMessage("assistant", "", { persist: false, streaming: true });
+      const stickToBottom = isMessagesNearBottom();
+      assistant = appendMessage("assistant", "", { persist: false, streaming: true, autoScroll: stickToBottom });
       assistantBody = assistant.querySelector(".message-body");
     }
     const errorText = `[오류] ${error.message}`;
@@ -254,7 +339,18 @@ export async function requestTextAssistantResponse(room) {
     removeThinking(thinking);
     state.abortController = null;
     setBusy(false);
-    scrollToBottom();
+    maybeScrollToBottom();
+  }
+}
+
+function validateChatPayloadSize(payload) {
+  const payloadBytes = estimateJsonBytes(payload);
+  if (payloadBytes > CHAT_PAYLOAD_LIMIT_BYTES) {
+    throw new Error(`전송할 대화/첨부 용량이 ${formatBytes(payloadBytes)}입니다. 서버 요청 한도에 가까워 전송하지 않았습니다. 현재 방의 첨부를 정리하거나 큰 파일을 나눈 뒤 다시 시도해주세요.`);
+  }
+  if (payloadBytes > CHAT_PAYLOAD_WARNING_BYTES) {
+    const confirmed = window.confirm(`이번 요청 용량이 ${formatBytes(payloadBytes)}입니다. 큰 문서/이미지가 포함되어 전송이 느리거나 실패할 수 있습니다. 계속할까요?`);
+    if (!confirmed) throw new DOMException("Chat payload was cancelled by the user.", "AbortError");
   }
 }
 
@@ -500,11 +596,12 @@ export function appendMessage(role, text, options = {}) {
     renderCitationsPanel(article, options.citations);
   }
   elements.messages.append(article);
-  scrollToBottom();
+  if (options.autoScroll !== false) scrollToBottom();
   return article;
 }
 
 export function renderFollowupSuggestions(article, suggestions = [], options = {}) {
+  const stickToBottom = isMessagesNearBottom();
   article.querySelector(".followup-suggestions")?.remove();
   const items = Array.isArray(suggestions)
     ? suggestions.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
@@ -524,6 +621,7 @@ export function renderFollowupSuggestions(article, suggestions = [], options = {
     status.textContent = "추천 질문을 준비하는 중...";
     wrapper.append(status);
     article.append(wrapper);
+    maybeScrollToBottom(stickToBottom);
     return;
   }
 
@@ -544,6 +642,7 @@ export function renderFollowupSuggestions(article, suggestions = [], options = {
   }
   wrapper.append(list);
   article.append(wrapper);
+  maybeScrollToBottom(stickToBottom);
 }
 
 export function renderCitationsPanel(article, citations) {

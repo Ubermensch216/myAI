@@ -10,10 +10,16 @@ const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".xls", ".csv", "
 const MAX_STORED_TABLE_ROWS = 800;
 const MAX_STORED_TABLE_COLUMNS = 60;
 const MAX_PROFILE_VALUES = 12;
+const BUILTIN_DATE_FORMAT_IDS = new Set([
+  14, 15, 16, 17, 18, 19, 20, 21, 22,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+  45, 46, 47, 50, 57
+]);
 
 const xmlParser = new XMLParser({
   ignoreAttributes: true,
   preserveOrder: false,
+  parseTagValue: false,
   trimValues: true
 });
 
@@ -21,6 +27,7 @@ const xmlParserWithAttributes = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
   preserveOrder: false,
+  parseTagValue: false,
   trimValues: true
 });
 
@@ -109,6 +116,7 @@ async function parseWorkbook(file) {
   const buffer = await fs.readFile(file.path);
   const zip = await JSZip.loadAsync(buffer);
   const sharedStrings = await readSharedStrings(zip);
+  const dateStyleIndexes = await readDateStyleIndexes(zip);
   const sheetNames = await readSheetNames(zip);
   const sheetFiles = Object.keys(zip.files)
     .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
@@ -118,7 +126,7 @@ async function parseWorkbook(file) {
   for (const [index, sheetPath] of sheetFiles.entries()) {
     const xml = await zip.file(sheetPath).async("string");
     const parsed = xmlParserWithAttributes.parse(xml);
-    const rows = readWorksheetRows(parsed, sharedStrings);
+    const rows = readWorksheetRows(parsed, sharedStrings, dateStyleIndexes);
     const table = buildTableFromRows(sheetNames[index] || `Sheet ${index + 1}`, rows);
     const text = normalizeText(tableRowsForText(table).map((row) => row.join(", ")).join("\n"));
 
@@ -174,13 +182,35 @@ async function readSheetNames(zip) {
   return asArray(parsed.workbook?.sheets?.sheet).map((sheet) => String(sheet.name || ""));
 }
 
-function readWorksheetRows(parsed, sharedStrings) {
+async function readDateStyleIndexes(zip) {
+  const file = zip.file("xl/styles.xml");
+  if (!file) return new Set();
+
+  const parsed = xmlParserWithAttributes.parse(await file.async("string"));
+  const customDateFormatIds = new Set(
+    asArray(parsed.styleSheet?.numFmts?.numFmt)
+      .filter((format) => isDateFormatCode(format?.formatCode))
+      .map((format) => Number(format.numFmtId))
+      .filter(Number.isFinite)
+  );
+
+  const dateStyleIndexes = new Set();
+  for (const [index, xf] of asArray(parsed.styleSheet?.cellXfs?.xf).entries()) {
+    const numFmtId = Number(xf?.numFmtId);
+    if (BUILTIN_DATE_FORMAT_IDS.has(numFmtId) || customDateFormatIds.has(numFmtId)) {
+      dateStyleIndexes.add(index);
+    }
+  }
+  return dateStyleIndexes;
+}
+
+function readWorksheetRows(parsed, sharedStrings, dateStyleIndexes = new Set()) {
   const rows = asArray(parsed.worksheet?.sheetData?.row).map((row) => {
     const values = [];
 
     for (const cell of asArray(row.c)) {
       const columnIndex = getCellColumnIndex(cell?.r);
-      const value = readCellValue(cell, sharedStrings);
+      const value = readCellValue(cell, sharedStrings, dateStyleIndexes);
       if (columnIndex >= 0) values[columnIndex] = value;
       else values.push(value);
     }
@@ -188,7 +218,7 @@ function readWorksheetRows(parsed, sharedStrings) {
     return trimTrailingEmpty(values.map((value) => String(value ?? "")));
   });
 
-  return rows;
+  return applyMergedCells(rows, readMergedRanges(parsed));
 }
 
 function getCellColumnIndex(reference = "") {
@@ -202,12 +232,104 @@ function getCellColumnIndex(reference = "") {
   return index - 1;
 }
 
-function readCellValue(cell, sharedStrings) {
+function readCellValue(cell, sharedStrings, dateStyleIndexes = new Set()) {
   if (!cell) return "";
   if (cell.t === "s") return sharedStrings[Number(cell.v)] ?? "";
   if (cell.t === "inlineStr") return collectText(cell.is).join("");
   if (cell.t === "b") return cell.v === "1" ? "TRUE" : "FALSE";
+  if (isDateStyleCell(cell, dateStyleIndexes)) {
+    const converted = excelSerialDateToIso(cell.v);
+    if (converted) return converted;
+  }
   return String(cell.v ?? "");
+}
+
+function isDateStyleCell(cell, dateStyleIndexes) {
+  const styleIndex = Number(cell?.s);
+  return Number.isInteger(styleIndex)
+    && dateStyleIndexes.has(styleIndex)
+    && cell?.v !== undefined
+    && cell.t !== "str";
+}
+
+function isDateFormatCode(value) {
+  const code = String(value ?? "")
+    .replace(/"[^"]*"/g, "")
+    .replace(/\\./g, "")
+    .replace(/\[[^\]]*]/g, "")
+    .toLowerCase();
+  if (!code) return false;
+  if (/[ymd]/.test(code)) return true;
+  return /h{1,2}:m{1,2}|m{1,2}:s{1,2}|am\/pm/.test(code);
+}
+
+function excelSerialDateToIso(value) {
+  const serial = Number(value);
+  if (!Number.isFinite(serial) || serial <= 0) return "";
+
+  const wholeDays = Math.floor(serial);
+  const fraction = serial - wholeDays;
+  const leapBugOffset = wholeDays >= 60 ? -1 : 0;
+  const epoch = Date.UTC(1899, 11, 31);
+  const millis = epoch + (wholeDays + leapBugOffset) * 86400000 + Math.round(fraction * 86400000);
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const min = String(date.getUTCMinutes()).padStart(2, "0");
+  const ss = String(date.getUTCSeconds()).padStart(2, "0");
+  return fraction
+    ? `${yyyy}-${mm}-${dd} ${hh}:${min}${ss !== "00" ? `:${ss}` : ""}`
+    : `${yyyy}-${mm}-${dd}`;
+}
+
+function readMergedRanges(parsed) {
+  return asArray(parsed.worksheet?.mergeCells?.mergeCell)
+    .map((mergeCell) => parseCellRange(mergeCell?.ref))
+    .filter(Boolean);
+}
+
+function parseCellRange(reference) {
+  const [startRef, endRef] = String(reference ?? "").split(":");
+  const start = parseCellReference(startRef);
+  const end = parseCellReference(endRef || startRef);
+  if (!start || !end) return null;
+  return {
+    startRow: Math.min(start.row, end.row),
+    endRow: Math.max(start.row, end.row),
+    startColumn: Math.min(start.column, end.column),
+    endColumn: Math.max(start.column, end.column)
+  };
+}
+
+function parseCellReference(reference) {
+  const match = String(reference ?? "").match(/^([A-Z]+)(\d+)$/i);
+  if (!match) return null;
+  return {
+    column: getCellColumnIndex(match[1]),
+    row: Number(match[2]) - 1
+  };
+}
+
+function applyMergedCells(rows, ranges) {
+  if (!ranges.length) return rows;
+  const nextRows = rows.map((row) => [...row]);
+  for (const range of ranges) {
+    const source = nextRows[range.startRow]?.[range.startColumn];
+    if (source === undefined || source === "") continue;
+    for (let rowIndex = range.startRow; rowIndex <= range.endRow; rowIndex += 1) {
+      if (!nextRows[rowIndex]) nextRows[rowIndex] = [];
+      for (let columnIndex = range.startColumn; columnIndex <= range.endColumn; columnIndex += 1) {
+        if (nextRows[rowIndex][columnIndex] === undefined || nextRows[rowIndex][columnIndex] === "") {
+          nextRows[rowIndex][columnIndex] = source;
+        }
+      }
+    }
+  }
+  return nextRows.map((row) => trimTrailingEmpty(row.map((value) => String(value ?? ""))));
 }
 
 function parseCsvRows(text) {

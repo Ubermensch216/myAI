@@ -23,6 +23,8 @@ Useful checks:
 curl.exe -s http://127.0.0.1:11434/api/tags
 curl.exe -s http://127.0.0.1:3000/api/status
 npm.cmd test
+npm.cmd run test:xlsx
+npm.cmd run test:live
 ```
 
 ## Current Local Model Notes
@@ -74,6 +76,7 @@ Docs:
 - `docs/API.md` - endpoint summary.
 - `docs/RAG.md` - document context, notebook retrieval, embeddings, Map-Reduce.
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
+- `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
 - `docs/KNOWN_ISSUES.md` - constraints and next improvements.
 
 ## Deployment Topology
@@ -146,16 +149,16 @@ CSV/XLSX prompt
 
 ## High-Priority Caveats
 
-- `npm.cmd test` is useful as a smoke check, but recent local runs can hit the 120-second limit around notebook CRUD/embedding/analysis flows. Split fast unit smoke from Ollama live integration tests before relying on it for tight CI feedback.
+- `npm.cmd test` runs the fast app-server smoke checks. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
 - Notebook ingest stores `chunks[].embedding`, and `queryNotebook()` now passes those stored embeddings into query-time chunk objects. `multiQueryHybridSelect()` can use BM25 + CJK bigram + vector ranking with RRF when query embeddings are available.
 - Notebook RAG is still JSON-file + in-memory LRU cache based. For larger department notebooks, plan for a persistent vector index, ingest retry/progress reporting, embedding dimension validation, and retrieval quality logs.
-- Server-side cancellation/timeout propagation needs hardening. The browser uses `AbortController`, but long Ollama streaming, Map-Reduce, or large analysis work may continue after client disconnects unless server fetches are wired to abort signals.
+- `/api/chat` now propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
 - Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only.
-- `/api/chat` currently receives active documents in the JSON body. Large documents/images can hit browser storage or `MAX_JSON_BYTES` limits.
-- `ADMIN_TOKEN` protects notebook management routes only. The app is otherwise designed as a local/trusted-network tool unless deployed behind additional auth.
+- `/api/chat` receives active documents in the JSON body. The browser now warns on large uploads, shows room/attachment storage estimates, offers active-room attachment cleanup, and preflights chat payload size before sending.
+- Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects notebook management only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
 - Calendar data is local-only. There is no Google/Outlook/ICS sync.
 - Destructive calendar/notebook/file actions still mostly use `window.confirm()`. Rich in-app review dialogs are a good next step.
-- Visualization is plan-first and server-validated, but XLSX parsing is not a complete spreadsheet engine. Date serial conversion, cached formula values, and broader chart QA need extra validation for production Excel compatibility.
+- Visualization is plan-first and server-validated. XLSX QA now covers date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, and chart spec regression, but XLSX parsing is still not a complete spreadsheet engine.
 - `public/app.js` is the orchestrator (~709 lines). Heavy logic lives in `public/modules/`. Cross-module signals use `window.dispatchEvent(new CustomEvent("myai:..."))` to avoid circular imports.
 
 ## Editing Rules For Future Agents
