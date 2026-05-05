@@ -222,7 +222,10 @@ export async function sendMessage(prompt) {
       await handleCalendarIntent(room, room.pendingCalendarAction);
       return;
     }
-    if (hasCalendarKeyword(prompt) && isLikelyCalendarActionPrompt(prompt)) {
+    // Only show the vague calendar request warning if the LLM classification failed or wasn't definitive.
+    // If intentResult.intent is 'chat', it means the LLM explicitly decided this is a normal conversation.
+    const isExplicitChat = intentResult && intentResult.intent === "chat" && !intentResult.fallbackReason;
+    if (!isExplicitChat && hasCalendarKeyword(prompt) && isLikelyCalendarActionPrompt(prompt)) {
       await handleCalendarStatusMessage(
         room,
         "일정 요청으로 보이지만 날짜, 시간, 제목을 확정하지 못했습니다. 실제 캘린더에는 아직 반영하지 않았습니다. 예: \"5월 4일 오후 12시에 월클라우드 점심 식사 추가해줘\"처럼 다시 말씀해주세요."

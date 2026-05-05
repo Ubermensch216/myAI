@@ -734,10 +734,10 @@ export async function executeCalendarIntent(intentResult) {
 
 // ===== Calendar intent detection =====
 
-const CALENDAR_KEYWORD_PATTERN = /(일정|약속|회의|미팅|캘린더|스케줄|예약|행사|모임|잡아|등록|추가|취소|삭제|지워|빼|없애|옮겨|변경|바꿔|미뤄|미루|보여줘|알려줘|조회|검색|내일|모레|어제|오늘|이번\s*주|다음\s*주|지난\s*주|\d+\s*시|오전|오후)/;
+const CALENDAR_KEYWORD_PATTERN = /(일정|약속|회의|미팅|캘린더|스케줄|예약|행사|모임|이번\s*주|다음\s*주|지난\s*주|\d+\s*시)/;
 const CALENDAR_CONFIRMATION_PATTERN = /^(응|네|예|그래|좋아|오케이|ㅇㅋ|확인|진행|해줘|추가|등록|잡아|잡아줘|추가해줘|등록해줘)(\b|[,.!?\s]|$)/i;
 const CALENDAR_REJECTION_PATTERN = /^(아니|아니요|취소|그만|하지마|하지\s*마|보류|됐어|괜찮아)(\b|[,.!?\s]|$)/i;
-const CALENDAR_ACTION_PATTERN = /(잡아|잡을|등록|추가|예약|취소|삭제|지워|빼|없애|옮겨|변경|바꿔|미뤄|미루|조회|검색|보여줘|알려줘)/;
+const CALENDAR_ACTION_PATTERN = /(잡아|잡을|등록|추가|예약|취소|삭제|지워|빼|없애|옮겨|변경|바꿔|미뤄|미루|조회|검색)/;
 
 export function hasCalendarKeyword(prompt) {
   return CALENDAR_KEYWORD_PATTERN.test(String(prompt || ""));
