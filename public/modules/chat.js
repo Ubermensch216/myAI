@@ -528,12 +528,10 @@ async function requestFollowupSuggestions(room) {
 }
 
 function buildLocalFollowupSuggestions(room) {
-  const lastUserMessage = [...room.messages].reverse().find((m) => m.role !== "assistant");
-  const topic = createFollowupTopic(lastUserMessage?.content);
   return [
-    `${topic}을 더 구체적으로 설명해줘`,
-    `${topic}에서 꼭 확인해야 할 점은 뭐야?`,
-    "다음 단계로 무엇을 확인하면 좋을까?"
+    "방금 논의한 내용의 핵심을 요약하고, 실무 적용 시 가장 주의할 점을 알려줘",
+    "이 주제와 관련하여 우리가 간과했을 만한 리스크나 반대 관점이 있을까?",
+    "이 개념을 실제 운영 환경이나 더 큰 규모의 프로젝트에 적용한다면 어떻게 변화해야 할까?"
   ];
 }
 
@@ -960,10 +958,7 @@ export function createTitleFromPrompt(prompt) {
 }
 
 function ensureAddressedAnswer(answer) {
-  const userTitle = state.settings.userTitle;
-  if (!userTitle || answer.startsWith("[오류]")) return answer;
-  if (answer.slice(0, 120).includes(userTitle)) return answer;
-  return `${userTitle}, ${answer}`;
+  return answer;
 }
 
 function decodeNotebookMetaHeader(headerValue) {

@@ -102,10 +102,11 @@ Docs:
 Chat:
 
 ```text
-public/app.js -> POST /api/chat
+public/modules/chat.js -> POST /api/chat
 -> server/ollama.js builds prompt/context
 -> Ollama streams
 -> browser renders and saves encrypted state in IndexedDB
+-> /api/followups generates autonomous context-aware suggestions
 ```
 
 Notebook RAG:
@@ -132,8 +133,9 @@ Calendar:
 
 ```text
 calendar-like prompt
--> /api/agent/intent
--> server returns intent/payload only
+-> refined regex pre-filtering (public/modules/calendar.js)
+-> /api/agent/intent (server/calendarAgent.js)
+-> client orchestration (isExplicitChat check)
 -> browser mutates local state.calendar.events
 ```
 

@@ -4,6 +4,7 @@ import { chunkDocumentSections } from "./chunking.js";
 import { multiQueryHybridSelect } from "./retrieval.js";
 import { embedTexts } from "./embeddings.js";
 import { expandQuery } from "./queryExpansion.js";
+import { logRetrieval } from "./rag/retrievalLogger.js";
 import { queryNotebook, loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import {
@@ -217,15 +218,12 @@ export async function generateFollowupSuggestions({
         {
           role: "system",
           content: [
-            "You generate helpful follow-up questions for a Korean local AI assistant UI.",
-            "Return only strict JSON.",
-            "The JSON must be an array of 1 to 3 strings.",
-            "Each string must be a concise Korean question the user may want to ask next.",
-            "Questions must be specific to the concrete topic, nouns, files, code, or decision in the conversation.",
-            "Questions should expand knowledge, clarify context, compare alternatives, or suggest a useful next step.",
-            "Avoid generic questions such as '무슨 내용인가요?', '좀 더 자세히 말씀해 주세요', or '어떤 질문을 하고 싶으신가요?'.",
-            "Good examples: '답변 섹션 제목을 더 눈에 띄게 만드는 UI 패턴은 뭐가 좋을까?', '추천 질문 생성 품질을 높이려면 어떤 프롬프트가 적절할까?'.",
-            "Do not include numbering, bullets, markdown, explanations, or extra keys."
+            "You are a helpful assistant that generates follow-up questions for a Korean AI chat UI.",
+            "Analyze the provided conversation and generate exactly 3 follow-up questions that the user is most likely to be curious about next.",
+            "The questions must be highly contextual, grounded in the specific topics, nouns, and logic discussed in the recent messages.",
+            "Do not follow a fixed template; instead, use your intelligence to decide whether to ask for clarification, explore a related sub-topic, or suggest a practical next step based on what makes the most sense for this specific talk.",
+            "Return only a strict JSON array of 3 Korean strings.",
+            "Example: [\"질문1\", \"질문2\", \"질문3\"]"
           ].join("\n")
         },
         {
@@ -579,7 +577,6 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "너는 로컬 Ollama 기반 문서/이미지 분석 도우미다.",
     `너의 이름은 "${aiName}"이다.`,
     `사용자의 호칭은 "${userTitle}"이다.`,
-    `답변을 시작할 때 자연스럽게 "${userTitle}"을 한 번 부른다.`,
     "한국어로 명확하고 근거 중심으로 답한다.",
     "답변은 일반 문장과 짧은 단락으로 작성한다.",
     "마크다운 제목, 굵게, 코드블록, 불릿 기호는 되도록 사용하지 않는다.",
@@ -708,17 +705,27 @@ async function buildContext(documents, query = "", { signal } = {}) {
 
   const totalLength = chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
   let selected;
+  const t0 = Date.now();
+  const timing = {};
+  let fallbackReason = null;
+  let queries = query ? [query] : [];
 
   if (totalLength <= MAX_CONTEXT_CHARS) {
     selected = chunks;
+    fallbackReason = "within_budget";
   } else {
-    let queries = [query].filter(Boolean);
+    queries = [query].filter(Boolean);
+    const tExpand = Date.now();
     try {
       queries = await expandQuery(query, { signal });
     } catch (error) {
       if (signal?.aborted) throw error;
+      fallbackReason = "expand_failed";
     }
+    timing.queryExpansionMs = Date.now() - tExpand;
+
     let queryEmbeddings = queries.map(() => null);
+    const tEmbed = Date.now();
     try {
       const allTexts = [...queries, ...chunks.map((c) => c.text)];
       const vectors = await embedTexts(allTexts, { signal });
@@ -726,10 +733,33 @@ async function buildContext(documents, query = "", { signal } = {}) {
       vectors.slice(queries.length).forEach((vec, i) => { chunks[i].embedding = vec; });
     } catch (error) {
       if (signal?.aborted) throw error;
+      fallbackReason = fallbackReason || "embed_failed";
       // BM25 fallback — embedding model not available or request failed
     }
+    timing.queryEmbeddingMs = Date.now() - tEmbed;
+
+    const tRetrieve = Date.now();
     selected = multiQueryHybridSelect(chunks, queries, queryEmbeddings, MAX_CONTEXT_CHARS);
+    timing.retrievalMs = Date.now() - tRetrieve;
   }
+  timing.totalMs = Date.now() - t0;
+
+  logRetrieval({
+    profile: "personal",
+    query,
+    queryVariants: queries.length,
+    corpus: {
+      chunkCount: chunks.length,
+      embeddedChunkCount: chunks.reduce((n, c) => n + (c.embedding ? 1 : 0), 0)
+    },
+    timing,
+    selected: selected.map((c, i) => ({
+      rank: i + 1,
+      documentId: c.documentId ?? null,
+      chunkIndex: c.chunkIndex ?? c.index ?? null
+    })),
+    fallback: fallbackReason
+  });
 
   let body = selected.map((chunk) => chunk.text).join("\n\n");
 

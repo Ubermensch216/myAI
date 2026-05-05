@@ -42,11 +42,14 @@ Flow:
 
 ```text
 calendar-like prompt
--> public/app.js#hasCalendarKeyword()
+-> public/modules/calendar.js#hasCalendarKeyword() (refined regex pre-filtering)
 -> POST /api/agent/intent
 -> server/calendarAgent.js#classifyIntent()
--> browser handles create/list/delete/update
+-> browser orchestration in public/modules/chat.js
+-> local mutation in state.calendar.events
 ```
+
+To minimize false positives, the client uses a hardened `CALENDAR_KEYWORD_PATTERN` that excludes common conversational words like "오늘" or "보여줘" unless accompanied by clear action intent.
 
 Valid intents:
 
@@ -57,7 +60,7 @@ Valid intents:
 - `calendar.delete`
 - `calendar.update`
 
-The server classifies intent and normalizes payloads. It does not write calendar state.
+The orchestration logic in `public/modules/chat.js` includes an `isExplicitChat` check: if the LLM classifies a message as `chat` without fallback reasons, the app suppresses "vague calendar request" warnings even if calendar keywords were detected. This ensures natural conversation about dates/times doesn't over-trigger the calendar agent's defensive prompts.
 
 ## Confirmation Flow
 

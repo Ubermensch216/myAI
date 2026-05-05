@@ -20,13 +20,14 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 ## Features
 
 - Multi-room streaming chat with stop/regenerate/edit/copy flows.
+- Autonomous, context-aware follow-up suggestions grounded in conversation logic.
 - Upload support for PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, and GIF.
 - Upload-time document summary/topic extraction through local Ollama.
 - Long-document retrieval with query expansion, BM25/CJK bigram ranking, and optional vector ranking.
 - Department notebooks stored on the server filesystem with citation panels in chat.
 - Whole-document or whole-notebook analysis through the `전체 분석` Map-Reduce mode.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
-- Local AI calendar intent classification for create/list/delete/update flows.
+- Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
 - Personalized app name, avatars, banner, theme, accent color, and custom prompt.
 

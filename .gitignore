@@ -2,6 +2,7 @@ node_modules/
 uploads/*
 !uploads/.gitkeep
 data/notebooks/
+data/logs/
 .env
 *.log
 server.log

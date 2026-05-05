@@ -7,6 +7,7 @@ import { multiQueryHybridSelect, greedyFit } from "./retrieval.js";
 import { embedTexts } from "./embeddings.js";
 import { expandQuery } from "./queryExpansion.js";
 import { analyzeDocument } from "./documentAnalysis.js";
+import { logRetrieval } from "./rag/retrievalLogger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +15,9 @@ const rootDir = path.resolve(__dirname, "..");
 const NOTEBOOKS_DIR = path.join(rootDir, "data", "notebooks");
 const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
 const NOTEBOOK_CHUNK_CACHE_MAX = Number(process.env.NOTEBOOK_CHUNK_CACHE_MAX || 4);
+const EMBED_INGEST_BATCH_SIZE = Math.max(1, Number(process.env.EMBED_INGEST_BATCH_SIZE || 16));
+const EMBED_INGEST_MAX_ATTEMPTS = Math.max(1, Number(process.env.EMBED_INGEST_MAX_ATTEMPTS || 2));
+const EMBED_MODEL_NAME = process.env.EMBED_MODEL || "bge-m3";
 const NOTEBOOK_ID_PATTERN = /^nb_[a-f0-9]{16}$/;
 const DOCUMENT_ID_PATTERN = /^doc_[a-f0-9]{16}$/;
 const notebookChunkCache = new Map();
@@ -248,6 +252,44 @@ export async function deleteNotebook(notebookId) {
   return true;
 }
 
+async function ingestEmbeddingsBatched(chunks, expectedDim) {
+  const result = {
+    embeddedCount: 0,
+    failedCount: 0,
+    dim: Number.isFinite(expectedDim) ? expectedDim : null,
+    errors: []
+  };
+  for (let start = 0; start < chunks.length; start += EMBED_INGEST_BATCH_SIZE) {
+    const batch = chunks.slice(start, start + EMBED_INGEST_BATCH_SIZE);
+    const texts = batch.map((c) => c.text);
+    let vectors = null;
+    let lastError = null;
+    for (let attempt = 0; attempt < EMBED_INGEST_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        vectors = await embedTexts(texts, {
+          expectedDim: result.dim ?? undefined
+        });
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    if (!vectors) {
+      result.failedCount += batch.length;
+      result.errors.push(`batch@${start}: ${lastError?.message || "unknown"}`);
+      continue;
+    }
+    if (result.dim == null && vectors[0]?.length) {
+      result.dim = vectors[0].length;
+    }
+    for (let i = 0; i < batch.length; i += 1) {
+      batch[i].embedding = vectors[i];
+    }
+    result.embeddedCount += batch.length;
+  }
+  return result;
+}
+
 export async function addNotebookDocument(notebookId, parsedDocument) {
   const manifest = await readManifest(notebookId);
   if (!manifest) throw new Error("노트북을 찾을 수 없습니다.");
@@ -262,13 +304,29 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
     throw new Error("문서에서 본문 텍스트를 추출하지 못했습니다.");
   }
 
-  // Batch-generate embeddings; silently degrade to BM25-only on failure.
-  try {
-    const vectors = await embedTexts(chunks.map((c) => c.text));
-    vectors.forEach((vec, i) => { chunks[i].embedding = vec; });
-  } catch (err) {
-    console.warn(`[notebooks] 임베딩 생성 실패 (BM25 전용 모드로 전환): ${err.message}`);
+  const startedAt = new Date().toISOString();
+  const ingestResult = await ingestEmbeddingsBatched(chunks, manifest.embedding?.dim ?? null);
+  const finishedAt = new Date().toISOString();
+
+  if (
+    manifest.embedding?.dim &&
+    ingestResult.dim &&
+    manifest.embedding.dim !== ingestResult.dim
+  ) {
+    throw new Error(
+      `임베딩 차원 불일치: 노트북=${manifest.embedding.dim}, 새 문서=${ingestResult.dim}. 동일한 임베딩 모델을 사용하세요.`
+    );
   }
+
+  if (ingestResult.errors.length) {
+    console.warn(
+      `[notebooks] 임베딩 부분 실패: ${ingestResult.embeddedCount}/${chunks.length} 성공. ${ingestResult.errors.join(" | ")}`
+    );
+  }
+
+  const ingestStatus = ingestResult.failedCount === 0
+    ? "completed"
+    : ingestResult.embeddedCount > 0 ? "partial" : "failed_embedding";
 
   const analysis = await analyzeDocument(parsedDocument).catch((err) => {
     console.warn(`[notebooks] 문서 사전 분석 실패 (요약 없이 진행): ${err.message}`);
@@ -285,6 +343,17 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
     chunkCount: chunks.length,
     summary: analysis.summary,
     topics: analysis.topics,
+    embedding: ingestResult.dim
+      ? { model: EMBED_MODEL_NAME, dim: ingestResult.dim }
+      : null,
+    ingest: {
+      status: ingestStatus,
+      chunkCount: chunks.length,
+      embeddedCount: ingestResult.embeddedCount,
+      failedCount: ingestResult.failedCount,
+      startedAt,
+      finishedAt
+    },
     chunks
   };
 
@@ -301,8 +370,19 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
     chunkCount: chunks.length,
     sizeBytes: Buffer.byteLength(serialized, "utf8"),
     summary: analysis.summary,
-    topics: analysis.topics
+    topics: analysis.topics,
+    ingest: documentRecord.ingest
   });
+  if (!manifest.embedding && ingestResult.dim) {
+    manifest.embedding = {
+      model: EMBED_MODEL_NAME,
+      dim: ingestResult.dim,
+      createdAt: now,
+      lastValidatedAt: now
+    };
+  } else if (manifest.embedding && ingestResult.dim) {
+    manifest.embedding.lastValidatedAt = now;
+  }
   manifest.updatedAt = now;
   await writeManifest(notebookId, manifest);
   invalidateNotebookCache(notebookId);
@@ -341,6 +421,10 @@ export async function queryNotebook(notebookId, query, options = {}) {
   const budget = Number.isFinite(options.budget) ? options.budget : NOTEBOOK_QUERY_BUDGET;
   const trimmedQuery = String(query ?? "").trim();
 
+  const t0 = Date.now();
+  const timing = {};
+  let fallbackReason = null;
+
   const allChunks = await loadNotebookChunks(notebookId, manifest);
 
   if (!allChunks.length) {
@@ -348,25 +432,42 @@ export async function queryNotebook(notebookId, query, options = {}) {
   }
 
   let ranked = [];
+  let queries = trimmedQuery ? [trimmedQuery] : [];
   if (trimmedQuery) {
-    let queries = [trimmedQuery];
+    const tExpand = Date.now();
     try {
       queries = await expandQuery(trimmedQuery, { signal: options.signal });
     } catch (error) {
       if (options.signal?.aborted) throw error;
+      fallbackReason = "expand_failed";
     }
+    timing.queryExpansionMs = Date.now() - tExpand;
+
     let queryEmbeddings = queries.map(() => null);
+    const tEmbed = Date.now();
     try {
-      const vectors = await embedTexts(queries, { signal: options.signal });
+      const vectors = await embedTexts(queries, {
+        signal: options.signal,
+        expectedDim: manifest.embedding?.dim ?? undefined
+      });
       queryEmbeddings = vectors;
     } catch (error) {
       if (options.signal?.aborted) throw error;
-      // BM25 fallback — embedding model unavailable
+      fallbackReason = fallbackReason || "embed_failed";
+      // BM25 fallback — embedding model unavailable or dim mismatch
     }
+    timing.queryEmbeddingMs = Date.now() - tEmbed;
+
+    const tRetrieve = Date.now();
     ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
+    timing.retrievalMs = Date.now() - tRetrieve;
   }
 
   const selected = ranked.length ? ranked : greedyFit(allChunks, budget);
+  if (!ranked.length) {
+    fallbackReason = fallbackReason || (trimmedQuery ? "no_ranked_results" : "empty_query");
+  }
+  timing.totalMs = Date.now() - t0;
 
   const citations = selected.map((chunk, index) => ({
     citationId: index + 1,
@@ -387,6 +488,27 @@ export async function queryNotebook(notebookId, query, options = {}) {
       summary: entry.summary || "",
       topics: Array.isArray(entry.topics) ? entry.topics : []
     }));
+
+  logRetrieval({
+    profile: "department",
+    notebookId,
+    query: trimmedQuery,
+    queryVariants: queries.length,
+    corpus: {
+      chunkCount: allChunks.length,
+      embeddedChunkCount: allChunks.reduce((n, c) => n + (c.embedding ? 1 : 0), 0)
+    },
+    embedding: manifest.embedding
+      ? { model: manifest.embedding.model, dim: manifest.embedding.dim }
+      : null,
+    timing,
+    selected: citations.map((c, i) => ({
+      rank: i + 1,
+      documentId: c.documentId,
+      chunkIndex: c.chunkIndex
+    })),
+    fallback: fallbackReason
+  });
 
   return {
     ok: true,
