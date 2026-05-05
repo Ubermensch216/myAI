@@ -16,6 +16,7 @@
     "test:ci": "npm run test:xlsx && npm run test:smoke"
   },
   "dependencies": {
+    "@qdrant/js-client-rest": "^1.17.0",
     "express": "^4.18.3",
     "fast-xml-parser": "^5.2.5",
     "jszip": "^3.10.1",
