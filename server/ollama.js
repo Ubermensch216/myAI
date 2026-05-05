@@ -5,7 +5,9 @@ import { multiQueryHybridSelect } from "./retrieval.js";
 import { embedTexts } from "./embeddings.js";
 import { expandQuery } from "./queryExpansion.js";
 import { logRetrieval } from "./rag/retrievalLogger.js";
-import { queryNotebook, loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
+import { searchNotebook } from "./rag/departmentRag.js";
+import { PROFILE_PERSONAL } from "./rag/ragConfig.js";
+import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import {
   buildVisualizationContext,
@@ -678,7 +680,7 @@ async function loadNotebookContext(notebookId, messages, { signal } = {}) {
   try {
     const latestUserIndex = findLatestUserMessageIndex(messages);
     const query = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-    const result = await queryNotebook(notebookId, query, { signal });
+    const result = await searchNotebook(notebookId, query, { signal });
     if (!result.ok) return null;
     return result;
   } catch (error) {
@@ -745,7 +747,7 @@ async function buildContext(documents, query = "", { signal } = {}) {
   timing.totalMs = Date.now() - t0;
 
   logRetrieval({
-    profile: "personal",
+    profile: PROFILE_PERSONAL,
     query,
     queryVariants: queries.length,
     corpus: {

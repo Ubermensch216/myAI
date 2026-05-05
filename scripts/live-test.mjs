@@ -10,10 +10,10 @@ import {
   createNotebook,
   deleteNotebook,
   getNotebook,
-  queryNotebook,
   removeNotebookDocument,
   updateNotebook
 } from "../server/notebooks.js";
+import { searchNotebook } from "../server/rag/departmentRag.js";
 
 let failureCount = 0;
 
@@ -106,7 +106,7 @@ async function testParserAndNotebookCrud() {
       pages: [{ page: 1, text: "shared duplicate keyword" }]
     });
 
-    const queryResult = await queryNotebook(notebookId, "duplicate keyword", { budget: 10000 });
+    const queryResult = await searchNotebook(notebookId, "duplicate keyword", { budget: 10000 });
     assert.equal(queryResult.ok, true);
     const duplicateIds = new Set(
       queryResult.chunks

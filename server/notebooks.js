@@ -3,17 +3,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { chunkDocumentSections } from "./chunking.js";
-import { multiQueryHybridSelect, greedyFit } from "./retrieval.js";
 import { embedTexts } from "./embeddings.js";
-import { expandQuery } from "./queryExpansion.js";
 import { analyzeDocument } from "./documentAnalysis.js";
-import { logRetrieval } from "./rag/retrievalLogger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const NOTEBOOKS_DIR = path.join(rootDir, "data", "notebooks");
-const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
 const NOTEBOOK_CHUNK_CACHE_MAX = Number(process.env.NOTEBOOK_CHUNK_CACHE_MAX || 4);
 const EMBED_INGEST_BATCH_SIZE = Math.max(1, Number(process.env.EMBED_INGEST_BATCH_SIZE || 16));
 const EMBED_INGEST_MAX_ATTEMPTS = Math.max(1, Number(process.env.EMBED_INGEST_MAX_ATTEMPTS || 2));
@@ -414,108 +410,30 @@ async function loadDocumentRecord(notebookId, documentId) {
   }
 }
 
-export async function queryNotebook(notebookId, query, options = {}) {
-  const manifest = await readManifest(notebookId);
-  if (!manifest) return { ok: false, reason: "notebook_not_found", chunks: [] };
+/**
+ * Read the raw notebook manifest. Department RAG (server/rag/departmentRag.js)
+ * needs this to access manifest.embedding.dim and manifest.documents — fields
+ * that getNotebookManifestSummary intentionally hides. Manifest stays the
+ * source-of-truth even when Sprint 2 introduces Qdrant.
+ */
+export async function getNotebookManifest(notebookId) {
+  return readManifest(notebookId);
+}
 
-  const budget = Number.isFinite(options.budget) ? options.budget : NOTEBOOK_QUERY_BUDGET;
-  const trimmedQuery = String(query ?? "").trim();
+/**
+ * Load notebook chunks pre-flattened for retrieval, with locator strings and
+ * embeddings inlined. Used by department RAG search.
+ */
+export async function loadNotebookChunksForRetrieval(notebookId, manifest) {
+  return loadNotebookChunks(notebookId, manifest);
+}
 
-  const t0 = Date.now();
-  const timing = {};
-  let fallbackReason = null;
-
-  const allChunks = await loadNotebookChunks(notebookId, manifest);
-
-  if (!allChunks.length) {
-    return { ok: true, notebook: summarizeNotebook(manifest), chunks: [], documentSummaries: [] };
-  }
-
-  let ranked = [];
-  let queries = trimmedQuery ? [trimmedQuery] : [];
-  if (trimmedQuery) {
-    const tExpand = Date.now();
-    try {
-      queries = await expandQuery(trimmedQuery, { signal: options.signal });
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      fallbackReason = "expand_failed";
-    }
-    timing.queryExpansionMs = Date.now() - tExpand;
-
-    let queryEmbeddings = queries.map(() => null);
-    const tEmbed = Date.now();
-    try {
-      const vectors = await embedTexts(queries, {
-        signal: options.signal,
-        expectedDim: manifest.embedding?.dim ?? undefined
-      });
-      queryEmbeddings = vectors;
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      fallbackReason = fallbackReason || "embed_failed";
-      // BM25 fallback — embedding model unavailable or dim mismatch
-    }
-    timing.queryEmbeddingMs = Date.now() - tEmbed;
-
-    const tRetrieve = Date.now();
-    ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
-    timing.retrievalMs = Date.now() - tRetrieve;
-  }
-
-  const selected = ranked.length ? ranked : greedyFit(allChunks, budget);
-  if (!ranked.length) {
-    fallbackReason = fallbackReason || (trimmedQuery ? "no_ranked_results" : "empty_query");
-  }
-  timing.totalMs = Date.now() - t0;
-
-  const citations = selected.map((chunk, index) => ({
-    citationId: index + 1,
-    documentId: chunk.documentId,
-    documentName: chunk.documentName,
-    documentType: chunk.documentType,
-    locator: formatLocator(chunk),
-    text: chunk.text,
-    chunkIndex: chunk.chunkIndex
-  }));
-
-  const citedIds = new Set(citations.map((c) => c.documentId));
-  const documentSummaries = (manifest.documents || [])
-    .filter((entry) => citedIds.has(entry.id) && (entry.summary || (entry.topics || []).length))
-    .map((entry) => ({
-      documentId: entry.id,
-      documentName: entry.name,
-      summary: entry.summary || "",
-      topics: Array.isArray(entry.topics) ? entry.topics : []
-    }));
-
-  logRetrieval({
-    profile: "department",
-    notebookId,
-    query: trimmedQuery,
-    queryVariants: queries.length,
-    corpus: {
-      chunkCount: allChunks.length,
-      embeddedChunkCount: allChunks.reduce((n, c) => n + (c.embedding ? 1 : 0), 0)
-    },
-    embedding: manifest.embedding
-      ? { model: manifest.embedding.model, dim: manifest.embedding.dim }
-      : null,
-    timing,
-    selected: citations.map((c, i) => ({
-      rank: i + 1,
-      documentId: c.documentId,
-      chunkIndex: c.chunkIndex
-    })),
-    fallback: fallbackReason
-  });
-
-  return {
-    ok: true,
-    notebook: summarizeNotebook(manifest),
-    chunks: citations,
-    documentSummaries
-  };
+/**
+ * Public alias of the internal summarize helper, exposed for the RAG layer
+ * so it can shape the response without re-implementing the projection.
+ */
+export function summarizeNotebookManifest(manifest) {
+  return summarizeNotebook(manifest);
 }
 
 function formatLocator(chunk) {

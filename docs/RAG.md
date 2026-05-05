@@ -1,5 +1,25 @@
 # RAG And Map-Reduce
 
+## Dual Profile Architecture
+
+The app runs two distinct RAG profiles with different durability and latency
+properties. The split is by data origin, not by configuration:
+
+| Profile | Source | Storage | Retrieval entry | Backend |
+|---------|--------|---------|-----------------|---------|
+| `personal` | Browser-uploaded room attachments (per session) | Encrypted IndexedDB; transmitted in `/api/chat` body | `server/ollama.js#buildContext` | In-process BM25 + cosine + RRF over chunks parsed from the request body |
+| `department` | Admin-curated notebooks (`data/notebooks/<id>/`) | Server filesystem JSON manifest + per-document chunk records | `server/rag/departmentRag.js#searchNotebook` | Pluggable — current default `DEPARTMENT_VECTOR_BACKEND=json` (in-memory cosine over loaded chunks). Sprint 2 will add `qdrant`. |
+
+The chat handler in `server/ollama.js` routes by context: when a `notebookId`
+is on the request, the department profile fires. Personal context is always
+included from the request body documents (when present), so a single chat
+turn can blend both profiles' citations in one prompt.
+
+`server/rag/ragConfig.js` exposes profile name constants (`PROFILE_PERSONAL`,
+`PROFILE_DEPARTMENT`) and resolves the department backend choice. The
+retrieval JSONL log writes the profile and backend per entry, so future
+migrations can be measured A/B against the same notebooks.
+
 ## Models
 
 Recommended local settings:
@@ -67,13 +87,20 @@ admin upload
 Query flow:
 
 ```text
-queryNotebook(notebookId, query)
--> load notebook chunks from in-memory cache or document records
+server/rag/departmentRag.js#searchNotebook(notebookId, query)
+-> notebooks.js#getNotebookManifest()
+-> notebooks.js#loadNotebookChunksForRetrieval()
 -> expand query variants
--> embed query variants
--> multiQueryHybridSelect()
+-> embed query variants (validated against manifest.embedding.dim)
+-> multiQueryHybridSelect()  // BM25 + cosine + RRF
 -> return cited chunks and cited document summaries
+-> retrieval JSONL log entry { profile: "department", backend, ... }
 ```
+
+`notebooks.js` keeps manifest CRUD, ingest, and the chunk cache. The retrieval
+function lives in `server/rag/departmentRag.js` so Sprint 2 can swap the
+ranking implementation (Qdrant + SQLite FTS5) without touching ingest or
+storage.
 
 The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them into the system prompt, and `server/index.js` exposes citation metadata through `X-Notebook-Meta`.
 

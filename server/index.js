@@ -20,8 +20,7 @@ import {
   updateNotebook,
   deleteNotebook,
   addNotebookDocument,
-  removeNotebookDocument,
-  queryNotebook
+  removeNotebookDocument
 } from "./notebooks.js";
 import { isAdminConfigured, requireAdmin } from "./auth.js";
 
