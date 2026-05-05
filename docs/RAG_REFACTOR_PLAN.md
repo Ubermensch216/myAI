@@ -26,11 +26,26 @@ This document outlines the execution plan for restructuring the myAI RAG system 
 **Goal:** Transition the department notebook search from in-memory JSON/LRU caching to persistent vector and lexical indexes.
 
 - **Tasks:**
+  - Freeze the target architecture in `docs/DEPARTMENT_RAG_ARCHITECTURE.md`.
+  - Extend `ragConfig.js` so `DEPARTMENT_VECTOR_BACKEND=qdrant` is a recognized degraded-safe backend.
   - Implement `server/indexes/qdrantVectorIndex.js` to interface with Qdrant collection `myai_notebook_chunks`.
-  - Implement `server/indexes/sqliteFtsIndex.js` utilizing FTS5 for BM25 and CJK bigram search.
+  - Add Qdrant health/config reporting without making `/api/status` depend on Qdrant availability.
+  - Implement `server/indexes/sqliteFtsIndex.js` utilizing FTS5 for lexical and CJK bigram search.
   - Write administrative scripts: `scripts/rebuild-department-rag-index.mjs` and `scripts/check-department-rag-index.mjs`.
   - Update document ingestion (`addNotebookDocument`) and deletion logic in `server/notebooks.js` to synchronize the JSON source-of-truth with the Qdrant and SQLite indexes.
   - Implement a graceful fallback to JSON/BM25 if Qdrant is temporarily unavailable.
+
+**Execution note:** Do this sprint in small units. First land the Qdrant adapter
+and fallback boundary. Then add rebuild/check scripts. Only after those pass
+should notebook ingest dual-write to Qdrant.
+
+**Progress:**
+
+- Done: architecture doc, Qdrant adapter boundary, SQLite FTS5 lexical adapter,
+  status health metadata, Qdrant/SQLite-first JSON-fallback query path,
+  `rag:check` / `rag:rebuild`, notebook add/delete dual-write, and department
+  Qdrant deployment examples.
+- Next: persistent ingest jobs with retry/progress.
 
 ### Sprint 3: Department Ingest Job Queue
 **Goal:** Transition admin document uploads from synchronous blocking requests to asynchronous, resilient background jobs.
@@ -40,6 +55,11 @@ This document outlines the execution plan for restructuring the myAI RAG system 
   - Introduce job API endpoints: `POST /api/notebooks/:id/ingest-jobs`, `GET /api/notebooks/:id/ingest-jobs/:jobId`, etc.
   - Implement batch embedding generation with robust retry logic, accommodating partial ingestion successes.
   - Update the admin UI in `public/modules/notebook.js` to display live progress bars, chunk statuses (embedded/failed), and job retry actions.
+
+**Progress:**
+
+- Done: persisted job records, background ingest runner, and admin job create/list/read endpoints.
+- Next: admin UI polling/progress, retry actions, and finer-grained embedding/indexing progress.
 
 ### Sprint 4: Multi-User Concurrency & Operations
 **Goal:** Guarantee system stability and fair resource allocation under concurrent multi-user access on the department workstation.

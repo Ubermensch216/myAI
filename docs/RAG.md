@@ -8,7 +8,7 @@ properties. The split is by data origin, not by configuration:
 | Profile | Source | Storage | Retrieval entry | Backend |
 |---------|--------|---------|-----------------|---------|
 | `personal` | Browser-uploaded room attachments (per session) | Encrypted IndexedDB; transmitted in `/api/chat` body | `server/ollama.js#buildContext` | In-process BM25 + cosine + RRF over chunks parsed from the request body |
-| `department` | Admin-curated notebooks (`data/notebooks/<id>/`) | Server filesystem JSON manifest + per-document chunk records | `server/rag/departmentRag.js#searchNotebook` | Pluggable — current default `DEPARTMENT_VECTOR_BACKEND=json` (in-memory cosine over loaded chunks). Sprint 2 will add `qdrant`. |
+| `department` | Admin-curated notebooks (`data/notebooks/<id>/`) | Server filesystem JSON manifest + per-document chunk records | `server/rag/departmentRag.js#searchNotebook` | Pluggable — default `DEPARTMENT_VECTOR_BACKEND=json` and `DEPARTMENT_LEXICAL_BACKEND=memory`; `qdrant` and `sqlite` are recognized degraded-safe backends. |
 
 The chat handler in `server/ollama.js` routes by context: when a `notebookId`
 is on the request, the department profile fires. Personal context is always
@@ -19,6 +19,9 @@ turn can blend both profiles' citations in one prompt.
 `PROFILE_DEPARTMENT`) and resolves the department backend choice. The
 retrieval JSONL log writes the profile and backend per entry, so future
 migrations can be measured A/B against the same notebooks.
+
+The target vectorDB architecture and migration units live in
+[Department RAG Architecture](DEPARTMENT_RAG_ARCHITECTURE.md).
 
 ## Models
 
@@ -101,6 +104,15 @@ server/rag/departmentRag.js#searchNotebook(notebookId, query)
 function lives in `server/rag/departmentRag.js` so Sprint 2 can swap the
 ranking implementation (Qdrant + SQLite FTS5) without touching ingest or
 storage.
+
+When `DEPARTMENT_VECTOR_BACKEND=qdrant`, the department path first attempts
+Qdrant dense search through `server/indexes/qdrantVectorIndex.js`. If Qdrant is
+not configured, unavailable, missing its collection, or returns no candidates,
+the request falls back to the existing JSON chunk search.
+
+When `DEPARTMENT_LEXICAL_BACKEND=sqlite`, the department path also searches
+`server/indexes/sqliteFtsIndex.js` and fuses those lexical candidates with
+vector candidates using RRF before context budget fitting.
 
 The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them into the system prompt, and `server/index.js` exposes citation metadata through `X-Notebook-Meta`.
 

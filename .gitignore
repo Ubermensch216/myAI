@@ -3,6 +3,9 @@ uploads/*
 !uploads/.gitkeep
 data/notebooks/
 data/logs/
+data/indexes/
+data/qdrant/
+data/ingest-jobs/
 .env
 *.log
 server.log

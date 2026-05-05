@@ -13,6 +13,9 @@ import { analyzeDocument } from "./documentAnalysis.js";
 import { classifyIntent } from "./calendarAgent.js";
 import { getKoreanHolidays } from "./holidays.js";
 import { createAbortError } from "./abort.js";
+import { getQdrantHealth } from "./indexes/qdrantVectorIndex.js";
+import { getSqliteFtsHealth } from "./indexes/sqliteFtsIndex.js";
+import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import {
   listNotebooks,
   getNotebook,
@@ -22,6 +25,11 @@ import {
   addNotebookDocument,
   removeNotebookDocument
 } from "./notebooks.js";
+import {
+  createNotebookIngestJob,
+  getNotebookIngestJob,
+  listNotebookIngestJobs
+} from "./ingest/notebookIngestJobs.js";
 import { isAdminConfigured, requireAdmin } from "./auth.js";
 
 loadLocalEnv();
@@ -51,12 +59,26 @@ function extractPersonalization(body) {
 
 app.get("/api/status", async (_request, response) => {
   try {
-    const models = await listModels();
+    const backend = resolvedDepartmentBackend();
+    const [models, qdrant, sqlite] = await Promise.all([
+      listModels(),
+      getQdrantHealth().catch((error) => ({ configured: true, ok: false, error: error.message })),
+      backend.lexical === "sqlite"
+        ? getSqliteFtsHealth().catch((error) => ({ configured: true, ok: false, error: error.message }))
+        : Promise.resolve({ configured: false, ok: false, reason: "sqlite_fts_not_enabled" })
+    ]);
     response.json({
       ok: true,
       ollamaUrl: OLLAMA_URL,
       defaultModel: DEFAULT_MODEL,
-      models: models.models?.map((model) => model.name) ?? []
+      models: models.models?.map((model) => model.name) ?? [],
+      rag: {
+        department: {
+          backend,
+          qdrant,
+          sqlite
+        }
+      }
     });
   } catch (error) {
     response.status(503).json({
@@ -365,6 +387,43 @@ app.post("/api/notebooks/:id/documents", requireAdmin, upload.single("file"), as
     response.status(400).json({ error: error.message });
   } finally {
     await fs.unlink(request.file.path).catch(() => {});
+  }
+});
+
+app.get("/api/notebooks/:id/ingest-jobs", requireAdmin, async (request, response) => {
+  try {
+    const jobs = await listNotebookIngestJobs(request.params.id);
+    response.json({ jobs });
+  } catch (error) {
+    response.status(500).json({ error: error.message, jobs: [] });
+  }
+});
+
+app.get("/api/notebooks/:id/ingest-jobs/:jobId", requireAdmin, async (request, response) => {
+  try {
+    const job = await getNotebookIngestJob(request.params.id, request.params.jobId);
+    if (!job) {
+      response.status(404).json({ error: "Ingest job not found." });
+      return;
+    }
+    response.json({ job });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/notebooks/:id/ingest-jobs", requireAdmin, upload.single("file"), async (request, response) => {
+  if (!request.file) {
+    response.status(400).json({ error: "업로드된 파일이 없습니다." });
+    return;
+  }
+  try {
+    request.file.originalname = repairUploadFileName(request.file.originalname);
+    const job = await createNotebookIngestJob(request.params.id, request.file);
+    response.status(202).json({ job });
+  } catch (error) {
+    await fs.unlink(request.file.path).catch(() => {});
+    response.status(400).json({ error: error.message });
   }
 });
 

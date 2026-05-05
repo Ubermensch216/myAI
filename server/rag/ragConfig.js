@@ -10,8 +10,8 @@ export const DEPARTMENT_VECTOR_BACKEND =
 export const DEPARTMENT_LEXICAL_BACKEND =
   String(process.env.DEPARTMENT_LEXICAL_BACKEND || "memory").toLowerCase();
 
-const SUPPORTED_VECTOR_BACKENDS = new Set(["json"]);
-const SUPPORTED_LEXICAL_BACKENDS = new Set(["memory"]);
+const SUPPORTED_VECTOR_BACKENDS = new Set(["json", "qdrant"]);
+const SUPPORTED_LEXICAL_BACKENDS = new Set(["memory", "sqlite"]);
 
 if (!SUPPORTED_VECTOR_BACKENDS.has(DEPARTMENT_VECTOR_BACKEND)) {
   console.warn(

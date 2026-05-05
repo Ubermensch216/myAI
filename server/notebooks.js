@@ -5,6 +5,18 @@ import { fileURLToPath } from "node:url";
 import { chunkDocumentSections } from "./chunking.js";
 import { embedTexts } from "./embeddings.js";
 import { analyzeDocument } from "./documentAnalysis.js";
+import {
+  deleteNotebookDocumentVectors,
+  deleteNotebookVectors,
+  getQdrantConfig,
+  upsertNotebookDocumentVectors
+} from "./indexes/qdrantVectorIndex.js";
+import {
+  deleteNotebookDocumentLexical,
+  deleteNotebookLexical,
+  upsertNotebookDocumentLexical
+} from "./indexes/sqliteFtsIndex.js";
+import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -245,6 +257,8 @@ export async function deleteNotebook(notebookId) {
   if (!manifest) return false;
   await fs.rm(notebookDir(notebookId), { recursive: true, force: true });
   invalidateNotebookCache(notebookId);
+  await removeNotebookVectorIndex(notebookId);
+  await removeNotebookLexicalIndex(notebookId);
   return true;
 }
 
@@ -382,6 +396,8 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
   manifest.updatedAt = now;
   await writeManifest(notebookId, manifest);
   invalidateNotebookCache(notebookId);
+  await syncNotebookDocumentVectorIndex(notebookId, documentRecord, manifest);
+  await syncNotebookDocumentLexicalIndex(notebookId, documentRecord);
 
   return summarizeDocument(manifest.documents.at(-1));
 }
@@ -397,7 +413,80 @@ export async function removeNotebookDocument(notebookId, documentId) {
   await writeManifest(notebookId, manifest);
   await fs.unlink(docPath(notebookId, documentId)).catch(() => {});
   invalidateNotebookCache(notebookId);
+  await removeNotebookDocumentVectorIndex(notebookId, documentId);
+  await removeNotebookDocumentLexicalIndex(notebookId, documentId);
   return true;
+}
+
+async function syncNotebookDocumentVectorIndex(notebookId, documentRecord, manifest) {
+  if (!getQdrantConfig().configured) return;
+  try {
+    const result = await upsertNotebookDocumentVectors({
+      notebookId,
+      documentRecord,
+      embeddingModel: documentRecord.embedding?.model || manifest.embedding?.model || EMBED_MODEL_NAME,
+      embeddingDim: documentRecord.embedding?.dim || manifest.embedding?.dim
+    });
+    if (!result.ok) {
+      console.warn(`[notebooks] Qdrant index skipped for ${documentRecord.id}: ${result.reason}`);
+    }
+  } catch (error) {
+    console.warn(`[notebooks] Qdrant index sync failed for ${documentRecord.id}: ${error.message}`);
+  }
+}
+
+async function removeNotebookDocumentVectorIndex(notebookId, documentId) {
+  if (!getQdrantConfig().configured) return;
+  try {
+    const result = await deleteNotebookDocumentVectors({ notebookId, documentId });
+    if (!result.ok) {
+      console.warn(`[notebooks] Qdrant delete skipped for ${documentId}: ${result.reason}`);
+    }
+  } catch (error) {
+    console.warn(`[notebooks] Qdrant delete failed for ${documentId}: ${error.message}`);
+  }
+}
+
+async function removeNotebookVectorIndex(notebookId) {
+  if (!getQdrantConfig().configured) return;
+  try {
+    const result = await deleteNotebookVectors({ notebookId });
+    if (!result.ok) {
+      console.warn(`[notebooks] Qdrant notebook delete skipped for ${notebookId}: ${result.reason}`);
+    }
+  } catch (error) {
+    console.warn(`[notebooks] Qdrant notebook delete failed for ${notebookId}: ${error.message}`);
+  }
+}
+
+async function syncNotebookDocumentLexicalIndex(notebookId, documentRecord) {
+  if (resolvedDepartmentBackend().lexical !== "sqlite") return;
+  try {
+    const result = await upsertNotebookDocumentLexical({ notebookId, documentRecord });
+    if (!result.ok) {
+      console.warn(`[notebooks] SQLite FTS index skipped for ${documentRecord.id}: ${result.reason}`);
+    }
+  } catch (error) {
+    console.warn(`[notebooks] SQLite FTS index sync failed for ${documentRecord.id}: ${error.message}`);
+  }
+}
+
+async function removeNotebookDocumentLexicalIndex(notebookId, documentId) {
+  if (resolvedDepartmentBackend().lexical !== "sqlite") return;
+  try {
+    await deleteNotebookDocumentLexical({ notebookId, documentId });
+  } catch (error) {
+    console.warn(`[notebooks] SQLite FTS delete failed for ${documentId}: ${error.message}`);
+  }
+}
+
+async function removeNotebookLexicalIndex(notebookId) {
+  if (resolvedDepartmentBackend().lexical !== "sqlite") return;
+  try {
+    await deleteNotebookLexical({ notebookId });
+  } catch (error) {
+    console.warn(`[notebooks] SQLite FTS notebook delete failed for ${notebookId}: ${error.message}`);
+  }
 }
 
 async function loadDocumentRecord(notebookId, documentId) {
@@ -426,6 +515,17 @@ export async function getNotebookManifest(notebookId) {
  */
 export async function loadNotebookChunksForRetrieval(notebookId, manifest) {
   return loadNotebookChunks(notebookId, manifest);
+}
+
+export async function loadNotebookDocumentRecords(notebookId, manifest = null) {
+  const source = manifest || await readManifest(notebookId);
+  if (!source) return [];
+  const records = [];
+  for (const entry of source.documents || []) {
+    const record = await loadDocumentRecord(notebookId, entry.id);
+    if (record) records.push(record);
+  }
+  return records;
 }
 
 /**

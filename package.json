@@ -13,7 +13,9 @@
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:xlsx": "node scripts/xlsx-visualization-test.mjs",
     "test:live": "node scripts/live-test.mjs",
-    "test:ci": "npm run test:xlsx && npm run test:smoke"
+    "test:ci": "npm run test:xlsx && npm run test:smoke",
+    "rag:check": "node scripts/check-department-rag-index.mjs",
+    "rag:rebuild": "node scripts/rebuild-department-rag-index.mjs"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.17.0",

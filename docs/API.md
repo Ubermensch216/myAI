@@ -6,16 +6,38 @@ All endpoints are served by `server/index.js`.
 
 ### `GET /api/status`
 
-Returns Ollama connectivity, default model, and model names from `/api/tags`.
+Returns Ollama connectivity, default model, model names from `/api/tags`, and
+non-blocking department RAG backend health.
 
 ```json
 {
   "ok": true,
   "ollamaUrl": "http://127.0.0.1:11434",
   "defaultModel": "gemma4:e2b",
-  "models": ["bge-m3:latest", "gemma4:e2b"]
+  "models": ["bge-m3:latest", "gemma4:e2b"],
+  "rag": {
+    "department": {
+      "backend": { "vector": "qdrant", "lexical": "memory" },
+      "qdrant": {
+        "configured": true,
+        "ok": true,
+        "collection": "myai_notebook_chunks",
+        "vectorName": "dense_bge_m3",
+        "pointsCount": 1200
+      },
+      "sqlite": {
+        "configured": true,
+        "ok": true,
+        "path": "D:\\Dev\\myAI\\data\\indexes\\department-rag.sqlite",
+        "chunks": 1200
+      }
+    }
+  }
 }
 ```
+
+Qdrant health is reported as degraded metadata only. A Qdrant outage does not
+make `/api/status` fail when Ollama itself is reachable.
 
 ## Documents
 
@@ -188,7 +210,34 @@ Admin. Removes the entire notebook directory.
 
 Admin multipart upload field: `file`. Parses and stores chunks. Images are rejected for notebooks.
 
+### `POST /api/notebooks/:id/ingest-jobs`
+
+Admin multipart upload field: `file`. Creates a background notebook ingest job
+and returns immediately:
+
+```js
+{
+  job: {
+    id,
+    notebookId,
+    status: "queued" | "running" | "completed" | "failed",
+    stage,
+    progress,
+    fileName,
+    document,
+    error
+  }
+}
+```
+
+### `GET /api/notebooks/:id/ingest-jobs`
+
+Admin. Lists recent persisted ingest jobs for one notebook.
+
+### `GET /api/notebooks/:id/ingest-jobs/:jobId`
+
+Admin. Returns one persisted ingest job.
+
 ### `DELETE /api/notebooks/:id/documents/:documentId`
 
 Admin. Removes a single notebook document.
-

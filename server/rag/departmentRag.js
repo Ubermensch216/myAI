@@ -3,6 +3,8 @@ import { embedTexts } from "../embeddings.js";
 import { expandQuery } from "../queryExpansion.js";
 import { logRetrieval } from "./retrievalLogger.js";
 import { resolvedDepartmentBackend, PROFILE_DEPARTMENT } from "./ragConfig.js";
+import { searchQdrantNotebookChunks } from "../indexes/qdrantVectorIndex.js";
+import { searchSqliteNotebookChunks } from "../indexes/sqliteFtsIndex.js";
 import {
   getNotebookManifest,
   loadNotebookChunksForRetrieval,
@@ -44,6 +46,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
 
   let ranked = [];
   let queries = trimmedQuery ? [trimmedQuery] : [];
+  let queryEmbeddings = [];
   if (trimmedQuery) {
     const tExpand = Date.now();
     try {
@@ -54,7 +57,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
     }
     timing.queryExpansionMs = Date.now() - tExpand;
 
-    let queryEmbeddings = queries.map(() => null);
+    queryEmbeddings = queries.map(() => null);
     const tEmbed = Date.now();
     try {
       const vectors = await embedTexts(queries, {
@@ -70,7 +73,55 @@ export async function searchNotebook(notebookId, query, options = {}) {
     timing.queryEmbeddingMs = Date.now() - tEmbed;
 
     const tRetrieve = Date.now();
-    ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
+    const rankingLists = [];
+    if (backend.vector === "qdrant" && queryEmbeddings.some(Boolean)) {
+      const qdrantStart = Date.now();
+      try {
+        const qdrantResult = await searchQdrantNotebookChunks({
+          notebookId,
+          queryEmbeddings: queryEmbeddings.filter(Boolean),
+          limit: options.qdrantLimit,
+          signal: options.signal
+        });
+        timing.qdrantMs = Date.now() - qdrantStart;
+        if (qdrantResult.ok && qdrantResult.chunks.length) {
+          rankingLists.push(qdrantResult.chunks);
+        } else {
+          fallbackReason = fallbackReason || qdrantResult.reason || "qdrant_no_results";
+        }
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        timing.qdrantMs = Date.now() - qdrantStart;
+        fallbackReason = fallbackReason || `qdrant_failed:${error.message.slice(0, 80)}`;
+      }
+    }
+
+    if (backend.lexical === "sqlite") {
+      const lexicalStart = Date.now();
+      try {
+        const lexicalResult = await searchSqliteNotebookChunks({
+          notebookId,
+          queries,
+          limit: options.lexicalLimit
+        });
+        timing.lexicalMs = Date.now() - lexicalStart;
+        if (lexicalResult.ok && lexicalResult.chunks.length) {
+          rankingLists.push(lexicalResult.chunks);
+        } else {
+          fallbackReason = fallbackReason || lexicalResult.reason || "sqlite_no_results";
+        }
+      } catch (error) {
+        timing.lexicalMs = Date.now() - lexicalStart;
+        fallbackReason = fallbackReason || `sqlite_failed:${error.message.slice(0, 80)}`;
+      }
+    }
+
+    if (rankingLists.length) {
+      ranked = fuseExternalRankings(rankingLists, budget);
+    } else {
+      const memoryRanked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
+      ranked = memoryRanked;
+    }
     timing.retrievalMs = Date.now() - tRetrieve;
   }
 
@@ -128,4 +179,22 @@ export async function searchNotebook(notebookId, query, options = {}) {
     chunks: citations,
     documentSummaries
   };
+}
+
+function fuseExternalRankings(rankings, budget) {
+  const RRF_K = 60;
+  const byKey = new Map();
+  for (const ranking of rankings) {
+    ranking.forEach((chunk, rank) => {
+      const key = `${chunk.documentId || ""}:${chunk.chunkIndex ?? ""}:${chunk.text?.slice(0, 32) || ""}`;
+      const entry = byKey.get(key) || { chunk, score: 0, bestRank: rank };
+      entry.score += 1 / (RRF_K + rank + 1);
+      entry.bestRank = Math.min(entry.bestRank, rank);
+      byKey.set(key, entry);
+    });
+  }
+  const sorted = Array.from(byKey.values())
+    .sort((left, right) => right.score - left.score || left.bestRank - right.bestRank)
+    .map((entry) => entry.chunk);
+  return greedyFit(sorted, budget);
 }
