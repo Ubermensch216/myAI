@@ -2,9 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { slidingChunkText } from "./parsers.js";
+import { chunkDocumentSections } from "./chunking.js";
 import { multiQueryHybridSelect, greedyFit } from "./retrieval.js";
-import { pageSections } from "./documents.js";
 import { embedTexts } from "./embeddings.js";
 import { expandQuery } from "./queryExpansion.js";
 import { analyzeDocument } from "./documentAnalysis.js";
@@ -13,8 +12,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const NOTEBOOKS_DIR = path.join(rootDir, "data", "notebooks");
-const CHUNK_WINDOW_CHARS = Number(process.env.CHUNK_WINDOW_CHARS || process.env.CHUNK_TARGET_CHARS || 1024);
-const CHUNK_OVERLAP_CHARS = Number(process.env.CHUNK_OVERLAP_CHARS || 256);
 const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
 const NOTEBOOK_CHUNK_CACHE_MAX = Number(process.env.NOTEBOOK_CHUNK_CACHE_MAX || 4);
 const NOTEBOOK_ID_PATTERN = /^nb_[a-f0-9]{16}$/;
@@ -259,25 +256,7 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
   }
 
   const id = generateId("doc");
-  const sections = pageSections(parsedDocument);
-  const chunks = [];
-  for (const section of sections) {
-    if (!section.text) continue;
-    const pieces = slidingChunkText(section.text, {
-      windowChars: CHUNK_WINDOW_CHARS,
-      overlapChars: CHUNK_OVERLAP_CHARS
-    });
-    pieces.forEach((piece, partIndex) => {
-      chunks.push({
-        index: chunks.length,
-        text: piece,
-        page: section.page,
-        label: section.label || "",
-        part: pieces.length > 1 ? partIndex + 1 : null,
-        partTotal: pieces.length > 1 ? pieces.length : null
-      });
-    });
-  }
+  const chunks = chunkDocumentSections(parsedDocument);
 
   if (!chunks.length) {
     throw new Error("문서에서 본문 텍스트를 추출하지 못했습니다.");

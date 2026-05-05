@@ -1,6 +1,56 @@
 # Architecture
 
-myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server and local Ollama. The browser owns private per-user state, while the server owns shared notebook storage and model orchestration. In a department deployment, the server and `data/notebooks/` should live on the department workstation/GPU box, while personal room uploads stay in each user's encrypted browser IndexedDB.
+myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server and local Ollama. The browser owns private per-user state, while the server owns shared notebook storage and model orchestration.
+
+## Deployment Topology
+
+myAI has a two-tier deployment model:
+
+```
+[Personal PC — each user]                [Department Workstation — shared]
+  Browser                                   Node.js/Express :3000
+  ├─ AES-GCM IndexedDB                      ├─ Ollama :11434
+  │   ├─ rooms + messages                   │    (GPU: DGX Spark / RTX 5090-class)
+  │   ├─ personal room uploads              ├─ data/notebooks/
+  │   ├─ calendar events                    │   ├─ nb_<id>/manifest.json
+  │   └─ app settings                       │   └─ nb_<id>/docs/<docId>.json
+  └─ fetch() → http://<dept-host>:3000/api/ └─ uploads/ (temp only, cleaned after parse)
+```
+
+**Department workstation** hosts the Node.js server and Ollama. It stores all department notebooks under `data/notebooks/`. GPU-class hardware enables large embedding models (e.g. `bge-m3`), fast inference, and concurrent Map-Reduce analysis shared by all connected users.
+
+**Personal PC (browser-only private state)** — each user's browser holds their private state in encrypted IndexedDB. Personal room uploads are parsed server-side (temp file only), the full content is returned in the API response, and the browser persists it in IndexedDB. The server retains no copy after the response. Calendar events, settings, and chat history never leave the browser.
+
+### What Lives Where
+
+| Data | Location | Rationale |
+|---|---|---|
+| Department notebook chunks + embeddings | Server filesystem (`data/notebooks/`) | Shared, GPU-embedded, admin-managed |
+| Personal room uploads (documents, images) | Browser IndexedDB (AES-GCM) | Private per-user; server is parse-only |
+| Chat and message history | Browser IndexedDB | Per-user private |
+| Calendar events | Browser IndexedDB | Per-user private, no server sync |
+| App settings | Browser IndexedDB | Per-user private |
+| Ollama models | Department workstation | GPU for performance |
+
+### Personal Document RAG vs. Notebook RAG
+
+Both paths use the same BM25 + cosine + RRF hybrid retrieval, but differ in where data lives:
+
+| | Personal Doc RAG | Notebook RAG |
+|---|---|---|
+| Data store | Browser IndexedDB → sent in `/api/chat` request body | Server filesystem (`data/notebooks/`) |
+| Ingest embedding | Server-side via Ollama at upload time | Server-side via Ollama at admin ingest |
+| Query embedding | Server-side per request | Server-side per request |
+| Persistence | Browser (AES-GCM encrypted) | Server JSON (ADMIN_TOKEN-protected writes) |
+| Access control | Per-browser encryption key | `ADMIN_TOKEN` for writes; read for all |
+
+### Implications for Future Work
+
+- **Network**: Set `HOST=0.0.0.0` (default) on the department workstation. Add a reverse proxy + TLS for any non-LAN deployment.
+- **Multi-user isolation**: Personal data is isolated by each browser's AES-GCM key, not by a server-side session. There is no per-user account model on the server.
+- **Shared Ollama**: `EMBED_MODEL` and `OLLAMA_MODEL` on the department workstation apply to all users. Users cannot point to a different Ollama instance.
+- **Notebook cache is shared**: `NOTEBOOK_CHUNK_CACHE_MAX` is a single in-process LRU shared across all concurrent browser sessions on that server.
+- **Upload temp files**: Removed from `uploads/` after the parse response. No permanent personal data is stored server-side.
 
 ## Main Flows
 
@@ -81,6 +131,7 @@ The LLM does not directly mutate calendar data.
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
 - `server/documents.js` - document serializers and `pageSections()`.
+- `server/chunking.js` - shared document section chunking policy for personal uploads and notebook ingest.
 - `server/documentAnalysis.js` - summary/topic extraction for uploaded and notebook documents.
 - `server/notebooks.js` - notebook manifests, document ingest, chunk storage, retrieval, all-chunk loading.
 - `server/retrieval.js` - tokenization, BM25, CJK bigrams, cosine similarity, RRF fusion, greedy fitting.
@@ -91,7 +142,12 @@ The LLM does not directly mutate calendar data.
 - `server/holidays.js` - Korean public-holiday API and fallback.
 - `server/visualization.js` - plan normalization, validation, execution, fallback chart specs.
 - `server/auth.js` - admin token middleware.
-- `public/app.js` - frontend state, persistence, upload/chat/calendar/notebook/settings behavior.
+- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI; imports all modules.
+- `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utility functions. No project-level imports.
+- `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
+- `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, intent command bar.
+- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers.
+- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, file upload progress.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.
 

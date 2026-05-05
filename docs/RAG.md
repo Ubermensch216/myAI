@@ -20,7 +20,7 @@ Long document context flow:
 ```text
 documents from browser
 -> server/ollama.js#collectChunks()
--> server/parsers.js#slidingChunkText()
+-> server/chunking.js#chunkDocumentSections()
 -> server/queryExpansion.js#expandQuery()
 -> server/embeddings.js#embedTexts()
 -> server/retrieval.js#multiQueryHybridSelect()
@@ -58,8 +58,7 @@ Ingest flow:
 ```text
 admin upload
 -> parseUpload()
--> pageSections()
--> slidingChunkText()
+-> chunkDocumentSections()
 -> embedTexts(chunks)
 -> analyzeDocument()
 -> write document JSON and manifest summary

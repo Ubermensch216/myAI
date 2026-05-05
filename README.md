@@ -137,9 +137,10 @@ server/
   mapReduce.js         whole-document Map-Reduce
   calendarAgent.js     calendar intent classifier
   holidays.js          Korean holiday API/fallback
+  chunking.js          shared section chunking policy
   notebooks.js         notebook storage, ingest, retrieval
   auth.js              ADMIN_TOKEN middleware
-  parsers.js           file parsers and chunking
+  parsers.js           file parsers and text splitting primitives
   retrieval.js         BM25/CJK bigram, cosine, RRF retrieval
   visualization.js     visualization validation and chart data
   documents.js         serializers and pageSections()
@@ -147,7 +148,13 @@ server/
 
 public/
   index.html
-  app.js
+  app.js               orchestrator (~776 lines)
+  modules/
+    state.js           global state, DOM refs, shared utilities
+    persistence.js     IndexedDB + WebCrypto AES-GCM
+    calendar.js        calendar rendering, CRUD, reminders
+    chat.js            streaming chat, message rendering, file upload
+    notebook.js        notebook selector UI and admin panel
   answerRenderer.js
   visualizationRenderer.js
   fileDisplay.js
@@ -171,10 +178,20 @@ docs/
 - [Known Issues](docs/KNOWN_ISSUES.md)
 - [Deployment](deploy/DEPLOY.md)
 
+## Deployment Model
+
+myAI uses a two-tier design:
+
+- **Department workstation** (DGX Spark / RTX 5090-class GPU): runs the Node.js server + Ollama. Stores department notebooks under `data/notebooks/`. Multiple personal PCs connect to this shared server.
+- **Personal PC (browser-only)**: each user's browser holds private data (rooms, uploads, calendar, settings) in encrypted IndexedDB. Personal documents are parsed server-side, returned in the API response, and persisted in the browser. The server stores no personal copy.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
-- Department notebooks are stored as JSON files under `data/notebooks/`; large collections will eventually need an index/vector store.
+- Department notebooks are stored as JSON files under `data/notebooks/`; large collections will eventually need a persistent vector index.
+- There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.
 - Map-Reduce is slower than normal chat and truncates beyond `MAP_REDUCE_MAX_CHUNKS`.
 - Legacy binary `.hwp` and `.xls` are not parsed directly. Use HWPX/XLSX.

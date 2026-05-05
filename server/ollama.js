@@ -1,5 +1,5 @@
 import { loadLocalEnv } from "./env.js";
-import { slidingChunkText } from "./parsers.js";
+import { chunkDocumentSections } from "./chunking.js";
 import { multiQueryHybridSelect } from "./retrieval.js";
 import { embedTexts } from "./embeddings.js";
 import { expandQuery } from "./queryExpansion.js";
@@ -12,15 +12,12 @@ import {
   normalizeVisualizationPlan,
   parseVisualizationJson
 } from "./visualization.js";
-import { pageSections } from "./documents.js";
 
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const MAX_CONTEXT_CHARS = Number(process.env.MAX_CONTEXT_CHARS || 24000);
-const CHUNK_WINDOW_CHARS = Number(process.env.CHUNK_WINDOW_CHARS || process.env.CHUNK_TARGET_CHARS || 1024);
-const CHUNK_OVERLAP_CHARS = Number(process.env.CHUNK_OVERLAP_CHARS || 256);
 
 export async function listModels() {
   const response = await fetch(`${OLLAMA_URL}/api/tags`);
@@ -764,18 +761,18 @@ function collectChunks(documents) {
   const chunks = [];
   for (const documentItem of documents) {
     if (!hasDocumentContext(documentItem)) continue;
-    const sections = pageSections(documentItem);
-    for (const section of sections) {
-      if (!section.text) continue;
-      const label = section.label ? `${section.page} / ${section.label}` : section.page;
-      const pieces = slidingChunkText(section.text, {
-        windowChars: CHUNK_WINDOW_CHARS,
-        overlapChars: CHUNK_OVERLAP_CHARS
-      });
-      pieces.forEach((piece, index) => {
-        const part = pieces.length > 1 ? ` (part ${index + 1}/${pieces.length})` : "";
-        const text = `[${documentItem.fileName} - ${label}${part}]\n${piece}`;
-        chunks.push({ text, fileName: documentItem.fileName, page: section.page });
+    for (const chunk of chunkDocumentSections(documentItem)) {
+      const label = chunk.label ? `${chunk.page} / ${chunk.label}` : chunk.page;
+      const part = chunk.part ? ` (part ${chunk.part}/${chunk.partTotal})` : "";
+      const text = `[${documentItem.fileName} - ${label}${part}]\n${chunk.text}`;
+      chunks.push({
+        text,
+        fileName: documentItem.fileName,
+        page: chunk.page,
+        label: chunk.label,
+        part: chunk.part,
+        partTotal: chunk.partTotal,
+        chunkIndex: chunk.index
       });
     }
   }

@@ -35,3 +35,10 @@
 - For production-like deployment, bind the app to `127.0.0.1` behind a reverse proxy and add external auth.
 - Reverse proxies must not buffer streaming chat responses.
 - CPU-only Ollama can be slow for document analysis and Map-Reduce.
+
+## Multi-User / Department Deployment
+
+- There is no per-user server account. All users connecting to the department workstation share the same Ollama model settings and notebook chunk cache.
+- Personal data isolation relies entirely on each browser's AES-GCM encryption key. A user who clears their browser storage loses all personal data.
+- The notebook chunk cache (`NOTEBOOK_CHUNK_CACHE_MAX`) is a single in-process LRU; under concurrent load from multiple personal PCs it will evict more frequently than in single-user setups. Tune `NOTEBOOK_CHUNK_CACHE_MAX` upward on a high-core-count department workstation.
+- Upload temp files in `uploads/` are personal documents transiently on the department server. Ensure the directory is not accessible outside the process and is cleaned promptly on parse error paths.

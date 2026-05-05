@@ -57,7 +57,12 @@ Server:
 Frontend:
 
 - `public/index.html` - app shell and dialogs.
-- `public/app.js` - state, IndexedDB encryption, chat/calendar/notebook UI.
+- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI; ~776 lines after modularization.
+- `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities. No imports.
+- `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
+- `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
+- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers.
+- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
 - `public/styles.css` - layout and theme styles.
@@ -70,6 +75,24 @@ Docs:
 - `docs/RAG.md` - document context, notebook retrieval, embeddings, Map-Reduce.
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
 - `docs/KNOWN_ISSUES.md` - constraints and next improvements.
+
+## Deployment Topology
+
+```
+[Personal PC — each user]                [Department Workstation — shared]
+  Browser                                   Node.js/Express :3000
+  ├─ AES-GCM IndexedDB                      ├─ Ollama :11434 (GPU: DGX Spark / RTX 5090-class)
+  │   ├─ rooms + messages                   ├─ data/notebooks/
+  │   ├─ personal room uploads              └─ uploads/ (temp only, cleaned after parse)
+  │   ├─ calendar events
+  │   └─ app settings
+  └─ fetch() → http://<dept-host>:3000/api/
+```
+
+- Personal data (uploads, calendar, settings, history) lives only in the user's browser IndexedDB.
+- Department notebooks live on the server filesystem; GPU-class hardware embeds and queries them.
+- Upload temp files are deleted after the parse response — no personal data is retained server-side.
+- There is no per-user server account; isolation is by browser AES-GCM key.
 
 ## Core Architecture
 
@@ -129,7 +152,7 @@ CSV/XLSX prompt
 - `ADMIN_TOKEN` protects notebook management routes only. The app is otherwise designed as a local/trusted-network tool unless deployed behind additional auth.
 - Calendar data is local-only. There is no Google/Outlook/ICS sync.
 - Destructive calendar/notebook/file actions still mostly use `window.confirm()`. Rich in-app review dialogs are a good next step.
-- `public/app.js` is large and mixes chat, calendar, notebook, persistence, and settings logic. Prefer focused modules when touching substantial areas.
+- `public/app.js` is the orchestrator (~776 lines). Heavy logic lives in `public/modules/`. Cross-module signals use `window.dispatchEvent(new CustomEvent("myai:..."))` to avoid circular imports.
 
 ## Editing Rules For Future Agents
 
