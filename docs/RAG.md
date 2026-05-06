@@ -36,12 +36,16 @@ EMBED_MODEL=bge-m3
 
 ## Uploaded Room Documents
 
-Room attachments are stored durably in encrypted browser IndexedDB. On each chat turn, the client sends the active room documents to `POST /api/chat`.
+Room attachments are stored durably in encrypted browser IndexedDB. On each chat turn, the client sends the active room documents to `POST /api/chat`. When total text exceeds 400K chars, the browser first applies query-aware section trimming before sending.
 
 Long document context flow:
 
 ```text
-documents from browser
+documents in browser
+-> public/modules/chat.js#queryTrimDocuments()   // browser-side; skipped when total ≤ 400K chars
+   -> score sections by query keyword overlap
+   -> greedily fill 400K-char budget, highest-scored sections first
+   -> images (kind != "document") pass through untouched
 -> server/ollama.js#collectChunks()
 -> server/chunking.js#chunkDocumentSections()
 -> server/queryExpansion.js#expandQuery()

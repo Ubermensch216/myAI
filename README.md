@@ -181,13 +181,14 @@ server/
 
 public/
   index.html
-  app.js               orchestrator
+  app.js               orchestrator: init, routing, room management, drag-drop
   modules/
     state.js           global state, DOM refs, shared utilities (showConfirmDialog)
     persistence.js     IndexedDB + WebCrypto AES-GCM
     calendar.js        calendar rendering, CRUD, reminders
-    chat.js            streaming chat, message rendering, file upload
-    notebook.js        notebook selector UI and admin panel
+    chat.js            streaming chat, message rendering, file upload, query-trim
+    notebook.js        notebook selector UI, admin panel, admin event binding
+    settings.js        brand rendering, settings dialog, theme/avatar/banner
   answerRenderer.js
   visualizationRenderer.js
   fileDisplay.js

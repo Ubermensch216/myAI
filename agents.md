@@ -68,12 +68,13 @@ Server:
 Frontend:
 
 - `public/index.html` - app shell and dialogs.
-- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI.
+- `public/app.js` - orchestrator: init, routing, room management, drag-drop, global key bindings.
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities (including `showConfirmDialog`). No imports.
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
-- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers.
-- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD.
+- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
+- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, admin event binding.
+- `public/modules/settings.js` - brand rendering, settings dialog, theme/color-theme/avatar/banner.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
 - `public/styles.css` - layout and theme styles.

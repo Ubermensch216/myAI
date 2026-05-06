@@ -117,7 +117,7 @@ composer "전체 분석" toggle
 
 ```text
 chart/graph prompt + CSV/XLSX table data
--> public/app.js routes to POST /api/visualize
+-> public/modules/chat.js routes to POST /api/visualize
 -> LLM proposes analysis + visualizationPlan JSON
 -> server validates exact columns and chart requirements
 -> server computes final chart data from real rows
@@ -162,12 +162,13 @@ The LLM does not directly mutate calendar data.
 - `server/holidays.js` - Korean public-holiday API and fallback.
 - `server/visualization.js` - plan normalization, validation, execution, fallback chart specs.
 - `server/auth.js` - admin token middleware.
-- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI; imports all modules.
+- `public/app.js` - orchestrator: init, routing, room management, drag-drop, global key bindings.
+- `public/modules/settings.js` - brand rendering, settings dialog, theme/color-theme/avatar/banner.
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utility functions. No project-level imports.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, intent command bar.
-- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers.
-- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, file upload progress.
+- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
+- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, file upload progress, admin event binding.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.
 

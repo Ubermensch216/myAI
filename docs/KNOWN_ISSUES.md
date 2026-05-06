@@ -23,7 +23,7 @@
 
 ## UI And Code Organization
 
-- `public/app.js` is large and mixes chat, upload, persistence, calendar, notebook, and settings logic.
+- `public/app.js` is now a focused orchestrator (~480 lines) handling init, routing, rooms, and drag-drop. Settings/brand live in `modules/settings.js`; admin event binding in `modules/notebook.js`. Rendering functions (renderRooms, renderMessages) remain in app.js and could be further extracted if needed.
 - The answer renderer is markdown-lite, not a full Markdown renderer. Replacing it can regress table/list styling.
 - The composer `+` menu is intended to remain extensible.
 
