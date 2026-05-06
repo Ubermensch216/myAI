@@ -966,3 +966,149 @@ function addCardStat(card, label, value) {
   row.append(lbl, val);
   card.append(row);
 }
+
+// ===== App event binding =====
+
+export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
+  if (elements.openAdminNotebookButton) {
+    elements.openAdminNotebookButton.addEventListener("click", openAdminNotebookDialog);
+  }
+  if (elements.closeAdminNotebookButton) {
+    elements.closeAdminNotebookButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeAdminNotebookDialog();
+    });
+  }
+  if (elements.adminNotebookDialog) {
+    elements.adminNotebookDialog.addEventListener("click", (event) => {
+      if (event.target === elements.adminNotebookDialog) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeAdminNotebookDialog();
+      }
+    });
+    elements.adminNotebookDialog.addEventListener("close", () => {
+      resetAdminFileInput();
+      adminUiState.selectedId = null;
+      resetDragDepth();
+      hideDropOverlay();
+    });
+  }
+  if (elements.adminRecheckButton) {
+    elements.adminRecheckButton.addEventListener("click", async () => {
+      await loadAdminStatus();
+      await renderAdminDialogState();
+    });
+  }
+  if (elements.adminTokenSubmitButton) elements.adminTokenSubmitButton.addEventListener("click", submitAdminToken);
+  if (elements.adminTokenInput) {
+    elements.adminTokenInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); submitAdminToken(); }
+    });
+  }
+  if (elements.adminTokenToggleButton) {
+    elements.adminTokenToggleButton.addEventListener("click", () => {
+      const input = elements.adminTokenInput;
+      if (!input) return;
+      input.type = input.type === "password" ? "text" : "password";
+      elements.adminTokenToggleButton.setAttribute("aria-label", input.type === "password" ? "입력값 표시" : "입력값 숨김");
+    });
+  }
+  if (elements.adminLogoutButton) elements.adminLogoutButton.addEventListener("click", adminLogout);
+  if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
+  if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
+  if (elements.adminNewNotebookButton) elements.adminNewNotebookButton.addEventListener("click", showAdminNewNotebookForm);
+  if (elements.adminCancelNewNotebookButton) {
+    elements.adminCancelNewNotebookButton.addEventListener("click", () => {
+      if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+      renderAdminDetail();
+    });
+  }
+  if (elements.adminNewNotebookForm) {
+    elements.adminNewNotebookForm.addEventListener("submit", (event) => { event.preventDefault(); adminCreateNotebook(); });
+  }
+  if (elements.adminBackToListButton) {
+    elements.adminBackToListButton.addEventListener("click", () => {
+      adminUiState.mobileView = "list";
+      if (elements.adminWorkspace) {
+        elements.adminWorkspace.dataset.mobileView = "list";
+        const isMobile = window.matchMedia?.("(max-width: 720px)")?.matches ?? false;
+        if (elements.adminBackToListButton) elements.adminBackToListButton.hidden = !isMobile;
+      }
+    });
+  }
+  if (elements.adminDetailNameInput) {
+    elements.adminDetailNameInput.addEventListener("input", () => scheduleAdminDetailSave());
+    elements.adminDetailNameInput.addEventListener("blur", () => commitAdminDetailSave());
+  }
+  if (elements.adminDetailDescriptionInput) {
+    elements.adminDetailDescriptionInput.addEventListener("input", () => scheduleAdminDetailSave());
+    elements.adminDetailDescriptionInput.addEventListener("blur", () => commitAdminDetailSave());
+  }
+  if (elements.adminDeleteNotebookButton) {
+    elements.adminDeleteNotebookButton.addEventListener("click", () => {
+      const notebook = adminUiState.selectedNotebook;
+      if (notebook) adminDeleteNotebook(notebook.id, notebook.name);
+    });
+  }
+  if (elements.adminDropZone) {
+    elements.adminDropZone.addEventListener("click", (event) => {
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestAdminFileSelection();
+    });
+    elements.adminDropZone.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestAdminFileSelection();
+    });
+    elements.adminDropZone.addEventListener("dragover", (event) => {
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      elements.adminDropZone.classList.add("dragover");
+    });
+    elements.adminDropZone.addEventListener("dragleave", (event) => {
+      event.stopPropagation();
+      elements.adminDropZone.classList.remove("dragover");
+    });
+    elements.adminDropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      elements.adminDropZone.classList.remove("dragover");
+      resetDragDepth();
+      hideDropOverlay();
+      if (!isAdminDialogOpen() || !adminUiState.selectedId) return;
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length) uploadAdminDocuments(adminUiState.selectedId, files);
+    });
+  }
+  if (elements.adminFileInput) {
+    elements.adminFileInput.addEventListener("click", (event) => event.stopPropagation());
+    elements.adminFileInput.addEventListener("change", (event) => {
+      const files = Array.from(event.target.files || []);
+      const notebookId = adminUiState.selectedId;
+      event.target.value = "";
+      if (!isAdminDialogOpen() || !notebookId || !files.length) return;
+      uploadAdminDocuments(notebookId, files);
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.classList.contains("admin-copy-button")) {
+      const text = target.dataset.copy ?? "";
+      if (!text) return;
+      navigator.clipboard?.writeText(text).then(() => {
+        target.classList.add("copied");
+        const original = target.textContent;
+        target.textContent = "복사됨";
+        setTimeout(() => { target.classList.remove("copied"); target.textContent = original; }, 1200);
+      }).catch(() => {});
+    }
+  });
+}
