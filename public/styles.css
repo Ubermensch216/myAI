@@ -3572,6 +3572,23 @@ textarea {
   text-transform: uppercase;
 }
 
+.admin-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-status-nav-button {
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+
+.admin-status-nav-button:hover,
+.admin-status-nav-button.active {
+  color: var(--accent);
+}
+
 .admin-new-button {
   width: 26px;
   height: 26px;
@@ -4086,6 +4103,217 @@ textarea {
 }
 
 /* ===== Admin dialog: mobile fallback ===== */
+/* ===== Admin status panel ===== */
+
+.admin-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.admin-status-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.admin-status-panel-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.admin-status-refresh {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.admin-status-loading {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.admin-status-error {
+  color: var(--danger);
+  font-size: 13px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--line));
+  border-radius: 8px;
+}
+
+.admin-status-section {
+  margin-bottom: 20px;
+}
+
+.admin-status-section-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-status-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.admin-status-badge-label {
+  color: var(--muted);
+}
+
+.admin-status-badge-value {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.admin-status-index-card {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.admin-status-index-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.admin-status-index-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-status-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+  line-height: 1.6;
+}
+
+.admin-status-pill-ok {
+  background: color-mix(in srgb, #22c55e 15%, transparent);
+  color: #15803d;
+}
+
+:root[data-theme="dark"] .admin-status-pill-ok {
+  background: color-mix(in srgb, #22c55e 20%, transparent);
+  color: #4ade80;
+}
+
+.admin-status-pill-fail {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.admin-status-pill-off {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+}
+
+.admin-status-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.admin-status-stat-label {
+  color: var(--muted);
+}
+
+.admin-status-stat-value {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-status-index-error {
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.admin-status-drift {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, #f59e0b 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, var(--line));
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.admin-status-queue-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-status-queue-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.admin-status-queue-name {
+  width: 60px;
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-status-queue-stats {
+  color: var(--muted);
+}
+
+.admin-status-queue-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.admin-status-rebuild-cmd {
+  display: inline-block;
+  font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+  font-size: 13px;
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  user-select: all;
+}
+
 @media (max-width: 720px) {
   .admin-dialog {
     height: 100vh;

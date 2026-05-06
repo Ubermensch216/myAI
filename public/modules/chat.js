@@ -1,7 +1,7 @@
 import { renderAssistantAnswer as renderAssistantContent } from "../answerRenderer.js";
 import { formatVisualizationText, renderVisualizationSpec } from "../visualizationRenderer.js";
 import { displayFileName as formatDisplayFileName } from "../fileDisplay.js";
-import { state, elements, getActiveRoom, showConfirmDialog } from "./state.js";
+import { state, elements, documentCacheHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persistence.js";
 import {
   hasCalendarKeyword, isCalendarConfirmation, isCalendarRejection,
@@ -15,6 +15,8 @@ const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
 const LARGE_FILE_WARNING_BYTES = 10 * MB;
 const CHAT_PAYLOAD_WARNING_BYTES = 60 * MB;
 const CHAT_PAYLOAD_LIMIT_BYTES = 72 * MB;
+const TRIM_THRESHOLD_CHARS = 400_000;
+const TRIM_BUDGET_CHARS = 400_000;
 
 // ===== Busy / abort =====
 
@@ -121,7 +123,11 @@ export async function uploadFiles(files) {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const response = await fetch("/api/upload", { method: "POST", body: formData });
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: documentCacheHeaders(),
+        body: formData
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "업로드 실패");
       room.documents.push(result.document);
@@ -161,7 +167,10 @@ export async function confirmAndRemoveUploadedFile(uploadedFile) {
 }
 
 export async function removeUploadedFile(uploadedFile) {
-  await fetch(`/api/documents/${uploadedFile.id}`, { method: "DELETE" }).catch(() => {});
+  await fetch(`/api/documents/${uploadedFile.id}`, {
+    method: "DELETE",
+    headers: documentCacheHeaders()
+  }).catch(() => {});
   const room = getActiveRoom();
   if (!room) return;
   room.documents = getActiveDocuments().filter((f) => f.id !== uploadedFile.id);
@@ -181,7 +190,10 @@ export async function confirmAndClearRoomDocuments(room = getActiveRoom()) {
   });
   if (!confirmed) return;
   const documents = [...room.documents];
-  await Promise.all(documents.map((doc) => fetch(`/api/documents/${doc.id}`, { method: "DELETE" }).catch(() => {})));
+  await Promise.all(documents.map((doc) => fetch(`/api/documents/${doc.id}`, {
+    method: "DELETE",
+    headers: documentCacheHeaders()
+  }).catch(() => {})));
   room.documents = [];
   room.updatedAt = new Date().toISOString();
   scheduleSave();
@@ -270,7 +282,7 @@ export async function requestTextAssistantResponse(room) {
     const payload = {
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
       messages: room.messages.map(({ role, content }) => ({ role, content })),
-      documents: getActiveDocuments(),
+      documents: queryTrimDocuments(getActiveDocuments(), getLastUserPrompt(room)),
       personalization: getPersonalizationSettings(),
       notebookId: room.selectedNotebookId || null,
       ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
@@ -356,6 +368,91 @@ export async function requestTextAssistantResponse(room) {
   }
 }
 
+function totalDocumentTextChars(documents) {
+  let total = 0;
+  for (const doc of documents) {
+    if (doc.kind !== "document") continue;
+    if (doc.text) total += doc.text.length;
+    for (const page of doc.pages || []) if (page.text) total += page.text.length;
+    for (const sheet of doc.sheets || []) if (sheet.text) total += sheet.text.length;
+  }
+  return total;
+}
+
+function extractQueryTokens(query) {
+  return [...new Set(
+    String(query || "").toLowerCase()
+      .split(/[\s\p{P}]+/u)
+      .filter((t) => t.length >= 2)
+  )];
+}
+
+function scoreTextByQuery(text, queryTokens) {
+  if (!queryTokens.length) return 0;
+  const lower = text.toLowerCase();
+  let score = 0;
+  for (const token of queryTokens) {
+    if (lower.includes(token)) score++;
+  }
+  return score;
+}
+
+function queryTrimDocuments(documents, query) {
+  if (!Array.isArray(documents) || !documents.length) return documents;
+  if (totalDocumentTextChars(documents) <= TRIM_THRESHOLD_CHARS) return documents;
+
+  const queryTokens = extractQueryTokens(query);
+  const candidates = [];
+
+  for (let docIdx = 0; docIdx < documents.length; docIdx++) {
+    const doc = documents[docIdx];
+    if (doc.kind !== "document") continue;
+    if (doc.pages?.some((p) => p.text)) {
+      doc.pages.forEach((page, i) => {
+        if (page.text) candidates.push({ docIdx, source: "pages", sectionIdx: i, text: page.text });
+      });
+    } else if (doc.sheets?.some((s) => s.text)) {
+      doc.sheets.forEach((sheet, i) => {
+        if (sheet.text) candidates.push({ docIdx, source: "sheets", sectionIdx: i, text: sheet.text });
+      });
+    } else if (doc.text) {
+      doc.text.split(/\n{2,}/).forEach((para, i) => {
+        if (para.trim()) candidates.push({ docIdx, source: "text", sectionIdx: i, text: para });
+      });
+    }
+  }
+
+  for (const c of candidates) c.score = scoreTextByQuery(c.text, queryTokens);
+  candidates.sort((a, b) => b.score - a.score || a.docIdx - b.docIdx || a.sectionIdx - b.sectionIdx);
+
+  const keep = new Map();
+  let used = 0;
+  for (const c of candidates) {
+    if (used >= TRIM_BUDGET_CHARS) break;
+    if (used + c.text.length > TRIM_BUDGET_CHARS && used > 0) continue;
+    if (!keep.has(c.docIdx)) keep.set(c.docIdx, { source: c.source, indexes: new Set() });
+    keep.get(c.docIdx).indexes.add(c.sectionIdx);
+    used += c.text.length;
+  }
+
+  return documents.map((doc, docIdx) => {
+    if (doc.kind !== "document") return doc;
+    const entry = keep.get(docIdx);
+    const blankPages = (doc.pages || []).map((p) => ({ ...p, text: "" }));
+    const blankSheets = (doc.sheets || []).map((s) => ({ ...s, text: "" }));
+    if (!entry) return { ...doc, text: "", pages: blankPages, sheets: blankSheets };
+    const { source, indexes } = entry;
+    if (source === "pages") {
+      return { ...doc, text: "", pages: (doc.pages || []).map((p, i) => indexes.has(i) ? p : { ...p, text: "" }), sheets: blankSheets };
+    }
+    if (source === "sheets") {
+      return { ...doc, text: "", pages: blankPages, sheets: (doc.sheets || []).map((s, i) => indexes.has(i) ? s : { ...s, text: "" }) };
+    }
+    const paragraphs = doc.text.split(/\n{2,}/);
+    return { ...doc, text: paragraphs.filter((_, i) => indexes.has(i)).join("\n\n"), pages: blankPages };
+  });
+}
+
 function validateChatPayloadSize(payload) {
   const payloadBytes = estimateJsonBytes(payload);
   if (payloadBytes > CHAT_PAYLOAD_LIMIT_BYTES) {
@@ -385,7 +482,7 @@ export async function requestVisualizationResponse(room) {
         prompt,
         model: elements.modelInput.value.trim() || "gemma3n:e2b",
         messages: room.messages.map(({ role, content }) => ({ role, content })),
-        documents: getActiveDocuments(),
+        documents: queryTrimDocuments(getActiveDocuments(), prompt),
         personalization: getPersonalizationSettings()
       })
     });

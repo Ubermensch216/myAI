@@ -100,6 +100,9 @@ export const state = {
   abortController: null,
   db: null,
   cryptoKey: null,
+  client: {
+    documentCacheKey: ""
+  },
   notebooks: [],
   deepAnalysisEnabled: false,
   admin: {
@@ -108,6 +111,22 @@ export const state = {
     authenticated: false
   }
 };
+
+export function ensureDocumentCacheKey() {
+  if (!state.client || typeof state.client !== "object") state.client = { documentCacheKey: "" };
+  if (!state.client.documentCacheKey) state.client.documentCacheKey = generateClientSecret();
+  return state.client.documentCacheKey;
+}
+
+export function documentCacheHeaders() {
+  return { "X-MyAI-Document-Key": ensureDocumentCacheKey() };
+}
+
+function generateClientSecret() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export const elements = {
   modelInput: document.querySelector("#modelInput"),
@@ -243,7 +262,11 @@ export const elements = {
   adminFileInput: document.querySelector("#adminFileInput"),
   adminUploadProgress: document.querySelector("#adminUploadProgress"),
   adminDocsTableBody: document.querySelector("#adminDocsTableBody"),
-  adminDocsEmpty: document.querySelector("#adminDocsEmpty")
+  adminDocsEmpty: document.querySelector("#adminDocsEmpty"),
+  adminStatusButton: document.querySelector("#adminStatusButton"),
+  adminStatusPanel: document.querySelector("#adminStatusPanel"),
+  adminStatusBody: document.querySelector("#adminStatusBody"),
+  adminRefreshStatusButton: document.querySelector("#adminRefreshStatusButton")
 };
 
 export function showConfirmDialog({ title = "확인", body = "", okText = "확인", cancelText = "취소", danger = false } = {}) {

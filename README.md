@@ -33,7 +33,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 24 or newer
 - Ollama
 - Required local models:
 
@@ -124,6 +124,8 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body limit |
 | `MAX_UPLOAD_BYTES` | `41943040` | single upload limit |
 | `MAX_CONTEXT_CHARS` | `24000` | uploaded-document context budget |
+| `DOCUMENT_CACHE_TTL_MS` | `21600000` | same-browser runtime cache lifetime for recently uploaded personal documents |
+| `DOCUMENT_CACHE_MAX_ENTRIES` | `256` | max personal upload cache entries kept in server memory |
 | `CHUNK_WINDOW_CHARS` | `1024` | sliding chunk size |
 | `CHUNK_OVERLAP_CHARS` | `256` | sliding chunk overlap |
 | `NOTEBOOK_QUERY_BUDGET` | `12000` | notebook RAG context budget |
@@ -138,6 +140,8 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `MAP_REDUCE_MAX_CHUNKS` | `80` | maximum chunks per whole-analysis run |
 | `MAP_REDUCE_PARALLELISM` | `2` | concurrent map calls |
 | `MAP_REDUCE_MAP_TIMEOUT_MS` | `45000` | map-call timeout |
+| `TRUST_PROXY` | `false` | enables Express proxy IP handling when behind a trusted reverse proxy |
+| `RATE_LIMIT_KEY_HEADER` | unset | optional trusted proxy-auth user header used for rate-limit keys |
 
 ## Project Structure
 

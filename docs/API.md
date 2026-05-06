@@ -64,7 +64,8 @@ non-blocking department RAG backend health.
     "visualize": { "max": 10, "windowMs": 60000 },
     "upload": { "max": 8, "windowMs": 60000 },
     "lightweight": { "max": 30, "windowMs": 60000 },
-    "adminWrite": { "max": 10, "windowMs": 60000 }
+    "adminWrite": { "max": 10, "windowMs": 60000 },
+    "keying": { "header": null }
   }
 }
 ```
@@ -86,19 +87,21 @@ screens and deployment checks.
 
 Multipart upload field: `file`.
 
-Returns a full document payload for encrypted browser persistence. Normal documents include best-effort `summary` and `topics`.
+Optional header: `X-MyAI-Document-Key`.
+
+Returns a full document payload for encrypted browser persistence. Normal documents include best-effort `summary` and `topics`. The same header scopes the short-lived runtime cache used by `GET`/`DELETE /api/documents/:id`.
 
 ### `GET /api/documents`
 
-Returns runtime server-memory document summaries only.
+Disabled. Runtime personal-document cache entries are not listable.
 
 ### `GET /api/documents/:id`
 
-Returns a runtime server-memory full document payload if still available.
+Requires the same `X-MyAI-Document-Key` that uploaded the file. Returns a runtime server-memory full document payload if still available.
 
 ### `DELETE /api/documents/:id`
 
-Deletes the runtime server-memory document copy only.
+Requires the same `X-MyAI-Document-Key` that uploaded the file. Deletes the runtime server-memory document copy only.
 
 ## Chat
 

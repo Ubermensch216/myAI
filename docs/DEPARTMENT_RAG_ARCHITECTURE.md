@@ -200,8 +200,9 @@ ANALYSIS_QUEUE_CONCURRENCY=2
 ```
 
 Use `DEPARTMENT_LEXICAL_BACKEND=sqlite` on department workstations once the
-index has been rebuilt. The SQLite index uses `node:sqlite` and may emit a Node
-experimental warning on current Node 24 builds.
+index has been rebuilt. The SQLite index uses `node:sqlite`, so department
+deployments should run Node.js 24 or newer and may emit a Node experimental
+warning on current Node 24 builds.
 
 Use `.env.department.example` as the starting point for a workstation `.env`.
 Qdrant can be started locally with:

@@ -22,6 +22,7 @@ import {
   submitAdminToken, adminLogout, showAdminNewNotebookForm, adminCreateNotebook,
   adminDeleteNotebook, uploadAdminDocuments, scheduleAdminDetailSave, commitAdminDetailSave,
   renderAdminDetail, isAdminDialogOpen, resetAdminFileInput, requestAdminFileSelection,
+  showAdminStatus, renderAdminRagStatus,
   adminUiState
 } from "./modules/notebook.js";
 
@@ -652,6 +653,8 @@ function bindEvents() {
     });
   }
   if (elements.adminLogoutButton) elements.adminLogoutButton.addEventListener("click", adminLogout);
+  if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
+  if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
   if (elements.adminNewNotebookButton) elements.adminNewNotebookButton.addEventListener("click", showAdminNewNotebookForm);
   if (elements.adminCancelNewNotebookButton) {
     elements.adminCancelNewNotebookButton.addEventListener("click", () => {

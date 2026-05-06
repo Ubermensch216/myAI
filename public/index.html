@@ -588,15 +588,29 @@
         <aside class="admin-list-pane" aria-label="노트북 목록">
           <header class="admin-list-header">
             <h3>노트북</h3>
-            <button id="adminNewNotebookButton" class="icon-button admin-new-button" type="button" aria-label="새 노트북" title="새 노트북">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
-            </button>
+            <div class="admin-list-header-actions">
+              <button id="adminStatusButton" class="icon-button admin-status-nav-button" type="button" aria-label="시스템 상태" title="시스템 상태">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </button>
+              <button id="adminNewNotebookButton" class="icon-button admin-new-button" type="button" aria-label="새 노트북" title="새 노트북">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+              </button>
+            </div>
           </header>
           <div id="adminNotebookList" class="admin-list" aria-live="polite"></div>
         </aside>
 
         <main class="admin-detail-pane" aria-label="노트북 상세">
           <button id="adminBackToListButton" class="ghost-button admin-back-button" type="button" hidden>← 목록</button>
+
+          <!-- System status panel -->
+          <div id="adminStatusPanel" class="admin-status-panel" hidden>
+            <div class="admin-status-panel-header">
+              <h3>시스템 상태</h3>
+              <button id="adminRefreshStatusButton" class="ghost-button admin-status-refresh" type="button">새로고침</button>
+            </div>
+            <div id="adminStatusBody" class="admin-status-body"></div>
+          </div>
 
           <!-- Empty state -->
           <div id="adminDetailEmpty" class="admin-detail-empty">

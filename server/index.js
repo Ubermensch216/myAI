@@ -4,7 +4,7 @@ import express from "express";
 import multer from "multer";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./env.js";
-import { addDocument, getDocument, listDocuments, removeDocument } from "./documentStore.js";
+import { addDocument, getCachedDocumentUnsafe, getDocument, removeDocument } from "./documentStore.js";
 import { serializeDocumentForClient as serializeClientDocument } from "./documents.js";
 import { normalizeUploadFileName as repairUploadFileName } from "../public/textRepair.js";
 import { DEFAULT_MODEL, OLLAMA_URL, generateFollowupSuggestions, generateVisualizationSpec, listModels, streamChat } from "./ollama.js";
@@ -48,6 +48,8 @@ const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || undefined;
 
 const app = express();
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+if (trustProxy !== false) app.set("trust proxy", trustProxy);
 const upload = multer({
   dest: uploadDir,
   limits: {
@@ -60,6 +62,18 @@ app.use(express.static(publicDir));
 
 function extractPersonalization(body) {
   return body.personalization && typeof body.personalization === "object" ? body.personalization : {};
+}
+
+function extractDocumentOwnerKey(request) {
+  return String(request.get("x-myai-document-key") || "").trim();
+}
+
+function parseTrustProxy(value) {
+  const text = String(value ?? "").trim();
+  if (!text || text.toLowerCase() === "false" || text === "0") return false;
+  if (text.toLowerCase() === "true") return true;
+  if (/^\d+$/.test(text)) return Number(text);
+  return text;
 }
 
 function collectRagStatus({ models = null } = {}) {
@@ -132,7 +146,7 @@ app.get("/api/status", async (_request, response) => {
 });
 
 app.get("/api/documents", (_request, response) => {
-  response.json({ documents: listDocuments() });
+  response.status(404).json({ error: "Runtime document listing is disabled." });
 });
 
 app.get("/api/holidays", async (request, response) => {
@@ -146,7 +160,7 @@ app.get("/api/holidays", async (request, response) => {
 });
 
 app.get("/api/documents/:id", (request, response) => {
-  const document = getDocument(request.params.id);
+  const document = getDocument(request.params.id, { ownerKey: extractDocumentOwnerKey(request) });
   if (!document) {
     response.status(404).json({ error: "문서를 찾을 수 없습니다." });
     return;
@@ -168,8 +182,9 @@ app.post("/api/upload", upload.single("file"), async (request, response) => {
       parsed.summary = analysis.summary;
       parsed.topics = analysis.topics;
     }
-    const summary = addDocument(parsed);
-    response.json({ document: serializeClientDocument(getDocument(summary.id)) });
+    const ownerKey = extractDocumentOwnerKey(request);
+    const summary = addDocument(parsed, { ownerKey });
+    response.json({ document: serializeClientDocument(getCachedDocumentUnsafe(summary.id)) });
   } catch (error) {
     response.status(400).json({ error: error.message });
   } finally {
@@ -178,7 +193,7 @@ app.post("/api/upload", upload.single("file"), async (request, response) => {
 });
 
 app.delete("/api/documents/:id", (request, response) => {
-  const removed = removeDocument(request.params.id);
+  const removed = removeDocument(request.params.id, { ownerKey: extractDocumentOwnerKey(request) });
   response.json({ removed });
 });
 

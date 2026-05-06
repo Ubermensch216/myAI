@@ -1,3 +1,7 @@
+import { loadLocalEnv } from "./env.js";
+
+loadLocalEnv();
+
 function clampInt(raw, fallback, min, max) {
   const value = Number(raw);
   if (!Number.isFinite(value)) return fallback;
@@ -5,10 +9,34 @@ function clampInt(raw, fallback, min, max) {
 }
 
 function getClientKey(request) {
-  return request.ip
+  const headerName = getRateLimitKeyHeader();
+  if (headerName) {
+    const headerValue = normalizeHeaderValue(request.get?.(headerName) || request.headers?.[headerName]);
+    if (headerValue) return `header:${headerName}:${headerValue}`;
+  }
+
+  const ip = request.ips?.[0]
+    || request.ip
     || request.socket?.remoteAddress
-    || request.headers?.["x-forwarded-for"]?.split(",")[0]?.trim()
     || "unknown";
+  return `ip:${ip}`;
+}
+
+function getRateLimitKeyHeader() {
+  if (!isTrustProxyConfigured()) return "";
+  const headerName = String(process.env.RATE_LIMIT_KEY_HEADER || "").trim().toLowerCase();
+  if (!headerName) return "";
+  return /^[a-z0-9-]{1,64}$/.test(headerName) ? headerName : "";
+}
+
+function isTrustProxyConfigured() {
+  const value = String(process.env.TRUST_PROXY || "").trim().toLowerCase();
+  return Boolean(value && value !== "false" && value !== "0");
+}
+
+function normalizeHeaderValue(value) {
+  const first = Array.isArray(value) ? value[0] : value;
+  return String(first ?? "").trim().slice(0, 200);
 }
 
 export function createRateLimiter({
@@ -86,7 +114,12 @@ export const rateLimitDefaults = {
 };
 
 export function getRateLimitConfig() {
-  return rateLimitDefaults;
+  return {
+    ...rateLimitDefaults,
+    keying: {
+      header: getRateLimitKeyHeader() || null
+    }
+  };
 }
 
 function cleanupBuckets(buckets, now) {

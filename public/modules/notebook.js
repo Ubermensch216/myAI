@@ -297,6 +297,7 @@ export function showAdminNewNotebookForm() {
   adminUiState.selectedNotebook = null;
   adminUiState.mobileView = "detail";
   renderAdminList();
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
@@ -629,6 +630,7 @@ function selectAdminNotebook(notebookId) {
 
 export function renderAdminDetail() {
   if (!elements.adminDetailEmpty || !elements.adminDetailContent) return;
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   const notebook = adminUiState.selectedNotebook;
   const creating = elements.adminNewNotebookForm && !elements.adminNewNotebookForm.hidden;
   if (creating) return;
@@ -765,4 +767,202 @@ function formatAdminDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// ===== System status panel =====
+
+export function showAdminStatus() {
+  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
+  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
+  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = false;
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  applyAdminMobileView();
+  renderAdminRagStatus();
+}
+
+export async function renderAdminRagStatus() {
+  const body = elements.adminStatusBody;
+  if (!body) return;
+  body.innerHTML = '<div class="admin-status-loading">불러오는 중…</div>';
+  try {
+    const response = await fetch("/api/admin/rag/status", {
+      headers: { Authorization: `Bearer ${state.admin.token}` }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    body.innerHTML = "";
+    body.append(buildRagStatusFragment(data));
+  } catch (error) {
+    body.innerHTML = "";
+    const msg = document.createElement("div");
+    msg.className = "admin-status-error";
+    msg.textContent = `상태 조회 실패: ${error.message}`;
+    body.append(msg);
+  }
+}
+
+function buildRagStatusFragment(data) {
+  const frag = document.createDocumentFragment();
+
+  // --- Backend config ---
+  const backendSection = makeStatusSection("RAG 백엔드");
+  const backendGrid = document.createElement("div");
+  backendGrid.className = "admin-status-badges";
+  backendGrid.append(
+    makeStatusBadge("벡터", data.backend?.vector ?? "—"),
+    makeStatusBadge("어휘", data.backend?.lexical ?? "—"),
+    makeStatusBadge("리랭커", data.reranker?.enabled ? "활성" : "비활성")
+  );
+  backendSection.append(backendGrid);
+  frag.append(backendSection);
+
+  // --- Index health ---
+  const indexSection = makeStatusSection("인덱스 상태");
+  const cards = document.createElement("div");
+  cards.className = "admin-status-cards";
+  cards.append(buildQdrantCard(data.qdrant), buildSqliteCard(data.sqlite));
+  indexSection.append(cards);
+
+  // drift warning
+  const qPts = Number(data.qdrant?.pointsCount ?? -1);
+  const sChunks = Number(data.sqlite?.chunks ?? -1);
+  if (data.qdrant?.configured && data.sqlite?.configured && qPts >= 0 && sChunks >= 0 && qPts !== sChunks) {
+    const drift = document.createElement("div");
+    drift.className = "admin-status-drift";
+    const diff = Math.abs(qPts - sChunks);
+    drift.textContent = `인덱스 불일치: Qdrant ${qPts.toLocaleString()}청크 / SQLite ${sChunks.toLocaleString()}청크 (차이 ${diff.toLocaleString()}). 재구축이 필요할 수 있습니다.`;
+    indexSection.append(drift);
+  }
+  frag.append(indexSection);
+
+  // --- Queues ---
+  const queueSection = makeStatusSection("모델 큐");
+  const queueGrid = document.createElement("div");
+  queueGrid.className = "admin-status-queue-grid";
+  const queues = data.queues ?? {};
+  for (const [key, label] of [["embedding", "임베딩"], ["analysis", "분석"], ["mapReduce", "맵리듀스"]]) {
+    const q = queues[key] ?? {};
+    const row = document.createElement("div");
+    row.className = "admin-status-queue-row";
+    const name = document.createElement("span");
+    name.className = "admin-status-queue-name";
+    name.textContent = label;
+    const stats = document.createElement("span");
+    stats.className = "admin-status-queue-stats";
+    const running = Number(q.running ?? 0);
+    const queued = Number(q.queued ?? 0);
+    const completed = Number(q.completed ?? 0);
+    const rejected = Number(q.rejected ?? 0);
+    stats.textContent = `실행 ${running} · 대기 ${queued} · 완료 ${completed.toLocaleString()}${rejected ? ` · 거절 ${rejected}` : ""}`;
+    if (running > 0) stats.classList.add("admin-status-queue-active");
+    row.append(name, stats);
+    queueGrid.append(row);
+  }
+  queueSection.append(queueGrid);
+  frag.append(queueSection);
+
+  // rebuild hint if any index is unhealthy
+  const anyBad = data.qdrant?.configured && !data.qdrant?.ok || data.sqlite?.configured && !data.sqlite?.ok;
+  const hasDrift = data.qdrant?.configured && data.sqlite?.configured &&
+    Number(data.qdrant?.pointsCount ?? -1) >= 0 && Number(data.sqlite?.chunks ?? -1) >= 0 &&
+    data.qdrant.pointsCount !== data.sqlite.chunks;
+  if (anyBad || hasDrift) {
+    const hint = makeStatusSection("재구축 안내");
+    const code = document.createElement("code");
+    code.className = "admin-status-rebuild-cmd";
+    code.textContent = "npm run rag:rebuild";
+    hint.append(code);
+    frag.append(hint);
+  }
+
+  return frag;
+}
+
+function makeStatusSection(title) {
+  const section = document.createElement("div");
+  section.className = "admin-status-section";
+  const heading = document.createElement("h4");
+  heading.className = "admin-status-section-title";
+  heading.textContent = title;
+  section.append(heading);
+  return section;
+}
+
+function makeStatusBadge(label, value) {
+  const badge = document.createElement("div");
+  badge.className = "admin-status-badge";
+  const lbl = document.createElement("span");
+  lbl.className = "admin-status-badge-label";
+  lbl.textContent = label;
+  const val = document.createElement("span");
+  val.className = "admin-status-badge-value";
+  val.textContent = value;
+  badge.append(lbl, val);
+  return badge;
+}
+
+function buildQdrantCard(qdrant) {
+  return buildIndexCard("Qdrant (벡터)", qdrant, (card, q) => {
+    if (q.configured && q.ok) {
+      addCardStat(card, "컬렉션", q.collection ?? "—");
+      addCardStat(card, "청크", (Number(q.pointsCount ?? 0)).toLocaleString());
+    }
+  });
+}
+
+function buildSqliteCard(sqlite) {
+  return buildIndexCard("SQLite FTS5 (어휘)", sqlite, (card, s) => {
+    if (s.configured && s.ok) {
+      addCardStat(card, "청크", (Number(s.chunks ?? 0)).toLocaleString());
+    }
+  });
+}
+
+function buildIndexCard(title, index, addDetails) {
+  const card = document.createElement("div");
+  card.className = "admin-status-index-card";
+  const header = document.createElement("div");
+  header.className = "admin-status-index-card-header";
+  const name = document.createElement("span");
+  name.className = "admin-status-index-name";
+  name.textContent = title;
+  const pill = document.createElement("span");
+  pill.className = "admin-status-pill";
+  if (!index?.configured) {
+    pill.classList.add("admin-status-pill-off");
+    pill.textContent = "미설정";
+  } else if (index.ok) {
+    pill.classList.add("admin-status-pill-ok");
+    pill.textContent = "정상";
+  } else {
+    pill.classList.add("admin-status-pill-fail");
+    pill.textContent = "오류";
+  }
+  header.append(name, pill);
+  card.append(header);
+  if (index?.configured) addDetails(card, index);
+  if (index?.error) {
+    const err = document.createElement("div");
+    err.className = "admin-status-index-error";
+    err.textContent = index.error;
+    card.append(err);
+  }
+  return card;
+}
+
+function addCardStat(card, label, value) {
+  const row = document.createElement("div");
+  row.className = "admin-status-stat-row";
+  const lbl = document.createElement("span");
+  lbl.className = "admin-status-stat-label";
+  lbl.textContent = label;
+  const val = document.createElement("span");
+  val.className = "admin-status-stat-value";
+  val.textContent = value;
+  row.append(lbl, val);
+  card.append(row);
 }

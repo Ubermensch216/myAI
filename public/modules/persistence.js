@@ -1,6 +1,7 @@
 import {
   state, elements,
   DB_NAME, DB_VERSION, APP_STATE_KEY, KEY_ID,
+  documentCacheHeaders, ensureDocumentCacheKey,
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme
 } from "./state.js";
 
@@ -112,6 +113,11 @@ export async function loadAppState() {
   }
   state.activeRoomId = stored.activeRoomId || null;
   state.activeView = stored.activeView === "calendar" ? "calendar" : "chat";
+  state.client = {
+    documentCacheKey: typeof stored.client?.documentCacheKey === "string" && stored.client.documentCacheKey
+      ? stored.client.documentCacheKey
+      : ensureDocumentCacheKey()
+  };
   const storedEvents = Array.isArray(stored.calendar?.events) ? stored.calendar.events : [];
   state.calendar.events = storedEvents.map(normalizeCalendarEvent).filter((e) => e && e.id && e.start);
   state.calendar.cursorISO = stored.calendar?.cursorISO || new Date().toISOString().slice(0, 10);
@@ -136,6 +142,9 @@ export async function saveAppState() {
     rooms: state.rooms,
     activeRoomId: state.activeRoomId,
     activeView: state.activeView,
+    client: {
+      documentCacheKey: ensureDocumentCacheKey()
+    },
     calendar: {
       events: state.calendar.events,
       cursorISO: state.calendar.cursorISO,
@@ -192,7 +201,7 @@ export async function hydrateStoredDocuments() {
       if (normalizeStoredDocumentContent(doc)) changed = true;
       if (!doc?.id || hasPersistentDocumentContent(doc)) continue;
       try {
-        const response = await fetch(`/api/documents/${doc.id}`);
+        const response = await fetch(`/api/documents/${doc.id}`, { headers: documentCacheHeaders() });
         if (!response.ok) continue;
         const result = await response.json();
         if (result.document) {

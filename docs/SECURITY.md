@@ -20,6 +20,7 @@ Browser clients
 | Notebook writes/admin actions | Protected by `ADMIN_TOKEN` | Use a long random token. Keep it out of screenshots, docs, and shell history. |
 | Personal rooms, uploads, calendar, settings | Encrypted in each browser IndexedDB | Isolation is by browser key, not by server-side accounts. Clearing browser storage deletes the data. |
 | Upload temp files | Written under `uploads/`, then removed after parse | The server sees personal files during parsing. Keep the host and temp directory private. |
+| Runtime upload cache | In-memory, scoped by `X-MyAI-Document-Key`, TTL/LRU bounded | Convenience hydration cache only; not listable and not durable. |
 | Ollama | Server-side local HTTP API | Keep Ollama on `127.0.0.1`; do not expose port `11434` directly. |
 
 ## Recommended Network Modes
@@ -138,6 +139,8 @@ The server has two direct limits:
 |---|---:|---|
 | `MAX_JSON_BYTES` | `80mb` | JSON bodies such as `/api/chat`, `/api/visualize`, `/api/followups`, and `/api/agent/intent` |
 | `MAX_UPLOAD_BYTES` | `41943040` | Single multipart upload handled by `/api/upload` and notebook document upload |
+| `DOCUMENT_CACHE_TTL_MS` | `21600000` | Same-browser runtime cache for recently uploaded personal documents |
+| `DOCUMENT_CACHE_MAX_ENTRIES` | `256` | Max in-memory personal document cache entries |
 
 The browser also preflights large personal chat payloads:
 
@@ -174,6 +177,21 @@ RATE_LIMIT_VISUALIZE_PER_MINUTE=10
 RATE_LIMIT_UPLOAD_PER_MINUTE=8
 RATE_LIMIT_LIGHTWEIGHT_PER_MINUTE=30
 RATE_LIMIT_ADMIN_WRITE_PER_MINUTE=10
+```
+
+When running behind a trusted reverse proxy, enable Express proxy IP handling so
+the in-process limiter keys by the real client address instead of the proxy:
+
+```env
+TRUST_PROXY=true
+```
+
+Only set this when the proxy overwrites `X-Forwarded-*` headers from clients.
+If the proxy adds a verified user identity header, such as `X-Forwarded-User`,
+you can key limits by that header:
+
+```env
+RATE_LIMIT_KEY_HEADER=x-forwarded-user
 ```
 
 ## Admin Token Guidance

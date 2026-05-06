@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseUrl = process.env.MYAI_SMOKE_BASE_URL || "http://127.0.0.1:3000";
+const documentCacheKey = crypto.randomUUID();
 let failureCount = 0;
 
 await run("app shell ids exist", testAppShellIds);
@@ -98,7 +100,11 @@ async function testUpload() {
   );
   let response;
   try {
-    response = await fetch(new URL("/api/upload", baseUrl), { method: "POST", body: formData });
+    response = await fetch(new URL("/api/upload", baseUrl), {
+      method: "POST",
+      headers: { "X-MyAI-Document-Key": documentCacheKey },
+      body: formData
+    });
   } catch (err) {
     throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
   }
@@ -106,6 +112,17 @@ async function testUpload() {
   const payload = await response.json();
   assert.ok(payload.document?.id, "upload response should have document.id");
   assert.equal(payload.document?.kind, "document", "upload response should have kind=document");
+
+  response = await fetch(new URL("/api/documents", baseUrl));
+  assert.equal(response.status, 404, "runtime document listing should be disabled");
+
+  response = await fetch(new URL(`/api/documents/${payload.document.id}`, baseUrl));
+  assert.equal(response.status, 404, "runtime document fetch without owner key should be hidden");
+
+  response = await fetch(new URL(`/api/documents/${payload.document.id}`, baseUrl), {
+    headers: { "X-MyAI-Document-Key": documentCacheKey }
+  });
+  assert.equal(response.status, 200, "runtime document fetch with owner key should succeed");
 }
 
 async function testVisualizePlanValidation() {

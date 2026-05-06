@@ -15,14 +15,14 @@ sudo apt update
 sudo apt install -y curl ca-certificates git ufw
 ```
 
-## 2. Node.js 20
+## 2. Node.js 24
 
 NodeSource 저장소가 가장 단순:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
-node --version   # v20.x 확인
+node --version   # v24.x 확인
 ```
 
 ## 3. Ollama
@@ -36,7 +36,7 @@ ollama pull bge-m3        # 부서 RAG 임베딩 모델
 
 ## 3a. 부서 RAG 외부 서비스 (Qdrant)
 
-부서 노트북 기능을 사용하지 않는다면 이 단계를 건너뛰고 `.env`에서 `DEPARTMENT_VECTOR_BACKEND=memory`로 설정하세요.
+부서 노트북 외부 벡터 인덱스를 사용하지 않는다면 이 단계를 건너뛰고 `.env`에서 `DEPARTMENT_VECTOR_BACKEND=json`으로 설정하세요.
 
 ### Docker 설치
 
@@ -126,6 +126,15 @@ sudo nano /etc/myai.env   # PORT/HOST/OLLAMA_MODEL 등 조정
 ```
 
 `HOST=127.0.0.1`로 두면 앱은 외부 인터페이스에 노출되지 않고 리버스 프록시 뒤에서만 도달 가능합니다.
+
+리버스 프록시 뒤에서 실제 사용자 IP 기준 rate limit을 적용하려면 `/etc/myai.env`에 다음을 둡니다. 프록시가 `X-Forwarded-*` 헤더를 덮어쓰도록 설정된 경우에만 켜세요.
+
+```env
+TRUST_PROXY=true
+RATE_LIMIT_KEY_HEADER=
+```
+
+SSO/auth 프록시가 `X-Forwarded-User` 같은 검증된 사용자 헤더를 넣는다면 `RATE_LIMIT_KEY_HEADER=x-forwarded-user`로 사용자 단위 제한을 적용할 수 있습니다.
 
 ## 6. systemd 서비스 등록
 
