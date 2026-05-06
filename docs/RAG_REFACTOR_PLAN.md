@@ -86,6 +86,11 @@ should notebook ingest dual-write to Qdrant.
   - Establish a quality evaluation baseline with `fixtures/rag/department-golden.json`.
   - Develop `scripts/rag-quality-test.mjs` to measure Recall@10, MRR@10, and reranker improvement rates.
 
+**Progress:**
+
+- Done: `server/reranker.js` (cross-encoder via Ollama `/api/rerank`, timeout + graceful fallback), reranker integrated into `departmentRag.js` (RRF fusion → top-K rerank → greedyFit), `fixtures/rag/department-golden.json` golden fixture schema + annotation guide, `scripts/rag-quality-test.mjs` (Recall@K, MRR@K, `--compare-rerank` delta mode, `--json` output), `npm run rag:quality-test` script added.
+- Next: populate golden fixture with real notebook cases and establish numeric baseline.
+
 ### Sprint 6: Department Deployment Package
 **Goal:** Provide a standardized, reproducible deployment environment for department workstations.
 
