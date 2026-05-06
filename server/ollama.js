@@ -7,6 +7,7 @@ import { expandQuery } from "./queryExpansion.js";
 import { logRetrieval } from "./rag/retrievalLogger.js";
 import { searchNotebook } from "./rag/departmentRag.js";
 import { PROFILE_PERSONAL } from "./rag/ragConfig.js";
+import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import {
@@ -69,6 +70,22 @@ export async function streamChat({
 
   const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, { signal });
   throwIfAborted(signal);
+
+  await runChatStreamWithOptionalQueue({
+    model,
+    ollamaMessages,
+    onChunk,
+    signal
+  });
+}
+
+async function runChatStreamWithOptionalQueue({ model, ollamaMessages, onChunk, signal }) {
+  const task = () => streamOllamaChatResponse({ model, ollamaMessages, onChunk, signal });
+  if (!isChatQueueEnabled()) return task();
+  return chatQueue.run(task, { signal, label: "chat_stream" });
+}
+
+async function streamOllamaChatResponse({ model, ollamaMessages, onChunk, signal }) {
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     signal,
@@ -476,7 +493,7 @@ async function requestVisualizationInterpretation({ model, prompt, recentMessage
 }
 
 async function requestOllamaJson({ model, messages, temperature }) {
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const response = await analysisQueue.run(() => fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -489,6 +506,8 @@ async function requestOllamaJson({ model, messages, temperature }) {
         top_p: 0.8
       }
     })
+  }), {
+    label: "ollama_json"
   });
 
   if (!response.ok) {

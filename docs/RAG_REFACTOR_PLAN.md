@@ -58,8 +58,8 @@ should notebook ingest dual-write to Qdrant.
 
 **Progress:**
 
-- Done: persisted job records, background ingest runner, and admin job create/list/read endpoints.
-- Next: admin UI polling/progress, retry actions, and finer-grained embedding/indexing progress.
+- Done: persisted job records, background ingest runner, startup recovery, admin job create/list/read/retry endpoints, and admin UI upload polling/progress/retry.
+- Next: finer-grained embedding/indexing progress and GPU/model concurrency queues.
 
 ### Sprint 4: Multi-User Concurrency & Operations
 **Goal:** Guarantee system stability and fair resource allocation under concurrent multi-user access on the department workstation.
@@ -70,6 +70,11 @@ should notebook ingest dual-write to Qdrant.
   - Create the `GET /api/admin/rag/status` endpoint to monitor queue depths and overall index health.
   - Implement API rate-limiting foundations for `/api/chat`.
   - Ensure the existing `AbortController` flows correctly cancel tasks waiting in the model queues to prevent resource leakage.
+
+**Progress:**
+
+- Done: in-process queues for embedding, analysis JSON calls, Map-Reduce calls, and optional streaming chat; queue stats in `/api/status`; queued tasks respect abort signals; model-route rate limits; admin RAG status endpoint.
+- Next: production reverse-proxy validation and RAG quality evaluation.
 
 ### Sprint 5: Reranker Integration & Quality Evaluation
 **Goal:** Maximize citation precision for the department RAG profile using a cross-encoder reranking stage.

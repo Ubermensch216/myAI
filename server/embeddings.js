@@ -1,5 +1,6 @@
 import { loadLocalEnv } from "./env.js";
 import { validateEmbeddingBatch } from "./rag/embeddingValidator.js";
+import { embeddingQueue } from "./modelQueue.js";
 
 loadLocalEnv();
 
@@ -17,22 +18,27 @@ const EMBED_DIM_ENV = Number(process.env.EMBED_DIM) || null;
  *   expectedDim  override dim check; falls back to EMBED_DIM env when unset
  */
 export async function embedTexts(texts, { signal, expectedDim } = {}) {
-  const response = await fetch(`${OLLAMA_URL}/api/embed`, {
-    method: "POST",
+  return embeddingQueue.run(async () => {
+    const response = await fetch(`${OLLAMA_URL}/api/embed`, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: EMBED_MODEL, input: texts })
+    });
+    if (!response.ok) {
+      const msg = await response.text().catch(() => "");
+      throw new Error(`Embed API ${response.status}: ${msg}`);
+    }
+    const data = await response.json();
+    validateEmbeddingBatch(data.embeddings, {
+      expectedCount: texts.length,
+      expectedDim: expectedDim ?? EMBED_DIM_ENV ?? undefined
+    });
+    return data.embeddings;
+  }, {
     signal,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts })
+    label: `embed:${Array.isArray(texts) ? texts.length : 0}`
   });
-  if (!response.ok) {
-    const msg = await response.text().catch(() => "");
-    throw new Error(`Embed API ${response.status}: ${msg}`);
-  }
-  const data = await response.json();
-  validateEmbeddingBatch(data.embeddings, {
-    expectedCount: texts.length,
-    expectedDim: expectedDim ?? EMBED_DIM_ENV ?? undefined
-  });
-  return data.embeddings;
 }
 
 export async function embedText(text, options = {}) {

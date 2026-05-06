@@ -32,12 +32,53 @@ non-blocking department RAG backend health.
         "chunks": 1200
       }
     }
+  },
+  "queues": {
+    "embedding": {
+      "concurrency": 2,
+      "running": 0,
+      "queued": 0,
+      "maxQueued": 64,
+      "completed": 120,
+      "rejected": 0
+    },
+    "mapReduce": {
+      "concurrency": 2,
+      "running": 0,
+      "queued": 0,
+      "maxQueued": 32,
+      "completed": 8,
+      "rejected": 0
+    },
+    "analysis": {
+      "concurrency": 2,
+      "running": 0,
+      "queued": 0,
+      "maxQueued": 32,
+      "completed": 42,
+      "rejected": 0
+    }
+  },
+  "rateLimits": {
+    "chat": { "max": 20, "windowMs": 60000 },
+    "visualize": { "max": 10, "windowMs": 60000 },
+    "upload": { "max": 8, "windowMs": 60000 },
+    "lightweight": { "max": 30, "windowMs": 60000 },
+    "adminWrite": { "max": 10, "windowMs": 60000 }
   }
 }
 ```
 
 Qdrant health is reported as degraded metadata only. A Qdrant outage does not
 make `/api/status` fail when Ollama itself is reachable.
+
+## Admin RAG Status
+
+### `GET /api/admin/rag/status`
+
+Admin. Returns detailed department RAG health, queue depths, configured rate
+limits, and model names. This endpoint is intended for workstation operations
+screens and deployment checks.
 
 ## Documents
 
@@ -237,6 +278,11 @@ Admin. Lists recent persisted ingest jobs for one notebook.
 ### `GET /api/notebooks/:id/ingest-jobs/:jobId`
 
 Admin. Returns one persisted ingest job.
+
+### `POST /api/notebooks/:id/ingest-jobs/:jobId/retry`
+
+Admin. Retries a failed ingest job when the original upload file is still
+available in the server-side job directory.
 
 ### `DELETE /api/notebooks/:id/documents/:documentId`
 

@@ -4,6 +4,8 @@ import { scheduleSave } from "./persistence.js";
 const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
 
 let adminDetailSaveTimer = null;
+const ADMIN_INGEST_POLL_MS = 1200;
+const ADMIN_INGEST_MAX_POLLS = 900;
 
 export const adminUiState = {
   notebooks: [],
@@ -365,7 +367,7 @@ export async function adminDeleteNotebook(notebookId, notebookName) {
 async function adminUploadDocument(notebookId, file) {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}/documents`, {
+  const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}/ingest-jobs`, {
     method: "POST",
     headers: adminAuthHeader(),
     body: formData
@@ -374,7 +376,9 @@ async function adminUploadDocument(notebookId, file) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || "업로드 실패");
   }
-  return response.json().catch(() => ({}));
+  const result = await response.json().catch(() => ({}));
+  if (!result.job?.id) throw new Error("작업 ID를 받지 못했습니다.");
+  return result.job;
 }
 
 export async function uploadAdminDocuments(notebookId, files) {
@@ -389,18 +393,101 @@ export async function uploadAdminDocuments(notebookId, files) {
     const row = buildAdminUploadProgressRow(file.name);
     elements.adminUploadProgress?.append(row.element);
     try {
-      await adminUploadDocument(notebookId, file);
+      const job = await adminUploadDocument(notebookId, file);
+      row.jobId = job.id;
+      row.status.textContent = "대기 중...";
+      await pollAdminIngestJob(notebookId, job.id, row);
       completed += 1;
       row.element.classList.add("done");
       row.status.textContent = "완료";
     } catch (error) {
       row.element.classList.add("error");
       row.status.textContent = error.message;
+      if (row.jobId && row.retryButton) {
+        row.retryButton.hidden = false;
+        row.retryButton.onclick = async () => {
+          row.retryButton.hidden = true;
+          row.element.classList.remove("error", "done");
+          try {
+            const retryJob = await retryAdminIngestJob(notebookId, row.jobId);
+            row.status.textContent = "재시도 대기 중...";
+            await pollAdminIngestJob(notebookId, retryJob.id, row);
+            row.element.classList.add("done");
+            row.status.textContent = "완료";
+            await refreshAdminNotebooks();
+            await loadNotebooks();
+          } catch (retryError) {
+            row.element.classList.add("error");
+            row.status.textContent = retryError.message;
+            row.retryButton.hidden = false;
+          }
+        };
+      }
     }
   }
   await refreshAdminNotebooks();
   await loadNotebooks();
   resetAdminFileInput();
+}
+
+async function pollAdminIngestJob(notebookId, jobId, row) {
+  for (let attempt = 0; attempt < ADMIN_INGEST_MAX_POLLS; attempt += 1) {
+    const job = await fetchAdminIngestJob(notebookId, jobId);
+    updateAdminUploadProgressRow(row, job);
+    if (job.status === "completed") return job;
+    if (job.status === "failed") throw new Error(job.error || "인덱싱 실패");
+    await wait(ADMIN_INGEST_POLL_MS);
+  }
+  throw new Error("인덱싱 작업 시간이 초과되었습니다.");
+}
+
+async function fetchAdminIngestJob(notebookId, jobId) {
+  const response = await fetch(
+    `/api/notebooks/${encodeURIComponent(notebookId)}/ingest-jobs/${encodeURIComponent(jobId)}`,
+    { headers: adminAuthHeader() }
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "작업 상태 조회 실패");
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!result.job) throw new Error("작업 상태가 비어 있습니다.");
+  return result.job;
+}
+
+async function retryAdminIngestJob(notebookId, jobId) {
+  const response = await fetch(
+    `/api/notebooks/${encodeURIComponent(notebookId)}/ingest-jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: "POST", headers: adminAuthHeader() }
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "작업 재시도 실패");
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!result.job) throw new Error("재시도 작업 상태가 비어 있습니다.");
+  return result.job;
+}
+
+function updateAdminUploadProgressRow(row, job) {
+  const progress = Number(job.progress || 0);
+  const stageLabel = formatIngestStage(job.stage, job.status);
+  row.status.textContent = `${stageLabel} ${progress}%`;
+  if (row.bar) row.bar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+}
+
+function formatIngestStage(stage, status) {
+  if (status === "completed") return "완료";
+  if (status === "failed") return "실패";
+  if (stage === "queued") return "대기";
+  if (stage === "parsing") return "파싱";
+  if (stage === "indexing") return "임베딩/인덱싱";
+  if (stage === "running") return "처리";
+  return "처리";
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildAdminUploadProgressRow(fileName) {
@@ -411,9 +498,19 @@ function buildAdminUploadProgressRow(fileName) {
   name.textContent = fileName || "파일";
   const status = document.createElement("span");
   status.className = "admin-upload-progress-status";
-  status.textContent = "업로드 중...";
-  element.append(name, status);
-  return { element, status };
+  status.textContent = "업로드 요청 중...";
+  const barTrack = document.createElement("span");
+  barTrack.className = "admin-upload-progress-track";
+  const bar = document.createElement("span");
+  bar.className = "admin-upload-progress-bar";
+  barTrack.append(bar);
+  const retryButton = document.createElement("button");
+  retryButton.type = "button";
+  retryButton.className = "admin-upload-retry-button";
+  retryButton.textContent = "재시도";
+  retryButton.hidden = true;
+  element.append(name, status, retryButton, barTrack);
+  return { element, status, bar, retryButton, jobId: null };
 }
 
 export async function adminDeleteDocument(notebookId, documentId, documentName) {

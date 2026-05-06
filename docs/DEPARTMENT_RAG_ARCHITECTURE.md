@@ -120,10 +120,37 @@ The backend foundation is available through admin endpoints:
 POST /api/notebooks/:id/ingest-jobs
 GET  /api/notebooks/:id/ingest-jobs
 GET  /api/notebooks/:id/ingest-jobs/:jobId
+POST /api/notebooks/:id/ingest-jobs/:jobId/retry
 ```
 
-The current synchronous upload endpoint remains available while the admin UI is
-updated to poll job progress.
+The current synchronous upload endpoint remains available for compatibility.
+The admin UI now creates ingest jobs and polls job status while uploads are
+parsed, embedded, and indexed in the background.
+
+On server startup, queued or running jobs are recovered from `data/ingest-jobs/`.
+Jobs with a preserved upload file are queued again. Jobs whose upload file is
+missing are marked failed so the admin UI can show the failure instead of
+leaving them stuck forever.
+
+Model-calling work is guarded by lightweight in-process queues:
+
+| Queue | Protects | Default |
+|---|---|---:|
+| `chat` | Optional streaming chat gate when `CHAT_QUEUE_ENABLED=true` | 4 running / 32 queued |
+| `embedding` | Ollama `/api/embed` calls during ingest and query embedding | 2 running / 64 queued |
+| `analysis` | Query expansion, upload summaries, visualization JSON calls | 2 running / 32 queued |
+| `map_reduce` | Map-Reduce map and reduce Ollama calls | 2 running / 32 queued |
+
+Queued tasks respect `AbortSignal`, so cancelled chat or analysis requests do
+not sit in the queue and later consume GPU work. Queue depths are exposed
+through `/api/status`. Streaming chat is outside the queue by default; enable
+`CHAT_QUEUE_ENABLED=true` only when the workstation needs a hard interactive
+concurrency cap.
+
+The server also applies lightweight in-process rate limits to chat, upload,
+visualization, follow-up, calendar intent, and admin write routes. These limits
+reduce accidental overload on trusted LAN deployments, but reverse-proxy limits
+remain the stronger production control.
 
 ## Query Strategy
 
@@ -163,6 +190,9 @@ EMBED_MODEL=bge-m3
 EMBED_DIM=1024
 DEPARTMENT_LEXICAL_BACKEND=sqlite
 SQLITE_FTS_PATH=data/indexes/department-rag.sqlite
+EMBED_QUEUE_CONCURRENCY=2
+MAP_REDUCE_QUEUE_CONCURRENCY=2
+ANALYSIS_QUEUE_CONCURRENCY=2
 ```
 
 Use `DEPARTMENT_LEXICAL_BACKEND=sqlite` on department workstations once the

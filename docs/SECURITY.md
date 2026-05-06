@@ -150,7 +150,9 @@ Keep proxy body limits equal to or lower than the server limits. If the proxy al
 
 ## Rate Limiting
 
-myAI currently relies on the reverse proxy or network layer for rate limiting. Add limits before exposing it to more than a small trusted group.
+myAI includes a small in-process fixed-window limiter for model-calling routes.
+It is a local safety net, not a replacement for reverse-proxy or network-layer
+limits. Add proxy limits before exposing it to more than a small trusted group.
 
 Suggested starting points:
 
@@ -163,6 +165,16 @@ Suggested starting points:
 | `/api/agent/intent`, `/api/followups` | 30 requests/minute per user or IP | Lightweight, but still calls Ollama. |
 
 Tune these based on GPU capacity and the expected number of department users.
+
+Server-side defaults can be adjusted with:
+
+```env
+RATE_LIMIT_CHAT_PER_MINUTE=20
+RATE_LIMIT_VISUALIZE_PER_MINUTE=10
+RATE_LIMIT_UPLOAD_PER_MINUTE=8
+RATE_LIMIT_LIGHTWEIGHT_PER_MINUTE=30
+RATE_LIMIT_ADMIN_WRITE_PER_MINUTE=10
+```
 
 ## Admin Token Guidance
 

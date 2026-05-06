@@ -15,6 +15,8 @@ import { getKoreanHolidays } from "./holidays.js";
 import { createAbortError } from "./abort.js";
 import { getQdrantHealth } from "./indexes/qdrantVectorIndex.js";
 import { getSqliteFtsHealth } from "./indexes/sqliteFtsIndex.js";
+import { getModelQueueStats } from "./modelQueue.js";
+import { createRateLimiter, getRateLimitConfig, rateLimitDefaults } from "./rateLimit.js";
 import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import {
   listNotebooks,
@@ -28,7 +30,9 @@ import {
 import {
   createNotebookIngestJob,
   getNotebookIngestJob,
-  listNotebookIngestJobs
+  listNotebookIngestJobs,
+  recoverNotebookIngestJobs,
+  retryNotebookIngestJob
 } from "./ingest/notebookIngestJobs.js";
 import { isAdminConfigured, requireAdmin } from "./auth.js";
 
@@ -57,16 +61,44 @@ function extractPersonalization(body) {
   return body.personalization && typeof body.personalization === "object" ? body.personalization : {};
 }
 
+function collectRagStatus({ models = null } = {}) {
+  const backend = resolvedDepartmentBackend();
+  return Promise.all([
+    models ? Promise.resolve(models) : listModels().catch((error) => ({ error: error.message, models: [] })),
+    getQdrantHealth().catch((error) => ({ configured: true, ok: false, error: error.message })),
+    backend.lexical === "sqlite"
+      ? getSqliteFtsHealth().catch((error) => ({ configured: true, ok: false, error: error.message }))
+      : Promise.resolve({ configured: false, ok: false, reason: "sqlite_fts_not_enabled" })
+  ]).then(([modelList, qdrant, sqlite]) => ({
+    backend,
+    qdrant,
+    sqlite,
+    queues: getModelQueueStats(),
+    rateLimits: getRateLimitConfig(),
+    models: modelList.models?.map((model) => model.name) ?? [],
+    modelError: modelList.error || null
+  }));
+}
+
+app.use("/api/chat", createRateLimiter({ name: "chat", keyPrefix: "chat:", ...rateLimitDefaults.chat }));
+app.use("/api/visualize", createRateLimiter({ name: "visualize", keyPrefix: "visualize:", ...rateLimitDefaults.visualize }));
+app.use("/api/upload", createRateLimiter({ name: "upload", keyPrefix: "upload:", ...rateLimitDefaults.upload }));
+app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
+app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
+app.use(
+  ["/api/notebooks", "/api/admin/verify"],
+  createRateLimiter({
+    name: "admin_write",
+    keyPrefix: "admin:",
+    ...rateLimitDefaults.adminWrite,
+    skip: (request) => request.method === "GET"
+  })
+);
+
 app.get("/api/status", async (_request, response) => {
   try {
-    const backend = resolvedDepartmentBackend();
-    const [models, qdrant, sqlite] = await Promise.all([
-      listModels(),
-      getQdrantHealth().catch((error) => ({ configured: true, ok: false, error: error.message })),
-      backend.lexical === "sqlite"
-        ? getSqliteFtsHealth().catch((error) => ({ configured: true, ok: false, error: error.message }))
-        : Promise.resolve({ configured: false, ok: false, reason: "sqlite_fts_not_enabled" })
-    ]);
+    const models = await listModels();
+    const ragStatus = await collectRagStatus({ models });
     response.json({
       ok: true,
       ollamaUrl: OLLAMA_URL,
@@ -74,11 +106,13 @@ app.get("/api/status", async (_request, response) => {
       models: models.models?.map((model) => model.name) ?? [],
       rag: {
         department: {
-          backend,
-          qdrant,
-          sqlite
+          backend: ragStatus.backend,
+          qdrant: ragStatus.qdrant,
+          sqlite: ragStatus.sqlite
         }
-      }
+      },
+      queues: ragStatus.queues,
+      rateLimits: ragStatus.rateLimits
     });
   } catch (error) {
     response.status(503).json({
@@ -390,6 +424,19 @@ app.post("/api/notebooks/:id/documents", requireAdmin, upload.single("file"), as
   }
 });
 
+app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
+  try {
+    const ragStatus = await collectRagStatus();
+    response.json({
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      ...ragStatus
+    });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 app.get("/api/notebooks/:id/ingest-jobs", requireAdmin, async (request, response) => {
   try {
     const jobs = await listNotebookIngestJobs(request.params.id);
@@ -427,6 +474,19 @@ app.post("/api/notebooks/:id/ingest-jobs", requireAdmin, upload.single("file"), 
   }
 });
 
+app.post("/api/notebooks/:id/ingest-jobs/:jobId/retry", requireAdmin, async (request, response) => {
+  try {
+    const job = await retryNotebookIngestJob(request.params.id, request.params.jobId);
+    if (!job) {
+      response.status(404).json({ error: "Ingest job not found." });
+      return;
+    }
+    response.status(202).json({ job });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
 app.delete("/api/notebooks/:id/documents/:documentId", requireAdmin, async (request, response) => {
   try {
     const removed = await removeNotebookDocument(request.params.id, request.params.documentId);
@@ -447,4 +507,13 @@ app.use((_request, response) => {
 app.listen(port, host, () => {
   const displayHost = host || "0.0.0.0";
   console.log(`myAI listening on http://${displayHost}:${port}`);
+  recoverNotebookIngestJobs()
+    .then(({ recovered, failed }) => {
+      if (recovered.length || failed.length) {
+        console.log(`[ingest] recovered=${recovered.length} failed=${failed.length}`);
+      }
+    })
+    .catch((error) => {
+      console.warn(`[ingest] recovery failed: ${error.message}`);
+    });
 });

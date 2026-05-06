@@ -1,5 +1,6 @@
 import { loadLocalEnv } from "./env.js";
 import { createLinkedAbortController } from "./abort.js";
+import { analysisQueue } from "./modelQueue.js";
 
 loadLocalEnv();
 
@@ -29,7 +30,7 @@ export async function expandQuery(query, { model = DEFAULT_MODEL, signal } = {})
   const controller = createLinkedAbortController(signal, TIMEOUT_MS, "Query expansion timed out.");
 
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    const response = await analysisQueue.run(() => fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json" },
@@ -61,6 +62,9 @@ export async function expandQuery(query, { model = DEFAULT_MODEL, signal } = {})
         ],
         options: { temperature: 0.4, top_p: 0.9 }
       })
+    }), {
+      signal: controller.signal,
+      label: "query_expansion"
     });
 
     if (!response.ok) return [original];

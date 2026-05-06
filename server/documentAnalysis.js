@@ -1,4 +1,5 @@
 import { loadLocalEnv } from "./env.js";
+import { analysisQueue } from "./modelQueue.js";
 
 loadLocalEnv();
 
@@ -39,7 +40,7 @@ export async function analyzeDocument(parsedDocument, { model = DEFAULT_MODEL } 
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    const response = await analysisQueue.run(() => fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json" },
@@ -76,6 +77,9 @@ export async function analyzeDocument(parsedDocument, { model = DEFAULT_MODEL } 
         ],
         options: { temperature: 0.2, top_p: 0.9 }
       })
+    }), {
+      signal: controller.signal,
+      label: "document_analysis"
     });
 
     if (!response.ok) return EMPTY_RESULT;

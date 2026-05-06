@@ -1,5 +1,6 @@
 import { loadLocalEnv } from "./env.js";
 import { createLinkedAbortController, throwIfAborted } from "./abort.js";
+import { mapReduceQueue } from "./modelQueue.js";
 
 loadLocalEnv();
 
@@ -133,6 +134,13 @@ async function runMapStage({ batches, query, model, onProgress, signal }) {
 
 async function runMapBatch({ batch, query, model, batchIndex, signal }) {
   throwIfAborted(signal);
+  return mapReduceQueue.run(() => runMapBatchNow({ batch, query, model, batchIndex, signal }), {
+    signal,
+    label: `map:${batchIndex + 1}`
+  });
+}
+
+async function runMapBatchNow({ batch, query, model, batchIndex, signal }) {
   const controller = createLinkedAbortController(signal, MAP_TIMEOUT_MS, "Map batch timed out.");
   try {
     const chunkBlock = batch.map((chunk, localIndex) => {
@@ -191,6 +199,13 @@ async function runMapBatch({ batch, query, model, batchIndex, signal }) {
 
 async function runReduceStream({ partials, query, model, systemDirective, onChunk, signal }) {
   throwIfAborted(signal);
+  return mapReduceQueue.run(() => runReduceStreamNow({ partials, query, model, systemDirective, onChunk, signal }), {
+    signal,
+    label: "reduce"
+  });
+}
+
+async function runReduceStreamNow({ partials, query, model, systemDirective, onChunk, signal }) {
   const block = partials.map((p, i) => `[부분 결과 ${i + 1}]\n${p.text}`).join("\n\n");
   const systemParts = [
     "너는 Map 단계의 부분 분석 결과들을 사용자 질문에 답하는 하나의 한국어 응답으로 통합하는 분석가다.",
