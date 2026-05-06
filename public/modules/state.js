@@ -246,6 +246,45 @@ export const elements = {
   adminDocsEmpty: document.querySelector("#adminDocsEmpty")
 };
 
+export function showConfirmDialog({ title = "확인", body = "", okText = "확인", cancelText = "취소", danger = false } = {}) {
+  const dialog = elements.calendarConfirmDialog;
+  if (!dialog || typeof dialog.showModal !== "function") return Promise.resolve(window.confirm(body || title));
+  return new Promise((resolve) => {
+    elements.calendarConfirmTitle.textContent = title;
+    elements.calendarConfirmBody.innerHTML = "";
+    const lines = Array.isArray(body) ? body : String(body || "").split("\n");
+    for (const line of lines.filter(Boolean)) {
+      const row = document.createElement("p");
+      row.textContent = line;
+      elements.calendarConfirmBody.append(row);
+    }
+    elements.calendarConfirmOkButton.textContent = okText;
+    elements.calendarConfirmCancelButton.textContent = cancelText;
+    elements.calendarConfirmOkButton.classList.toggle("danger-action", !!danger);
+
+    const cleanup = () => {
+      elements.calendarConfirmOkButton.removeEventListener("click", onOk);
+      elements.calendarConfirmCancelButton.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("close", onClose);
+    };
+    const finish = (value) => {
+      cleanup();
+      if (dialog.open) dialog.close(value ? "ok" : "cancel");
+      resolve(value);
+    };
+    const onOk = (event) => { event.preventDefault(); finish(true); };
+    const onCancel = (event) => { event.preventDefault(); finish(false); };
+    const onClose = () => { cleanup(); resolve(dialog.returnValue === "ok"); };
+
+    elements.calendarConfirmOkButton.addEventListener("click", onOk);
+    elements.calendarConfirmCancelButton.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+  });
+}
+
 export function getActiveRoom() {
   return state.rooms.find((room) => room.id === state.activeRoomId) ?? null;
 }

@@ -1,13 +1,13 @@
 # Agent Handoff
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a local AI calendar agent, department-notebook RAG, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
 
 This file is intentionally short. Keep long explanations in `docs/`.
 
 ## Quick Start
 
 ```powershell
-cd C:\Dev\myAI
+cd d:\Dev\myAI
 npm.cmd start
 ```
 
@@ -45,7 +45,16 @@ Server:
 
 - `server/index.js` - Express routes, uploads, static frontend, API dispatch.
 - `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
-- `server/notebooks.js` - department-notebook storage, ingest, retrieval, admin document operations.
+- `server/notebooks.js` - department-notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache.
+- `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → log.
+- `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
+- `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry.
+- `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
+- `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25 and CJK bigram search.
+- `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
+- `server/reranker.js` - cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback.
+- `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.
 - `server/retrieval.js` - BM25/CJK bigram, cosine similarity, RRF hybrid retrieval.
 - `server/embeddings.js` - Ollama `/api/embed` helpers.
 - `server/queryExpansion.js` - LLM query expansion for retrieval.
@@ -59,8 +68,8 @@ Server:
 Frontend:
 
 - `public/index.html` - app shell and dialogs.
-- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI; ~848 lines after modularization.
-- `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities. No imports.
+- `public/app.js` - orchestrator: init, event binding, room/settings/brand UI.
+- `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities (including `showConfirmDialog`). No imports.
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers.
@@ -73,8 +82,9 @@ Docs:
 
 - `README.md` - user/operator overview.
 - `docs/ARCHITECTURE.md` - system flows and module responsibilities.
+- `docs/DEPARTMENT_RAG_ARCHITECTURE.md` - Qdrant + SQLite FTS5 topology, ingest strategy, operations.
 - `docs/API.md` - endpoint summary.
-- `docs/RAG.md` - document context, notebook retrieval, embeddings, Map-Reduce.
+- `docs/RAG.md` - dual-profile RAG (personal vs. department), ingest flows, reranker, Map-Reduce.
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
 - `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
 - `docs/KNOWN_ISSUES.md` - constraints and next improvements.
@@ -85,10 +95,10 @@ Docs:
 [Personal PC — each user]                [Department Workstation — shared]
   Browser                                   Node.js/Express :3000
   ├─ AES-GCM IndexedDB                      ├─ Ollama :11434 (GPU: DGX Spark / RTX 5090-class)
-  │   ├─ rooms + messages                   ├─ data/notebooks/
-  │   ├─ personal room uploads              └─ uploads/ (temp only, cleaned after parse)
-  │   ├─ calendar events
-  │   └─ app settings
+  │   ├─ rooms + messages                   ├─ Qdrant :6333 (optional)
+  │   ├─ personal room uploads              ├─ data/notebooks/
+  │   ├─ calendar events                    ├─ data/indexes/ (SQLite FTS5, optional)
+  │   └─ app settings                       └─ uploads/ (temp only, cleaned after parse)
   └─ fetch() → http://<dept-host>:3000/api/
 ```
 
@@ -113,9 +123,12 @@ Notebook RAG:
 
 ```text
 room.selectedNotebookId
--> server/notebooks.js#queryNotebook()
--> expandQuery()
--> multiQueryHybridSelect()
+-> server/rag/departmentRag.js#searchNotebook()
+-> expandQuery() + embedTexts()
+-> Qdrant dense search (DEPARTMENT_VECTOR_BACKEND=qdrant)
+-> SQLite FTS5 search (DEPARTMENT_LEXICAL_BACKEND=sqlite)
+-> RRF fusion -> cross-encoder rerank (RAG_RERANK_ENABLED=true)
+-> greedyFit -> fallback: in-memory BM25 + cosine + RRF
 -> [N] citations in X-Notebook-Meta
 -> browser renders citation markers/panel
 ```
@@ -149,25 +162,23 @@ CSV/XLSX prompt
 -> browser renders final spec
 ```
 
-## High-Priority Caveats
+## Key Caveats
 
 - `npm.cmd test` runs the fast app-server smoke checks. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
-- Notebook ingest stores `chunks[].embedding`, and `queryNotebook()` now passes those stored embeddings into query-time chunk objects. `multiQueryHybridSelect()` can use BM25 + CJK bigram + vector ranking with RRF when query embeddings are available.
-- Notebook RAG is still JSON-file + in-memory LRU cache based. For larger department notebooks, plan for a persistent vector index, ingest retry/progress reporting, embedding dimension validation, and retrieval quality logs.
-- `/api/chat` now propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
-- Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only.
-- `/api/chat` receives active documents in the JSON body. The browser now warns on large uploads, shows room/attachment storage estimates, offers active-room attachment cleanup, and preflights chat payload size before sending.
+- Department RAG uses Qdrant + SQLite FTS5 when configured; falls back to JSON/BM25. Fallback is triggered per-request if either backend is unavailable.
+- Notebook chunk cache (`NOTEBOOK_CHUNK_CACHE_MAX`) is a single in-process LRU shared across all sessions. Tune upward on high-core-count servers.
+- `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
+- Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only cache; empty after server restart.
+- `/api/chat` receives active documents in the JSON body. The browser warns on large uploads, shows room/attachment storage estimates, and preflights chat payload size before sending.
 - Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects notebook management only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
 - Calendar data is local-only. There is no Google/Outlook/ICS sync.
-- Destructive calendar/notebook/file actions still mostly use `window.confirm()`. Rich in-app review dialogs are a good next step.
-- Visualization is plan-first and server-validated. XLSX QA now covers date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, and chart spec regression, but XLSX parsing is still not a complete spreadsheet engine.
-- `public/app.js` is the orchestrator (~848 lines). Heavy logic lives in `public/modules/`. Cross-module signals use `window.dispatchEvent(new CustomEvent("myai:..."))` to avoid circular imports.
+- Destructive actions (room delete, file delete, notebook/document delete) use `showConfirmDialog` from `public/modules/state.js` (in-app modal, falls back to `window.confirm`).
+- Visualization is plan-first and server-validated. XLSX QA covers date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, and chart spec regression.
 
 ## Editing Rules For Future Agents
 
 - Check `git status --short` before editing.
 - Do not revert user changes unless explicitly asked.
-- Use `apply_patch` for manual edits.
 - Keep changes scoped and preserve existing plain HTML/CSS/JS patterns.
 - Preserve chat abort behavior through `AbortController`.
 - Preserve markdown-lite answer rendering unless intentionally replacing it.
@@ -175,3 +186,4 @@ CSV/XLSX prompt
 - Use `--accent` / `--accent-dark` theme tokens for new UI styling.
 - If changing visualization, preserve the plan-first contract: LLM chooses intent/columns, server validates/computes, browser renders.
 - If changing calendar, preserve the split: LLM extracts intent/fields, browser deterministic code mutates calendar state.
+- If changing RAG, preserve the fallback chain: Qdrant → SQLite → JSON/BM25.

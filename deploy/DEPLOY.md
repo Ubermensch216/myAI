@@ -213,7 +213,19 @@ sudo systemctl restart myai
 - `/etc/caddy/Caddyfile` 또는 `/etc/nginx/sites-available/myai` — 프록시 설정
 - `/var/lib/caddy/.local/share/caddy/` (Caddy ACME 데이터) 또는 `/etc/letsencrypt/` (certbot)
 
-Qdrant 벡터 인덱스와 SQLite FTS 인덱스는 노트북 재인제스트로 재생성할 수 있으므로, 원본 문서(`data/notebooks/`)만 있으면 복구 가능합니다.
+`data/notebooks/`, `data/indexes/`, Qdrant 스냅샷을 한 번에 백업하려면 내장 스크립트를 사용하세요:
+
+```bash
+cd /opt/myai
+sudo -u myai npm run rag:backup                  # backups/ 디렉터리에 타임스탬프 백업 생성
+sudo -u myai npm run rag:restore -- <backup-dir> # 백업에서 복구 (확인 프롬프트 있음)
+```
+
+Qdrant 벡터 인덱스와 SQLite FTS 인덱스는 노트북 재인제스트로 재생성할 수 있으므로, 원본 문서(`data/notebooks/`)만 있으면 복구 가능합니다. 복구 후 인덱스를 재구축하려면:
+
+```bash
+sudo -u myai npm run rag:rebuild
+```
 
 사용자 대화/룸 첨부파일은 각 사용자 브라우저에만 있으므로 서버 백업으로는 복구되지 않습니다.
 

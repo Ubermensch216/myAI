@@ -1,5 +1,5 @@
 import { displayFileName as formatDisplayFileName, fileTypeIcon as getFileTypeIcon } from "./fileDisplay.js";
-import { state, elements, getActiveRoom, createRoom, normalizeColorTheme, DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF } from "./modules/state.js";
+import { state, elements, getActiveRoom, createRoom, normalizeColorTheme, showConfirmDialog, DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF } from "./modules/state.js";
 import { initializeEncryptedStorage, loadAppState, scheduleSave, persistAppState } from "./modules/persistence.js";
 import {
   renderCalendar, shiftCalendarMonth, jumpCalendarToToday, setCalendarViewMode,
@@ -81,7 +81,15 @@ function createNewRoom() {
   elements.promptInput.focus();
 }
 
-function deleteRoom(roomId) {
+async function deleteRoom(roomId) {
+  const confirmed = await showConfirmDialog({
+    title: "대화방 삭제",
+    body: "이 대화방을 삭제할까요? 대화 내용과 첨부 파일이 모두 삭제됩니다.",
+    okText: "삭제",
+    cancelText: "취소",
+    danger: true
+  });
+  if (!confirmed) return;
   state.rooms = state.rooms.filter((room) => room.id !== roomId);
   if (!state.rooms.length) state.rooms.push(createRoom());
   if (state.activeRoomId === roomId) state.activeRoomId = state.rooms[0].id;
@@ -189,7 +197,7 @@ function renderRooms() {
     deleteButton.className = "room-delete";
     deleteButton.title = "대화방 삭제";
     deleteButton.textContent = "×";
-    deleteButton.addEventListener("click", (event) => { event.stopPropagation(); deleteRoom(room.id); });
+    deleteButton.addEventListener("click", async (event) => { event.stopPropagation(); await deleteRoom(room.id); });
     item.append(title, storage, fileIcons, count, deleteButton);
     elements.roomList.append(item);
 

@@ -16,7 +16,9 @@
     "test:ci": "npm run test:xlsx && npm run test:smoke",
     "rag:check": "node scripts/check-department-rag-index.mjs",
     "rag:rebuild": "node scripts/rebuild-department-rag-index.mjs",
-    "rag:quality-test": "node scripts/rag-quality-test.mjs"
+    "rag:quality-test": "node scripts/rag-quality-test.mjs",
+    "rag:backup": "node scripts/backup-department-rag.mjs",
+    "rag:restore": "node scripts/restore-department-rag.mjs"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.17.0",

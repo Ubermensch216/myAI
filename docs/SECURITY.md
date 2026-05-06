@@ -212,7 +212,6 @@ The token only protects notebook management routes. It does not add login to cha
 - No role-based permissions for notebook reads.
 - No audit log for admin operations.
 - No built-in CSRF/session protection because there is no cookie login model.
-- No built-in rate limiter.
 - No external calendar synchronization or account isolation.
 
 If those are required, put myAI behind an existing internal platform that already provides identity, access policy, TLS, logging, and rate limiting.

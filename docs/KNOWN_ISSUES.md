@@ -2,9 +2,7 @@
 
 ## High Priority
 
-- Add browser-level smoke tests for upload, chat, visualization, notebook selection, citations, Map-Reduce, and calendar flows.
-- Extend rich in-app review dialogs to remaining non-calendar destructive flows.
-- Keep expanding XLSX/visualization regression fixtures beyond the current date serial, cached formula, merged cell, blank cell, mixed type, and chart spec cases.
+- Browser-level E2E smoke tests (Playwright) still absent for notebook selection, citations, Map-Reduce, and calendar flows. API-level smoke tests now cover upload, chat, visualization, and notebook list.
 - Monitor autonomous follow-up suggestion quality and concept depth under varied conversation lengths.
 
 ## Data And Retrieval

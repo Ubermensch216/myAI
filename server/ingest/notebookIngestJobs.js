@@ -155,7 +155,10 @@ async function runNotebookIngestJob(jobId, uploadPath) {
     });
 
     job = await updateJob(job, { stage: "indexing", progress: 55 });
-    const document = await addNotebookDocument(job.notebookId, parsed);
+    const document = await addNotebookDocument(job.notebookId, parsed, async (processed, total) => {
+      const pct = 55 + Math.round((processed / total) * 40);
+      await updateJob(job, { progress: pct });
+    });
 
     await updateJob(job, {
       status: "completed",

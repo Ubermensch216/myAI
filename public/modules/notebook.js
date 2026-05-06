@@ -1,4 +1,4 @@
-import { state, elements, getActiveRoom } from "./state.js";
+import { state, elements, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 
 const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
@@ -337,7 +337,13 @@ export async function adminCreateNotebook() {
 }
 
 export async function adminDeleteNotebook(notebookId, notebookName) {
-  if (!confirm(`부서노트북 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`)) return;
+  const confirmed = await showConfirmDialog({
+    title: "노트북 삭제",
+    body: `부서노트북 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`,
+    okText: "삭제",
+    danger: true
+  });
+  if (!confirmed) return;
   try {
     const response = await fetch(`/api/notebooks/${encodeURIComponent(notebookId)}`, {
       method: "DELETE",
@@ -514,7 +520,13 @@ function buildAdminUploadProgressRow(fileName) {
 }
 
 export async function adminDeleteDocument(notebookId, documentId, documentName) {
-  if (!confirm(`문서 "${documentName}"을(를) 삭제할까요?`)) return;
+  const confirmed = await showConfirmDialog({
+    title: "문서 삭제",
+    body: `문서 "${documentName}"을(를) 삭제할까요?`,
+    okText: "삭제",
+    danger: true
+  });
+  if (!confirmed) return;
   try {
     const response = await fetch(
       `/api/notebooks/${encodeURIComponent(notebookId)}/documents/${encodeURIComponent(documentId)}`,

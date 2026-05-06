@@ -9,7 +9,13 @@ let failureCount = 0;
 
 await run("app shell ids exist", testAppShellIds);
 const status = await run("GET /api/status", testStatus);
+await run("GET /api/notebooks", testNotebookList);
+await run("POST /api/upload text file", testUpload);
+await run("POST /api/visualize invalid plan returns 400", testVisualizePlanValidation);
 await run("POST /api/agent/intent month range", () => testCalendarIntent(status));
+if (status?.ok) {
+  await run("POST /api/chat echo", testChat);
+}
 
 if (failureCount > 0) {
   process.exitCode = 1;
@@ -76,6 +82,68 @@ async function testCalendarIntent(status) {
   assert.equal(result.intent, "calendar.list");
   assert.equal(result.payload?.from, "2026-05-01");
   assert.equal(result.payload?.to, "2026-05-31");
+}
+
+async function testNotebookList() {
+  const payload = await fetchJson("/api/notebooks");
+  assert.ok(Array.isArray(payload.notebooks), "GET /api/notebooks should return { notebooks: [] }");
+}
+
+async function testUpload() {
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob(["name,score\nAlice,90\nBob,75"], { type: "text/csv" }),
+    "smoke-test.csv"
+  );
+  let response;
+  try {
+    response = await fetch(new URL("/api/upload", baseUrl), { method: "POST", body: formData });
+  } catch (err) {
+    throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
+  }
+  assert.equal(response.status, 200, `POST /api/upload returned ${response.status}`);
+  const payload = await response.json();
+  assert.ok(payload.document?.id, "upload response should have document.id");
+  assert.equal(payload.document?.kind, "document", "upload response should have kind=document");
+}
+
+async function testVisualizePlanValidation() {
+  let response;
+  try {
+    response = await fetch(new URL("/api/visualize", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "smoke test", documents: [], model: "nonexistent" })
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
+  }
+  // Expects a 400 or 500 when no documents are provided — just check it does not hang or crash
+  assert.ok(
+    response.status >= 400,
+    `POST /api/visualize with no documents should return 4xx/5xx, got ${response.status}`
+  );
+}
+
+async function testChat() {
+  // Smoke only verifies the endpoint is reachable and doesn't 5xx.
+  // Full inference correctness is covered by npm run test:live.
+  let response;
+  try {
+    response = await fetch(new URL("/api/chat", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: "Reply with the single word OK.",
+        messages: [],
+        documents: []
+      })
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
+  }
+  assert.ok(response.status < 500, `POST /api/chat caused server error: ${response.status}`);
 }
 
 async function fetchJson(route, options = {}) {

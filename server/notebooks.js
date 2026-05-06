@@ -262,7 +262,7 @@ export async function deleteNotebook(notebookId) {
   return true;
 }
 
-async function ingestEmbeddingsBatched(chunks, expectedDim) {
+async function ingestEmbeddingsBatched(chunks, expectedDim, onBatchDone = null) {
   const result = {
     embeddedCount: 0,
     failedCount: 0,
@@ -287,20 +287,21 @@ async function ingestEmbeddingsBatched(chunks, expectedDim) {
     if (!vectors) {
       result.failedCount += batch.length;
       result.errors.push(`batch@${start}: ${lastError?.message || "unknown"}`);
-      continue;
+    } else {
+      if (result.dim == null && vectors[0]?.length) {
+        result.dim = vectors[0].length;
+      }
+      for (let i = 0; i < batch.length; i += 1) {
+        batch[i].embedding = vectors[i];
+      }
+      result.embeddedCount += batch.length;
     }
-    if (result.dim == null && vectors[0]?.length) {
-      result.dim = vectors[0].length;
-    }
-    for (let i = 0; i < batch.length; i += 1) {
-      batch[i].embedding = vectors[i];
-    }
-    result.embeddedCount += batch.length;
+    if (onBatchDone) await onBatchDone(start + batch.length, chunks.length);
   }
   return result;
 }
 
-export async function addNotebookDocument(notebookId, parsedDocument) {
+export async function addNotebookDocument(notebookId, parsedDocument, onProgress = null) {
   const manifest = await readManifest(notebookId);
   if (!manifest) throw new Error("노트북을 찾을 수 없습니다.");
   if (!parsedDocument || parsedDocument.kind !== "document") {
@@ -315,7 +316,7 @@ export async function addNotebookDocument(notebookId, parsedDocument) {
   }
 
   const startedAt = new Date().toISOString();
-  const ingestResult = await ingestEmbeddingsBatched(chunks, manifest.embedding?.dim ?? null);
+  const ingestResult = await ingestEmbeddingsBatched(chunks, manifest.embedding?.dim ?? null, onProgress);
   const finishedAt = new Date().toISOString();
 
   if (

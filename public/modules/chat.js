@@ -1,7 +1,7 @@
 import { renderAssistantAnswer as renderAssistantContent } from "../answerRenderer.js";
 import { formatVisualizationText, renderVisualizationSpec } from "../visualizationRenderer.js";
 import { displayFileName as formatDisplayFileName } from "../fileDisplay.js";
-import { state, elements, getActiveRoom } from "./state.js";
+import { state, elements, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persistence.js";
 import {
   hasCalendarKeyword, isCalendarConfirmation, isCalendarRejection,
@@ -150,7 +150,12 @@ function shouldUploadFile(file) {
 
 export async function confirmAndRemoveUploadedFile(uploadedFile) {
   const fileName = formatDisplayFileName(uploadedFile);
-  const confirmed = window.confirm(`"${fileName}" 자료를 현재 대화방에서 삭제할까요?`);
+  const confirmed = await showConfirmDialog({
+    title: "첨부 삭제",
+    body: `"${fileName}" 자료를 현재 대화방에서 삭제할까요?`,
+    okText: "삭제",
+    danger: true
+  });
   if (!confirmed) return;
   await removeUploadedFile(uploadedFile);
 }
@@ -168,7 +173,12 @@ export async function removeUploadedFile(uploadedFile) {
 export async function confirmAndClearRoomDocuments(room = getActiveRoom()) {
   if (!room || !Array.isArray(room.documents) || !room.documents.length) return;
   const totalBytes = room.documents.reduce((sum, doc) => sum + estimateDocumentBytes(doc), 0);
-  const confirmed = window.confirm(`현재 대화방의 첨부 ${room.documents.length}개(${formatBytes(totalBytes)})를 정리할까요? 대화 내용은 유지됩니다.`);
+  const confirmed = await showConfirmDialog({
+    title: "첨부 정리",
+    body: `현재 대화방의 첨부 ${room.documents.length}개(${formatBytes(totalBytes)})를 정리할까요? 대화 내용은 유지됩니다.`,
+    okText: "정리",
+    danger: true
+  });
   if (!confirmed) return;
   const documents = [...room.documents];
   await Promise.all(documents.map((doc) => fetch(`/api/documents/${doc.id}`, { method: "DELETE" }).catch(() => {})));

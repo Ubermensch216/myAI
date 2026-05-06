@@ -262,11 +262,16 @@ and returns immediately:
     id,
     notebookId,
     status: "queued" | "running" | "completed" | "failed",
-    stage,
-    progress,
+    stage,       // "queued" | "parsing" | "indexing" | "completed" | "failed"
+    progress,    // 0–100
     fileName,
-    document,
-    error
+    sizeBytes,
+    createdAt,
+    updatedAt,
+    startedAt,
+    finishedAt,
+    document,    // populated on completion
+    error        // populated on failure
   }
 }
 ```

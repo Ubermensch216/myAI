@@ -92,7 +92,7 @@ Run fast smoke tests while the app server is running:
 npm.cmd test
 ```
 
-The smoke test covers app shell IDs, `/api/status`, and calendar intent classification. Run deterministic XLSX/visualization regression tests without Ollama:
+The smoke test covers app shell IDs, `/api/status`, notebook list, file upload, visualization error handling, chat, and calendar intent classification. Run deterministic XLSX/visualization regression tests without Ollama:
 
 ```powershell
 npm.cmd run test:xlsx
@@ -106,7 +106,7 @@ npm.cmd run test:live
 
 Uploaded room files are stored in the browser's encrypted IndexedDB and are sent back in `/api/chat` requests as JSON. The UI shows approximate room/attachment storage, warns before large uploads, provides an active-room attachment cleanup action, and blocks chat requests that are too close to the server JSON body limit.
 
-The XLSX regression test covers Excel date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, and server-computed chart specs.
+The XLSX regression test covers Excel date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, invalid plan validation, and server-computed chart specs.
 
 ## Configuration
 
@@ -153,19 +153,33 @@ server/
   calendarAgent.js     calendar intent classifier
   holidays.js          Korean holiday API/fallback
   chunking.js          shared section chunking policy
-  notebooks.js         notebook storage, ingest, retrieval
+  notebooks.js         notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache
+  reranker.js          cross-encoder reranking via Ollama /api/rerank
+  modelQueue.js        in-process concurrency queues (embedding, analysis, rerank, map-reduce)
+  rateLimit.js         fixed-window rate limiting for model-calling routes
+  abort.js             AbortSignal helpers for streaming chat and Map-Reduce
   auth.js              ADMIN_TOKEN middleware
   parsers.js           file parsers and text splitting primitives
   retrieval.js         BM25/CJK bigram, cosine, RRF retrieval
   visualization.js     visualization validation and chart data
   documents.js         serializers and pageSections()
   documentStore.js     runtime-only document cache
+  rag/
+    ragConfig.js         RAG profile constants, backend env resolution
+    departmentRag.js     department retrieval orchestration
+    embeddingValidator.js embedding dimension and integrity validation
+    retrievalLogger.js   privacy-safe JSONL retrieval telemetry
+  indexes/
+    qdrantVectorIndex.js Qdrant collection lifecycle, upsert/delete/search
+    sqliteFtsIndex.js    SQLite FTS5 lexical index for BM25 and CJK bigrams
+  ingest/
+    notebookIngestJobs.js async background ingest queue with retry and startup recovery
 
 public/
   index.html
-  app.js               orchestrator (~848 lines)
+  app.js               orchestrator
   modules/
-    state.js           global state, DOM refs, shared utilities
+    state.js           global state, DOM refs, shared utilities (showConfirmDialog)
     persistence.js     IndexedDB + WebCrypto AES-GCM
     calendar.js        calendar rendering, CRUD, reminders
     chat.js            streaming chat, message rendering, file upload
@@ -178,6 +192,7 @@ public/
 
 docs/
   ARCHITECTURE.md
+  DEPARTMENT_RAG_ARCHITECTURE.md
   API.md
   RAG.md
   CALENDAR.md
@@ -188,6 +203,7 @@ docs/
 ## More Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Department RAG Architecture](docs/DEPARTMENT_RAG_ARCHITECTURE.md)
 - [API](docs/API.md)
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
@@ -208,7 +224,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
-- Department notebooks are stored as JSON files under `data/notebooks/`; large collections will eventually need a persistent vector index.
+- Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured; falls back to JSON/in-memory BM25 when either backend is unavailable.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects notebook management only. Use reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.
