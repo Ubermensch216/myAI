@@ -1,8 +1,9 @@
 # Department RAG Architecture
 
-This document is the build plan for moving department notebooks from the
-current JSON + in-memory retrieval path to an open-source workstation RAG stack
-backed by a persistent vector database.
+This document describes the department RAG stack: Qdrant (vector) + SQLite FTS5
+(lexical) + cross-encoder reranker on top of the JSON source-of-truth
+in `data/notebooks/`. All components have graceful fallback to JSON/in-memory
+retrieval when optional services are unavailable.
 
 ## Design Goals
 
@@ -46,7 +47,10 @@ stay centralized.
 | `server/indexes/qdrantVectorIndex.js` | Qdrant collection lifecycle, point upsert/delete/search, health checks. |
 | `server/indexes/sqliteFtsIndex.js` | SQLite FTS5 lexical index for exact Korean terms, IDs, titles, and CJK bigram matching. |
 | `server/rag/retrievalLogger.js` | Privacy-safe JSONL retrieval telemetry. |
-| Admin rebuild scripts | Future index consistency checks, rebuilds, and snapshots. |
+| `server/reranker.js` | Cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback. |
+| `server/ingest/notebookIngestJobs.js` | Async ingest job queue with retry and startup recovery. |
+| `npm run rag:check` / `rag:rebuild` | Index consistency checks and full index rebuilds. |
+| `npm run rag:quality-test` | Recall@K / MRR@K evaluation against `fixtures/rag/department-golden.json`. |
 
 ## Qdrant Collection
 

@@ -76,34 +76,41 @@ data/notebooks/<notebookId>/manifest.json
 data/notebooks/<notebookId>/docs/<documentId>.json
 ```
 
-Ingest flow:
+Ingest flows:
 
 ```text
-admin upload
--> parseUpload()
--> chunkDocumentSections()
--> embedTexts(chunks)
--> analyzeDocument()
--> write document JSON and manifest summary
+[Synchronous — POST /api/notebooks/:id/documents]
+admin upload -> parseUpload() -> chunkDocumentSections()
+-> embedTexts(chunks) -> analyzeDocument()
+-> write document JSON + manifest
+-> dual-write to Qdrant (if configured) + SQLite FTS5 (if configured)
+
+[Async job — POST /api/notebooks/:id/ingest-jobs]
+admin upload -> notebookIngestJobs.js creates job record
+-> background runner: same pipeline above, with retry
+-> job status polled via GET /api/notebooks/:id/ingest-jobs/:jobId
 ```
 
 Query flow:
 
 ```text
 server/rag/departmentRag.js#searchNotebook(notebookId, query)
--> notebooks.js#getNotebookManifest()
--> notebooks.js#loadNotebookChunksForRetrieval()
--> expand query variants
--> embed query variants (validated against manifest.embedding.dim)
--> multiQueryHybridSelect()  // BM25 + cosine + RRF
--> return cited chunks and cited document summaries
--> retrieval JSONL log entry { profile: "department", backend, ... }
+-> notebooks.js#getNotebookManifest() + loadNotebookChunksForRetrieval()
+-> expandQuery()               // LLM query variants
+-> embedTexts(queries)         // validated against manifest.embedding.dim
+-> searchQdrantNotebookChunks()   // when DEPARTMENT_VECTOR_BACKEND=qdrant
+-> searchSqliteNotebookChunks()   // when DEPARTMENT_LEXICAL_BACKEND=sqlite
+-> fuseRankings() via RRF
+-> rerankChunks()              // cross-encoder, when RAG_RERANK_ENABLED=true
+-> greedyFit(budget)
+-> fallback: multiQueryHybridSelect() if Qdrant/SQLite unavailable
+-> return citations + cited document summaries
+-> retrievalLogger JSONL entry { profile, backend, rerank, timing, ... }
 ```
 
-`notebooks.js` keeps manifest CRUD, ingest, and the chunk cache. The retrieval
-function lives in `server/rag/departmentRag.js` so Sprint 2 can swap the
-ranking implementation (Qdrant + SQLite FTS5) without touching ingest or
-storage.
+`notebooks.js` owns manifest CRUD, ingest, dual-write, and the chunk cache. The retrieval
+orchestration lives in `server/rag/departmentRag.js`; ingest jobs in
+`server/ingest/notebookIngestJobs.js`.
 
 When `DEPARTMENT_VECTOR_BACKEND=qdrant`, the department path first attempts
 Qdrant dense search through `server/indexes/qdrantVectorIndex.js`. If Qdrant is
@@ -115,6 +122,27 @@ When `DEPARTMENT_LEXICAL_BACKEND=sqlite`, the department path also searches
 vector candidates using RRF before context budget fitting.
 
 The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them into the system prompt, and `server/index.js` exposes citation metadata through `X-Notebook-Meta`.
+
+## Reranker
+
+When `RAG_RERANK_ENABLED=true`, the department RAG pipeline passes the top
+`RERANK_TOP_K` (default 40) RRF-fused candidates to `server/reranker.js` for
+cross-encoder scoring via Ollama `/api/rerank`.
+
+```env
+RAG_RERANK_ENABLED=true
+RERANK_MODEL=bge-reranker-v2-m3
+RERANK_TOP_K=40
+RERANK_TIMEOUT_MS=8000
+```
+
+On timeout or Ollama error, the reranker degrades gracefully — results return
+in RRF order with `reranked: false` logged. The reranker call is queued through
+`modelQueue.rerankQueue` so it respects GPU concurrency limits.
+
+Quality evaluation: `npm run rag:quality-test` measures Recall@K and MRR@K
+against annotated cases in `fixtures/rag/department-golden.json`.
+Use `--compare-rerank` to report the delta between with/without reranker.
 
 ## Notebook Chunk Cache
 

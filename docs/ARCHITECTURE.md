@@ -11,10 +11,12 @@ myAI has a two-tier deployment model:
   Browser                                   Node.js/Express :3000
   ├─ AES-GCM IndexedDB                      ├─ Ollama :11434
   │   ├─ rooms + messages                   │    (GPU: DGX Spark / RTX 5090-class)
-  │   ├─ personal room uploads              ├─ data/notebooks/
-  │   ├─ calendar events                    │   ├─ nb_<id>/manifest.json
-  │   └─ app settings                       │   └─ nb_<id>/docs/<docId>.json
-  └─ fetch() → http://<dept-host>:3000/api/ └─ uploads/ (temp only, cleaned after parse)
+  │   ├─ personal room uploads              ├─ Qdrant :6333 (optional)
+  │   ├─ calendar events                    ├─ data/notebooks/
+  │   └─ app settings                       │   ├─ nb_<id>/manifest.json
+  └─ fetch() → http://<dept-host>:3000/api/ │   └─ nb_<id>/docs/<docId>.json
+                                            ├─ data/indexes/ (SQLite FTS5, optional)
+                                            └─ uploads/ (temp only, cleaned after parse)
 ```
 
 **Department workstation** hosts the Node.js server and Ollama. It stores all department notebooks under `data/notebooks/`. GPU-class hardware enables large embedding models (e.g. `bge-m3`), fast inference, and concurrent Map-Reduce analysis shared by all connected users.
@@ -86,8 +88,15 @@ The server memory document store is a convenience cache only. The durable source
 ```text
 chat prompt + room.selectedNotebookId
 -> POST /api/chat { notebookId }
--> server/notebooks.js#queryNotebook()
--> query expansion + hybrid retrieval
+-> server/rag/departmentRag.js#searchNotebook()
+   -> query expansion (queryExpansion.js)
+   -> embed query variants (embeddings.js, validated dim)
+   -> Qdrant dense search   (when DEPARTMENT_VECTOR_BACKEND=qdrant)
+   -> SQLite FTS5 search    (when DEPARTMENT_LEXICAL_BACKEND=sqlite)
+   -> RRF fusion
+   -> cross-encoder rerank  (when RAG_RERANK_ENABLED=true)
+   -> greedyFit budget trim
+   -> fallback: in-memory BM25 + cosine + RRF
 -> cited chunks become [N] citations
 -> server/ollama.js injects notebook context and grounding rules
 -> X-Notebook-Meta returns citation metadata
@@ -135,7 +144,16 @@ The LLM does not directly mutate calendar data.
 - `server/documents.js` - document serializers and `pageSections()`.
 - `server/chunking.js` - shared document section chunking policy for personal uploads and notebook ingest.
 - `server/documentAnalysis.js` - summary/topic extraction for uploaded and notebook documents.
-- `server/notebooks.js` - notebook manifests, document ingest, chunk storage, retrieval, all-chunk loading.
+- `server/notebooks.js` - notebook manifests, document ingest, chunk storage, cache, all-chunk loading.
+- `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → log.
+- `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
+- `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry.
+- `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
+- `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25 and CJK bigram search.
+- `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
+- `server/reranker.js` - cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback.
+- `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.
 - `server/retrieval.js` - tokenization, BM25, CJK bigrams, cosine similarity, RRF fusion, greedy fitting.
 - `server/embeddings.js` - Ollama `/api/embed`.
 - `server/queryExpansion.js` - retrieval-friendly query variants.

@@ -8,17 +8,12 @@ Sprint	목표	상태
 2 — Qdrant + SQLite FTS5 어댑터	dual-write, rebuild/check 스크립트	✅ 완료
 3 — 비동기 인제스트 잡 큐	notebookIngestJobs, admin UI 폴링/재시도	🔶 대부분 완료, 세부 진행률 미완
 4 — 멀티유저 동시성 + 운영	modelQueue, rate limit, admin RAG status	🔶 대부분 완료, 프로덕션 검증 미완
-5 — Reranker + 품질 평가	reranker.js 구현 + golden fixtures + 품질 테스트	⚠️ reranker.js만 존재, 평가 인프라 전무
+5 — Reranker + 품질 평가	reranker.js 구현 + golden fixtures + 품질 테스트	✅ 완료
 6 — 배포 패키지	docker-compose, Caddyfile, systemd	🔶 기본 배포는 완료, backup/restore/문서 미완
 
 
 보완/수정 필요 사항
 1순위 — 기능 공백 (코드가 없음)
-Sprint 5: RAG 품질 평가 인프라 부재
-
-fixtures/rag/department-golden.json — 없음
-scripts/rag-quality-test.mjs — 없음
-reranker가 실제로 성능을 개선하는지 측정할 수단이 없는 상태. Recall@10, MRR@10 베이스라인 없이 reranker를 배포한 것은 "효과 미검증" 상태입니다.
 Sprint 6: 백업/복구 스크립트 부재
 
 scripts/backup-department-rag.mjs — 없음
@@ -52,8 +47,8 @@ Sprint 6 태스크에 명시되어 있으나 docs/ 디렉토리에 없습니다.
 
 우선순위 행동 제안
 
-1. scripts/rag-quality-test.mjs + golden fixtures 작성   → Sprint 5 완성
-2. backup/restore 스크립트 작성                          → Sprint 6 완성, 운영 안전
+1. backup/restore 스크립트 작성                          → Sprint 6 완성, 운영 안전
+2. golden fixture에 실제 노트북 케이스 채우기             → Sprint 5 수치 베이스라인 확보
 3. 인제스트 청크 단위 진행률 구현                         → Sprint 3 완성
 4. note.md 현행화 또는 삭제                              → 관리 부채 해소
 5. 브라우저 스모크 테스트 작성                           → 회귀 방지

@@ -11,7 +11,7 @@
 
 - Uploaded room files are durable in browser IndexedDB, not server memory.
 - `/api/chat` sends active document payloads in JSON; large documents/images can hit browser or `MAX_JSON_BYTES` limits.
-- Department notebooks are still JSON-file based with an in-memory chunk cache. Large collections should move toward a persistent retrieval index/vector store.
+- Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured; falls back to JSON/in-memory BM25. In fallback mode, large notebooks degrade in retrieval quality and LRU cache pressure increases under concurrent load.
 - Document summaries/topics orient the model but are not a replacement for chunk-level grounding.
 - Query expansion adds an extra local LLM call per RAG turn and may increase latency.
 
