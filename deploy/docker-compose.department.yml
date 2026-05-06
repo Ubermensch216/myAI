@@ -1,8 +1,14 @@
 name: myai-department-rag
 
+# Run from the project root:
+#   docker compose -f deploy/docker-compose.department.yml up -d
+#
+# Set QDRANT_API_KEY in the environment or in a .env file at the project root.
+# The same key goes into /etc/myai.env as QDRANT_API_KEY.
+
 services:
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.13.6
     container_name: myai-qdrant
     restart: unless-stopped
     ports:
@@ -12,5 +18,11 @@ services:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-change-me}
       QDRANT__LOG_LEVEL: INFO
     volumes:
-      - ../data/qdrant/storage:/qdrant/storage
-      - ../data/qdrant/snapshots:/qdrant/snapshots
+      - ./data/qdrant/storage:/qdrant/storage
+      - ./data/qdrant/snapshots:/qdrant/snapshots
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

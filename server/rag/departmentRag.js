@@ -5,6 +5,7 @@ import { logRetrieval } from "./retrievalLogger.js";
 import { resolvedDepartmentBackend, PROFILE_DEPARTMENT } from "./ragConfig.js";
 import { searchQdrantNotebookChunks } from "../indexes/qdrantVectorIndex.js";
 import { searchSqliteNotebookChunks } from "../indexes/sqliteFtsIndex.js";
+import { getRerankConfig, rerankChunks } from "../reranker.js";
 import {
   getNotebookManifest,
   loadNotebookChunksForRetrieval,
@@ -32,6 +33,8 @@ export async function searchNotebook(notebookId, query, options = {}) {
   const t0 = Date.now();
   const timing = {};
   let fallbackReason = null;
+  let rerankApplied = false;
+  const rerankConfig = getRerankConfig();
 
   const allChunks = await loadNotebookChunksForRetrieval(notebookId, manifest);
 
@@ -47,6 +50,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
   let ranked = [];
   let queries = trimmedQuery ? [trimmedQuery] : [];
   let queryEmbeddings = [];
+
   if (trimmedQuery) {
     const tExpand = Date.now();
     try {
@@ -117,10 +121,23 @@ export async function searchNotebook(notebookId, query, options = {}) {
     }
 
     if (rankingLists.length) {
-      ranked = fuseExternalRankings(rankingLists, budget);
+      const fusedSorted = fuseRankings(rankingLists);
+      if (rerankConfig.enabled) {
+        const tRerank = Date.now();
+        const { chunks: rerankedChunks, reranked, reason: rerankReason } = await rerankChunks(
+          trimmedQuery,
+          fusedSorted.slice(0, rerankConfig.topK),
+          { signal: options.signal }
+        );
+        timing.rerankMs = Date.now() - tRerank;
+        rerankApplied = reranked;
+        if (!reranked) fallbackReason = fallbackReason || rerankReason;
+        ranked = greedyFit([...rerankedChunks, ...fusedSorted.slice(rerankConfig.topK)], budget);
+      } else {
+        ranked = greedyFit(fusedSorted, budget);
+      }
     } else {
-      const memoryRanked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
-      ranked = memoryRanked;
+      ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
     }
     timing.retrievalMs = Date.now() - tRetrieve;
   }
@@ -164,6 +181,11 @@ export async function searchNotebook(notebookId, query, options = {}) {
     embedding: manifest.embedding
       ? { model: manifest.embedding.model, dim: manifest.embedding.dim }
       : null,
+    rerank: {
+      enabled: rerankConfig.enabled,
+      applied: rerankApplied,
+      model: rerankConfig.enabled ? rerankConfig.model : null
+    },
     timing,
     selected: citations.map((c, i) => ({
       rank: i + 1,
@@ -181,7 +203,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
   };
 }
 
-function fuseExternalRankings(rankings, budget) {
+function fuseRankings(rankings) {
   const RRF_K = 60;
   const byKey = new Map();
   for (const ranking of rankings) {
@@ -193,8 +215,7 @@ function fuseExternalRankings(rankings, budget) {
       byKey.set(key, entry);
     });
   }
-  const sorted = Array.from(byKey.values())
+  return Array.from(byKey.values())
     .sort((left, right) => right.score - left.score || left.bestRank - right.bestRank)
     .map((entry) => entry.chunk);
-  return greedyFit(sorted, budget);
 }

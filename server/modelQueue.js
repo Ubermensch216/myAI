@@ -108,6 +108,12 @@ export const chatQueue = new ModelQueue({
   maxQueued: clampInt(process.env.CHAT_QUEUE_MAX_QUEUED, 32, 1, 1000)
 });
 
+export const rerankQueue = new ModelQueue({
+  name: "rerank",
+  concurrency: clampInt(process.env.RERANK_QUEUE_CONCURRENCY, 1, 1, 8),
+  maxQueued: clampInt(process.env.RERANK_QUEUE_MAX_QUEUED, 16, 1, 256)
+});
+
 export function isChatQueueEnabled() {
   return String(process.env.CHAT_QUEUE_ENABLED || "false").toLowerCase() === "true";
 }
@@ -120,6 +126,7 @@ export function getModelQueueStats() {
     },
     embedding: embeddingQueue.stats(),
     mapReduce: mapReduceQueue.stats(),
-    analysis: analysisQueue.stats()
+    analysis: analysisQueue.stats(),
+    rerank: rerankQueue.stats()
   };
 }

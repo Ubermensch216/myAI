@@ -16,6 +16,7 @@ import { createAbortError } from "./abort.js";
 import { getQdrantHealth } from "./indexes/qdrantVectorIndex.js";
 import { getSqliteFtsHealth } from "./indexes/sqliteFtsIndex.js";
 import { getModelQueueStats } from "./modelQueue.js";
+import { getRerankHealth, getRerankConfig } from "./reranker.js";
 import { createRateLimiter, getRateLimitConfig, rateLimitDefaults } from "./rateLimit.js";
 import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import {
@@ -63,16 +64,21 @@ function extractPersonalization(body) {
 
 function collectRagStatus({ models = null } = {}) {
   const backend = resolvedDepartmentBackend();
+  const rerankEnabled = getRerankConfig().enabled;
   return Promise.all([
     models ? Promise.resolve(models) : listModels().catch((error) => ({ error: error.message, models: [] })),
     getQdrantHealth().catch((error) => ({ configured: true, ok: false, error: error.message })),
     backend.lexical === "sqlite"
       ? getSqliteFtsHealth().catch((error) => ({ configured: true, ok: false, error: error.message }))
-      : Promise.resolve({ configured: false, ok: false, reason: "sqlite_fts_not_enabled" })
-  ]).then(([modelList, qdrant, sqlite]) => ({
+      : Promise.resolve({ configured: false, ok: false, reason: "sqlite_fts_not_enabled" }),
+    rerankEnabled
+      ? getRerankHealth().catch((error) => ({ enabled: true, ok: false, error: error.message }))
+      : Promise.resolve({ enabled: false, ok: false, reason: "reranker_disabled" })
+  ]).then(([modelList, qdrant, sqlite, reranker]) => ({
     backend,
     qdrant,
     sqlite,
+    reranker,
     queues: getModelQueueStats(),
     rateLimits: getRateLimitConfig(),
     models: modelList.models?.map((model) => model.name) ?? [],
@@ -108,7 +114,8 @@ app.get("/api/status", async (_request, response) => {
         department: {
           backend: ragStatus.backend,
           qdrant: ragStatus.qdrant,
-          sqlite: ragStatus.sqlite
+          sqlite: ragStatus.sqlite,
+          reranker: ragStatus.reranker
         }
       },
       queues: ragStatus.queues,
