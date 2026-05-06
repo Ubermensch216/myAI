@@ -1,0 +1,39 @@
+{
+  "version": "1",
+  "description": "Department RAG golden evaluation set — Recall@K / MRR@K baseline",
+  "_annotationGuide": [
+    "1. Run 'npm run rag:check' to list available notebook IDs.",
+    "2. For each notebook to evaluate, add a suite entry below (copy the template).",
+    "3. Write queries that real users would ask against that notebook.",
+    "4. For each query, run a search via the UI or API and review the returned chunks.",
+    "5. Record which results are truly relevant:",
+    "   - 'relevantDocIds': document-level annotation (easier — just the document IDs)",
+    "   - 'relevantChunkKeys': chunk-level annotation (more precise — 'docId:chunkIndex', e.g. 'doc_abc:0')",
+    "   If 'relevantChunkKeys' is present it takes precedence over 'relevantDocIds'.",
+    "6. Set 'skip: false' on the suite when it is ready to evaluate.",
+    "7. Run: node scripts/rag-quality-test.mjs",
+    "8. Run with reranker comparison: node scripts/rag-quality-test.mjs --compare-rerank"
+  ],
+  "suites": [
+    {
+      "id": "suite_template",
+      "notebookId": "nb_REPLACE_WITH_REAL_ID",
+      "description": "Template — fill in a real notebook ID and annotate queries, then set skip: false",
+      "skip": true,
+      "cases": [
+        {
+          "id": "q001",
+          "query": "여기에 실제 질의를 입력하세요",
+          "relevantDocIds": ["doc_REPLACE_WITH_REAL_DOC_ID"],
+          "relevantChunkKeys": []
+        },
+        {
+          "id": "q002",
+          "query": "Another example query in English",
+          "relevantDocIds": ["doc_REPLACE_WITH_REAL_DOC_ID"],
+          "relevantChunkKeys": ["doc_REPLACE_WITH_REAL_DOC_ID:0", "doc_REPLACE_WITH_REAL_DOC_ID:1"]
+        }
+      ]
+    }
+  ]
+}
