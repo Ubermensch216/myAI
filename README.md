@@ -229,7 +229,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
-- Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured; falls back to JSON/in-memory BM25 when either backend is unavailable.
+- Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects notebook management only. Use reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.

@@ -35,10 +35,30 @@ export async function searchNotebook(notebookId, query, options = {}) {
   let fallbackReason = null;
   let rerankApplied = false;
   const rerankConfig = getRerankConfig();
+  const manifestChunkCount = estimateManifestChunkCount(manifest);
+  let allChunks = null;
+  let fallbackLoadedAllChunks = false;
+  let ranked = [];
+  let queries = trimmedQuery ? [trimmedQuery] : [];
+  let queryEmbeddings = [];
 
-  const allChunks = await loadNotebookChunksForRetrieval(notebookId, manifest);
-
-  if (!allChunks.length) {
+  if (manifestChunkCount === 0) {
+    timing.totalMs = Date.now() - t0;
+    logDepartmentRetrieval({
+      backend,
+      notebookId,
+      query: trimmedQuery,
+      queryVariants: queries.length,
+      chunkCount: 0,
+      embeddedChunkCount: null,
+      fallbackLoadedAllChunks,
+      manifest,
+      rerankConfig,
+      rerankApplied,
+      timing,
+      citations: [],
+      fallbackReason: "empty_notebook"
+    });
     return {
       ok: true,
       notebook: summarizeNotebookManifest(manifest),
@@ -47,9 +67,13 @@ export async function searchNotebook(notebookId, query, options = {}) {
     };
   }
 
-  let ranked = [];
-  let queries = trimmedQuery ? [trimmedQuery] : [];
-  let queryEmbeddings = [];
+  const loadAllChunksForFallback = async () => {
+    if (!allChunks) {
+      allChunks = await loadNotebookChunksForRetrieval(notebookId, manifest);
+      fallbackLoadedAllChunks = true;
+    }
+    return allChunks;
+  };
 
   if (trimmedQuery) {
     const tExpand = Date.now();
@@ -137,12 +161,44 @@ export async function searchNotebook(notebookId, query, options = {}) {
         ranked = greedyFit(fusedSorted, budget);
       }
     } else {
-      ranked = multiQueryHybridSelect(allChunks, queries, queryEmbeddings, budget);
+      const fallbackChunks = await loadAllChunksForFallback();
+      ranked = multiQueryHybridSelect(fallbackChunks, queries, queryEmbeddings, budget);
     }
     timing.retrievalMs = Date.now() - tRetrieve;
   }
 
-  const selected = ranked.length ? ranked : greedyFit(allChunks, budget);
+  const selected = ranked.length
+    ? ranked
+    : greedyFit(await loadAllChunksForFallback(), budget);
+
+  if (!selected.length) {
+    fallbackReason = fallbackReason || (trimmedQuery ? "no_ranked_results" : "empty_query");
+    timing.totalMs = Date.now() - t0;
+    logDepartmentRetrieval({
+      backend,
+      notebookId,
+      query: trimmedQuery,
+      queryVariants: queries.length,
+      chunkCount: allChunks ? allChunks.length : manifestChunkCount,
+      embeddedChunkCount: allChunks
+        ? allChunks.reduce((n, c) => n + (c.embedding ? 1 : 0), 0)
+        : null,
+      fallbackLoadedAllChunks,
+      manifest,
+      rerankConfig,
+      rerankApplied,
+      timing,
+      citations: [],
+      fallbackReason
+    });
+    return {
+      ok: true,
+      notebook: summarizeNotebookManifest(manifest),
+      chunks: [],
+      documentSummaries: []
+    };
+  }
+
   if (!ranked.length) {
     fallbackReason = fallbackReason || (trimmedQuery ? "no_ranked_results" : "empty_query");
   }
@@ -168,15 +224,57 @@ export async function searchNotebook(notebookId, query, options = {}) {
       topics: Array.isArray(entry.topics) ? entry.topics : []
     }));
 
-  logRetrieval({
-    profile: PROFILE_DEPARTMENT,
+  logDepartmentRetrieval({
     backend,
     notebookId,
     query: trimmedQuery,
     queryVariants: queries.length,
+    chunkCount: allChunks ? allChunks.length : manifestChunkCount,
+    embeddedChunkCount: allChunks
+      ? allChunks.reduce((n, c) => n + (c.embedding ? 1 : 0), 0)
+      : null,
+    fallbackLoadedAllChunks,
+    manifest,
+    rerankConfig,
+    rerankApplied,
+    timing,
+    citations,
+    fallbackReason
+  });
+
+  return {
+    ok: true,
+    notebook: summarizeNotebookManifest(manifest),
+    chunks: citations,
+    documentSummaries
+  };
+}
+
+function logDepartmentRetrieval({
+  backend,
+  notebookId,
+  query,
+  queryVariants,
+  chunkCount,
+  embeddedChunkCount,
+  fallbackLoadedAllChunks,
+  manifest,
+  rerankConfig,
+  rerankApplied,
+  timing,
+  citations,
+  fallbackReason
+}) {
+  logRetrieval({
+    profile: PROFILE_DEPARTMENT,
+    backend,
+    notebookId,
+    query,
+    queryVariants,
     corpus: {
-      chunkCount: allChunks.length,
-      embeddedChunkCount: allChunks.reduce((n, c) => n + (c.embedding ? 1 : 0), 0)
+      chunkCount,
+      embeddedChunkCount,
+      fallbackLoadedAllChunks
     },
     embedding: manifest.embedding
       ? { model: manifest.embedding.model, dim: manifest.embedding.dim }
@@ -187,6 +285,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
       model: rerankConfig.enabled ? rerankConfig.model : null
     },
     timing,
+    fallbackLoadedAllChunks,
     selected: citations.map((c, i) => ({
       rank: i + 1,
       documentId: c.documentId,
@@ -194,13 +293,23 @@ export async function searchNotebook(notebookId, query, options = {}) {
     })),
     fallback: fallbackReason
   });
+}
 
-  return {
-    ok: true,
-    notebook: summarizeNotebookManifest(manifest),
-    chunks: citations,
-    documentSummaries
-  };
+function estimateManifestChunkCount(manifest) {
+  const documents = Array.isArray(manifest?.documents) ? manifest.documents : [];
+  if (!documents.length) return 0;
+
+  let sawChunkCount = false;
+  let total = 0;
+  for (const entry of documents) {
+    const count = Number(entry?.chunkCount);
+    if (Number.isFinite(count)) {
+      sawChunkCount = true;
+      total += Math.max(0, count);
+    }
+  }
+
+  return sawChunkCount ? total : null;
 }
 
 function fuseRankings(rankings) {

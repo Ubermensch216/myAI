@@ -163,7 +163,7 @@ prompt + notebookId
 -> query expansion
 -> query embeddings
 -> Qdrant dense search filtered by notebookId
--> lexical search filtered by notebookId
+-> SQLite FTS5 lexical search scoped by notebook token
 -> RRF fusion
 -> optional reranker
 -> budget-fit context and citations
@@ -172,13 +172,26 @@ prompt + notebookId
 
 The first implementation enables Qdrant dense search and SQLite FTS5 lexical
 search as independent backends. If either backend is unavailable, the JSON
-source-of-truth search remains the fallback.
+source-of-truth search remains the fallback. `departmentRag.js` only loads all
+notebook chunks for this fallback path, for empty-query first-chunk fitting, or
+when external indexes return no usable candidates. Successful Qdrant/SQLite
+queries stay `O(topK)` with respect to notebook JSON I/O.
+
+SQLite FTS stores a deterministic `nbscope<notebookId>` token in each row's
+`searchText`. The same token is required in every notebook lexical query
+`MATCH` expression, which narrows candidates inside FTS before the
+`notebookId` metadata predicate is applied.
 
 Fallback order:
 
 1. Qdrant dense search, when `DEPARTMENT_VECTOR_BACKEND=qdrant`.
-2. Existing JSON chunk search with query expansion, BM25/CJK, embeddings, and RRF.
-3. Greedy first-chunk fit for empty or unrankable queries.
+2. SQLite FTS5 lexical search, when `DEPARTMENT_LEXICAL_BACKEND=sqlite`.
+3. Existing JSON chunk search with query expansion, BM25/CJK, embeddings, and RRF.
+4. Greedy first-chunk fit for empty or unrankable queries.
+
+Retrieval telemetry records whether a request loaded the full notebook JSON
+corpus through `fallbackLoadedAllChunks`. This field is present both at the log
+entry top level and in `corpus`.
 
 ## Operations
 
@@ -202,7 +215,8 @@ ANALYSIS_QUEUE_CONCURRENCY=2
 Use `DEPARTMENT_LEXICAL_BACKEND=sqlite` on department workstations once the
 index has been rebuilt. The SQLite index uses `node:sqlite`, so department
 deployments should run Node.js 24 or newer and may emit a Node experimental
-warning on current Node 24 builds.
+warning on current Node 24 builds. Rebuild the SQLite index after changing
+lexical indexing rules such as notebook scope tokens.
 
 Use `.env.department.example` as the starting point for a workstation `.env`.
 Qdrant can be started locally with:
@@ -248,4 +262,17 @@ Limit either command to one notebook:
 ```powershell
 npm.cmd run rag:check -- nb_<id>
 npm.cmd run rag:rebuild -- nb_<id>
+```
+
+Evaluate the current golden set:
+
+```powershell
+npm.cmd run rag:quality-test -- --k 10
+```
+
+As of the local 35-case fixture, the baseline is:
+
+```text
+Recall@10: 1.0000
+MRR@10:    0.9167
 ```

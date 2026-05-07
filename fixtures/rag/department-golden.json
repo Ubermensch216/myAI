@@ -1,37 +1,201 @@
 {
   "version": "1",
-  "description": "Department RAG golden evaluation set — Recall@K / MRR@K baseline",
+  "description": "Department RAG golden evaluation set for the local public-service and audit-law notebooks.",
   "_annotationGuide": [
-    "1. Run 'npm run rag:check' to list available notebook IDs.",
-    "2. For each notebook to evaluate, add a suite entry below (copy the template).",
-    "3. Write queries that real users would ask against that notebook.",
-    "4. For each query, run a search via the UI or API and review the returned chunks.",
-    "5. Record which results are truly relevant:",
-    "   - 'relevantDocIds': document-level annotation (easier — just the document IDs)",
-    "   - 'relevantChunkKeys': chunk-level annotation (more precise — 'docId:chunkIndex', e.g. 'doc_abc:0')",
-    "   If 'relevantChunkKeys' is present it takes precedence over 'relevantDocIds'.",
-    "6. Set 'skip: false' on the suite when it is ready to evaluate.",
-    "7. Run: node scripts/rag-quality-test.mjs",
-    "8. Run with reranker comparison: node scripts/rag-quality-test.mjs --compare-rerank"
+    "Each case uses chunk-level annotation in 'relevantChunkKeys' using 'documentId:chunkIndex'.",
+    "Run 'npm run rag:check' before evaluating so Qdrant and SQLite FTS are in sync.",
+    "Run 'npm run rag:quality-test -- --k 10' for the baseline retrieval check.",
+    "Run 'npm run rag:quality-test -- --k 10 --compare-rerank' when a reranker model is available."
   ],
   "suites": [
     {
-      "id": "suite_template",
-      "notebookId": "nb_REPLACE_WITH_REAL_ID",
-      "description": "Template — fill in a real notebook ID and annotate queries, then set skip: false",
-      "skip": true,
+      "id": "public_service_leave_and_duty",
+      "notebookId": "nb_b1191f91e61238ef",
+      "description": "국가공무원 복무규정과 지방공무원 복무규정의 근무, 휴가, 공가, 겸직 관련 질의",
+      "skip": false,
       "cases": [
         {
-          "id": "q001",
-          "query": "여기에 실제 질의를 입력하세요",
-          "relevantDocIds": ["doc_REPLACE_WITH_REAL_DOC_ID"],
-          "relevantChunkKeys": []
+          "id": "ps001",
+          "query": "국가공무원의 연가계획 수립과 연가 승인 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:9"]
         },
         {
-          "id": "q002",
-          "query": "Another example query in English",
-          "relevantDocIds": ["doc_REPLACE_WITH_REAL_DOC_ID"],
-          "relevantChunkKeys": ["doc_REPLACE_WITH_REAL_DOC_ID:0", "doc_REPLACE_WITH_REAL_DOC_ID:1"]
+          "id": "ps002",
+          "query": "국가공무원의 권장 연가 일수와 연가보상비 공지 기준은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:10"]
+        },
+        {
+          "id": "ps003",
+          "query": "국가공무원 10일 이상 연속된 연가 사용 보장 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:11"]
+        },
+        {
+          "id": "ps004",
+          "query": "국가공무원 공가 승인 사유에는 무엇이 포함되나?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:12"]
+        },
+        {
+          "id": "ps005",
+          "query": "국가공무원 특별휴가와 출산휴가 기준은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:13"]
+        },
+        {
+          "id": "ps006",
+          "query": "국가공무원 재해구호휴가와 가족돌봄휴가 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:14"]
+        },
+        {
+          "id": "ps007",
+          "query": "국가공무원 심리안정휴가와 장기재직휴가 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:15"]
+        },
+        {
+          "id": "ps008",
+          "query": "국가공무원의 영리 업무 금지와 겸직 허가 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:17"]
+        },
+        {
+          "id": "ps009",
+          "query": "지방공무원 비상근무의 종류와 발령 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:1", "doc_4ae9287eb857d5dd:2"]
+        },
+        {
+          "id": "ps010",
+          "query": "지방공무원 비상근무 발령과 보고 절차는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:3", "doc_4ae9287eb857d5dd:4"]
+        },
+        {
+          "id": "ps011",
+          "query": "지방공무원 근무시간 또는 근무일 변경 규정은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:5"]
+        },
+        {
+          "id": "ps012",
+          "query": "지방공무원 출장공무원의 의무는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:6"]
+        },
+        {
+          "id": "ps013",
+          "query": "지방공무원의 재직기간별 연가일수와 연가보상비 지급 규정은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:7"]
+        },
+        {
+          "id": "ps014",
+          "query": "지방공무원 연가 사용 권장과 미사용 권장 연가일수 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:9"]
+        },
+        {
+          "id": "ps015",
+          "query": "지방공무원 공가 허가 사유는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:10"]
+        },
+        {
+          "id": "ps016",
+          "query": "지방공무원 특별휴가와 경조사휴가 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:11"]
+        },
+        {
+          "id": "ps017",
+          "query": "지방공무원 휴가기간 중 토요일과 공휴일 산입 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:13"]
+        },
+        {
+          "id": "ps018",
+          "query": "지방공무원의 정치적 행위 제한 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:14"]
+        },
+        {
+          "id": "ps019",
+          "query": "공무원 근무시간 면제 시간의 사용 규정은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:15", "doc_347e00e123d00fc5:19"]
+        },
+        {
+          "id": "ps020",
+          "query": "지방공무원 임신검진 동행휴가 적용례는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:16"]
+        }
+      ]
+    },
+    {
+      "id": "audit_law_and_accounting_audit",
+      "notebookId": "nb_c7b5657d196c4910",
+      "description": "공공기관 회계감사 규칙과 공공감사법의 감사기구, 감사절차, 면책 관련 질의",
+      "skip": false,
+      "cases": [
+        {
+          "id": "au001",
+          "query": "회계감사인의 자격과 전문교육 이수 요건은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:1"]
+        },
+        {
+          "id": "au002",
+          "query": "회계감사인의 독립성 준수와 독립성 저해 요인은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:2"]
+        },
+        {
+          "id": "au003",
+          "query": "회계감사인 선정 보고와 통보 기한은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:3"]
+        },
+        {
+          "id": "au004",
+          "query": "회계감사인을 변경하거나 감사계약을 해지할 수 있는 사유는?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:4"]
+        },
+        {
+          "id": "au005",
+          "query": "회계감사보고서 제출 기한과 재무제표 차이 자료 제출 의무는?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:5"]
+        },
+        {
+          "id": "au006",
+          "query": "회계감사 과정에서 위법 부당사항을 발견하면 어떻게 보고해야 하나?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:6"]
+        },
+        {
+          "id": "au007",
+          "query": "감사원의 결산감사 대상 공기업과 준정부기관 기준은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:8"]
+        },
+        {
+          "id": "au008",
+          "query": "공공감사법상 자체감사기구 설치 의무는?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:1"]
+        },
+        {
+          "id": "au009",
+          "query": "감사기구의 장 신분보장과 임기 중 해지 제한은?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:2"]
+        },
+        {
+          "id": "au010",
+          "query": "감사기구의 장 직급은 어떤 기준으로 정해야 하나?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:3"]
+        },
+        {
+          "id": "au011",
+          "query": "감사기구의 장 결격사유는?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:4"]
+        },
+        {
+          "id": "au012",
+          "query": "자체감사를 위해 자료 제출이나 출석 답변을 요구할 수 있나?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:5"]
+        },
+        {
+          "id": "au013",
+          "query": "적극행정에 대한 면책 기준은?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:7"]
+        },
+        {
+          "id": "au014",
+          "query": "자체감사기구 감사활동 예산 편성 시 독립성 존중 의무는?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:8"]
+        },
+        {
+          "id": "au015",
+          "query": "중복감사 금지와 감사계획 협의 규정은?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:9"]
         }
       ]
     }

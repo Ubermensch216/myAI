@@ -99,7 +99,7 @@ Query flow:
 
 ```text
 server/rag/departmentRag.js#searchNotebook(notebookId, query)
--> notebooks.js#getNotebookManifest() + loadNotebookChunksForRetrieval()
+-> notebooks.js#getNotebookManifest()
 -> expandQuery()               // LLM query variants
 -> embedTexts(queries)         // validated against manifest.embedding.dim
 -> searchQdrantNotebookChunks()   // when DEPARTMENT_VECTOR_BACKEND=qdrant
@@ -107,9 +107,10 @@ server/rag/departmentRag.js#searchNotebook(notebookId, query)
 -> fuseRankings() via RRF
 -> rerankChunks()              // cross-encoder, when RAG_RERANK_ENABLED=true
 -> greedyFit(budget)
--> fallback: multiQueryHybridSelect() if Qdrant/SQLite unavailable
+-> lazy fallback: loadNotebookChunksForRetrieval() + multiQueryHybridSelect()
+   only when external indexes fail or return no usable candidates
 -> return citations + cited document summaries
--> retrievalLogger JSONL entry { profile, backend, rerank, timing, ... }
+-> retrievalLogger JSONL entry { profile, backend, rerank, timing, fallbackLoadedAllChunks, ... }
 ```
 
 `notebooks.js` owns manifest CRUD, ingest, dual-write, and the chunk cache. The retrieval
@@ -119,11 +120,16 @@ orchestration lives in `server/rag/departmentRag.js`; ingest jobs in
 When `DEPARTMENT_VECTOR_BACKEND=qdrant`, the department path first attempts
 Qdrant dense search through `server/indexes/qdrantVectorIndex.js`. If Qdrant is
 not configured, unavailable, missing its collection, or returns no candidates,
-the request falls back to the existing JSON chunk search.
+the request falls back to the existing JSON chunk search. The full notebook JSON
+chunk load is lazy: normal Qdrant/SQLite hits do not read every chunk from
+`data/notebooks/`.
 
 When `DEPARTMENT_LEXICAL_BACKEND=sqlite`, the department path also searches
 `server/indexes/sqliteFtsIndex.js` and fuses those lexical candidates with
-vector candidates using RRF before context budget fitting.
+vector candidates using RRF before context budget fitting. The SQLite FTS
+`searchText` includes a per-notebook scope token, and every lexical query
+requires that token in the `MATCH` expression so notebook filtering happens in
+the FTS candidate stage instead of only as a post-filter.
 
 The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them into the system prompt, and `server/index.js` exposes citation metadata through `X-Notebook-Meta`.
 
@@ -145,14 +151,21 @@ in RRF order with `reranked: false` logged. The reranker call is queued through
 `modelQueue.rerankQueue` so it respects GPU concurrency limits.
 
 Quality evaluation: `npm run rag:quality-test` measures Recall@K and MRR@K
-against annotated cases in `fixtures/rag/department-golden.json`.
+against annotated cases in `fixtures/rag/department-golden.json`. The current
+local baseline fixture contains 35 enabled chunk-level cases across two
+department notebooks.
 Use `--compare-rerank` to report the delta between with/without reranker.
 
 ## Notebook Chunk Cache
 
 Notebook ingest stores `chunks[].embedding`, and `server/notebooks.js` carries those embeddings into query-time chunk objects before calling `multiQueryHybridSelect()`. This enables BM25/CJK bigram ranking and semantic vector ranking to be fused with RRF when the query embedding call succeeds.
 
-Notebook query and whole-notebook Map-Reduce share a small in-memory chunk cache keyed by the notebook manifest. The cache avoids re-reading and parsing every document JSON on repeated turns. `NOTEBOOK_CHUNK_CACHE_MAX` controls how many notebooks can stay hot in memory; document add/delete and notebook delete invalidate the related entry.
+Notebook JSON fallback and whole-notebook Map-Reduce share a small in-memory
+chunk cache keyed by the notebook manifest. Normal department RAG queries that
+find Qdrant/SQLite candidates bypass full notebook chunk loading; fallback,
+empty-query first-chunk fit, and Map-Reduce still use the cache.
+`NOTEBOOK_CHUNK_CACHE_MAX` controls how many notebooks can stay hot in memory;
+document add/delete and notebook delete invalidate the related entry.
 
 ## Map-Reduce Whole Analysis
 

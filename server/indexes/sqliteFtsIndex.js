@@ -110,10 +110,12 @@ export async function searchSqliteNotebookChunks({ notebookId, queries, limit })
   if (!notebookId) {
     return { ok: false, chunks: [], reason: "missing_notebook" };
   }
-  const match = buildFtsQuery(queries);
-  if (!match) {
+  const queryMatch = buildFtsQuery(queries);
+  if (!queryMatch) {
     return { ok: false, chunks: [], reason: "empty_query" };
   }
+  const scopeMatch = `"${escapeFtsToken(scopeToken(notebookId))}"`;
+  const match = `${scopeMatch} AND (${queryMatch})`;
 
   const config = getSqliteFtsConfig();
   const db = await openDatabase();
@@ -181,12 +183,17 @@ function buildChunkPayload({ notebookId, documentRecord, chunk, index }) {
 
 function buildSearchText(payload) {
   return [
+    scopeToken(payload.notebookId),
     payload.documentName,
     payload.documentType,
     payload.locator,
     payload.text,
     tokenize(`${payload.documentName}\n${payload.locator}\n${payload.text}`).join(" ")
   ].filter(Boolean).join("\n");
+}
+
+function scopeToken(notebookId) {
+  return `nbscope${String(notebookId || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}`;
 }
 
 function buildFtsQuery(queries) {

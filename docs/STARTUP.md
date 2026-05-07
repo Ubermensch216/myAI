@@ -146,6 +146,10 @@ npm.cmd run rag:check
 npm.cmd run rag:rebuild
 ```
 
+SQLite FTS 검색 규칙이 바뀌었거나 notebook scope token 같은 lexical indexing
+동작이 변경된 뒤에도 `rag:rebuild`를 실행해야 기존 row가 새 `searchText`로
+다시 저장된다.
+
 정상 상태 예시는 다음과 같다.
 
 ```text
@@ -155,6 +159,12 @@ npm.cmd run rag:rebuild
 ```
 
 Node.js 24에서 SQLite 관련 `ExperimentalWarning`이 나올 수 있다. `rag:check`의 `"ok": true`라면 시작을 막는 오류는 아니다.
+
+RAG 검색 품질 기준선을 확인하려면 golden fixture를 실행한다.
+
+```powershell
+npm.cmd run rag:quality-test -- --k 10
+```
 
 ### 6. myAI 앱 서버 시작
 
@@ -370,11 +380,19 @@ npm run rag:check
 npm run rag:rebuild
 ```
 
+SQLite FTS 검색 규칙이 바뀐 뒤에도 같은 명령으로 재빌드한다.
+
 특정 노트북만 확인하거나 재빌드할 수도 있다.
 
 ```bash
 npm run rag:check -- nb_<id>
 npm run rag:rebuild -- nb_<id>
+```
+
+RAG 검색 품질 기준선:
+
+```bash
+npm run rag:quality-test -- --k 10
 ```
 
 ### 7. myAI 앱 서버 시작
@@ -600,4 +618,3 @@ myAI의 개인 데이터는 브라우저 IndexedDB에 AES-GCM으로 암호화되
 - `/api/status`가 정상 응답하는지 확인한다.
 - `npm run rag:check` 또는 `npm.cmd run rag:check`가 `"ok": true`인지 확인한다.
 - 브라우저에서 `http://localhost:3000` 접속을 확인한다.
-

@@ -92,11 +92,12 @@ chat prompt + room.selectedNotebookId
    -> query expansion (queryExpansion.js)
    -> embed query variants (embeddings.js, validated dim)
    -> Qdrant dense search   (when DEPARTMENT_VECTOR_BACKEND=qdrant)
-   -> SQLite FTS5 search    (when DEPARTMENT_LEXICAL_BACKEND=sqlite)
+   -> SQLite FTS5 search with notebook scope token (when DEPARTMENT_LEXICAL_BACKEND=sqlite)
    -> RRF fusion
    -> cross-encoder rerank  (when RAG_RERANK_ENABLED=true)
    -> greedyFit budget trim
-   -> fallback: in-memory BM25 + cosine + RRF
+   -> lazy fallback: load all notebook chunks only if external indexes fail/no-hit
+      -> in-memory BM25 + cosine + RRF
 -> cited chunks become [N] citations
 -> server/ollama.js injects notebook context and grounding rules
 -> X-Notebook-Meta returns citation metadata
@@ -146,11 +147,11 @@ The LLM does not directly mutate calendar data.
 - `server/documentAnalysis.js` - summary/topic extraction for uploaded and notebook documents.
 - `server/notebooks.js` - notebook manifests, document ingest, chunk storage, cache, all-chunk loading.
 - `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → log.
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → lazy JSON fallback → log.
 - `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
-- `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry.
+- `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry, including `fallbackLoadedAllChunks`.
 - `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
-- `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25 and CJK bigram search.
+- `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25/CJK bigram search with per-notebook scope tokens.
 - `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
 - `server/reranker.js` - cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback.
 - `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.

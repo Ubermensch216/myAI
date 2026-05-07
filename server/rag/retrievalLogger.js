@@ -34,7 +34,8 @@ function hashQuery(text) {
  *     notebookId?: string,
  *     query: string,                 // hashed; not stored
  *     queryVariants: number,
- *     corpus: { chunkCount, embeddedChunkCount },
+ *     corpus: { chunkCount, embeddedChunkCount, fallbackLoadedAllChunks },
+ *     fallbackLoadedAllChunks: boolean,
  *     timing: { queryExpansionMs?, queryEmbeddingMs?, retrievalMs?, totalMs? },
  *     selected: [{ rank, documentId?, chunkIndex }],
  *     fallback: string | null
