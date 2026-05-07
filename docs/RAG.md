@@ -150,11 +150,16 @@ On timeout or Ollama error, the reranker degrades gracefully — results return
 in RRF order with `reranked: false` logged. The reranker call is queued through
 `modelQueue.rerankQueue` so it respects GPU concurrency limits.
 
-Quality evaluation: `npm run rag:quality-test` measures Recall@K and MRR@K
-against annotated cases in `fixtures/rag/department-golden.json`. The current
-local baseline fixture contains 35 enabled chunk-level cases across two
-department notebooks.
-Use `--compare-rerank` to report the delta between with/without reranker.
+Quality evaluation:
+
+- `npm run rag:quality-test:quick` evaluates the representative cases marked
+  with `"quick": true` in `fixtures/rag/department-golden.json`; use this in
+  the normal development loop after retrieval changes.
+- `npm run rag:quality-test -- --k 10` evaluates the full annotated fixture for
+  release or deployment checks. The current local baseline fixture contains 35
+  enabled chunk-level cases across two department notebooks.
+- Add `--compare-rerank` to the full command when a reranker model is available
+  and you want the with/without reranker delta.
 
 ## Notebook Chunk Cache
 

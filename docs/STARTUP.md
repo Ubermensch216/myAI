@@ -163,6 +163,7 @@ Node.js 24에서 SQLite 관련 `ExperimentalWarning`이 나올 수 있다. `rag:
 RAG 검색 품질 기준선을 확인하려면 golden fixture를 실행한다.
 
 ```powershell
+npm.cmd run rag:quality-test:quick
 npm.cmd run rag:quality-test -- --k 10
 ```
 
@@ -392,6 +393,7 @@ npm run rag:rebuild -- nb_<id>
 RAG 검색 품질 기준선:
 
 ```bash
+npm run rag:quality-test:quick
 npm run rag:quality-test -- --k 10
 ```
 
@@ -594,6 +596,8 @@ curl -s http://127.0.0.1:6333/healthz
 ```
 
 `.env`의 `QDRANT_API_KEY`와 Qdrant 컨테이너 실행 시 전달된 `QDRANT_API_KEY`가 같아야 한다. 키를 바꾼 뒤에는 Qdrant 컨테이너를 재생성하고 인덱스를 재빌드한다.
+
+If `/api/status` or the admin RAG status shows `qdrant_auth_failed`, the `.env` `QDRANT_API_KEY` does not match the currently running Qdrant service. After editing `.env`, restart the myAI Node.js server so the new setting is loaded.
 
 ```bash
 docker compose -f deploy/docker-compose.department.yml --env-file .env up -d --force-recreate

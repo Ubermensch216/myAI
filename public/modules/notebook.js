@@ -951,6 +951,12 @@ function buildIndexCard(title, index, addDetails) {
     err.textContent = index.error;
     card.append(err);
   }
+  if (index?.hint) {
+    const hint = document.createElement("div");
+    hint.className = "admin-status-index-error";
+    hint.textContent = index.hint;
+    card.append(hint);
+  }
   return card;
 }
 

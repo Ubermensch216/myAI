@@ -19,6 +19,7 @@
     "rag:check": "node scripts/check-department-rag-index.mjs",
     "rag:rebuild": "node scripts/rebuild-department-rag-index.mjs",
     "rag:quality-test": "node scripts/rag-quality-test.mjs",
+    "rag:quality-test:quick": "node scripts/rag-quality-test.mjs --quick --k 10",
     "rag:backup": "node scripts/backup-department-rag.mjs",
     "rag:restore": "node scripts/restore-department-rag.mjs"
   },

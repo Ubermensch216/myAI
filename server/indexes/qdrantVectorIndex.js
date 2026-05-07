@@ -64,13 +64,15 @@ export async function getQdrantHealth(options = {}) {
       vectorsCount: result.vectors_count ?? null
     };
   } catch (error) {
+    const classified = classifyQdrantError(error);
     return {
       configured: true,
       ok: false,
       collection: config.collection,
       vectorName: config.vectorName,
-      reason: "qdrant_unreachable",
-      error: error.message
+      reason: classified.reason,
+      error: error.message,
+      hint: classified.hint
     };
   }
 }
@@ -343,6 +345,26 @@ async function qdrantRequest(path, { method = "GET", body, signal, allowNotFound
   } finally {
     cleanup();
   }
+}
+
+function classifyQdrantError(error) {
+  const message = String(error?.message || "");
+  if (/returned\s+(401|403)\b|invalid api key|jwt|unauthorized|forbidden/i.test(message)) {
+    return {
+      reason: "qdrant_auth_failed",
+      hint: "Qdrant rejected QDRANT_API_KEY. Match the key used by the running Qdrant service, then restart myAI so .env is reloaded."
+    };
+  }
+  if (/timed out|timeout|aborted/i.test(message)) {
+    return {
+      reason: "qdrant_timeout",
+      hint: "Qdrant did not respond within QDRANT_TIMEOUT_MS. Check container health, local disk pressure, and QDRANT_URL."
+    };
+  }
+  return {
+    reason: "qdrant_unreachable",
+    hint: "myAI could not reach Qdrant. Check QDRANT_URL, Docker/service status, firewall rules, and restart myAI after .env changes."
+  };
 }
 
 function linkedTimeoutSignal(parentSignal, timeoutMs) {

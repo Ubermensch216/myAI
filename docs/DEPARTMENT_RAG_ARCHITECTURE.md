@@ -50,7 +50,8 @@ stay centralized.
 | `server/reranker.js` | Cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback. |
 | `server/ingest/notebookIngestJobs.js` | Async ingest job queue with retry and startup recovery. |
 | `npm run rag:check` / `rag:rebuild` | Index consistency checks and full index rebuilds. |
-| `npm run rag:quality-test` | Recall@K / MRR@K evaluation against `fixtures/rag/department-golden.json`. |
+| `npm run rag:quality-test:quick` | Fast Recall@K / MRR@K evaluation for representative golden cases. |
+| `npm run rag:quality-test` | Full Recall@K / MRR@K evaluation against `fixtures/rag/department-golden.json`. |
 
 ## Qdrant Collection
 
@@ -267,6 +268,7 @@ npm.cmd run rag:rebuild -- nb_<id>
 Evaluate the current golden set:
 
 ```powershell
+npm.cmd run rag:quality-test:quick
 npm.cmd run rag:quality-test -- --k 10
 ```
 

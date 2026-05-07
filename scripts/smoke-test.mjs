@@ -14,7 +14,7 @@ const status = await run("GET /api/status", testStatus);
 await run("GET /api/notebooks", testNotebookList);
 await run("POST /api/upload text file", testUpload);
 await run("POST /api/visualize invalid plan returns 400", testVisualizePlanValidation);
-await run("POST /api/agent/intent month range", () => testCalendarIntent(status));
+await run("POST /api/agent/intent calendar regression set", () => testCalendarIntent(status));
 if (status?.ok) {
   await run("POST /api/chat echo", testChat);
 }
@@ -71,21 +71,28 @@ async function testStatus() {
 }
 
 async function testCalendarIntent(status) {
-  const result = await fetchJson("/api/agent/intent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({
-      prompt: "5월 전체 일정 보고해.",
-      model: process.env.MYAI_SMOKE_MODEL || status?.defaultModel || "gemma3n:e2b",
-      currentDate: "2026-05-04T09:00:00+09:00"
-    })
-  });
+  const currentDate = "2026-05-04T09:00:00+09:00";
+  const model = process.env.MYAI_SMOKE_MODEL || status?.defaultModel || "gemma3n:e2b";
+  const cases = [
+    ["5\uc6d4 \uc804\uccb4 \uc77c\uc815 \ubcf4\uace0\uc2f6\uc5b4", "2026-05-01", "2026-05-31"],
+    ["\uc774\ubc88 \ub2ec \uc77c\uc815 \ubcf4\uc5ec\uc918", "2026-05-01", "2026-05-31"],
+    ["\uc774\ubc88 \uc8fc \uc77c\uc815 \ubcf4\uc5ec\uc918", "2026-05-03", "2026-05-09"],
+    ["\ub0b4\uc77c \uc77c\uc815 \uc54c\ub824\uc918", "2026-05-05", "2026-05-05"],
+    ["6\uc6d4\ubd80\ud130 12\uc6d4\uae4c\uc9c0 \uc77c\uc815 \uc54c\ub824\uc918", "2026-06-01", "2026-12-31"]
+  ];
 
-  assert.equal(result.intent, "calendar.list");
-  assert.equal(result.payload?.from, "2026-05-01");
-  assert.equal(result.payload?.to, "2026-05-31");
+  for (const [prompt, from, to] of cases) {
+    const result = await fetchJson("/api/agent/intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ prompt, model, currentDate })
+    });
+
+    assert.equal(result.intent, "calendar.list", `${prompt} intent`);
+    assert.equal(result.payload?.from, from, `${prompt} from`);
+    assert.equal(result.payload?.to, to, `${prompt} to`);
+  }
 }
-
 async function testNotebookList() {
   const payload = await fetchJson("/api/notebooks");
   assert.ok(Array.isArray(payload.notebooks), "GET /api/notebooks should return { notebooks: [] }");

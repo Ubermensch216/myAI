@@ -8,6 +8,7 @@
  *   --fixture PATH          Golden fixture file (default: fixtures/rag/department-golden.json)
  *   --notebook NOTEBOOK_ID  Evaluate only suites for this notebook
  *   --suite SUITE_ID        Evaluate only this suite
+ *   --quick                 Evaluate only cases marked with "quick": true
  *   --k N                   Evaluation cutoff (default: 10)
  *   --compare-rerank        Run each query twice (without/with reranker) and report delta
  *   --json                  Emit raw JSON instead of human-readable output
@@ -34,12 +35,14 @@ let filterSuite = "";
 let topK = DEFAULT_K;
 let compareRerank = false;
 let jsonOutput = false;
+let quickMode = false;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === "--fixture" && args[i + 1]) { fixturePath = args[++i]; }
   else if (arg === "--notebook" && args[i + 1]) { filterNotebook = args[++i]; }
   else if (arg === "--suite" && args[i + 1]) { filterSuite = args[++i]; }
+  else if (arg === "--quick") { quickMode = true; }
   else if (arg === "--k" && args[i + 1]) { topK = Math.max(1, parseInt(args[++i], 10) || DEFAULT_K); }
   else if (arg === "--compare-rerank") { compareRerank = true; }
   else if (arg === "--json") { jsonOutput = true; }
@@ -60,18 +63,24 @@ const suites = (fixture.suites || []).filter((s) => {
   if (filterSuite && s.id !== filterSuite) return false;
   if (filterNotebook && s.notebookId !== filterNotebook) return false;
   return true;
-});
+}).map((suite) => ({
+  ...suite,
+  cases: quickMode ? (suite.cases || []).filter((tc) => tc.quick === true) : (suite.cases || [])
+})).filter((suite) => (suite.cases || []).length > 0);
 
 if (!suites.length) {
+  const quickHint = quickMode
+    ? "  No cases matched --quick. Mark selected fixture cases with \"quick\": true.\n"
+    : "";
   console.error(
     "No suites to evaluate.\n" +
-    "  • Check --notebook / --suite filter arguments.\n" +
-    "  • Make sure suites in the fixture have 'skip: false' (or no skip field).\n" +
-    `  • Fixture: ${fixturePath}`
+    "  Check --notebook / --suite filter arguments.\n" +
+    quickHint +
+    "  Make sure suites in the fixture have 'skip: false' (or no skip field).\n" +
+    `  Fixture: ${fixturePath}`
   );
   process.exit(1);
 }
-
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 function relevantKeys(tc) {
@@ -180,6 +189,7 @@ if (compareRerank) process.env.RAG_RERANK_ENABLED = origRerankEnabled;
 const allCases = allSuiteResults.flatMap((s) => s.cases);
 const summary = {
   fixture: fixturePath,
+  mode: quickMode ? "quick" : "full",
   k: topK,
   totalQueries,
   failedQueries,
@@ -202,6 +212,7 @@ if (jsonOutput) {
 
   console.log(`\n=== RAG Quality — Recall@${topK} / MRR@${topK} ===`);
   console.log(`Fixture : ${fixturePath}`);
+  console.log(`Mode    : ${summary.mode}`);
   console.log(`Queries : ${totalQueries}${failedQueries ? `  (${failedQueries} failed)` : ""}\n`);
 
   for (const suite of allSuiteResults) {

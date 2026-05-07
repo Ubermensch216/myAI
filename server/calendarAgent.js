@@ -219,9 +219,10 @@ function validateIntent(raw) {
 }
 
 function applyDeterministicCorrections(result, prompt, currentDate) {
-  if (result?.intent === "calendar.list") {
-    const dateRange = extractCalendarListDateRange(prompt, currentDate);
-    if (dateRange) {
+  const dateRange = extractCalendarListDateRangeUtf8(prompt, currentDate)
+    || extractCalendarListDateRange(prompt, currentDate);
+  if (dateRange) {
+    if (result?.intent === "calendar.list") {
       return {
         ...result,
         payload: {
@@ -229,6 +230,13 @@ function applyDeterministicCorrections(result, prompt, currentDate) {
           from: dateRange.from,
           to: dateRange.to
         }
+      };
+    }
+    if (result?.intent === "chat" && isExplicitCalendarListRequest(prompt)) {
+      return {
+        intent: "calendar.list",
+        payload: dateRange,
+        fallbackReason: "deterministic_calendar_list"
       };
     }
   }
@@ -253,6 +261,85 @@ function applyDeterministicCorrections(result, prompt, currentDate) {
     }
   }
   return result;
+}
+
+function isExplicitCalendarListRequest(prompt) {
+  const text = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  return /(일정|스케줄|캘린더|calendar|schedule)/i.test(text)
+    && /(보고|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
+}
+
+function extractCalendarListDateRangeUtf8(prompt, currentDate) {
+  const text = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  const baseDate = new Date(currentDate);
+  const today = Number.isFinite(baseDate.getTime()) ? baseDate : new Date();
+  const baseYear = today.getFullYear();
+  const baseMonth = today.getMonth() + 1;
+
+  if (/(오늘|금일)/.test(text)) {
+    const date = toDateISO(today);
+    return { from: date, to: date };
+  }
+  if (/(내일|명일)/.test(text)) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + 1);
+    const iso = toDateISO(date);
+    return { from: iso, to: iso };
+  }
+  if (/(이번\s*주|이번주)/.test(text)) {
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    return { from: toDateISO(weekStart), to: toDateISO(weekEnd) };
+  }
+  if (/(이번\s*달|이번달|이달)/.test(text)) {
+    return buildMonthRange(baseYear, baseMonth);
+  }
+  if (/(다음\s*달|다음달)/.test(text)) {
+    const date = new Date(baseYear, baseMonth, 1);
+    return buildMonthRange(date.getFullYear(), date.getMonth() + 1);
+  }
+  if (/(지난\s*달|지난달|전월)/.test(text)) {
+    const date = new Date(baseYear, baseMonth - 2, 1);
+    return buildMonthRange(date.getFullYear(), date.getMonth() + 1);
+  }
+
+  const multiMonth = /(\d{1,2})\s*월\s*(?:부터|에서|~|-)\s*(?:\d{4}\s*년\s*)?(\d{1,2})\s*월/.exec(text);
+  if (multiMonth) {
+    const fromMonth = Number(multiMonth[1]);
+    const toMonth = Number(multiMonth[2]);
+    if (fromMonth >= 1 && fromMonth <= 12 && toMonth >= 1 && toMonth <= 12) {
+      const toYear = toMonth < fromMonth ? baseYear + 1 : baseYear;
+      return {
+        from: buildMonthRange(baseYear, fromMonth).from,
+        to: buildMonthRange(toYear, toMonth).to
+      };
+    }
+  }
+
+  const yearMatch = /(\d{4})\s*년(?:도)?/.exec(text);
+  if (yearMatch) {
+    const year = Number(yearMatch[1]);
+    const afterYear = text.slice(yearMatch.index + yearMatch[0].length);
+    if (year >= 2000 && year <= 2100 && !/^\s*\d{1,2}\s*월/.test(afterYear)) {
+      return { from: `${year}-01-01`, to: `${year}-12-31` };
+    }
+  }
+
+  const explicitMonth = /(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월/.exec(text);
+  if (explicitMonth) {
+    const month = Number(explicitMonth[2]);
+    const year = explicitMonth[1] ? Number(explicitMonth[1]) : baseYear;
+    if (Number.isInteger(month) && month >= 1 && month <= 12) {
+      return buildMonthRange(year, month);
+    }
+  }
+
+  return null;
 }
 
 function extractCalendarListDateRange(prompt, currentDate) {

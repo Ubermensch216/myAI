@@ -104,6 +104,14 @@ Run the slower live tests when Ollama is running and you want to exercise parser
 npm.cmd run test:live
 ```
 
+For department RAG changes, run the fast golden-set check first and the full
+quality evaluation before release or deployment:
+
+```powershell
+npm.cmd run rag:quality-test:quick
+npm.cmd run rag:quality-test -- --k 10
+```
+
 Uploaded room files are stored in the browser's encrypted IndexedDB and are sent back in `/api/chat` requests as JSON. The UI shows approximate room/attachment storage, warns before large uploads, provides an active-room attachment cleanup action, and blocks chat requests that are too close to the server JSON body limit.
 
 The XLSX regression test covers Excel date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, invalid plan validation, and server-computed chart specs.

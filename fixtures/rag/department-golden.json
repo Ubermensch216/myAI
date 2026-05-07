@@ -17,7 +17,8 @@
         {
           "id": "ps001",
           "query": "국가공무원의 연가계획 수립과 연가 승인 규정은?",
-          "relevantChunkKeys": ["doc_347e00e123d00fc5:9"]
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:9"],
+          "quick": true
         },
         {
           "id": "ps002",
@@ -32,7 +33,8 @@
         {
           "id": "ps004",
           "query": "국가공무원 공가 승인 사유에는 무엇이 포함되나?",
-          "relevantChunkKeys": ["doc_347e00e123d00fc5:12"]
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:12"],
+          "quick": true
         },
         {
           "id": "ps005",
@@ -57,7 +59,8 @@
         {
           "id": "ps009",
           "query": "지방공무원 비상근무의 종류와 발령 기준은?",
-          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:1", "doc_4ae9287eb857d5dd:2"]
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:1", "doc_4ae9287eb857d5dd:2"],
+          "quick": true
         },
         {
           "id": "ps010",
@@ -82,7 +85,8 @@
         {
           "id": "ps014",
           "query": "지방공무원 연가 사용 권장과 미사용 권장 연가일수 기준은?",
-          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:9"]
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:9"],
+          "quick": true
         },
         {
           "id": "ps015",
@@ -107,7 +111,8 @@
         {
           "id": "ps019",
           "query": "공무원 근무시간 면제 시간의 사용 규정은?",
-          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:15", "doc_347e00e123d00fc5:19"]
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:15", "doc_347e00e123d00fc5:19"],
+          "quick": true
         },
         {
           "id": "ps020",
@@ -125,7 +130,8 @@
         {
           "id": "au001",
           "query": "회계감사인의 자격과 전문교육 이수 요건은?",
-          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:1"]
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:1"],
+          "quick": true
         },
         {
           "id": "au002",
@@ -150,7 +156,8 @@
         {
           "id": "au006",
           "query": "회계감사 과정에서 위법 부당사항을 발견하면 어떻게 보고해야 하나?",
-          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:6"]
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:6"],
+          "quick": true
         },
         {
           "id": "au007",
@@ -160,7 +167,8 @@
         {
           "id": "au008",
           "query": "공공감사법상 자체감사기구 설치 의무는?",
-          "relevantChunkKeys": ["doc_9819307c7057f671:1"]
+          "relevantChunkKeys": ["doc_9819307c7057f671:1"],
+          "quick": true
         },
         {
           "id": "au009",
@@ -185,7 +193,8 @@
         {
           "id": "au013",
           "query": "적극행정에 대한 면책 기준은?",
-          "relevantChunkKeys": ["doc_9819307c7057f671:7"]
+          "relevantChunkKeys": ["doc_9819307c7057f671:7"],
+          "quick": true
         },
         {
           "id": "au014",

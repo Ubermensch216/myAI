@@ -73,6 +73,18 @@ non-blocking department RAG backend health.
 Qdrant health is reported as degraded metadata only. A Qdrant outage does not
 make `/api/status` fail when Ollama itself is reachable.
 
+When Qdrant is configured but unhealthy, `rag.department.qdrant.reason` is
+classified where possible:
+
+- `qdrant_auth_failed`: `QDRANT_API_KEY` does not match the running Qdrant
+  service, or Qdrant rejected the JWT/API key.
+- `qdrant_timeout`: Qdrant did not respond within `QDRANT_TIMEOUT_MS`.
+- `qdrant_unreachable`: the URL, container/service, firewall, or network path is
+  not reachable.
+
+The response may include `qdrant.hint` with operator guidance. After changing
+`.env`, restart the myAI Node process so the new values are loaded.
+
 ## Admin RAG Status
 
 ### `GET /api/admin/rag/status`
