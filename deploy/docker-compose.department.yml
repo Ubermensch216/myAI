@@ -18,10 +18,10 @@ services:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-change-me}
       QDRANT__LOG_LEVEL: INFO
     volumes:
-      - ./data/qdrant/storage:/qdrant/storage
-      - ./data/qdrant/snapshots:/qdrant/snapshots
+      - ../data/qdrant/storage:/qdrant/storage
+      - ../data/qdrant/snapshots:/qdrant/snapshots
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -lc '</dev/tcp/127.0.0.1/6333'"]
       interval: 30s
       timeout: 5s
       retries: 3
