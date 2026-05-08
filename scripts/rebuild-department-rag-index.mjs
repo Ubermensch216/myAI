@@ -29,6 +29,7 @@ if (backend.vector === "qdrant") {
     console.error(`Qdrant is not ready: ${health.reason || "unknown"} ${health.error || ""}`.trim());
     process.exit(1);
   }
+  await ensureQdrantCollection({ dimension: config.vectorSize });
 }
 
 const notebooks = await listNotebooks();
