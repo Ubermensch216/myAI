@@ -1,6 +1,6 @@
 # myAI
 
-myAI is a local Ollama-based AI secretary web app. It provides chat, document and image analysis, CSV/XLSX visualizations, a local calendar agent, department-notebook RAG, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It provides chat, document and image analysis, CSV/XLSX visualizations, a right-side Studio workspace with document mind maps, a local calendar agent, department-notebook RAG, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
 
 ## Current Setup
 
@@ -27,6 +27,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebooks stored on the server filesystem with citation panels in chat.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
+- Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and an uploaded-document mind map tool.
 - Whole-document or whole-notebook analysis through the whole-analysis Map-Reduce mode.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
@@ -131,7 +132,7 @@ Run fast smoke tests while the app server is running:
 npm.cmd test
 ```
 
-The smoke test covers app shell IDs, `/api/status`, notebook list, file upload, visualization error handling, chat, and calendar intent classification. Run deterministic XLSX/visualization regression tests without Ollama:
+The smoke test covers app shell IDs, `/api/status`, notebook list, file upload, answer export, Studio mind-map validation, visualization error handling, chat, and calendar intent classification. Run deterministic XLSX/visualization regression tests without Ollama:
 
 ```powershell
 npm.cmd run test:xlsx
@@ -171,6 +172,11 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body limit |
 | `MAX_UPLOAD_BYTES` | `41943040` | single upload limit |
 | `MAX_CONTEXT_CHARS` | `24000` | uploaded-document context budget |
+| `MINDMAP_P1_MAX_CONTEXT` | `18000` | Pass 1 concept-extraction document context budget |
+| `MINDMAP_P1_MAX_CHUNKS` | `8` | max evenly-sampled chunks per document in Pass 1 (spans full document) |
+| `MINDMAP_P1_MAX_CONCEPTS` | `20` | max concepts extracted per Pass 1 run |
+| `MINDMAP_MAX_NODES` | `16` | max generated Studio mind-map nodes (Pass 2) |
+| `MINDMAP_MAX_EDGES` | `24` | max generated Studio mind-map edges (Pass 2) |
 | `DOCUMENT_CACHE_TTL_MS` | `21600000` | same-browser runtime cache lifetime for recently uploaded personal documents |
 | `DOCUMENT_CACHE_MAX_ENTRIES` | `256` | max personal upload cache entries kept in server memory |
 | `CHUNK_WINDOW_CHARS` | `1024` | sliding chunk size |
@@ -211,6 +217,7 @@ server/
   index.js             Express server, static files, API routes
   env.js               project-root .env loader
   exportFiles.js       answer export generators for MD/XLSX/PDF/HWPX/DOCX
+  mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
   embeddings.js        Ollama /api/embed helpers
@@ -250,7 +257,9 @@ public/
     persistence.js     IndexedDB + WebCrypto AES-GCM
     calendar.js        calendar rendering, CRUD, reminders
     chat.js            streaming chat, message rendering, file upload, query-trim
+    layout.js          three-pane panel resize/collapse behavior
     notebook.js        notebook selector UI, admin panel, admin event binding
+    studio.js          Studio panel UI and mind-map SVG renderer
     settings.js        brand rendering, settings dialog, theme/avatar/banner
   answerRenderer.js
   visualizationRenderer.js
@@ -295,6 +304,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
 - Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
+- Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a two-pass LLM pipeline: Pass 1 extracts concepts spanning the full document (evenly sampled chunks); Pass 2 derives node/edge relationships from the concept list.
+- When uploaded documents are present in a room, explicit search prompts (e.g., "네이버 검색해줘") are blocked client-side before reaching the LLM; a descriptive message is shown instead.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects notebook management only. Use reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.

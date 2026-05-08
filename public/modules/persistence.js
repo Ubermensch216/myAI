@@ -2,7 +2,8 @@ import {
   state, elements,
   DB_NAME, DB_VERSION, APP_STATE_KEY, KEY_ID,
   documentCacheHeaders, ensureDocumentCacheKey,
-  normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme
+  normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
+  normalizeLayout, ensureRoomStudio
 } from "./state.js";
 
 let saveTimer = null;
@@ -110,6 +111,7 @@ export async function loadAppState() {
     } else if (room.selectedNotebookId === undefined) {
       room.selectedNotebookId = null;
     }
+    ensureRoomStudio(room);
   }
   state.activeRoomId = stored.activeRoomId || null;
   state.activeView = stored.activeView === "calendar" ? "calendar" : "chat";
@@ -118,6 +120,7 @@ export async function loadAppState() {
       ? stored.client.documentCacheKey
       : ensureDocumentCacheKey()
   };
+  state.layout = normalizeLayout(stored.layout);
   const storedEvents = Array.isArray(stored.calendar?.events) ? stored.calendar.events : [];
   state.calendar.events = storedEvents.map(normalizeCalendarEvent).filter((e) => e && e.id && e.start);
   state.calendar.cursorISO = stored.calendar?.cursorISO || new Date().toISOString().slice(0, 10);
@@ -142,6 +145,7 @@ export async function saveAppState() {
     rooms: state.rooms,
     activeRoomId: state.activeRoomId,
     activeView: state.activeView,
+    layout: normalizeLayout(state.layout),
     client: {
       documentCacheKey: ensureDocumentCacheKey()
     },

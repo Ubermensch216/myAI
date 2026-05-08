@@ -1,6 +1,6 @@
 # Agent Handoff
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
 
 This file is intentionally short. Keep long explanations in `docs/`.
 
@@ -45,6 +45,7 @@ Server:
 
 - `server/index.js` - Express routes, uploads, static frontend, API dispatch.
 - `server/exportFiles.js` - assistant answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
+- `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
 - `server/naverSearch.js` - Naver Search API integration for explicit search prompts.
 - `server/notebooks.js` - department-notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache.
@@ -75,7 +76,9 @@ Frontend:
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
+- `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
 - `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, admin event binding.
+- `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
 - `public/modules/settings.js` - brand rendering, settings dialog, theme/color-theme/avatar/banner.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
@@ -171,6 +174,16 @@ CSV/XLSX prompt
 -> browser renders final spec
 ```
 
+Studio:
+
+```text
+current room uploaded documents
+-> /api/studio/mindmap
+-> server/mindmap.js samples extracted text chunks
+-> Ollama JSON graph, with deterministic fallback
+-> public/modules/studio.js renders SVG mind map and node details
+```
+
 ## Key Caveats
 
 - `npm.cmd test` runs the fast app-server smoke checks. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
@@ -179,6 +192,7 @@ CSV/XLSX prompt
 - `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
 - Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only cache; empty after server restart.
 - `/api/chat` receives active documents in the JSON body. The browser warns on large uploads, shows room/attachment storage estimates, and preflights chat payload size before sending.
+- Studio mind maps also use active room uploaded document payloads. They do not use Naver Search or department notebook RAG.
 - Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects notebook management only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
 - Calendar data is local-only. There is no Google/Outlook/ICS sync.
 - Destructive actions (room delete, file delete, notebook/document delete) use `showConfirmDialog` from `public/modules/state.js` (in-app modal, falls back to `window.confirm`).

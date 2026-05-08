@@ -21,6 +21,7 @@ import { createRateLimiter, getRateLimitConfig, rateLimitDefaults } from "./rate
 import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js";
 import { createExportFile, listExportFormats } from "./exportFiles.js";
+import { generateMindmap } from "./mindmap.js";
 import {
   listNotebooks,
   getNotebook,
@@ -114,6 +115,7 @@ app.use("/api/chat", createRateLimiter({ name: "chat", keyPrefix: "chat:", ...ra
 app.use("/api/visualize", createRateLimiter({ name: "visualize", keyPrefix: "visualize:", ...rateLimitDefaults.visualize }));
 app.use("/api/upload", createRateLimiter({ name: "upload", keyPrefix: "upload:", ...rateLimitDefaults.upload }));
 app.use("/api/export", createRateLimiter({ name: "export", keyPrefix: "export:", ...rateLimitDefaults.lightweight }));
+app.use("/api/studio/mindmap", createRateLimiter({ name: "studio_mindmap", keyPrefix: "studio_mindmap:", ...rateLimitDefaults.chat }));
 app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
 app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
 app.use(
@@ -190,6 +192,27 @@ app.post("/api/export", async (request, response) => {
     response.send(file.buffer);
   } catch (error) {
     response.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/studio/mindmap", async (request, response) => {
+  const documents = Array.isArray(request.body.documents) ? request.body.documents : [];
+  const model = request.body.model || DEFAULT_MODEL;
+  const studioAbort = createRequestAbortController(request, response);
+  try {
+    const mindmap = await generateMindmap({
+      documents,
+      model,
+      signal: studioAbort.signal
+    });
+    if (studioAbort.signal.aborted || response.destroyed) return;
+    response.json({ mindmap });
+  } catch (error) {
+    if (studioAbort.signal.aborted || response.destroyed) return;
+    const status = /requires at least one uploaded document/i.test(error.message) ? 400 : 500;
+    response.status(status).json({ error: error.message });
+  } finally {
+    studioAbort.cleanup();
   }
 });
 

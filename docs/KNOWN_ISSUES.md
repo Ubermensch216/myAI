@@ -2,7 +2,7 @@
 
 ## High Priority
 
-- Browser-level E2E smoke tests (Playwright) still absent for notebook selection, citations, Map-Reduce, and calendar flows. API-level smoke tests now cover upload, chat, visualization, and notebook list.
+- Browser-level E2E smoke tests (Playwright) still absent for notebook selection, citations, Map-Reduce, Studio interactions, and calendar flows. API-level smoke tests now cover upload, chat, answer export, Studio mind-map validation, visualization, and notebook list.
 - Monitor autonomous follow-up suggestion quality and concept depth under varied conversation lengths.
 
 ## Data And Retrieval
@@ -12,9 +12,11 @@
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured; falls back to JSON/in-memory BM25 only when indexed retrieval is unavailable or returns no usable candidates. In fallback mode, large notebooks still degrade in retrieval quality and LRU cache pressure increases under concurrent load.
 - Document summaries/topics orient the model but are not a replacement for chunk-level grounding.
 - Query expansion adds an extra local LLM call per RAG turn and may increase latency.
-- Naver Search only runs for explicit search prompts in normal chat. It is intentionally disabled when uploaded files or a department notebook are active.
+- Naver Search only runs for explicit search prompts in normal chat. It is intentionally disabled when uploaded files or a department notebook are active. When uploaded documents are detected and the prompt matches a search intent pattern, `chat.js` blocks the request client-side and shows a descriptive message before any server call is made.
 - Naver Search quality depends on Naver Open API availability, credentials, and selected search categories (`NAVER_SEARCH_TYPES`).
 - Answer export supports MD, XLSX, PDF, HWPX, and DOCX. PDF export embeds a Korean-capable server font when available; HWPX generation is text-first and intentionally simpler than a full Hancom-authored document package.
+- Studio mind maps use a two-pass LLM pipeline: Pass 1 extracts concepts from evenly sampled chunks spanning the full document; Pass 2 builds node/edge relationships from the concept list. Chunk-boundary relationship loss is therefore reduced compared to a single-pass approach.
+- Image-only uploads and files without extracted text are skipped by the Studio mind map pipeline until a multimodal Pass 1 is added.
 
 ## Calendar
 
@@ -29,6 +31,7 @@
 - `public/app.js` is now a focused orchestrator (~480 lines) handling init, routing, rooms, and drag-drop. Settings/brand live in `modules/settings.js`; admin event binding in `modules/notebook.js`. Rendering functions (renderRooms, renderMessages) remain in app.js and could be further extracted if needed.
 - The answer renderer is markdown-lite, not a full Markdown renderer. Replacing it can regress table/list styling.
 - The composer `+` menu is intended to remain extensible.
+- The right Studio panel is intentionally a first extension point. Keep new Studio tools modular instead of folding their logic into `public/app.js`.
 
 ## Operations
 

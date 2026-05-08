@@ -159,6 +159,54 @@ frontend sends the already-rendered assistant answer text from the message
 action menu. `.doc` is intentionally not supported; Word export uses `.docx`.
 PDF export embeds a Korean-capable server font when one is available.
 
+## Studio
+
+### `POST /api/studio/mindmap`
+
+Body:
+
+```js
+{
+  model,
+  documents
+}
+```
+
+Builds a mind-map graph from the current room's uploaded documents using a
+two-pass LLM pipeline. The frontend sends the same browser-persisted document
+payload used by chat.
+
+**Pass 1 — concept extraction**: the server evenly samples chunks across the
+full document (not just the leading sections) and asks Ollama to return a
+structured concept list `{ concepts: [{ id, label, description, category }] }`.
+
+**Pass 2 — mindmap structuring**: the server sends the concept list only (no
+raw document text) and asks Ollama to derive node/edge relationships. Because
+Pass 2 sees all concepts regardless of where they appeared in the source
+document, cross-section relationships are not lost at chunk boundaries.
+
+Web search and department notebook RAG are not used in this flow.
+
+Returns:
+
+```js
+{
+  mindmap: {
+    title,
+    generatedAt,
+    documentCount,
+    groups: [{ id, label }],
+    nodes: [{ id, label, summary, group, importance, sourceRefs }],
+    edges: [{ from, to, label, strength }],
+    warnings: []
+  }
+}
+```
+
+If Ollama fails after documents are supplied, the server returns a deterministic
+fallback graph from document names, summaries, and topics. Requests without
+text-bearing uploaded documents return `400`.
+
 ## Visualization
 
 ### `POST /api/visualize`

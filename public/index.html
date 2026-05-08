@@ -77,6 +77,15 @@
         </div>
       </aside>
 
+      <div
+        id="leftPanelResizer"
+        class="panel-resizer left-panel-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize left panel"
+        tabindex="0"
+      ></div>
+
       <section class="chat-area" aria-label="채팅">
         <div class="chat-header">
           <input id="roomTitleInput" class="room-title-input" aria-label="대화방 제목" />
@@ -195,6 +204,62 @@
           <div id="calendarGrid" class="calendar-grid"></div>
         </div>
       </section>
+
+      <div
+        id="rightPanelResizer"
+        class="panel-resizer right-panel-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize studio panel"
+        tabindex="0"
+      ></div>
+
+      <aside id="studioPanel" class="studio-panel" aria-label="Studio">
+        <header class="studio-header">
+          <div class="studio-title-block">
+            <span class="studio-kicker">&#xC2A4;&#xD29C;&#xB514;&#xC624;</span>
+          </div>
+          <button id="studioToggleButton" class="icon-button studio-toggle-button" type="button" aria-label="Toggle studio panel" aria-expanded="true" title="Studio">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="studio-toggle-open-icon" d="m15 6-6 6 6 6"></path>
+              <path class="studio-toggle-close-icon" d="m9 6 6 6-6 6"></path>
+            </svg>
+          </button>
+        </header>
+
+        <div class="studio-collapsed-rail" aria-label="Studio shortcuts">
+          <button id="studioMindmapRailButton" class="studio-rail-button" type="button" title="Mind map" aria-label="Mind map">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="12" r="2.8"></circle>
+              <circle cx="18" cy="6" r="2.8"></circle>
+              <circle cx="18" cy="18" r="2.8"></circle>
+              <path d="M8.4 10.6 15.6 7.4M8.4 13.4l7.2 3.2"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div id="studioContent" class="studio-content">
+          <div class="studio-tools-grid">
+            <button id="studioMindmapButton" class="studio-tool-card" type="button" aria-label="마인드맵 생성">
+              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6" cy="12" r="2.8"></circle>
+                <circle cx="18" cy="6" r="2.8"></circle>
+                <circle cx="18" cy="18" r="2.8"></circle>
+                <path d="M8.4 10.6 15.6 7.4M8.4 13.4l7.2 3.2"></path>
+              </svg>
+              <span class="studio-tool-label">&#xB9C8;&#xC778;&#xB4DC;&#xB9F5;</span>
+              <svg class="studio-tool-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 6 6 6-6 6"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="studioMindmapCanvas" class="studio-mindmap-canvas">
+            <svg id="studioMindmapSvg" class="studio-mindmap-svg" viewBox="0 0 760 520" role="img" aria-label="Mind map"></svg>
+            <div id="studioMindmapEmpty" class="studio-mindmap-empty"></div>
+          </div>
+          <div id="studioMindmapDetails" class="studio-mindmap-details"></div>
+        </div>
+      </aside>
     </main>
 
     <dialog id="eventDialog" class="settings-dialog event-dialog">

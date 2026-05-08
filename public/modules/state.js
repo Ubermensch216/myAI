@@ -29,6 +29,31 @@ export function normalizeColorTheme(value) {
   return value === "water" ? "water" : "busan";
 }
 
+export const DEFAULT_LAYOUT = {
+  leftPanelWidth: 340,
+  rightPanelWidth: 360,
+  rightPanelCollapsed: false
+};
+
+export function normalizeLayout(value = {}) {
+  return {
+    leftPanelWidth: clampNumber(value.leftPanelWidth, DEFAULT_LAYOUT.leftPanelWidth, 260, 520),
+    rightPanelWidth: clampNumber(value.rightPanelWidth, DEFAULT_LAYOUT.rightPanelWidth, 300, 640),
+    rightPanelCollapsed: Boolean(value.rightPanelCollapsed)
+  };
+}
+
+export function ensureLayoutState() {
+  state.layout = normalizeLayout(state.layout);
+  return state.layout;
+}
+
+function clampNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
 export function normalizeReminderList(value) {
   const rawValues = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
   const seen = new Set();
@@ -102,6 +127,10 @@ export const state = {
   cryptoKey: null,
   client: {
     documentCacheKey: ""
+  },
+  layout: { ...DEFAULT_LAYOUT },
+  studio: {
+    selectedTool: "mindmap"
   },
   notebooks: [],
   deepAnalysisEnabled: false,
@@ -266,8 +295,38 @@ export const elements = {
   adminStatusButton: document.querySelector("#adminStatusButton"),
   adminStatusPanel: document.querySelector("#adminStatusPanel"),
   adminStatusBody: document.querySelector("#adminStatusBody"),
-  adminRefreshStatusButton: document.querySelector("#adminRefreshStatusButton")
+  adminRefreshStatusButton: document.querySelector("#adminRefreshStatusButton"),
+  leftPanelResizer: document.querySelector("#leftPanelResizer"),
+  rightPanelResizer: document.querySelector("#rightPanelResizer"),
+  studioPanel: document.querySelector("#studioPanel"),
+  studioToggleButton: document.querySelector("#studioToggleButton"),
+  studioMindmapRailButton: document.querySelector("#studioMindmapRailButton"),
+  studioContent: document.querySelector("#studioContent"),
+  studioMindmapButton: document.querySelector("#studioMindmapButton"),
+  studioMindmapCanvas: document.querySelector("#studioMindmapCanvas"),
+  studioMindmapSvg: document.querySelector("#studioMindmapSvg"),
+  studioMindmapEmpty: document.querySelector("#studioMindmapEmpty"),
+  studioMindmapDetails: document.querySelector("#studioMindmapDetails")
 };
+
+export function ensureRoomStudio(room = getActiveRoom()) {
+  if (!room) return null;
+  if (!room.studio || typeof room.studio !== "object") room.studio = {};
+  if (!room.studio.mindmap || typeof room.studio.mindmap !== "object") {
+    room.studio.mindmap = {
+      signature: "",
+      data: null,
+      selectedNodeId: ""
+    };
+  } else {
+    room.studio.mindmap.signature = typeof room.studio.mindmap.signature === "string" ? room.studio.mindmap.signature : "";
+    room.studio.mindmap.data = room.studio.mindmap.data || null;
+    room.studio.mindmap.selectedNodeId = typeof room.studio.mindmap.selectedNodeId === "string"
+      ? room.studio.mindmap.selectedNodeId
+      : "";
+  }
+  return room.studio;
+}
 
 export function showConfirmDialog({ title = "확인", body = "", okText = "확인", cancelText = "취소", danger = false } = {}) {
   const dialog = elements.calendarConfirmDialog;
@@ -321,6 +380,13 @@ export function createRoom() {
     documents: [],
     pendingCalendarAction: null,
     selectedNotebookId: null,
+    studio: {
+      mindmap: {
+        signature: "",
+        data: null,
+        selectedNodeId: ""
+      }
+    },
     createdAt: now,
     updatedAt: now
   };

@@ -269,6 +269,18 @@ export async function requestAssistantResponse(room) {
 }
 
 export async function requestTextAssistantResponse(room) {
+  if (getActiveDocuments().length > 0 && isSearchIntent(getLastUserPrompt(room))) {
+    const msg = "첨부된 파일이 있는 경우 파일 내용에 기반하여 답변하도록 되어 있어 검색이 불가능합니다.";
+    const createdAt = new Date().toISOString();
+    room.messages.push({ role: "assistant", content: msg, createdAt });
+    room.updatedAt = createdAt;
+    scheduleSave();
+    window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+    appendMessage("assistant", msg, { persist: false, messageIndex: room.messages.length - 1, createdAt });
+    scrollToBottom();
+    return;
+  }
+
   setBusy(true);
   state.abortController = new AbortController();
   const thinking = appendThinking();
@@ -1188,6 +1200,16 @@ function getLastUserPrompt(room) {
 
 function hasVisualizationIntent(prompt) {
   return /chart|graph|plot|dashboard|visuali[sz]e|visuali[sz]ation|infographic|차트|그래프|도표|시각화|인포그래픽|대시보드|막대|원형|선그래프/i.test(String(prompt ?? ""));
+}
+
+function isSearchIntent(text) {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  return (
+    /네이버.{0,12}(검색|뉴스|웹|조회|찾아|알아)/i.test(t) ||
+    /(검색해서|검색해줘|검색해봐|찾아봐|찾아줘|알아봐|웹에서 찾|인터넷에서 찾)/i.test(t) ||
+    /(최신|오늘|현재|실시간).{0,20}(정보|뉴스|동향|현황|조회|검색|찾아)/i.test(t)
+  );
 }
 
 function hasVisualizableDocuments() {

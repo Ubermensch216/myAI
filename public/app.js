@@ -21,6 +21,8 @@ import {
   isAdminDialogOpen, bindAdminEvents
 } from "./modules/notebook.js";
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
+import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
+import { bindStudioEvents, renderStudio } from "./modules/studio.js";
 
 let titleTimer = null;
 let dragDepth = 0;
@@ -45,7 +47,7 @@ init();
 // ===== Custom events from sub-modules =====
 // Modules avoid importing app.js to prevent circular deps; they signal via events instead.
 
-window.addEventListener("myai:renderrooms", () => renderRooms());
+window.addEventListener("myai:renderrooms", () => { renderRooms(); renderStudio(); });
 window.addEventListener("myai:rendermessages", () => renderMessages());
 window.addEventListener("myai:renderall", () => renderAll());
 window.addEventListener("myai:closeattachmenu", () => closeAttachMenu());
@@ -104,6 +106,8 @@ export function renderAll() {
   renderMessages();
   renderCalendar();
   renderActiveNotebookUi();
+  applyLayoutState();
+  renderStudio();
 }
 
 function renderPrimaryNav() {
@@ -411,6 +415,8 @@ function bindEvents() {
   });
 
   bindSettingsEvents();
+  bindLayoutEvents();
+  bindStudioEvents();
 
   // File input / attach menu
   elements.fileInput.addEventListener("change", async (event) => {

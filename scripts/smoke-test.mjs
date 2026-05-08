@@ -16,6 +16,7 @@ await run("GET /api/notebooks", testNotebookList);
 await run("POST /api/upload text file", testUpload);
 await run("POST /api/export docx", testExportDocx);
 await run("POST /api/export pdf and hwpx", testExportPdfAndHwpx);
+await run("POST /api/studio/mindmap without documents returns 400", testMindmapNoDocuments);
 await run("POST /api/visualize invalid plan returns 400", testVisualizePlanValidation);
 await run("POST /api/agent/intent calendar regression set", () => testCalendarIntent(status));
 if (status?.ok) {
@@ -203,6 +204,20 @@ async function testExportPdfAndHwpx() {
   assert.ok(zip.file("META-INF/manifest.xml"), "HWPX should include META-INF/manifest.xml");
   const hpf = await zip.file("Contents/content.hpf").async("string");
   assert.match(hpf, /href="Contents\/section0\.xml"/, "HWPX content.hpf should reference Contents/section0.xml");
+}
+
+async function testMindmapNoDocuments() {
+  let response;
+  try {
+    response = await fetch(new URL("/api/studio/mindmap", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documents: [], model: "nonexistent" })
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
+  }
+  assert.equal(response.status, 400, `POST /api/studio/mindmap without documents returned ${response.status}`);
 }
 
 async function testChat() {

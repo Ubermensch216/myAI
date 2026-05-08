@@ -84,6 +84,32 @@ assistant answer action menu
 
 Word export uses `.docx`; legacy binary `.doc` is intentionally not generated.
 
+### Studio Mind Map
+
+```text
+right Studio panel — 마인드맵 card button
+-> public/modules/studio.js sends POST /api/studio/mindmap
+-> server/mindmap.js two-pass pipeline:
+     Pass 1 — concept extraction
+       evenly samples full document via chunkDocumentSections (not just the first N chunks)
+       asks Ollama for { concepts: [{ id, label, description, category }] }
+     Pass 2 — mindmap structuring
+       sends concept list only (no raw text) to Ollama
+       asks Ollama for { title, nodes, edges, groups } relationships
+-> browser renders a left-to-right collapsible SVG tree
+   (expand/collapse per node, mouse-wheel zoom, click-drag pan, fullscreen toggle)
+-> selected node shows detail and source-reference panel
+```
+
+The left sidebar is resizable only. The right Studio panel is resizable and can
+collapse to an icon rail. Mind maps use uploaded room documents only; they do
+not invoke Naver Search or department notebook RAG.
+
+Pass 1 uses even interval sampling across all chunks so content from the middle
+and end of a document contributes to concept extraction, not just the leading
+sections. Pass 2 works from the compact concept list, so related concepts
+discovered in different parts of the document can be connected by edges.
+
 ### Naver Search
 
 ```text
@@ -97,7 +123,10 @@ explicit search prompt in normal chat
 
 Naver Search is not used when uploaded files are present or when a department
 notebook is selected. Those flows must stay grounded in file context or
-department RAG evidence.
+department RAG evidence. When uploaded documents are detected client-side and
+the prompt matches a search intent pattern, `public/modules/chat.js` blocks
+the request before it reaches the server and shows a descriptive message to
+the user.
 
 ### Upload
 
@@ -170,6 +199,7 @@ The LLM does not directly mutate calendar data.
 
 - `server/index.js` - Express setup, static serving, upload route, chat/visualize/followup/calendar/notebook endpoints.
 - `server/exportFiles.js` - answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
+- `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
@@ -198,6 +228,8 @@ The LLM does not directly mutate calendar data.
 - `public/modules/settings.js` - brand rendering, settings dialog, theme/color-theme/avatar/banner.
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utility functions. No project-level imports.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
+- `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
+- `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, file upload progress, admin event binding.
@@ -214,7 +246,7 @@ Object store: records, record id: app-state
 Object store: keys, record id: local-aes-gcm-key
 ```
 
-Stored browser state includes rooms, messages, settings, active room files, selected notebook IDs, active view, and calendar events. It is encrypted with WebCrypto AES-GCM.
+Stored browser state includes rooms, messages, settings, active room files, per-room Studio mind-map caches, selected notebook IDs, active view, panel layout settings, and calendar events. It is encrypted with WebCrypto AES-GCM.
 
 Server:
 
