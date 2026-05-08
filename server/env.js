@@ -53,3 +53,5 @@ function unquoteEnvValue(value) {
   }
   return value.replace(/\s+#.*$/, "").trim();
 }
+
+loadLocalEnv();

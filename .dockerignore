@@ -1,0 +1,16 @@
+.git
+.gitignore
+node_modules
+npm-debug.log*
+server/log
+server/*.log
+uploads
+data
+.env
+.env.*
+!.env.example
+coverage
+tmp
+*.tmp
+*.bak
+*.zip

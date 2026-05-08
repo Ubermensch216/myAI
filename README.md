@@ -35,6 +35,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 
 - Node.js 24 or newer
 - Ollama
+- Docker Engine or Docker Desktop, if running the containerized stack
 - Required local models:
 
 ```bash
@@ -71,6 +72,42 @@ npm start
 ```
 
 Then open <http://localhost:3000>.
+
+## Docker Quick Start
+
+The portable container stack runs the web app, Qdrant, and Ollama through
+Docker Compose. It is the recommended path when moving the system to another
+computer or to Linux.
+
+```bash
+cp deploy/container.env.example .env
+# Edit .env and set ADMIN_TOKEN and QDRANT_API_KEY to long random values.
+docker compose up -d --build
+docker compose exec ollama ollama pull gemma4:e2b
+docker compose exec ollama ollama pull bge-m3
+```
+
+Open <http://localhost:3000>. Check the stack:
+
+```bash
+docker compose ps
+curl -s http://127.0.0.1:3000/api/status
+```
+
+For NVIDIA GPU acceleration on a Linux host with the NVIDIA Container Toolkit:
+
+```bash
+docker compose -f compose.yml -f deploy/docker-compose.gpu.yml up -d --build
+```
+
+Persistent container data lives in Docker volumes:
+
+- `myai-data` for notebooks, SQLite FTS, ingest jobs, and retrieval logs.
+- `qdrant-storage` and `qdrant-snapshots` for Qdrant.
+- `ollama-data` for downloaded Ollama models.
+
+The older `deploy/docker-compose.department.yml` starts Qdrant only. Use the
+root `compose.yml` when you want the whole app stack in containers.
 
 ## Verification
 

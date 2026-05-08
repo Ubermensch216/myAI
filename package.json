@@ -21,7 +21,12 @@
     "rag:quality-test": "node scripts/rag-quality-test.mjs",
     "rag:quality-test:quick": "node scripts/rag-quality-test.mjs --quick --k 10",
     "rag:backup": "node scripts/backup-department-rag.mjs",
-    "rag:restore": "node scripts/restore-department-rag.mjs"
+    "rag:restore": "node scripts/restore-department-rag.mjs",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:logs": "docker compose logs -f app",
+    "docker:pull-models": "docker compose exec ollama ollama pull gemma4:e2b && docker compose exec ollama ollama pull bge-m3",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.17.0",

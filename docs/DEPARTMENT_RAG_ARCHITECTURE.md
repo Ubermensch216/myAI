@@ -226,6 +226,18 @@ Qdrant can be started locally with:
 docker compose -f deploy/docker-compose.department.yml --env-file .env.department.example up -d
 ```
 
+For portable deployments, prefer the root Compose stack. It runs the app,
+Qdrant, and Ollama together:
+
+```bash
+cp deploy/container.env.example .env
+docker compose up -d --build
+docker compose exec ollama ollama pull gemma4:e2b
+docker compose exec ollama ollama pull bge-m3
+```
+
+See `docs/CONTAINER_DEPLOYMENT.md` for volume, GPU, backup, and update details.
+
 Run Qdrant on local SSD/NVMe storage, not a network filesystem. Back up both
 Qdrant snapshots and `data/notebooks/` together, because Qdrant is an index and
 the notebook files remain the rebuildable source of truth.
