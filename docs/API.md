@@ -135,6 +135,30 @@ panel. If the assistant answer is a no-evidence response, such as "관련 정보
 찾을 수 없습니다", the frontend suppresses both the source panel and follow-up
 suggestions for that answer.
 
+## Answer Export
+
+### `GET /api/export/formats`
+
+Returns the answer-download formats exposed by the frontend message action
+menu: `md`, `xlsx`, `pdf`, `hwpx`, and `docx`.
+
+### `POST /api/export`
+
+Body:
+
+```js
+{
+  format,  // "md" | "xlsx" | "pdf" | "hwpx" | "docx"
+  title,
+  content
+}
+```
+
+Returns a downloadable file with `Content-Disposition: attachment`. The
+frontend sends the already-rendered assistant answer text from the message
+action menu. `.doc` is intentionally not supported; Word export uses `.docx`.
+PDF export embeds a Korean-capable server font when one is available.
+
 ## Visualization
 
 ### `POST /api/visualize`

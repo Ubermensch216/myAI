@@ -19,13 +19,14 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 
 ## Features
 
-- Multi-room streaming chat with stop/regenerate/edit/copy flows.
+- Multi-room streaming chat with stop/regenerate/edit/copy/download flows.
 - Autonomous, context-aware follow-up suggestions grounded in conversation logic.
 - Upload support for PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, and GIF.
 - Upload-time document summary/topic extraction through local Ollama.
 - Long-document retrieval with query expansion, BM25/CJK bigram ranking, and optional vector ranking.
 - Department notebooks stored on the server filesystem with citation panels in chat.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
+- Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Whole-document or whole-notebook analysis through the whole-analysis Map-Reduce mode.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
@@ -209,6 +210,7 @@ follow-up suggestions for that no-evidence answer.
 server/
   index.js             Express server, static files, API routes
   env.js               project-root .env loader
+  exportFiles.js       answer export generators for MD/XLSX/PDF/HWPX/DOCX
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
   embeddings.js        Ollama /api/embed helpers

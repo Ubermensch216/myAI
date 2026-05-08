@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import JSZip from "jszip";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseUrl = process.env.MYAI_SMOKE_BASE_URL || "http://127.0.0.1:3000";
@@ -13,6 +14,8 @@ await run("app shell ids exist", testAppShellIds);
 const status = await run("GET /api/status", testStatus);
 await run("GET /api/notebooks", testNotebookList);
 await run("POST /api/upload text file", testUpload);
+await run("POST /api/export docx", testExportDocx);
+await run("POST /api/export pdf and hwpx", testExportPdfAndHwpx);
 await run("POST /api/visualize invalid plan returns 400", testVisualizePlanValidation);
 await run("POST /api/agent/intent calendar regression set", () => testCalendarIntent(status));
 if (status?.ok) {
@@ -148,6 +151,58 @@ async function testVisualizePlanValidation() {
     response.status >= 400,
     `POST /api/visualize with no documents should return 4xx/5xx, got ${response.status}`
   );
+}
+
+async function testExportDocx() {
+  let response;
+  try {
+    response = await fetch(new URL("/api/export", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        format: "docx",
+        title: "smoke export",
+        content: "# Smoke Export\n\n| name | score |\n| --- | --- |\n| Alice | 90 |"
+      })
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
+  }
+  assert.equal(response.status, 200, `POST /api/export returned ${response.status}`);
+  assert.match(response.headers.get("content-type") || "", /wordprocessingml\.document/);
+  const body = Buffer.from(await response.arrayBuffer());
+  assert.ok(body.length > 1000, "DOCX export should return a non-empty zip package");
+  assert.equal(body.subarray(0, 2).toString("utf8"), "PK", "DOCX export should be a zip package");
+}
+
+async function testExportPdfAndHwpx() {
+  const content = "# 한글 내보내기\n\n본문입니다. 위버멘쉬와 네이버 검색 결과를 정리합니다.";
+  const pdf = await fetch(new URL("/api/export", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ format: "pdf", title: "한글 PDF", content })
+  });
+  assert.equal(pdf.status, 200, `POST /api/export pdf returned ${pdf.status}`);
+  const pdfBody = Buffer.from(await pdf.arrayBuffer());
+  assert.equal(pdfBody.subarray(0, 4).toString("utf8"), "%PDF", "PDF export should be a PDF package");
+  assert.ok(pdfBody.length > 5000, "PDF export should include an embedded Korean-capable font");
+
+  const hwpx = await fetch(new URL("/api/export", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ format: "hwpx", title: "한글 HWPX", content })
+  });
+  assert.equal(hwpx.status, 200, `POST /api/export hwpx returned ${hwpx.status}`);
+  const hwpxBody = Buffer.from(await hwpx.arrayBuffer());
+  assert.equal(hwpxBody.subarray(0, 2).toString("utf8"), "PK", "HWPX export should be a zip package");
+  assert.ok(hwpxBody.length > 2500, "HWPX export should include HWPX package metadata");
+  const zip = await JSZip.loadAsync(hwpxBody);
+  assert.ok(zip.file("Contents/content.hpf"), "HWPX should include Contents/content.hpf");
+  assert.ok(zip.file("Contents/header.xml"), "HWPX should include Contents/header.xml");
+  assert.ok(zip.file("Contents/section0.xml"), "HWPX should include Contents/section0.xml");
+  assert.ok(zip.file("META-INF/manifest.xml"), "HWPX should include META-INF/manifest.xml");
+  const hpf = await zip.file("Contents/content.hpf").async("string");
+  assert.match(hpf, /href="Contents\/section0\.xml"/, "HWPX content.hpf should reference Contents/section0.xml");
 }
 
 async function testChat() {

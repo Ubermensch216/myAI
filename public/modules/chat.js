@@ -659,6 +659,14 @@ function createFollowupTopic(content) {
 
 // ===== Message rendering =====
 
+const ANSWER_EXPORT_FORMATS = [
+  { id: "md", label: "Markdown", extension: "md" },
+  { id: "xlsx", label: "Excel", extension: "xlsx" },
+  { id: "pdf", label: "PDF", extension: "pdf" },
+  { id: "hwpx", label: "HWPX", extension: "hwpx" },
+  { id: "docx", label: "Word", extension: "docx" }
+];
+
 export function appendMessage(role, text, options = {}) {
   const article = document.createElement("article");
   article.className = `message ${role}`;
@@ -806,6 +814,7 @@ export function createMessageActions(article, role, createdAt = "") {
   const actions = document.createElement("div");
   actions.className = "message-actions";
   actions.append(createCopyButton(article, role));
+  if (role === "assistant") actions.append(createDownloadButton(article));
   if (role === "user") actions.append(createEditButton(article));
   if (role === "assistant" && createdAt) actions.append(createMessageTime(createdAt));
   return actions;
@@ -855,6 +864,133 @@ function createCopyButton(article, role) {
     setTimeout(() => button.classList.remove("copied"), 900);
   });
   return button;
+}
+
+function createDownloadButton(article) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message-download";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button download-answer-button";
+  button.title = "답변 다운로드";
+  button.setAttribute("aria-label", "답변 다운로드");
+  button.setAttribute("aria-haspopup", "menu");
+  button.setAttribute("aria-expanded", "false");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <path d="M7 10l5 5 5-5"></path>
+      <path d="M12 15V3"></path>
+    </svg>
+  `;
+
+  const menu = document.createElement("div");
+  menu.className = "download-menu";
+  menu.setAttribute("role", "menu");
+  menu.hidden = true;
+
+  for (const format of ANSWER_EXPORT_FORMATS) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "download-menu-item";
+    item.setAttribute("role", "menuitem");
+    item.textContent = `${format.label} (.${format.extension})`;
+    item.addEventListener("click", async () => {
+      closeDownloadMenu(wrapper);
+      await downloadAnswer(article, format.id, item);
+    });
+    menu.append(item);
+  }
+
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const willOpen = menu.hidden;
+    closeAllDownloadMenus();
+    if (willOpen) {
+      menu.hidden = false;
+      button.setAttribute("aria-expanded", "true");
+    }
+  });
+
+  wrapper.append(button, menu);
+  return wrapper;
+}
+
+function closeDownloadMenu(wrapper) {
+  const menu = wrapper.querySelector(".download-menu");
+  const button = wrapper.querySelector(".download-answer-button");
+  if (menu) menu.hidden = true;
+  if (button) button.setAttribute("aria-expanded", "false");
+}
+
+function closeAllDownloadMenus() {
+  document.querySelectorAll(".message-download").forEach(closeDownloadMenu);
+}
+
+document.addEventListener("click", closeAllDownloadMenus);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeAllDownloadMenus();
+});
+
+async function downloadAnswer(article, format, trigger) {
+  const content = article.dataset.copyText || article.querySelector(".message-body")?.innerText || "";
+  if (!content.trim()) return;
+  const label = trigger.textContent;
+  trigger.disabled = true;
+  trigger.textContent = "생성 중...";
+  try {
+    const response = await fetch("/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        format,
+        title: createExportTitle(article),
+        content
+      })
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.error || "파일을 생성하지 못했습니다.");
+    }
+    const blob = await response.blob();
+    const filename = filenameFromDisposition(response.headers.get("Content-Disposition")) || `myai-answer.${format}`;
+    triggerBrowserDownload(blob, filename);
+  } catch (error) {
+    window.alert(error.message || "파일을 생성하지 못했습니다.");
+  } finally {
+    trigger.disabled = false;
+    trigger.textContent = label;
+  }
+}
+
+function createExportTitle(article) {
+  const createdAt = article.dataset.createdAt ? new Date(article.dataset.createdAt) : new Date();
+  const stamp = Number.isNaN(createdAt.getTime())
+    ? new Date().toISOString().slice(0, 10)
+    : createdAt.toISOString().slice(0, 10);
+  return `myAI 답변 ${stamp}`;
+}
+
+function filenameFromDisposition(value) {
+  if (!value) return "";
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (utf8Match) {
+    try { return decodeURIComponent(utf8Match[1]); } catch { return utf8Match[1]; }
+  }
+  const asciiMatch = /filename="([^"]+)"/i.exec(value);
+  return asciiMatch ? asciiMatch[1] : "";
+}
+
+function triggerBrowserDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function createEditButton(article) {

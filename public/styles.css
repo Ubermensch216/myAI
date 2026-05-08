@@ -1177,6 +1177,55 @@ textarea {
   stroke-linejoin: round;
 }
 
+.message-download {
+  position: relative;
+  display: inline-grid;
+}
+
+.download-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  min-width: 168px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px;
+  background: var(--surface);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+.download-menu[hidden] {
+  display: none;
+}
+
+.download-menu-item {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.download-menu-item:hover,
+.download-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.download-menu-item:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .prompt-edit-input {
   width: min(560px, 72vw);
   min-height: 92px;

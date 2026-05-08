@@ -44,6 +44,7 @@ npm.cmd run test:live
 Server:
 
 - `server/index.js` - Express routes, uploads, static frontend, API dispatch.
+- `server/exportFiles.js` - assistant answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
 - `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
 - `server/naverSearch.js` - Naver Search API integration for explicit search prompts.
 - `server/notebooks.js` - department-notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache.

@@ -20,6 +20,7 @@ import { getRerankHealth, getRerankConfig } from "./reranker.js";
 import { createRateLimiter, getRateLimitConfig, rateLimitDefaults } from "./rateLimit.js";
 import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js";
+import { createExportFile, listExportFormats } from "./exportFiles.js";
 import {
   listNotebooks,
   getNotebook,
@@ -77,6 +78,14 @@ function parseTrustProxy(value) {
   return text;
 }
 
+function contentDisposition(filename) {
+  const fallback = String(filename || "myai-export")
+    .replace(/[^\x20-\x7e]+/g, "_")
+    .replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(filename || "myai-export").replace(/['()]/g, escape).replace(/\*/g, "%2A");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function collectRagStatus({ models = null } = {}) {
   const backend = resolvedDepartmentBackend();
   const rerankEnabled = getRerankConfig().enabled;
@@ -104,6 +113,7 @@ function collectRagStatus({ models = null } = {}) {
 app.use("/api/chat", createRateLimiter({ name: "chat", keyPrefix: "chat:", ...rateLimitDefaults.chat }));
 app.use("/api/visualize", createRateLimiter({ name: "visualize", keyPrefix: "visualize:", ...rateLimitDefaults.visualize }));
 app.use("/api/upload", createRateLimiter({ name: "upload", keyPrefix: "upload:", ...rateLimitDefaults.upload }));
+app.use("/api/export", createRateLimiter({ name: "export", keyPrefix: "export:", ...rateLimitDefaults.lightweight }));
 app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
 app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
 app.use(
@@ -163,6 +173,23 @@ app.get("/api/holidays", async (request, response) => {
     response.json(result);
   } catch (error) {
     response.status(500).json({ error: error.message, holidays: [] });
+  }
+});
+
+app.get("/api/export/formats", (_request, response) => {
+  response.json({ formats: listExportFormats() });
+});
+
+app.post("/api/export", async (request, response) => {
+  try {
+    const { format, title, content } = request.body || {};
+    const file = await createExportFile({ format, title, content });
+    response.setHeader("Content-Type", file.contentType);
+    response.setHeader("Content-Length", file.buffer.length);
+    response.setHeader("Content-Disposition", contentDisposition(file.filename));
+    response.send(file.buffer);
+  } catch (error) {
+    response.status(400).json({ error: error.message });
   }
 });
 
