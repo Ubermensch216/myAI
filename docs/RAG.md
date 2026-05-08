@@ -15,6 +15,11 @@ is on the request, the department profile fires. Personal context is always
 included from the request body documents (when present), so a single chat
 turn can blend both profiles' citations in one prompt.
 
+Web search is a separate, lower-priority context source. Naver Search can run
+only for explicit search prompts in normal chat. It is skipped whenever
+uploaded files are present or `notebookId` is selected, so file-grounded and
+department RAG-grounded answers do not silently mix in external web evidence.
+
 `server/rag/ragConfig.js` exposes profile name constants (`PROFILE_PERSONAL`,
 `PROFILE_DEPARTMENT`) and resolves the department backend choice. The
 retrieval JSONL log writes the profile and backend per entry, so future
@@ -132,6 +137,10 @@ requires that token in the `MATCH` expression so notebook filtering happens in
 the FTS candidate stage instead of only as a post-filter.
 
 The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them into the system prompt, and `server/index.js` exposes citation metadata through `X-Notebook-Meta`.
+
+If retrieval returns no usable evidence and the assistant says the requested
+information cannot be found, the frontend hides the citation panel and does not
+generate follow-up suggestions for that no-evidence answer.
 
 ## Reranker
 

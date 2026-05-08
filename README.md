@@ -25,7 +25,8 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Upload-time document summary/topic extraction through local Ollama.
 - Long-document retrieval with query expansion, BM25/CJK bigram ranking, and optional vector ranking.
 - Department notebooks stored on the server filesystem with citation panels in chat.
-- Whole-document or whole-notebook analysis through the `전체 분석` Map-Reduce mode.
+- Explicit web-search prompts can use Naver Search API context in normal chat.
+- Whole-document or whole-notebook analysis through the whole-analysis Map-Reduce mode.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
@@ -189,6 +190,8 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 Naver Search only runs for explicit web-search prompts in normal chat. It is
 skipped when uploaded files are present or a department notebook is selected, so
 file-grounded and RAG-grounded answers stay within their provided evidence.
+When no relevant evidence is found, the UI suppresses source panels and
+follow-up suggestions for that no-evidence answer.
 
 | `DOC_ANALYSIS_ENABLED` | `true` | upload/notebook summary and topic extraction |
 | `DOC_ANALYSIS_MAX_INPUT_CHARS` | `12000` | document analysis sample budget |
@@ -207,6 +210,7 @@ server/
   index.js             Express server, static files, API routes
   env.js               project-root .env loader
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
+  naverSearch.js       Naver Search API integration for explicit search prompts
   embeddings.js        Ollama /api/embed helpers
   queryExpansion.js    LLM query expansion
   documentAnalysis.js  document summary/topic extraction
@@ -255,6 +259,7 @@ public/
 docs/
   ARCHITECTURE.md
   DEPARTMENT_RAG_ARCHITECTURE.md
+  CONTAINER_DEPLOYMENT.md
   API.md
   RAG.md
   CALENDAR.md
@@ -266,12 +271,12 @@ docs/
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Department RAG Architecture](docs/DEPARTMENT_RAG_ARCHITECTURE.md)
+- [Container Deployment](docs/CONTAINER_DEPLOYMENT.md)
 - [API](docs/API.md)
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
 - [Known Issues](docs/KNOWN_ISSUES.md)
-- [Deployment](deploy/DEPLOY.md)
 
 ## Deployment Model
 
@@ -287,6 +292,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
+- Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects notebook management only. Use reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.

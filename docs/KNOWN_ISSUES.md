@@ -12,6 +12,8 @@
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured; falls back to JSON/in-memory BM25 only when indexed retrieval is unavailable or returns no usable candidates. In fallback mode, large notebooks still degrade in retrieval quality and LRU cache pressure increases under concurrent load.
 - Document summaries/topics orient the model but are not a replacement for chunk-level grounding.
 - Query expansion adds an extra local LLM call per RAG turn and may increase latency.
+- Naver Search only runs for explicit search prompts in normal chat. It is intentionally disabled when uploaded files or a department notebook are active.
+- Naver Search quality depends on Naver Open API availability, credentials, and selected search categories (`NAVER_SEARCH_TYPES`).
 
 ## Calendar
 

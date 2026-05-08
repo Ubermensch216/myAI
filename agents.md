@@ -45,6 +45,7 @@ Server:
 
 - `server/index.js` - Express routes, uploads, static frontend, API dispatch.
 - `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
+- `server/naverSearch.js` - Naver Search API integration for explicit search prompts.
 - `server/notebooks.js` - department-notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache.
 - `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
 - `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → log.
@@ -84,6 +85,7 @@ Docs:
 - `README.md` - user/operator overview.
 - `docs/ARCHITECTURE.md` - system flows and module responsibilities.
 - `docs/DEPARTMENT_RAG_ARCHITECTURE.md` - Qdrant + SQLite FTS5 topology, ingest strategy, operations.
+- `docs/CONTAINER_DEPLOYMENT.md` - Docker Compose deployment, volumes, GPU mode, backup/update.
 - `docs/API.md` - endpoint summary.
 - `docs/RAG.md` - dual-profile RAG (personal vs. department), ingest flows, reranker, Map-Reduce.
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
@@ -115,10 +117,15 @@ Chat:
 ```text
 public/modules/chat.js -> POST /api/chat
 -> server/ollama.js builds prompt/context
+-> optional server/naverSearch.js web context for explicit search prompts only
 -> Ollama streams
 -> browser renders and saves encrypted state in IndexedDB
 -> /api/followups generates autonomous context-aware suggestions
 ```
+
+Naver Search is skipped when uploaded files are present or a department
+notebook is selected. No-evidence answers should not render source panels or
+follow-up suggestions.
 
 Notebook RAG:
 
