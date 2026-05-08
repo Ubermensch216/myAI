@@ -303,6 +303,8 @@ export async function requestTextAssistantResponse(room) {
 
     const notebookMeta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
     const citations = Array.isArray(notebookMeta?.citations) ? notebookMeta.citations : [];
+    const webCitations = Array.isArray(notebookMeta?.webSearch?.citations) ? notebookMeta.webSearch.citations : [];
+    const allCitations = [...citations, ...webCitations];
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -334,18 +336,22 @@ export async function requestTextAssistantResponse(room) {
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
 
     const assistantMessage = { role: "assistant", content: finalAnswer, createdAt: new Date().toISOString() };
-    if (citations.length) {
-      assistantMessage.citations = citations;
+    const noEvidenceAnswer = isNoEvidenceAnswer(finalAnswer);
+    if (allCitations.length && !noEvidenceAnswer) {
+      assistantMessage.citations = allCitations;
       assistantMessage.notebook = notebookMeta?.notebook ?? null;
-      renderCitationsPanel(assistant, citations);
+      if (notebookMeta?.webSearch) assistantMessage.webSearch = notebookMeta.webSearch;
+      renderCitationsPanel(assistant, allCitations);
     }
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
     room.messages.push(assistantMessage);
     room.updatedAt = new Date().toISOString();
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
-    renderFollowupSuggestions(assistant, [], { loading: true });
-    attachFollowupSuggestions(room, assistantMessage, assistant);
+    if (!noEvidenceAnswer) {
+      renderFollowupSuggestions(assistant, [], { loading: true });
+      attachFollowupSuggestions(room, assistantMessage, assistant);
+    }
   } catch (error) {
     if (error.name === "AbortError") {
       if (assistant) assistant.classList.remove("streaming");
@@ -700,7 +706,7 @@ export function appendMessage(role, text, options = {}) {
   article.append(meta, body);
   article.append(createMessageActions(article, role, options.createdAt));
   if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
-  if (role === "assistant" && Array.isArray(options.citations) && options.citations.length) {
+  if (role === "assistant" && Array.isArray(options.citations) && options.citations.length && !isNoEvidenceAnswer(text)) {
     renderCitationsPanel(article, options.citations);
   }
   elements.messages.append(article);
@@ -773,9 +779,15 @@ export function renderCitationsPanel(article, citations) {
     marker.textContent = `[${citation.citationId}]`;
     const source = document.createElement("span");
     source.className = "message-citation-source";
-    const docName = document.createElement("span");
+    const docName = citation.url ? document.createElement("a") : document.createElement("span");
     docName.className = "citation-doc";
     docName.textContent = citation.documentName || "출처 미상";
+    if (citation.url) {
+      docName.href = citation.url;
+      docName.target = "_blank";
+      docName.rel = "noopener noreferrer";
+      docName.title = citation.url;
+    }
     source.append(docName);
     if (citation.locator) {
       const locator = document.createElement("span");
@@ -1066,6 +1078,25 @@ export function createTitleFromPrompt(prompt) {
 
 function ensureAddressedAnswer(answer) {
   return answer;
+}
+
+function isNoEvidenceAnswer(answer) {
+  const text = String(answer || "").replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  return [
+    /관련 정보를 찾을 수 없습니다/i,
+    /정보를 찾을 수 없습니다/i,
+    /찾을 수 없(?:습니다|었)/i,
+    /확인(?:할|이) 수 없(?:습니다|었)/i,
+    /검색 결과(?:만)?으로는 확인되지 않습니다/i,
+    /검색 결과가 없습니다/i,
+    /자료가 부족/i,
+    /근거가 부족/i,
+    /provided context does not contain/i,
+    /not found in the provided context/i,
+    /no relevant information/i,
+    /could not find/i
+  ].some((pattern) => pattern.test(text));
 }
 
 function decodeNotebookMetaHeader(headerValue) {

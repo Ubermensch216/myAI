@@ -3135,7 +3135,14 @@ textarea {
 }
 
 .message-citation-source .citation-doc {
+  color: inherit;
   font-weight: 600;
+}
+
+.message-citation-source a.citation-doc {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .message-citation-source .citation-locator {

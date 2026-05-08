@@ -134,6 +134,16 @@ Body:
 
 Streams plain text from Ollama.
 
+When `NAVER_SEARCH_ENABLED=true` and `NAVER_SEARCH_CLIENT_ID` /
+`NAVER_SEARCH_CLIENT_SECRET` are configured, explicit web-search prompts such
+as "네이버에서 ... 검색해줘", "최신 뉴스 찾아줘", or "웹에서 조회해줘" cause the
+server to call Naver Search before streaming. The normalized search results are
+added to the model context and may be cited as `[W1]`, `[W2]`, etc.
+
+Naver Search is intentionally skipped when uploaded files are included in the
+chat payload or when `notebookId` is selected. In those cases the answer must
+stay grounded in the uploaded file context or department notebook RAG context.
+
 If notebook or analysis metadata exists, the response includes `X-Notebook-Meta` as base64 JSON:
 
 ```js
@@ -142,6 +152,14 @@ If notebook or analysis metadata exists, the response includes `X-Notebook-Meta`
   citations: [
     { citationId, documentId, documentName, documentType, locator }
   ],
+  webSearch: {
+    ok,
+    query,
+    error,
+    citations: [
+      { citationId, documentName, documentType, locator, url, sourceName }
+    ]
+  },
   analysisMode: "map_reduce" // or null
 }
 ```

@@ -19,6 +19,7 @@ import { getModelQueueStats } from "./modelQueue.js";
 import { getRerankHealth, getRerankConfig } from "./reranker.js";
 import { createRateLimiter, getRateLimitConfig, rateLimitDefaults } from "./rateLimit.js";
 import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
+import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js";
 import {
   listNotebooks,
   getNotebook,
@@ -130,6 +131,12 @@ app.get("/api/status", async (_request, response) => {
           qdrant: ragStatus.qdrant,
           sqlite: ragStatus.sqlite,
           reranker: ragStatus.reranker
+        }
+      },
+      search: {
+        naver: {
+          enabled: isNaverSearchEnabled(),
+          configured: isNaverSearchConfigured()
         }
       },
       queues: ragStatus.queues,
@@ -263,7 +270,13 @@ app.post("/api/chat", async (request, response) => {
       mode,
       signal,
       onMeta: (meta) => {
-        if (meta && (meta.notebook || (meta.citations && meta.citations.length) || meta.analysisMode)) {
+        if (meta && (
+          meta.notebook ||
+          (meta.citations && meta.citations.length) ||
+          (meta.webSearch?.citations && meta.webSearch.citations.length) ||
+          meta.webSearch?.error ||
+          meta.analysisMode
+        )) {
           pendingMeta = {
             notebook: meta.notebook,
             analysisMode: meta.analysisMode || null,
@@ -273,7 +286,22 @@ app.post("/api/chat", async (request, response) => {
               documentName: chunk.documentName,
               documentType: chunk.documentType,
               locator: chunk.locator
-            }))
+            })),
+            webSearch: meta.webSearch
+              ? {
+                  ok: Boolean(meta.webSearch.ok),
+                  query: meta.webSearch.query || "",
+                  error: meta.webSearch.error || "",
+                  citations: (meta.webSearch.citations || []).map((item) => ({
+                    citationId: item.citationId,
+                    documentName: item.documentName,
+                    documentType: item.documentType,
+                    locator: item.locator,
+                    url: item.url,
+                    sourceName: item.sourceName
+                  }))
+                }
+              : null
           };
         }
       },

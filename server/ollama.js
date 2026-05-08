@@ -10,6 +10,7 @@ import { PROFILE_PERSONAL } from "./rag/ragConfig.js";
 import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
+import { buildNaverSearchContext } from "./naverSearch.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -58,17 +59,43 @@ export async function streamChat({
     return;
   }
 
-  const notebookContext = await loadNotebookContext(notebookId, messages, { signal });
+  const latestUserIndex = findLatestUserMessageIndex(messages);
+  const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
+  const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
+  const [notebookContext, webSearchContext] = await Promise.all([
+    loadNotebookContext(notebookId, messages, { signal }),
+    allowWebSearch
+      ? buildNaverSearchContext(latestUserQuery, { signal }).catch((error) => {
+          if (signal?.aborted) throw error;
+          console.warn(`Naver search context load failed: ${error.message}`);
+          return {
+            ok: false,
+            query: latestUserQuery,
+            citations: [],
+            contextText: "",
+            error: error.message
+          };
+        })
+      : Promise.resolve(null)
+  ]);
   throwIfAborted(signal);
 
   if (typeof onMeta === "function") {
     onMeta({
       notebook: notebookContext?.notebook ?? null,
-      citations: notebookContext?.chunks ?? []
+      citations: notebookContext?.chunks ?? [],
+      webSearch: webSearchContext
+        ? {
+            ok: webSearchContext.ok,
+            query: webSearchContext.query,
+            error: webSearchContext.error || "",
+            citations: webSearchContext.citations ?? []
+          }
+        : null
     });
   }
 
-  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, { signal });
+  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, webSearchContext, { signal });
   throwIfAborted(signal);
 
   await runChatStreamWithOptionalQueue({
@@ -77,6 +104,11 @@ export async function streamChat({
     onChunk,
     signal
   });
+}
+
+function shouldAllowWebSearch({ notebookId, documents }) {
+  if (notebookId) return false;
+  return !Array.isArray(documents) || documents.length === 0;
 }
 
 async function runChatStreamWithOptionalQueue({ model, ollamaMessages, onChunk, signal }) {
@@ -586,13 +618,16 @@ function normalizeStringArray(value, limit) {
     .slice(0, limit);
 }
 
-async function buildMessages(messages, documents, personalization, notebookContext = null, { signal } = {}) {
+async function buildMessages(messages, documents, personalization, notebookContext = null, webSearchContext = null, { signal } = {}) {
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
   const notebook = notebookContext?.notebook ?? null;
   const notebookChunks = notebookContext?.chunks ?? [];
   const notebookDocumentSummaries = notebookContext?.documentSummaries ?? [];
+  const webSearchText = String(webSearchContext?.contextText ?? "").trim();
+  const webSearchError = String(webSearchContext?.error ?? "").trim();
+  const hasUploadedFiles = Array.isArray(documents) && documents.length > 0;
 
   const systemParts = [
     "너는 로컬 Ollama 기반 문서/이미지 분석 도우미다.",
@@ -620,6 +655,13 @@ async function buildMessages(messages, documents, personalization, notebookConte
     );
   }
 
+  if (hasUploadedFiles) {
+    systemParts.push(
+      "When uploaded files are present, answer from the uploaded file context and image inputs instead of external web search.",
+      "Do not use or request Naver Search for file-grounded questions. If the uploaded file context is insufficient, say what is missing from the file."
+    );
+  }
+
   systemParts.push(
     "App capability: this web app can render data visualizations for uploaded CSV/XLSX table data.",
     "When the user asks whether charts, graphs, dashboards, visualizations, or infographics are possible, answer that they are possible in this app when table data is uploaded.",
@@ -627,6 +669,8 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Explain that the app routes chart/graph requests with tabular data to its visualization renderer, which can show SVG charts and provide PNG download controls.",
     "If no suitable CSV/XLSX table is available yet, ask the user to upload one and then request the chart type or insight they want.",
     "Supported visualization outputs include bar, line, pie, scatter, table, KPI cards, dashboards, and infographic-style summaries.",
+    "When a [Naver Search Results] block is provided, treat it as external search evidence and cite it with [W1], [W2], etc.",
+    "Do not invent web search citations. If search evidence is insufficient, state that the search results do not confirm the point.",
     "Format answers for scanning: use short section labels such as Summary, Key points, Evidence, Caution, Next steps when helpful.",
     "Put a simple visual symbol before section labels when it improves readability: ◆ Summary, ● Key points, ✓ Evidence, ※ Caution, -> Next steps.",
     "Prefer compact bullet lists with '- ', numbered lists with '1. ', and clear symbols like '->' or '※' for notes.",
@@ -678,6 +722,12 @@ async function buildMessages(messages, documents, personalization, notebookConte
     systemSegments.push(
       `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 이 질문과 관련된 자료를 찾지 못했습니다. "해당 노트북에서 관련 정보를 찾을 수 없습니다."라고만 답하세요.`
     );
+  }
+
+  if (webSearchText) {
+    systemSegments.push(webSearchText);
+  } else if (webSearchError) {
+    systemSegments.push(`[Naver Search Notice]\n${webSearchError}\nIf the user asked for web search, explain briefly that Naver search could not be used and answer only from available context or ask them to configure the API keys.`);
   }
 
   const attachmentOverview = formatAttachmentOverview(documents);

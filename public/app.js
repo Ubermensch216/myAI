@@ -242,13 +242,37 @@ function renderMessages() {
     appendMessage(message.role, message.content, {
       persist: false,
       messageIndex: index,
-      suggestions: message.suggestions,
+      suggestions: shouldRenderMessageSuggestions(message) ? message.suggestions : [],
       visualization: message.visualization,
       eventCards: message.eventCards,
       createdAt: message.createdAt,
       citations: message.citations
     });
   }
+}
+
+function shouldRenderMessageSuggestions(message) {
+  if (message?.role !== "assistant") return true;
+  return !isNoEvidenceAnswerText(message.content);
+}
+
+function isNoEvidenceAnswerText(answer) {
+  const text = String(answer || "").replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  return [
+    /관련 정보를 찾을 수 없습니다/i,
+    /정보를 찾을 수 없습니다/i,
+    /찾을 수 없(?:습니다|었)/i,
+    /확인(?:할|이) 수 없(?:습니다|었)/i,
+    /검색 결과(?:만)?으로는 확인되지 않습니다/i,
+    /검색 결과가 없습니다/i,
+    /자료가 부족/i,
+    /근거가 부족/i,
+    /provided context does not contain/i,
+    /not found in the provided context/i,
+    /no relevant information/i,
+    /could not find/i
+  ].some((pattern) => pattern.test(text));
 }
 
 function appendWelcomeScreen() {

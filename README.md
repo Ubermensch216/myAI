@@ -178,6 +178,18 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `QUERY_EXPANSION_ENABLED` | `true` | enable LLM query expansion |
 | `QUERY_EXPANSION_VARIANTS` | `3` | generated query variants |
 | `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | query expansion timeout |
+| `NAVER_SEARCH_ENABLED` | `true` | enable Naver Search context for explicit web-search prompts |
+| `NAVER_SEARCH_CLIENT_ID` | unset | Naver Search API client ID; server-side only |
+| `NAVER_SEARCH_CLIENT_SECRET` | unset | Naver Search API client secret; server-side only |
+| `NAVER_SEARCH_TYPES` | `news,webkr` | comma-separated Naver search types to query |
+| `NAVER_SEARCH_DISPLAY` | `5` | result count requested per Naver search type |
+| `NAVER_SEARCH_MAX_RESULTS` | `8` | max normalized search results passed to the LLM |
+| `NAVER_SEARCH_TIMEOUT_MS` | `4500` | timeout per Naver Search API request |
+
+Naver Search only runs for explicit web-search prompts in normal chat. It is
+skipped when uploaded files are present or a department notebook is selected, so
+file-grounded and RAG-grounded answers stay within their provided evidence.
+
 | `DOC_ANALYSIS_ENABLED` | `true` | upload/notebook summary and topic extraction |
 | `DOC_ANALYSIS_MAX_INPUT_CHARS` | `12000` | document analysis sample budget |
 | `DOC_ANALYSIS_TIMEOUT_MS` | `30000` | document analysis timeout |
