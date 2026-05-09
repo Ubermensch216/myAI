@@ -16,7 +16,7 @@ import {
   estimateAllRoomsStorageBytes, estimateDocumentBytes, estimateRoomStorageBytes, formatBytes
 } from "./modules/chat.js";
 import {
-  loadNotebooks, loadAdminStatus, restoreAdminTokenSession,
+  loadNotebooks, loadAdminStatus, restoreAdminTokenSession, restoreAccessSession,
   renderActiveNotebookUi, openNotebookSelector, closeNotebookSelector,
   isAdminDialogOpen, bindAdminEvents
 } from "./modules/notebook.js";
@@ -37,6 +37,7 @@ async function init() {
   renderAll();
   startReminderWatcher();
   checkStatus();
+  restoreAccessSession();
   loadNotebooks().catch(() => {});
   loadAdminStatus().catch(() => {});
   restoreAdminTokenSession();

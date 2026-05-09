@@ -12,6 +12,7 @@ let failureCount = 0;
 
 await run("app shell ids exist", testAppShellIds);
 const status = await run("GET /api/status", testStatus);
+await run("GET /api/access/status", testAccessStatus);
 await run("GET /api/notebooks", testNotebookList);
 await run("POST /api/upload text file", testUpload);
 await run("POST /api/export docx", testExportDocx);
@@ -100,6 +101,15 @@ async function testCalendarIntent(status) {
 async function testNotebookList() {
   const payload = await fetchJson("/api/notebooks");
   assert.ok(Array.isArray(payload.notebooks), "GET /api/notebooks should return { notebooks: [] }");
+}
+
+async function testAccessStatus() {
+  const status = await fetchJson("/api/access/status");
+  assert.equal(typeof status.configured, "boolean", "access status should expose configured");
+  assert.equal(typeof status.authenticated, "boolean", "access status should expose authenticated");
+  const options = await fetchJson("/api/access/options");
+  assert.ok(Array.isArray(options.groups), "access options should expose groups");
+  assert.equal(typeof options.super?.enabled, "boolean", "access options should expose super.enabled");
 }
 
 async function testUpload() {

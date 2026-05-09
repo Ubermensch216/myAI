@@ -15,6 +15,11 @@ is on the request, the department profile fires. Personal context is always
 included from the request body documents (when present), so a single chat
 turn can blend both profiles' citations in one prompt.
 
+When Department Notebook Access Control is configured, `/api/chat` validates
+the access token before any department notebook retrieval or whole-notebook
+Map-Reduce run starts. `ADMIN_TOKEN` remains a management credential and does
+not grant chat-time notebook read access.
+
 Web search is a separate, lower-priority context source. Naver Search can run
 only for explicit search prompts in normal chat. It is skipped whenever
 uploaded files are present or `notebookId` is selected, so file-grounded and

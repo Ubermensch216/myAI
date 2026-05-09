@@ -24,7 +24,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Upload support for PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, and GIF.
 - Upload-time document summary/topic extraction through local Ollama.
 - Long-document retrieval with query expansion, BM25/CJK bigram ranking, and optional vector ranking.
-- Department notebooks stored on the server filesystem with citation panels in chat.
+- Department notebooks stored on the server filesystem with citation panels in chat and optional group/level access control.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and an uploaded-document mind map tool.

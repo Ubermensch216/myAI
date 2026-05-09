@@ -1,7 +1,8 @@
-import { state, elements, getActiveRoom, showConfirmDialog } from "./state.js";
+import { state, elements, accessAuthHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 
 const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
+const ACCESS_TOKEN_SESSION_KEY = "myai_access_token";
 
 let adminDetailSaveTimer = null;
 const ADMIN_INGEST_POLL_MS = 1200;
@@ -11,17 +12,25 @@ export const adminUiState = {
   notebooks: [],
   selectedId: null,
   selectedNotebook: null,
-  mobileView: "list"
+  mobileView: "list",
+  activePanel: "notebooks",
+  accessConfig: null
 };
 
 // ===== Notebook selector =====
 
 export async function loadNotebooks() {
   try {
-    const response = await fetch("/api/notebooks");
+    const response = await fetch("/api/notebooks", { headers: accessAuthHeaders() });
     if (!response.ok) return;
     const result = await response.json();
     state.notebooks = Array.isArray(result.notebooks) ? result.notebooks : [];
+    const room = getActiveRoom();
+    if (room?.selectedNotebookId && !state.notebooks.some((nb) => nb.id === room.selectedNotebookId)) {
+      room.selectedNotebookId = null;
+      room.updatedAt = new Date().toISOString();
+      scheduleSave();
+    }
     renderActiveNotebookUi();
   } catch (error) {
     console.warn("노트북 목록을 불러오지 못했습니다:", error.message);
@@ -51,6 +60,153 @@ export function restoreAdminTokenSession() {
   renderAdminEntry();
 }
 
+export function restoreAccessSession() {
+  try {
+    const stored = sessionStorage.getItem(ACCESS_TOKEN_SESSION_KEY);
+    if (stored) {
+      state.access.token = stored;
+      state.access.authenticated = true;
+    }
+  } catch { /* sessionStorage may be blocked */ }
+  refreshAccessStatus().then(() => loadNotebooks()).catch(() => {});
+}
+
+async function refreshAccessStatus() {
+  try {
+    const response = await fetch("/api/access/status", { headers: accessAuthHeaders() });
+    if (!response.ok) return;
+    const result = await response.json();
+    state.access.configured = Boolean(result.configured);
+    state.access.authenticated = Boolean(result.authenticated && result.access);
+    state.access.user = result.access || null;
+    if (!state.access.authenticated) {
+      state.access.token = null;
+      try { sessionStorage.removeItem(ACCESS_TOKEN_SESSION_KEY); } catch { /* ignore */ }
+    }
+  } catch {
+    state.access.configured = false;
+  }
+  renderAccessPanel();
+  renderActiveNotebookUi();
+}
+
+async function loadAccessOptions() {
+  try {
+    const response = await fetch("/api/access/options");
+    if (!response.ok) return;
+    const result = await response.json();
+    state.access.options = {
+      groups: Array.isArray(result.groups) ? result.groups : [],
+      super: result.super || { enabled: false }
+    };
+  } catch {
+    state.access.options = { groups: [], super: { enabled: false } };
+  }
+  renderAccessPanel();
+}
+
+function currentAccessLabel() {
+  const user = state.access.user;
+  if (!state.access.configured) return "권한 인증 비활성";
+  if (!user) return "권한 없음";
+  if (user.super) return "현재 권한: Super";
+  return `현재 권한: ${user.groupName || user.groupId} / Level ${user.level}`;
+}
+
+function renderAccessPanel() {
+  if (!elements.notebookAccessPanel) return;
+  elements.notebookAccessPanel.hidden = !state.access.configured;
+  if (!state.access.configured) return;
+
+  if (elements.notebookAccessCurrent) elements.notebookAccessCurrent.textContent = currentAccessLabel();
+  if (elements.accessLogoutButton) elements.accessLogoutButton.hidden = !state.access.authenticated;
+  if (elements.accessLoginButton) elements.accessLoginButton.hidden = state.access.authenticated;
+  if (elements.accessPasswordInput) elements.accessPasswordInput.hidden = state.access.authenticated;
+  if (elements.accessGroupSelect) elements.accessGroupSelect.hidden = state.access.authenticated;
+  if (elements.accessLevelSelect) elements.accessLevelSelect.hidden = state.access.authenticated;
+  if (elements.accessSuperInput) elements.accessSuperInput.closest("label").hidden = state.access.authenticated || !state.access.options?.super?.enabled;
+  renderAccessOptions();
+}
+
+function renderAccessOptions() {
+  if (!elements.accessGroupSelect || !elements.accessLevelSelect) return;
+  const groups = state.access.options?.groups || [];
+  const previousGroup = elements.accessGroupSelect.value;
+  elements.accessGroupSelect.innerHTML = "";
+  for (const group of groups) {
+    const option = document.createElement("option");
+    option.value = group.id;
+    option.textContent = group.name || group.id;
+    elements.accessGroupSelect.append(option);
+  }
+  if (previousGroup && groups.some((group) => group.id === previousGroup)) {
+    elements.accessGroupSelect.value = previousGroup;
+  }
+  renderAccessLevelOptions();
+}
+
+function renderAccessLevelOptions() {
+  if (!elements.accessGroupSelect || !elements.accessLevelSelect) return;
+  const selectedGroup = state.access.options?.groups?.find((group) => group.id === elements.accessGroupSelect.value);
+  const levels = selectedGroup?.levels?.length ? selectedGroup.levels : [1, 2, 3];
+  const previousLevel = elements.accessLevelSelect.value;
+  elements.accessLevelSelect.innerHTML = "";
+  for (const level of levels) {
+    const option = document.createElement("option");
+    option.value = String(level);
+    option.textContent = `Level ${level}`;
+    elements.accessLevelSelect.append(option);
+  }
+  if (previousLevel && levels.includes(Number(previousLevel))) {
+    elements.accessLevelSelect.value = previousLevel;
+  }
+}
+
+async function submitAccessLogin() {
+  if (elements.accessError) elements.accessError.hidden = true;
+  const superLogin = Boolean(elements.accessSuperInput?.checked);
+  const payload = superLogin
+    ? { super: true, password: elements.accessPasswordInput?.value || "" }
+    : {
+        groupId: elements.accessGroupSelect?.value || "",
+        level: Number(elements.accessLevelSelect?.value || 1),
+        password: elements.accessPasswordInput?.value || ""
+      };
+  try {
+    const response = await fetch("/api/access/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.token) throw new Error(result.error || "권한 인증에 실패했습니다.");
+    state.access.token = result.token;
+    state.access.authenticated = true;
+    state.access.user = result.access || null;
+    try { sessionStorage.setItem(ACCESS_TOKEN_SESSION_KEY, result.token); } catch { /* ignore */ }
+    if (elements.accessPasswordInput) elements.accessPasswordInput.value = "";
+    await refreshAccessStatus();
+    await loadNotebooks();
+    renderNotebookSelectorList();
+  } catch (error) {
+    if (elements.accessError) {
+      elements.accessError.textContent = error.message;
+      elements.accessError.hidden = false;
+    }
+  }
+}
+
+async function logoutAccess() {
+  state.access.token = null;
+  state.access.authenticated = false;
+  state.access.user = null;
+  try { sessionStorage.removeItem(ACCESS_TOKEN_SESSION_KEY); } catch { /* ignore */ }
+  await fetch("/api/access/logout", { method: "POST" }).catch(() => {});
+  await refreshAccessStatus();
+  await loadNotebooks();
+  renderNotebookSelectorList();
+}
+
 export function findNotebookSummary(notebookId) {
   if (!notebookId) return null;
   return state.notebooks.find((nb) => nb.id === notebookId) ?? null;
@@ -77,6 +233,8 @@ export async function openNotebookSelector() {
   if (!elements.notebookSelectorDialog) return;
   // Close attach menu via custom event
   window.dispatchEvent(new CustomEvent("myai:closeattachmenu"));
+  await refreshAccessStatus();
+  await loadAccessOptions();
   await loadNotebooks();
   renderNotebookSelectorList();
   if (!elements.notebookSelectorDialog.open) elements.notebookSelectorDialog.showModal();
@@ -173,19 +331,16 @@ function adminAuthHeader() {
 }
 
 export function renderAdminEntry() {
-  if (!elements.openAdminNotebookButton) return;
-  elements.openAdminNotebookButton.hidden = !state.admin.configured;
   const status = state.admin.authenticated && state.admin.token
     ? "active"
     : state.admin.configured ? "locked" : "unavailable";
-  elements.openAdminNotebookButton.dataset.status = status;
-  elements.openAdminNotebookButton.title = state.admin.authenticated
-    ? "부서노트북 관리"
-    : "부서노트북 관리 (관리자 인증 필요)";
+  if (elements.settingsAdminStatus) {
+    elements.settingsAdminStatus.dataset.status = status;
+  }
 }
 
 export function isAdminDialogOpen() {
-  return Boolean(elements.adminNotebookDialog?.open);
+  return Boolean(elements.settingsDialog?.open && elements.settingsAdminPanel && !elements.settingsAdminPanel.hidden);
 }
 
 export function resetAdminFileInput() {
@@ -198,18 +353,11 @@ export function requestAdminFileSelection() {
   elements.adminFileInput.click();
 }
 
-export async function openAdminNotebookDialog() {
-  if (!elements.adminNotebookDialog) return;
-  window.dispatchEvent(new CustomEvent("myai:closesettings"));
-  await loadAdminStatus();
-  await renderAdminDialogState();
-  if (!elements.adminNotebookDialog.open) elements.adminNotebookDialog.showModal();
-}
-
 export async function renderAdminDialogState() {
   if (!state.admin.configured) { showAdminUnconfigured(); return; }
   if (state.admin.authenticated && state.admin.token) {
     showAdminContent();
+    await refreshAdminAccessConfig();
     await refreshAdminNotebooks();
     return;
   }
@@ -218,7 +366,7 @@ export async function renderAdminDialogState() {
 
 export function closeAdminNotebookDialog() {
   resetAdminFileInput();
-  if (elements.adminNotebookDialog?.open) elements.adminNotebookDialog.close();
+  if (elements.settingsDialog?.open) elements.settingsDialog.close();
 }
 
 function showAdminUnconfigured() {
@@ -249,7 +397,9 @@ function showAdminContent() {
   if (elements.adminAuthSection) elements.adminAuthSection.hidden = true;
   if (elements.adminWorkspace) elements.adminWorkspace.hidden = false;
   if (elements.adminLogoutButton) elements.adminLogoutButton.hidden = false;
-  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "공유 지식 자료";
+  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "인증됨";
+  if (!adminUiState.activePanel) adminUiState.activePanel = "notebooks";
+  renderAdminConsoleNav();
   applyAdminMobileView();
   renderAdminList();
   renderAdminDetail();
@@ -269,6 +419,7 @@ export async function submitAdminToken() {
     try { sessionStorage.setItem(ADMIN_TOKEN_SESSION_KEY, token); } catch { /* ignore */ }
     renderAdminEntry();
     showAdminContent();
+    await refreshAdminAccessConfig();
     await refreshAdminNotebooks();
   } catch (error) {
     showAdminTokenError(`인증 요청 실패: ${error.message}`);
@@ -293,11 +444,14 @@ export function adminLogout() {
 
 export function showAdminNewNotebookForm() {
   clearAdminDetailSaveTimer();
+  adminUiState.activePanel = "notebooks";
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
   adminUiState.mobileView = "detail";
+  renderAdminConsoleNav();
   renderAdminList();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
@@ -549,14 +703,14 @@ export async function refreshAdminNotebooks() {
   if (!elements.adminNotebookList) return;
   elements.adminNotebookList.innerHTML = "<div class='admin-list-empty'>불러오는 중...</div>";
   try {
-    const listResponse = await fetch("/api/notebooks");
+    const listResponse = await fetch("/api/notebooks", { headers: adminAuthHeader() });
     if (!listResponse.ok) throw new Error("노트북 목록 요청 실패");
     const listResult = await listResponse.json();
     const summaries = Array.isArray(listResult.notebooks) ? listResult.notebooks : [];
     const detailed = await Promise.all(
       summaries.map(async (summary) => {
         try {
-          const res = await fetch(`/api/notebooks/${encodeURIComponent(summary.id)}`);
+          const res = await fetch(`/api/notebooks/${encodeURIComponent(summary.id)}`, { headers: adminAuthHeader() });
           if (!res.ok) return summary;
           const data = await res.json();
           return data.notebook ?? summary;
@@ -620,9 +774,11 @@ function buildAdminListItem(notebook) {
 function selectAdminNotebook(notebookId) {
   clearAdminDetailSaveTimer();
   hideAdminNewNotebookForm();
+  adminUiState.activePanel = "notebooks";
   adminUiState.selectedId = notebookId;
   adminUiState.selectedNotebook = adminUiState.notebooks.find((nb) => nb.id === notebookId) ?? null;
   adminUiState.mobileView = "detail";
+  renderAdminConsoleNav();
   renderAdminList();
   renderAdminDetail();
   applyAdminMobileView();
@@ -630,7 +786,10 @@ function selectAdminNotebook(notebookId) {
 
 export function renderAdminDetail() {
   if (!elements.adminDetailEmpty || !elements.adminDetailContent) return;
+  adminUiState.activePanel = "notebooks";
+  renderAdminConsoleNav();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   const notebook = adminUiState.selectedNotebook;
   const creating = elements.adminNewNotebookForm && !elements.adminNewNotebookForm.hidden;
   if (creating) return;
@@ -652,6 +811,7 @@ export function renderAdminDetail() {
     elements.adminDetailSaveStatus.textContent = "";
     elements.adminDetailSaveStatus.className = "admin-save-status";
   }
+  renderAdminNotebookAccessPolicy(notebook);
   renderAdminDocuments(notebook);
 }
 
@@ -769,12 +929,363 @@ function formatAdminDate(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function renderAdminConsoleNav() {
+  const active = adminUiState.activePanel || "notebooks";
+  elements.adminNotebookMenuButton?.classList.toggle("active", active === "notebooks");
+  elements.adminStatusButton?.classList.toggle("active", active === "status");
+  elements.adminAccessButton?.classList.toggle("active", active === "access");
+  if (elements.adminNotebookNavSection) elements.adminNotebookNavSection.hidden = active !== "notebooks";
+}
+
+function showAdminNotebooksPanel() {
+  adminUiState.activePanel = "notebooks";
+  adminUiState.mobileView = adminUiState.selectedNotebook ? "detail" : "list";
+  hideAdminNewNotebookForm();
+  renderAdminConsoleNav();
+  renderAdminList();
+  renderAdminDetail();
+  applyAdminMobileView();
+}
+
+// ===== Access policy admin =====
+
+async function refreshAdminAccessConfig() {
+  try {
+    const response = await fetch("/api/admin/access/groups", { headers: adminAuthHeader() });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    adminUiState.accessConfig = await response.json();
+  } catch (error) {
+    adminUiState.accessConfig = { groups: [], super: { enabled: false, passwordSet: false }, error: error.message };
+  }
+  if (!elements.adminAccessPanel?.hidden) renderAdminAccessPanel();
+  if (adminUiState.selectedNotebook) renderAdminNotebookAccessPolicy(adminUiState.selectedNotebook);
+}
+
+export async function showAdminAccessPanel() {
+  adminUiState.activePanel = "access";
+  clearAdminDetailSaveTimer();
+  hideAdminNewNotebookForm();
+  renderAdminConsoleNav();
+  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
+  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = false;
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  applyAdminMobileView();
+  await refreshAdminAccessConfig();
+  renderAdminAccessPanel();
+}
+
+function renderAdminAccessPanel() {
+  const body = elements.adminAccessBody;
+  if (!body) return;
+  const config = adminUiState.accessConfig || { groups: [], super: {} };
+  body.innerHTML = "";
+  if (config.error) {
+    const error = document.createElement("div");
+    error.className = "admin-status-error";
+    error.textContent = `접근 권한 정보를 불러오지 못했습니다: ${config.error}`;
+    body.append(error);
+    return;
+  }
+  body.append(buildSuperAccessCard(config.super || {}));
+  for (const group of config.groups || []) body.append(buildAccessGroupCard(group));
+  if (!config.groups?.length) {
+    const empty = document.createElement("div");
+    empty.className = "admin-access-empty";
+    empty.textContent = "등록된 접근 그룹이 없습니다.";
+    body.append(empty);
+  }
+}
+
+function buildSuperAccessCard(superState) {
+  const section = document.createElement("section");
+  section.className = "admin-access-card";
+  const header = document.createElement("div");
+  header.className = "admin-access-card-header";
+  const title = document.createElement("h4");
+  title.textContent = "Super 권한";
+  const enabledLabel = document.createElement("label");
+  enabledLabel.className = "admin-access-toggle";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = Boolean(superState.enabled);
+  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
+    await patchAdminAccess("/api/admin/access/super", { enabled: enabled.checked });
+    await refreshAdminAccessConfig();
+  }));
+  enabledLabel.append(enabled, document.createTextNode(" 활성"));
+  header.append(title, enabledLabel);
+
+  const row = document.createElement("div");
+  row.className = "admin-access-password-row";
+  const status = document.createElement("span");
+  status.className = "admin-access-password-status";
+  status.classList.toggle("is-set", Boolean(superState.passwordSet));
+  status.textContent = superState.passwordSet ? "비밀번호 설정됨" : "비밀번호 미설정";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "text-input";
+  input.placeholder = "새 Super 비밀번호";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button";
+  button.textContent = superState.passwordSet ? "변경" : "설정";
+  button.addEventListener("click", () => runAdminAccessTask(async () => {
+    await postAdminAccess("/api/admin/access/super/password", { password: input.value });
+    input.value = "";
+    await refreshAdminAccessConfig();
+  }));
+  row.append(status, input, button);
+  section.append(header, row);
+  return section;
+}
+
+function buildAccessGroupCard(group) {
+  const section = document.createElement("section");
+  section.className = "admin-access-card";
+  const header = document.createElement("div");
+  header.className = "admin-access-card-header";
+  const title = document.createElement("h4");
+  title.textContent = group.name || group.id;
+  const enabledLabel = document.createElement("label");
+  enabledLabel.className = "admin-access-toggle";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = Boolean(group.enabled);
+  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
+    await patchAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}`, { enabled: enabled.checked });
+    await refreshAdminAccessConfig();
+  }));
+  enabledLabel.append(enabled, document.createTextNode(" 활성"));
+  header.append(title, enabledLabel);
+
+  const fields = document.createElement("div");
+  fields.className = "admin-access-group-fields";
+  const nameInput = document.createElement("input");
+  nameInput.className = "text-input";
+  nameInput.value = group.name || "";
+  nameInput.placeholder = "그룹명";
+  const descInput = document.createElement("input");
+  descInput.className = "text-input";
+  descInput.value = group.description || "";
+  descInput.placeholder = "설명";
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "ghost-button";
+  saveButton.textContent = "저장";
+  saveButton.addEventListener("click", () => runAdminAccessTask(async () => {
+    await patchAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}`, {
+      name: nameInput.value,
+      description: descInput.value
+    });
+    await refreshAdminAccessConfig();
+  }));
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "ghost-button admin-danger-button";
+  deleteButton.textContent = "삭제";
+  deleteButton.addEventListener("click", () => runAdminAccessTask(async () => {
+    const confirmed = await showConfirmDialog({
+      title: "접근 그룹 삭제",
+      body: `"${group.name || group.id}" 그룹을 삭제할까요? 노트북 정책에서 같은 그룹 ID도 제거해야 합니다.`,
+      okText: "삭제",
+      danger: true
+    });
+    if (!confirmed) return;
+    await deleteAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}`);
+    await refreshAdminAccessConfig();
+  }));
+  fields.append(nameInput, descInput, saveButton, deleteButton);
+
+  const levels = document.createElement("div");
+  levels.className = "admin-access-levels";
+  for (const level of [1, 2, 3]) {
+    levels.append(buildAccessLevelRow(group, level));
+  }
+
+  section.append(header, fields, levels);
+  return section;
+}
+
+function buildAccessLevelRow(group, level) {
+  const record = group.levels?.[String(level)] || {};
+  const row = document.createElement("div");
+  row.className = "admin-access-level-row";
+  const label = document.createElement("label");
+  label.className = "admin-access-toggle";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = Boolean(record.enabled);
+  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
+    await patchAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}/levels/${level}`, { enabled: enabled.checked });
+    await refreshAdminAccessConfig();
+  }));
+  label.append(enabled, document.createTextNode(` Level ${level}`));
+  const status = document.createElement("span");
+  status.className = "admin-access-password-status";
+  status.classList.toggle("is-set", Boolean(record.passwordSet));
+  status.textContent = record.passwordSet ? "설정됨" : "미설정";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "text-input";
+  input.placeholder = "새 비밀번호";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button";
+  button.textContent = record.passwordSet ? "변경" : "설정";
+  button.addEventListener("click", () => runAdminAccessTask(async () => {
+    await postAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}/levels/${level}/password`, { password: input.value });
+    input.value = "";
+    await refreshAdminAccessConfig();
+  }));
+  row.append(label, status, input, button);
+  return row;
+}
+
+async function addAdminAccessGroup() {
+  const name = (elements.adminAccessGroupNameInput?.value || "").trim();
+  const description = (elements.adminAccessGroupDescriptionInput?.value || "").trim();
+  if (!name) return;
+  await postAdminAccess("/api/admin/access/groups", { name, description });
+  if (elements.adminAccessGroupNameInput) elements.adminAccessGroupNameInput.value = "";
+  if (elements.adminAccessGroupDescriptionInput) elements.adminAccessGroupDescriptionInput.value = "";
+  await refreshAdminAccessConfig();
+}
+
+async function postAdminAccess(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`);
+  return response.json().catch(() => ({}));
+}
+
+async function patchAdminAccess(path, body) {
+  const response = await fetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`);
+  return response.json().catch(() => ({}));
+}
+
+async function deleteAdminAccess(path) {
+  const response = await fetch(path, { method: "DELETE", headers: adminAuthHeader() });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`);
+  return response.json().catch(() => ({}));
+}
+
+function runAdminAccessTask(task) {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => alert(error.message || "접근 권한 작업에 실패했습니다."));
+}
+
+function renderAdminNotebookAccessPolicy(notebook) {
+  if (!elements.adminNotebookAccessSection) return;
+  elements.adminNotebookAccessSection.hidden = false;
+  const policy = normalizeClientPolicy(notebook?.access);
+  renderAdminNotebookAccessGroups(policy);
+  renderAdminNotebookAccessLevels(policy);
+  if (elements.adminNotebookAccessStatus) elements.adminNotebookAccessStatus.textContent = "";
+}
+
+function renderAdminNotebookAccessGroups(policy) {
+  const container = elements.adminNotebookAccessGroups;
+  if (!container) return;
+  container.innerHTML = "";
+  const groups = adminUiState.accessConfig?.groups || [];
+  const wildcard = buildPolicyGroupCheckbox("*", "모든 그룹", policy.groups.includes("*"));
+  container.append(wildcard);
+  for (const group of groups) {
+    container.append(buildPolicyGroupCheckbox(group.id, group.name || group.id, policy.groups.includes(group.id)));
+  }
+}
+
+function buildPolicyGroupCheckbox(value, labelText, checked) {
+  const label = document.createElement("label");
+  label.className = "admin-policy-check";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.value = value;
+  input.checked = checked;
+  label.append(input, document.createTextNode(labelText));
+  return label;
+}
+
+function renderAdminNotebookAccessLevels(policy) {
+  const container = elements.adminNotebookAccessLevels;
+  if (!container) return;
+  container.innerHTML = "";
+  for (const level of [1, 2, 3]) {
+    const label = document.createElement("label");
+    label.className = "admin-policy-check";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "adminNotebookMinLevel";
+    input.value = String(level);
+    input.checked = Number(policy.minLevel) === level;
+    label.append(input, document.createTextNode(`Level ${level}`));
+    container.append(label);
+  }
+}
+
+async function saveAdminNotebookAccessPolicy() {
+  const notebook = adminUiState.selectedNotebook;
+  if (!notebook) return;
+  const groups = Array.from(elements.adminNotebookAccessGroups?.querySelectorAll("input[type='checkbox']:checked") || [])
+    .map((input) => input.value)
+    .filter(Boolean);
+  const minLevel = Number(elements.adminNotebookAccessLevels?.querySelector("input[type='radio']:checked")?.value || 1);
+  const access = { groups: groups.length ? groups : ["*"], minLevel };
+  setAdminNotebookAccessStatus("저장 중...", "saving");
+  try {
+    const response = await fetch(`/api/notebooks/${encodeURIComponent(notebook.id)}/access`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+      body: JSON.stringify({ access })
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "저장 실패");
+    const result = await response.json().catch(() => ({}));
+    const updated = result.notebook || { ...notebook, access };
+    adminUiState.notebooks = adminUiState.notebooks.map((item) => item.id === notebook.id ? { ...item, ...updated } : item);
+    adminUiState.selectedNotebook = adminUiState.notebooks.find((item) => item.id === notebook.id) || updated;
+    setAdminNotebookAccessStatus("저장됨", "saved");
+    await loadNotebooks();
+  } catch (error) {
+    setAdminNotebookAccessStatus(error.message, "error");
+  }
+}
+
+function setAdminNotebookAccessStatus(text, kind) {
+  if (!elements.adminNotebookAccessStatus) return;
+  elements.adminNotebookAccessStatus.className = "admin-save-status";
+  if (kind) elements.adminNotebookAccessStatus.classList.add(kind);
+  elements.adminNotebookAccessStatus.textContent = text;
+}
+
+function normalizeClientPolicy(policy) {
+  const groups = Array.isArray(policy?.groups) && policy.groups.length ? policy.groups : ["*"];
+  const minLevel = [1, 2, 3].includes(Number(policy?.minLevel)) ? Number(policy.minLevel) : 1;
+  return { groups, minLevel };
+}
+
 // ===== System status panel =====
 
 export function showAdminStatus() {
+  adminUiState.activePanel = "status";
+  renderAdminConsoleNav();
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -976,9 +1487,10 @@ function addCardStat(card, label, value) {
 // ===== App event binding =====
 
 export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
-  if (elements.openAdminNotebookButton) {
-    elements.openAdminNotebookButton.addEventListener("click", openAdminNotebookDialog);
-  }
+  window.addEventListener("myai:settingsadminopen", async () => {
+    await loadAdminStatus();
+    await renderAdminDialogState();
+  });
   if (elements.closeAdminNotebookButton) {
     elements.closeAdminNotebookButton.addEventListener("click", (event) => {
       event.preventDefault();
@@ -995,6 +1507,14 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
       }
     });
     elements.adminNotebookDialog.addEventListener("close", () => {
+      resetAdminFileInput();
+      adminUiState.selectedId = null;
+      resetDragDepth();
+      hideDropOverlay();
+    });
+  }
+  if (elements.settingsDialog) {
+    elements.settingsDialog.addEventListener("close", () => {
       resetAdminFileInput();
       adminUiState.selectedId = null;
       resetDragDepth();
@@ -1022,8 +1542,28 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
     });
   }
   if (elements.adminLogoutButton) elements.adminLogoutButton.addEventListener("click", adminLogout);
+  if (elements.adminNotebookMenuButton) elements.adminNotebookMenuButton.addEventListener("click", showAdminNotebooksPanel);
   if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
+  if (elements.adminAccessButton) elements.adminAccessButton.addEventListener("click", () => showAdminAccessPanel().catch((error) => alert(error.message)));
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
+  if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.addEventListener("click", () => refreshAdminAccessConfig().catch((error) => alert(error.message)));
+  if (elements.adminAccessAddGroupButton) elements.adminAccessAddGroupButton.addEventListener("click", () => addAdminAccessGroup().catch((error) => alert(error.message)));
+  if (elements.adminNotebookAccessSaveButton) elements.adminNotebookAccessSaveButton.addEventListener("click", () => saveAdminNotebookAccessPolicy());
+  if (elements.accessGroupSelect) elements.accessGroupSelect.addEventListener("change", renderAccessLevelOptions);
+  if (elements.accessLoginButton) elements.accessLoginButton.addEventListener("click", submitAccessLogin);
+  if (elements.accessLogoutButton) elements.accessLogoutButton.addEventListener("click", logoutAccess);
+  if (elements.accessPasswordInput) {
+    elements.accessPasswordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); submitAccessLogin(); }
+    });
+  }
+  if (elements.accessSuperInput) {
+    elements.accessSuperInput.addEventListener("change", () => {
+      const superMode = Boolean(elements.accessSuperInput?.checked);
+      if (elements.accessGroupSelect) elements.accessGroupSelect.disabled = superMode;
+      if (elements.accessLevelSelect) elements.accessLevelSelect.disabled = superMode;
+    });
+  }
   if (elements.adminNewNotebookButton) elements.adminNewNotebookButton.addEventListener("click", showAdminNewNotebookForm);
   if (elements.adminCancelNewNotebookButton) {
     elements.adminCancelNewNotebookButton.addEventListener("click", () => {

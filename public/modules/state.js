@@ -133,6 +133,16 @@ export const state = {
     selectedTool: "mindmap"
   },
   notebooks: [],
+  access: {
+    configured: false,
+    authenticated: false,
+    token: null,
+    user: null,
+    options: {
+      groups: [],
+      super: { enabled: false }
+    }
+  },
   deepAnalysisEnabled: false,
   admin: {
     configured: false,
@@ -149,6 +159,10 @@ export function ensureDocumentCacheKey() {
 
 export function documentCacheHeaders() {
   return { "X-MyAI-Document-Key": ensureDocumentCacheKey() };
+}
+
+export function accessAuthHeaders() {
+  return state.access?.token ? { Authorization: `Bearer ${state.access.token}` } : {};
 }
 
 function generateClientSecret() {
@@ -179,6 +193,12 @@ export const elements = {
   settingsButton: document.querySelector("#settingsButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   settingsForm: document.querySelector("#settingsForm"),
+  settingsPersonalTab: document.querySelector("#settingsPersonalTab"),
+  settingsAdminTab: document.querySelector("#settingsAdminTab"),
+  settingsPersonalPanel: document.querySelector("#settingsPersonalPanel"),
+  settingsAdminPanel: document.querySelector("#settingsAdminPanel"),
+  settingsAdminMount: document.querySelector("#settingsAdminMount"),
+  settingsAdminStatus: document.querySelector("#settingsAdminStatus"),
   closeSettingsButton: document.querySelector("#closeSettingsButton"),
   cancelSettingsButton: document.querySelector("#cancelSettingsButton"),
   userTitleInput: document.querySelector("#userTitleInput"),
@@ -258,10 +278,18 @@ export const elements = {
   deepAnalysisToggle: document.querySelector("#deepAnalysisToggle"),
   notebookSelectorDialog: document.querySelector("#notebookSelectorDialog"),
   closeNotebookSelectorButton: document.querySelector("#closeNotebookSelectorButton"),
+  notebookAccessPanel: document.querySelector("#notebookAccessPanel"),
+  notebookAccessCurrent: document.querySelector("#notebookAccessCurrent"),
+  accessGroupSelect: document.querySelector("#accessGroupSelect"),
+  accessLevelSelect: document.querySelector("#accessLevelSelect"),
+  accessPasswordInput: document.querySelector("#accessPasswordInput"),
+  accessSuperInput: document.querySelector("#accessSuperInput"),
+  accessLoginButton: document.querySelector("#accessLoginButton"),
+  accessLogoutButton: document.querySelector("#accessLogoutButton"),
+  accessError: document.querySelector("#accessError"),
   notebookList: document.querySelector("#notebookList"),
   adminNotebookDialog: document.querySelector("#adminNotebookDialog"),
   closeAdminNotebookButton: document.querySelector("#closeAdminNotebookButton"),
-  openAdminNotebookButton: document.querySelector("#openAdminNotebookButton"),
   adminDialogSubtitle: document.querySelector("#adminDialogSubtitle"),
   adminUnconfiguredSection: document.querySelector("#adminUnconfiguredSection"),
   adminRecheckButton: document.querySelector("#adminRecheckButton"),
@@ -272,6 +300,8 @@ export const elements = {
   adminTokenError: document.querySelector("#adminTokenError"),
   adminWorkspace: document.querySelector("#adminWorkspace"),
   adminLogoutButton: document.querySelector("#adminLogoutButton"),
+  adminNotebookMenuButton: document.querySelector("#adminNotebookMenuButton"),
+  adminNotebookNavSection: document.querySelector("#adminNotebookNavSection"),
   adminNewNotebookButton: document.querySelector("#adminNewNotebookButton"),
   adminNotebookList: document.querySelector("#adminNotebookList"),
   adminBackToListButton: document.querySelector("#adminBackToListButton"),
@@ -293,9 +323,21 @@ export const elements = {
   adminDocsTableBody: document.querySelector("#adminDocsTableBody"),
   adminDocsEmpty: document.querySelector("#adminDocsEmpty"),
   adminStatusButton: document.querySelector("#adminStatusButton"),
+  adminAccessButton: document.querySelector("#adminAccessButton"),
   adminStatusPanel: document.querySelector("#adminStatusPanel"),
   adminStatusBody: document.querySelector("#adminStatusBody"),
   adminRefreshStatusButton: document.querySelector("#adminRefreshStatusButton"),
+  adminAccessPanel: document.querySelector("#adminAccessPanel"),
+  adminAccessBody: document.querySelector("#adminAccessBody"),
+  adminAccessRefreshButton: document.querySelector("#adminAccessRefreshButton"),
+  adminAccessGroupNameInput: document.querySelector("#adminAccessGroupNameInput"),
+  adminAccessGroupDescriptionInput: document.querySelector("#adminAccessGroupDescriptionInput"),
+  adminAccessAddGroupButton: document.querySelector("#adminAccessAddGroupButton"),
+  adminNotebookAccessSection: document.querySelector("#adminNotebookAccessSection"),
+  adminNotebookAccessGroups: document.querySelector("#adminNotebookAccessGroups"),
+  adminNotebookAccessLevels: document.querySelector("#adminNotebookAccessLevels"),
+  adminNotebookAccessSaveButton: document.querySelector("#adminNotebookAccessSaveButton"),
+  adminNotebookAccessStatus: document.querySelector("#adminNotebookAccessStatus"),
   leftPanelResizer: document.querySelector("#leftPanelResizer"),
   rightPanelResizer: document.querySelector("#rightPanelResizer"),
   studioPanel: document.querySelector("#studioPanel"),

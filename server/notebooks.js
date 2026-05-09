@@ -17,6 +17,7 @@ import {
   upsertNotebookDocumentLexical
 } from "./indexes/sqliteFtsIndex.js";
 import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
+import { normalizeNotebookAccessPolicy } from "./accessControl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,6 +109,7 @@ function summarizeNotebook(manifest) {
     id: manifest.id,
     name: manifest.name,
     description: manifest.description || "",
+    access: normalizeNotebookAccessPolicy(manifest.access),
     documentCount: Array.isArray(manifest.documents) ? manifest.documents.length : 0,
     updatedAt: manifest.updatedAt || manifest.createdAt
   };
@@ -223,6 +225,7 @@ export async function createNotebook({ name, description }) {
     id,
     name: cleanName,
     description: cleanDescription,
+    access: normalizeNotebookAccessPolicy(null),
     createdAt: now,
     updatedAt: now,
     documents: []
@@ -250,6 +253,19 @@ export async function updateNotebook(notebookId, { name, description }) {
 
   await writeManifest(notebookId, manifest);
   return summarizeNotebook(manifest);
+}
+
+export async function updateNotebookAccess(notebookId, access) {
+  const manifest = await readManifest(notebookId);
+  if (!manifest) return null;
+  manifest.access = normalizeNotebookAccessPolicy(access);
+  manifest.updatedAt = new Date().toISOString();
+  await writeManifest(notebookId, manifest);
+  return {
+    ...summarizeNotebook(manifest),
+    createdAt: manifest.createdAt,
+    documents: (manifest.documents || []).map(summarizeDocument)
+  };
 }
 
 export async function deleteNotebook(notebookId) {

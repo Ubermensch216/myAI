@@ -290,6 +290,82 @@ public API key when available, otherwise a limited fixed-solar-holiday fallback.
 
 ## Admin And Notebooks
 
+## Access Control
+
+Department notebook access control is inactive until at least one group level or
+Super password is configured. Once active, notebook reads and chat requests that
+include `notebookId` require `Authorization: Bearer <access token>`. `ADMIN_TOKEN`
+continues to protect management APIs only; it is not a user notebook-read token.
+
+### `GET /api/access/options`
+
+Public. Returns enabled login choices:
+
+```js
+{ groups: [{ id, name, description, levels: [1, 2, 3] }], super: { enabled } }
+```
+
+### `GET /api/access/status`
+
+Public. With an access token, returns the current group/level or Super session:
+
+```js
+{ configured: boolean, authenticated: boolean, access: object | null }
+```
+
+### `POST /api/access/login`
+
+Public. Authenticates a group/level password:
+
+```js
+{ groupId: "finance", level: 2, password: "..." }
+```
+
+or Super:
+
+```js
+{ super: true, password: "..." }
+```
+
+Returns `{ ok, access, token }` on success.
+
+### `POST /api/access/logout`
+
+Public. Stateless acknowledgement; the browser discards its session token.
+
+### `GET /api/admin/access/groups`
+
+Admin. Lists groups, per-level enabled/password-set flags, and Super status.
+Password hashes are never returned.
+
+### `POST /api/admin/access/groups`
+
+Admin. Creates an access group.
+
+### `PATCH /api/admin/access/groups/:groupId`
+
+Admin. Updates group name, description, or enabled state.
+
+### `DELETE /api/admin/access/groups/:groupId`
+
+Admin. Deletes an access group.
+
+### `POST /api/admin/access/groups/:groupId/levels/:level/password`
+
+Admin. Replaces a Level 1-3 password. Existing passwords are not readable.
+
+### `PATCH /api/admin/access/groups/:groupId/levels/:level`
+
+Admin. Enables or disables a level.
+
+### `POST /api/admin/access/super/password`
+
+Admin. Replaces the Super read-access password.
+
+### `PATCH /api/admin/access/super`
+
+Admin. Enables or disables Super login.
+
 ### `GET /api/admin/status`
 
 Public. Returns whether `ADMIN_TOKEN` is configured:
@@ -304,11 +380,13 @@ Requires `Authorization: Bearer <ADMIN_TOKEN>`.
 
 ### `GET /api/notebooks`
 
-Public notebook summaries.
+Notebook summaries. When access control is active, returns only notebooks the
+access token can read. Admin requests include access policies for management.
 
 ### `GET /api/notebooks/:id`
 
-Public notebook detail.
+Notebook detail. When access control is active, unauthorized users receive 401
+or 403. Admin requests include access policies for management.
 
 ### `POST /api/notebooks`
 
@@ -317,6 +395,14 @@ Admin. Creates a notebook.
 ### `PATCH /api/notebooks/:id`
 
 Admin. Updates notebook metadata.
+
+### `PATCH /api/notebooks/:id/access`
+
+Admin. Updates notebook access policy:
+
+```js
+{ access: { groups: ["finance", "planning"], minLevel: 2 } }
+```
 
 ### `DELETE /api/notebooks/:id`
 

@@ -6,6 +6,7 @@ data/logs/
 data/indexes/
 data/qdrant/
 data/ingest-jobs/
+data/access/
 .env
 *.log
 server/log/

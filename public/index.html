@@ -63,18 +63,6 @@
           </section>
         </div>
 
-        <div class="sidebar-footer">
-          <button id="openAdminNotebookButton" class="sidebar-admin-button" type="button" title="부서노트북 관리 (관리자)" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-              <path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path>
-              <circle cx="17.5" cy="6.5" r="3" fill="var(--surface)" stroke="currentColor" stroke-width="1.6"></circle>
-              <path d="M16 6.5l1 1 2-2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <span>부서노트북 관리</span>
-            <span class="sidebar-admin-status" data-status="locked" aria-hidden="true"></span>
-          </button>
-        </div>
       </aside>
 
       <div
@@ -396,13 +384,23 @@
     <div id="reminderToastContainer" class="reminder-toast-container" aria-live="polite"></div>
 
     <dialog id="settingsDialog" class="settings-dialog">
-      <form id="settingsForm" method="dialog">
+      <div class="settings-shell">
         <div class="dialog-heading">
           <h2>설정</h2>
           <button id="closeSettingsButton" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
 
-        <fieldset class="field-section identity-section">
+        <div class="settings-tabs" role="tablist" aria-label="설정 메뉴">
+          <button id="settingsPersonalTab" class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settingsPersonalPanel">개인별 설정</button>
+          <button id="settingsAdminTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAdminPanel">
+            <span>관리자 콘솔</span>
+            <span id="settingsAdminStatus" class="settings-admin-status" data-status="locked" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <section id="settingsPersonalPanel" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsPersonalTab">
+          <form id="settingsForm" method="dialog">
+        <fieldset class="field-section identity-section settings-system-section">
           <legend class="field-section-title">시스템 정보</legend>
           <div class="field">
             <span class="field-label">시스템 배너</span>
@@ -463,7 +461,7 @@
           </div>
         </fieldset>
 
-        <fieldset class="field-section identity-section">
+        <fieldset class="field-section identity-section settings-user-section">
           <legend class="field-section-title">사용자 정보</legend>
           <div class="field-row">
             <div class="field">
@@ -498,7 +496,7 @@
           </div>
         </fieldset>
 
-        <fieldset class="field-section theme-section">
+        <fieldset class="field-section theme-section settings-theme-section">
           <legend class="field-section-title">테마</legend>
           <div class="field-row">
             <div class="field">
@@ -540,7 +538,7 @@
           </div>
         </fieldset>
 
-        <div class="field">
+        <div class="field settings-prompt-section">
           <label class="field-label" for="customPromptInput">사용자 정의 프롬프트</label>
           <textarea
             id="customPromptInput"
@@ -550,17 +548,23 @@
           ></textarea>
         </div>
 
-        <p class="hint">
+        <p class="hint settings-storage-hint">
           ※대화 내용과 설정은 PC 내부에만 암호화되어 저장됨<br />
           ※파일은 해당 대화방에 저장됨
         </p>
 
-        <div class="dialog-actions">
+        <div class="dialog-actions settings-form-actions">
           <span class="dialog-actions-spacer"></span>
           <button class="ghost-button" type="button" id="cancelSettingsButton">취소</button>
           <button class="send-button" type="submit">저장</button>
         </div>
-      </form>
+          </form>
+        </section>
+
+        <section id="settingsAdminPanel" class="settings-tab-panel settings-admin-panel" role="tabpanel" aria-labelledby="settingsAdminTab" hidden>
+          <div id="settingsAdminMount" class="settings-admin-mount"></div>
+        </section>
+      </div>
     </dialog>
 
     <dialog id="notebookSelectorDialog" class="notebook-selector-dialog">
@@ -568,13 +572,30 @@
         <h2 class="notebook-selector-title">부서노트북</h2>
         <button id="closeNotebookSelectorButton" class="icon-button" type="button" aria-label="닫기">×</button>
       </div>
+      <section id="notebookAccessPanel" class="notebook-access-panel" hidden>
+        <div class="notebook-access-current-row">
+          <span id="notebookAccessCurrent" class="notebook-access-current">현재 권한: 확인 중</span>
+          <button id="accessLogoutButton" class="ghost-button notebook-access-change" type="button" hidden>권한 변경</button>
+        </div>
+        <div class="notebook-access-login">
+          <select id="accessGroupSelect" class="text-input" aria-label="업무 그룹"></select>
+          <select id="accessLevelSelect" class="text-input" aria-label="접근 등급"></select>
+          <input id="accessPasswordInput" class="text-input" type="password" placeholder="비밀번호" autocomplete="off" />
+          <label class="notebook-access-super">
+            <input id="accessSuperInput" type="checkbox" />
+            <span>Super</span>
+          </label>
+          <button id="accessLoginButton" class="send-button" type="button">접속</button>
+        </div>
+        <div id="accessError" class="admin-token-error" hidden></div>
+      </section>
       <div id="notebookList" class="notebook-list" aria-live="polite"></div>
     </dialog>
 
     <dialog id="adminNotebookDialog" class="admin-dialog" aria-labelledby="adminDialogTitle">
       <header class="admin-dialog-header">
         <div class="admin-dialog-title-group">
-          <h2 id="adminDialogTitle">부서노트북 관리</h2>
+          <h2 id="adminDialogTitle">관리자 콘솔</h2>
           <span id="adminDialogSubtitle" class="admin-dialog-subtitle"></span>
         </div>
         <div class="admin-dialog-header-actions">
@@ -650,19 +671,30 @@
 
       <!-- State C: 2-panel workspace -->
       <section id="adminWorkspace" class="admin-workspace" hidden>
-        <aside class="admin-list-pane" aria-label="노트북 목록">
-          <header class="admin-list-header">
-            <h3>노트북</h3>
-            <div class="admin-list-header-actions">
-              <button id="adminStatusButton" class="icon-button admin-status-nav-button" type="button" aria-label="시스템 상태" title="시스템 상태">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-              </button>
+        <aside class="admin-list-pane" aria-label="관리자 콘솔 메뉴">
+          <nav class="admin-console-nav" aria-label="관리자 메뉴">
+            <button id="adminNotebookMenuButton" class="admin-console-nav-item active" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg>
+              <span>부서노트북 관리</span>
+            </button>
+            <button id="adminStatusButton" class="admin-console-nav-item" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span>시스템 상태</span>
+            </button>
+            <button id="adminAccessButton" class="admin-console-nav-item" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 12.3 11 13.8l3.7-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>권한 관리</span>
+            </button>
+          </nav>
+          <section id="adminNotebookNavSection" class="admin-notebook-nav-section">
+            <header class="admin-list-header">
+              <h3>노트북</h3>
               <button id="adminNewNotebookButton" class="icon-button admin-new-button" type="button" aria-label="새 노트북" title="새 노트북">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
               </button>
-            </div>
-          </header>
-          <div id="adminNotebookList" class="admin-list" aria-live="polite"></div>
+            </header>
+            <div id="adminNotebookList" class="admin-list" aria-live="polite"></div>
+          </section>
         </aside>
 
         <main class="admin-detail-pane" aria-label="노트북 상세">
@@ -675,6 +707,19 @@
               <button id="adminRefreshStatusButton" class="ghost-button admin-status-refresh" type="button">새로고침</button>
             </div>
             <div id="adminStatusBody" class="admin-status-body"></div>
+          </div>
+
+          <div id="adminAccessPanel" class="admin-status-panel admin-access-panel" hidden>
+            <div class="admin-status-panel-header">
+              <h3>권한 관리</h3>
+              <button id="adminAccessRefreshButton" class="ghost-button admin-status-refresh" type="button">새로고침</button>
+            </div>
+            <div class="admin-access-add-row">
+              <input id="adminAccessGroupNameInput" class="text-input" maxlength="80" placeholder="그룹명" />
+              <input id="adminAccessGroupDescriptionInput" class="text-input" maxlength="400" placeholder="설명" />
+              <button id="adminAccessAddGroupButton" class="send-button" type="button">그룹 추가</button>
+            </div>
+            <div id="adminAccessBody" class="admin-access-body"></div>
           </div>
 
           <!-- Empty state -->
@@ -715,6 +760,25 @@
             </header>
 
             <section class="admin-detail-docs">
+              <section id="adminNotebookAccessSection" class="admin-notebook-access-section">
+                <header class="admin-docs-header">
+                  <h4>접근 권한</h4>
+                  <span id="adminNotebookAccessStatus" class="admin-save-status" aria-live="polite"></span>
+                </header>
+                <div class="admin-policy-block">
+                  <span class="admin-policy-label">허용 그룹</span>
+                  <div id="adminNotebookAccessGroups" class="admin-policy-options"></div>
+                </div>
+                <div class="admin-policy-block">
+                  <span class="admin-policy-label">최소 등급</span>
+                  <div id="adminNotebookAccessLevels" class="admin-policy-options"></div>
+                </div>
+                <div class="admin-form-actions">
+                  <span class="dialog-actions-spacer"></span>
+                  <button id="adminNotebookAccessSaveButton" class="ghost-button" type="button">권한 저장</button>
+                </div>
+              </section>
+
               <header class="admin-docs-header">
                 <h4>문서 <span id="adminDocsCount" class="admin-docs-count">0</span></h4>
               </header>

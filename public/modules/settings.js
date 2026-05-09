@@ -1,6 +1,9 @@
 import { state, elements, normalizeColorTheme, DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 
+let activeSettingsTab = "personal";
+let adminConsoleMounted = false;
+
 export function renderBrand() {
   const appName = state.settings.appName || "Ollama Chatter";
   const banner = state.settings.appBannerDataUrl || DEFAULT_BANNER_SRC;
@@ -29,8 +32,34 @@ function openSettings() {
   renderBannerPreview();
   renderSystemAvatarPreview();
   renderAvatarPreview();
+  switchSettingsTab("personal");
   elements.settingsDialog.showModal();
   elements.appBannerTrigger.focus();
+}
+
+function mountAdminConsole() {
+  if (adminConsoleMounted || !elements.settingsAdminMount || !elements.adminNotebookDialog) return;
+  while (elements.adminNotebookDialog.firstChild) {
+    elements.settingsAdminMount.append(elements.adminNotebookDialog.firstChild);
+  }
+  elements.adminNotebookDialog.remove();
+  adminConsoleMounted = true;
+}
+
+function switchSettingsTab(tab) {
+  activeSettingsTab = tab === "admin" ? "admin" : "personal";
+  const adminActive = activeSettingsTab === "admin";
+  elements.settingsPersonalPanel.hidden = adminActive;
+  elements.settingsAdminPanel.hidden = !adminActive;
+  elements.settingsPersonalTab.classList.toggle("active", !adminActive);
+  elements.settingsAdminTab.classList.toggle("active", adminActive);
+  elements.settingsPersonalTab.setAttribute("aria-selected", String(!adminActive));
+  elements.settingsAdminTab.setAttribute("aria-selected", String(adminActive));
+  elements.settingsDialog.classList.toggle("admin-mode", adminActive);
+  if (adminActive) {
+    mountAdminConsole();
+    window.dispatchEvent(new CustomEvent("myai:settingsadminopen"));
+  }
 }
 
 function setTheme(theme) {
@@ -114,6 +143,12 @@ export function bindSettingsEvents() {
   elements.settingsButton.addEventListener("click", openSettings);
   elements.closeSettingsButton.addEventListener("click", closeSettings);
   elements.cancelSettingsButton.addEventListener("click", closeSettings);
+  elements.settingsPersonalTab.addEventListener("click", () => switchSettingsTab("personal"));
+  elements.settingsAdminTab.addEventListener("click", () => switchSettingsTab("admin"));
+  window.addEventListener("myai:opensettingsadmin", () => {
+    openSettings();
+    switchSettingsTab("admin");
+  });
 
   const openBannerPicker = () => { if (!state.busy) elements.appBannerInput.click(); };
   const openAvatarPicker = () => { if (!state.busy) elements.userAvatarInput.click(); };

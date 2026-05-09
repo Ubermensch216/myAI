@@ -1,7 +1,7 @@
 import { renderAssistantAnswer as renderAssistantContent } from "../answerRenderer.js";
 import { formatVisualizationText, renderVisualizationSpec } from "../visualizationRenderer.js";
 import { displayFileName as formatDisplayFileName } from "../fileDisplay.js";
-import { state, elements, documentCacheHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
+import { state, elements, documentCacheHeaders, accessAuthHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persistence.js";
 import {
   hasCalendarKeyword, isCalendarConfirmation, isCalendarRejection,
@@ -344,7 +344,7 @@ export async function requestTextAssistantResponse(room) {
     const response = await fetch("/api/chat", {
       method: "POST",
       signal: state.abortController.signal,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...accessAuthHeaders() },
       body: JSON.stringify(payload)
     });
     if (useDeepAnalysis) setDeepAnalysisEnabled(false);

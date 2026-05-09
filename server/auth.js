@@ -6,17 +6,23 @@ export function isAdminConfigured() {
   return Boolean(getAdminToken());
 }
 
-function getAdminToken() {
+export function getAdminToken() {
   const token = String(process.env.ADMIN_TOKEN ?? "").trim();
   return token || null;
 }
 
-function extractRequestToken(request) {
+export function extractRequestToken(request) {
   const header = request.get?.("authorization") || request.headers?.authorization || "";
   if (typeof header !== "string") return "";
   const match = header.match(/^Bearer\s+(.+)$/i);
   if (match) return match[1].trim();
   return header.trim();
+}
+
+export function isAdminRequest(request) {
+  const expected = getAdminToken();
+  const provided = extractRequestToken(request);
+  return Boolean(expected && provided && timingSafeEqual(provided, expected));
 }
 
 export function requireAdmin(request, response, next) {

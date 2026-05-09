@@ -27,6 +27,7 @@ import {
   getNotebook,
   createNotebook,
   updateNotebook,
+  updateNotebookAccess,
   deleteNotebook,
   addNotebookDocument,
   removeNotebookDocument
@@ -38,7 +39,25 @@ import {
   recoverNotebookIngestJobs,
   retryNotebookIngestJob
 } from "./ingest/notebookIngestJobs.js";
-import { isAdminConfigured, requireAdmin } from "./auth.js";
+import { isAdminConfigured, isAdminRequest, requireAdmin } from "./auth.js";
+import {
+  canAccessNotebook,
+  getAccessConfiguration,
+  getAccessFromRequest,
+  getAccessLoginOptions,
+  isAccessControlConfigured,
+  loginAccess,
+  createAccessGroup,
+  updateAccessGroup,
+  deleteAccessGroup,
+  setGroupLevelPassword,
+  updateGroupLevel,
+  setSuperPassword,
+  updateSuperAccess,
+  normalizeNotebookAccessPolicy,
+  redactNotebookAccessForClient,
+  requireNotebookAccess
+} from "./accessControl.js";
 
 loadLocalEnv();
 
@@ -119,7 +138,7 @@ app.use("/api/studio/mindmap", createRateLimiter({ name: "studio_mindmap", keyPr
 app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
 app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
 app.use(
-  ["/api/notebooks", "/api/admin/verify"],
+  ["/api/notebooks", "/api/admin/verify", "/api/admin/access"],
   createRateLimiter({
     name: "admin_write",
     keyPrefix: "admin:",
@@ -292,6 +311,16 @@ app.post("/api/chat", async (request, response) => {
     return;
   }
 
+  if (notebookId && await isAccessControlConfigured()) {
+    const notebook = await getNotebook(notebookId);
+    if (!notebook) {
+      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
+      return;
+    }
+    const access = await requireNotebookAccess(request, response, notebook);
+    if (!access) return;
+  }
+
   const chatAbort = createRequestAbortController(request, response);
   const signal = chatAbort.signal;
   let pendingMeta = null;
@@ -448,10 +477,142 @@ app.post("/api/admin/verify", requireAdmin, (_request, response) => {
   response.json({ ok: true });
 });
 
-app.get("/api/notebooks", async (_request, response) => {
+app.get("/api/access/options", async (_request, response) => {
+  try {
+    response.json(await getAccessLoginOptions());
+  } catch (error) {
+    response.status(500).json({ error: error.message, groups: [], super: { enabled: false } });
+  }
+});
+
+app.get("/api/access/status", async (request, response) => {
+  try {
+    const access = await getAccessFromRequest(request);
+    response.json({
+      configured: await isAccessControlConfigured(),
+      authenticated: Boolean(access),
+      access
+    });
+  } catch (error) {
+    response.status(500).json({ error: error.message, authenticated: false, access: null });
+  }
+});
+
+app.post("/api/access/login", async (request, response) => {
+  try {
+    const result = await loginAccess(request.body || {});
+    if (!result) {
+      response.status(401).json({ ok: false, error: "Access authentication failed." });
+      return;
+    }
+    response.json({ ok: true, ...result });
+  } catch (error) {
+    response.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/access/logout", (_request, response) => {
+  response.json({ ok: true });
+});
+
+app.get("/api/admin/access/groups", requireAdmin, async (_request, response) => {
+  try {
+    response.json(await getAccessConfiguration());
+  } catch (error) {
+    response.status(500).json({ error: error.message, groups: [] });
+  }
+});
+
+app.post("/api/admin/access/groups", requireAdmin, async (request, response) => {
+  try {
+    const group = await createAccessGroup(request.body || {});
+    response.status(201).json({ group });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/admin/access/groups/:groupId", requireAdmin, async (request, response) => {
+  try {
+    const group = await updateAccessGroup(request.params.groupId, request.body || {});
+    if (!group) {
+      response.status(404).json({ error: "Access group not found." });
+      return;
+    }
+    response.json({ group });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.delete("/api/admin/access/groups/:groupId", requireAdmin, async (request, response) => {
+  try {
+    response.json({ removed: await deleteAccessGroup(request.params.groupId) });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/admin/access/groups/:groupId/levels/:level/password", requireAdmin, async (request, response) => {
+  try {
+    const group = await setGroupLevelPassword(request.params.groupId, request.params.level, request.body?.password);
+    if (!group) {
+      response.status(404).json({ error: "Access group not found." });
+      return;
+    }
+    response.json({ group });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/admin/access/groups/:groupId/levels/:level", requireAdmin, async (request, response) => {
+  try {
+    const group = await updateGroupLevel(request.params.groupId, request.params.level, request.body || {});
+    if (!group) {
+      response.status(404).json({ error: "Access group not found." });
+      return;
+    }
+    response.json({ group });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/admin/access/super/password", requireAdmin, async (request, response) => {
+  try {
+    response.json({ super: await setSuperPassword(request.body?.password) });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/admin/access/super", requireAdmin, async (request, response) => {
+  try {
+    response.json({ super: await updateSuperAccess(request.body || {}) });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/api/notebooks", async (request, response) => {
   try {
     const notebooks = await listNotebooks();
-    response.json({ notebooks });
+    const includeAccess = isAdminRequest(request);
+    if (includeAccess) {
+      response.json({ notebooks: notebooks.map((notebook) => redactNotebookAccessForClient(notebook, { includeAccess: true })) });
+      return;
+    }
+    if (!await isAccessControlConfigured()) {
+      response.json({ notebooks: notebooks.map((notebook) => redactNotebookAccessForClient(notebook)) });
+      return;
+    }
+    const access = await getAccessFromRequest(request);
+    response.json({
+      notebooks: notebooks
+        .filter((notebook) => canAccessNotebook(access, notebook))
+        .map((notebook) => redactNotebookAccessForClient(notebook))
+    });
   } catch (error) {
     response.status(500).json({ error: error.message, notebooks: [] });
   }
@@ -464,7 +625,12 @@ app.get("/api/notebooks/:id", async (request, response) => {
       response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
       return;
     }
-    response.json({ notebook });
+    const includeAccess = isAdminRequest(request);
+    if (!includeAccess && await isAccessControlConfigured()) {
+      const access = await requireNotebookAccess(request, response, notebook);
+      if (!access) return;
+    }
+    response.json({ notebook: redactNotebookAccessForClient(notebook, { includeAccess }) });
   } catch (error) {
     response.status(500).json({ error: error.message });
   }
@@ -490,6 +656,19 @@ app.patch("/api/notebooks/:id", requireAdmin, async (request, response) => {
     });
     if (!updated) {
       response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      return;
+    }
+    response.json({ notebook: updated });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
+app.patch("/api/notebooks/:id/access", requireAdmin, async (request, response) => {
+  try {
+    const updated = await updateNotebookAccess(request.params.id, normalizeNotebookAccessPolicy(request.body?.access || request.body || null));
+    if (!updated) {
+      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
       return;
     }
     response.json({ notebook: updated });

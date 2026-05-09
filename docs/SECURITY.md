@@ -16,8 +16,8 @@ Browser clients
 | Surface | Current behavior | Operational implication |
 |---|---|---|
 | Chat, upload, visualization, calendar intent | No built-in user login | Only expose to localhost, VPN, or a trusted LAN unless a reverse proxy adds auth. |
-| Notebook reads | Public to anyone who can reach the server | Department notebooks are shared knowledge, not private per-user data. |
-| Notebook writes/admin actions | Protected by `ADMIN_TOKEN` | Use a long random token. Keep it out of screenshots, docs, and shell history. |
+| Notebook reads | Public until Department Notebook Access Control is configured; then requires group/level or Super access token | Existing local installs keep working, while shared deployments can restrict notebook visibility and RAG by policy. |
+| Notebook writes/admin actions | Protected by `ADMIN_TOKEN` | Use a long random token. Admin manages groups/passwords/policies but is not itself a notebook-read identity for chat. |
 | Personal rooms, uploads, calendar, settings | Encrypted in each browser IndexedDB | Isolation is by browser key, not by server-side accounts. Clearing browser storage deletes the data. |
 | Upload temp files | Written under `uploads/`, then removed after parse | The server sees personal files during parsing. Keep the host and temp directory private. |
 | Runtime upload cache | In-memory, scoped by `X-MyAI-Document-Key`, TTL/LRU bounded | Convenience hydration cache only; not listable and not durable. |
