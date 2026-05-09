@@ -5,8 +5,8 @@ This guide covers the portable Docker Compose stack for myAI. The stack runs:
 | Service | Image | Purpose |
 |---|---|---|
 | `app` | built from `Dockerfile` | Node.js 24 Express app and static frontend |
-| `qdrant` | `qdrant/qdrant:v1.13.6` | optional department vector index |
-| `ollama` | `ollama/ollama:latest` | local model server |
+| `qdrant` | `qdrant/qdrant:${QDRANT_IMAGE_TAG:-v1.13.6}` | optional department vector index |
+| `ollama` | `ollama/ollama:${OLLAMA_IMAGE_TAG:-latest}` | local model server |
 
 Inside Compose, the app reaches Qdrant at `http://qdrant:6333` and Ollama at `http://ollama:11434`. The web app is exposed on port `3000`. Qdrant and Ollama are bound for local diagnostics only.
 
@@ -29,6 +29,14 @@ Edit `.env` and set strong server-side secrets:
 ```env
 ADMIN_TOKEN=<long-random-token>
 QDRANT_API_KEY=<long-random-token>
+```
+
+The template also exposes image tags for controlled updates:
+
+```env
+NODE_IMAGE=node:24-bookworm-slim
+QDRANT_IMAGE_TAG=v1.13.6
+OLLAMA_IMAGE_TAG=latest
 ```
 
 Optional Naver Search configuration belongs in this same `.env` file:
@@ -166,8 +174,16 @@ If Qdrant storage is lost but `myai-data` is intact, run `rag:rebuild`.
 
 ```bash
 git pull
-docker compose build app
+docker compose pull qdrant ollama
+docker compose build --pull app
 docker compose up -d
+docker compose exec app npm run rag:check
+```
+
+The same container refresh can be run through npm:
+
+```bash
+npm run docker:update
 docker compose exec app npm run rag:check
 ```
 
@@ -178,10 +194,19 @@ docker compose exec ollama ollama pull gemma4:e2b
 docker compose exec ollama ollama pull bge-m3
 ```
 
+When changing `QDRANT_IMAGE_TAG` and keeping the existing `qdrant-storage`
+volume, upgrade one minor version at a time. If you intentionally recreate the
+Qdrant volume, rebuild the department indexes from `myai-data` afterward:
+
+```bash
+docker compose exec app npm run rag:rebuild
+docker compose exec app npm run rag:check
+```
+
 ## Operations Notes
 
 - Keep `ADMIN_TOKEN`, `QDRANT_API_KEY`, and Naver API secrets server-side.
-- Use the main gear button → Admin Console to manage department notebooks,
+- Use the main gear button -> Admin Console to manage department notebooks,
   access groups/levels, Super read access, notebook policies, and system status.
 - Use `docs/SECURITY.md` before exposing the app beyond localhost or a trusted LAN.
 - Reverse proxies must not buffer `/api/chat`; streamed responses should flush as they arrive.

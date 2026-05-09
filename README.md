@@ -114,6 +114,13 @@ Persistent container data lives in Docker volumes:
 The older `deploy/docker-compose.department.yml` starts Qdrant only. Use the
 root `compose.yml` when you want the whole app stack in containers.
 
+To refresh service images and rebuild the app image later:
+
+```bash
+npm run docker:update
+docker compose exec app npm run rag:check
+```
+
 ## Verification
 
 Check Ollama:

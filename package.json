@@ -23,6 +23,8 @@
     "rag:backup": "node scripts/backup-department-rag.mjs",
     "rag:restore": "node scripts/restore-department-rag.mjs",
     "docker:build": "docker compose build",
+    "docker:update": "docker compose pull qdrant ollama && docker compose build --pull app && docker compose up -d",
+    "docker:config": "docker compose config",
     "docker:up": "docker compose up -d",
     "docker:logs": "docker compose logs -f app",
     "docker:pull-models": "docker compose exec ollama ollama pull gemma4:e2b && docker compose exec ollama ollama pull bge-m3",

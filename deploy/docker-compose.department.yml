@@ -8,7 +8,7 @@ name: myai-department-rag
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.13.6
+    image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-v1.13.6}
     container_name: myai-qdrant
     restart: unless-stopped
     ports:
