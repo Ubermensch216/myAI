@@ -1,5 +1,5 @@
 import { displayFileName as formatDisplayFileName, fileTypeIcon as getFileTypeIcon } from "./fileDisplay.js";
-import { state, elements, getActiveRoom, createRoom, showConfirmDialog } from "./modules/state.js";
+import { state, elements, getActiveRoom, createRoom, showConfirmDialog, documentCacheHeaders } from "./modules/state.js";
 import { initializeEncryptedStorage, loadAppState, scheduleSave, persistAppState } from "./modules/persistence.js";
 import {
   renderCalendar, shiftCalendarMonth, jumpCalendarToToday, setCalendarViewMode,
@@ -89,6 +89,16 @@ async function deleteRoom(roomId) {
     danger: true
   });
   if (!confirmed) return;
+  const room = state.rooms.find((r) => r.id === roomId);
+  if (room && Array.isArray(room.documents)) {
+    for (const doc of room.documents) {
+      if (!doc?.id) continue;
+      fetch(`/api/documents/${doc.id}`, {
+        method: "DELETE",
+        headers: documentCacheHeaders()
+      }).catch(() => {});
+    }
+  }
   state.rooms = state.rooms.filter((room) => room.id !== roomId);
   if (!state.rooms.length) state.rooms.push(createRoom());
   if (state.activeRoomId === roomId) state.activeRoomId = state.rooms[0].id;

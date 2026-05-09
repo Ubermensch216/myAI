@@ -1629,11 +1629,74 @@ body.panel-resizing .panel-resizer::after {
 
 .upload-progress {
   grid-column: 2 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   min-height: 17px;
   margin-top: -4px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.upload-progress-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-3) 80%, transparent);
+  color: var(--muted);
+  max-width: 100%;
+}
+
+.upload-progress-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.upload-progress-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.upload-progress-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.upload-progress-spinner {
+  animation: upload-progress-spin 0.9s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes upload-progress-spin {
+  to { transform: rotate(360deg); }
+}
+
+.upload-progress-item.processing {
+  color: var(--accent-dark);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-3));
+}
+
+.upload-progress-item.done {
+  color: var(--accent-dark);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-3));
+}
+
+.upload-progress-item.error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-3));
 }
 
 .drop-overlay {

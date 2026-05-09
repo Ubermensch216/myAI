@@ -111,15 +111,55 @@ export function getPersonalizationSettings() {
 
 // ===== File upload =====
 
+const UPLOAD_PROGRESS_ICONS = {
+  spinner: '<svg viewBox="0 0 24 24" class="upload-progress-spinner" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="42 42"></circle></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>',
+  error: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.4" fill="none" stroke="currentColor" stroke-width="1.8"></circle><path d="M12 7.5v5.5M12 16.6h.01" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg>'
+};
+
+function clearUploadProgress() {
+  if (elements.uploadProgress) elements.uploadProgress.textContent = "";
+}
+
+function createUploadProgressItem(fileName, state = "processing") {
+  if (!elements.uploadProgress) return null;
+  const item = document.createElement("span");
+  item.className = `upload-progress-item ${state}`;
+  const icon = document.createElement("span");
+  icon.className = "upload-progress-icon";
+  icon.innerHTML = state === "error" ? UPLOAD_PROGRESS_ICONS.error : UPLOAD_PROGRESS_ICONS.spinner;
+  const name = document.createElement("span");
+  name.className = "upload-progress-name";
+  name.textContent = fileName;
+  item.append(icon, name);
+  elements.uploadProgress.appendChild(item);
+  return item;
+}
+
+function setUploadProgressItemState(item, state, message) {
+  if (!item) return;
+  item.classList.remove("processing", "done", "error");
+  item.classList.add(state);
+  const icon = item.querySelector(".upload-progress-icon");
+  if (icon) {
+    if (state === "done") icon.innerHTML = UPLOAD_PROGRESS_ICONS.check;
+    else if (state === "error") icon.innerHTML = UPLOAD_PROGRESS_ICONS.error;
+    else icon.innerHTML = UPLOAD_PROGRESS_ICONS.spinner;
+  }
+  item.title = message || "";
+}
+
 export async function uploadFiles(files) {
   if (!files.length) return;
   const room = getActiveRoom();
   if (!room) return;
   if (!Array.isArray(room.documents)) room.documents = [];
 
+  clearUploadProgress();
+
   for (const file of files) {
     if (!shouldUploadFile(file)) continue;
-    elements.uploadProgress.textContent = `${file.name} 처리 중...`;
+    const item = createUploadProgressItem(file.name, "processing");
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -132,12 +172,12 @@ export async function uploadFiles(files) {
       if (!response.ok) throw new Error(result.error || "업로드 실패");
       room.documents.push(result.document);
       room.updatedAt = new Date().toISOString();
-      const saved = await persistAppState();
+      await persistAppState();
       // renderRooms triggered via custom event so chat.js doesn't import app.js
       window.dispatchEvent(new CustomEvent("myai:renderrooms"));
-      if (saved) elements.uploadProgress.textContent = `${file.name} 분석 준비 완료`;
+      setUploadProgressItemState(item, "done", `${file.name} 분석 준비 완료`);
     } catch (error) {
-      elements.uploadProgress.textContent = `${file.name}: ${error.message}`;
+      setUploadProgressItemState(item, "error", `${file.name}: ${error.message}`);
     }
   }
 }
@@ -145,7 +185,8 @@ export async function uploadFiles(files) {
 function shouldUploadFile(file) {
   const size = Number(file?.size || 0);
   if (size > DEFAULT_MAX_UPLOAD_BYTES) {
-    elements.uploadProgress.textContent = `${file.name}: ${formatBytes(size)} 파일은 업로드 한도 ${formatBytes(DEFAULT_MAX_UPLOAD_BYTES)}를 넘습니다.`;
+    const item = createUploadProgressItem(file.name, "error");
+    if (item) item.title = `${file.name}: ${formatBytes(size)} 파일은 업로드 한도 ${formatBytes(DEFAULT_MAX_UPLOAD_BYTES)}를 넘습니다.`;
     return false;
   }
   if (size >= LARGE_FILE_WARNING_BYTES) {
