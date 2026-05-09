@@ -1,0 +1,284 @@
+{
+  "version": "1",
+  "description": "Department RAG golden evaluation set for the local public-service and audit-law notebooks.",
+  "_annotationGuide": [
+    "Each case uses chunk-level annotation in 'relevantChunkKeys' using 'documentId:chunkIndex'.",
+    "Run 'npm run rag:check' before evaluating so Qdrant and SQLite FTS are in sync.",
+    "Run 'npm run rag:quality-test -- --k 10' for the baseline retrieval check.",
+    "Run 'npm run rag:quality-test -- --k 10 --compare-rerank' when a reranker model is available."
+  ],
+  "suites": [
+    {
+      "id": "public_service_leave_and_duty",
+      "notebookId": "nb_b1191f91e61238ef",
+      "description": "국가공무원 복무규정과 지방공무원 복무규정의 근무, 휴가, 공가, 겸직 관련 질의",
+      "skip": false,
+      "cases": [
+        {
+          "id": "ps001",
+          "query": "국가공무원의 연가계획 수립과 연가 승인 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:9"],
+          "quick": true
+        },
+        {
+          "id": "ps002",
+          "query": "국가공무원의 권장 연가 일수와 연가보상비 공지 기준은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:10"]
+        },
+        {
+          "id": "ps003",
+          "query": "국가공무원 10일 이상 연속된 연가 사용 보장 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:11"]
+        },
+        {
+          "id": "ps004",
+          "query": "국가공무원 공가 승인 사유에는 무엇이 포함되나?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:12"],
+          "quick": true
+        },
+        {
+          "id": "ps005",
+          "query": "국가공무원 특별휴가와 출산휴가 기준은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:13"]
+        },
+        {
+          "id": "ps006",
+          "query": "국가공무원 재해구호휴가와 가족돌봄휴가 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:14"]
+        },
+        {
+          "id": "ps007",
+          "query": "국가공무원 심리안정휴가와 장기재직휴가 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:15"]
+        },
+        {
+          "id": "ps008",
+          "query": "국가공무원의 영리 업무 금지와 겸직 허가 규정은?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:17"]
+        },
+        {
+          "id": "ps009",
+          "query": "지방공무원 비상근무의 종류와 발령 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:1", "doc_4ae9287eb857d5dd:2"],
+          "quick": true
+        },
+        {
+          "id": "ps010",
+          "query": "지방공무원 비상근무 발령과 보고 절차는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:3", "doc_4ae9287eb857d5dd:4"]
+        },
+        {
+          "id": "ps011",
+          "query": "지방공무원 근무시간 또는 근무일 변경 규정은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:5"]
+        },
+        {
+          "id": "ps012",
+          "query": "지방공무원 출장공무원의 의무는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:6"]
+        },
+        {
+          "id": "ps013",
+          "query": "지방공무원의 재직기간별 연가일수와 연가보상비 지급 규정은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:7"]
+        },
+        {
+          "id": "ps014",
+          "query": "지방공무원 연가 사용 권장과 미사용 권장 연가일수 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:9"],
+          "quick": true
+        },
+        {
+          "id": "ps015",
+          "query": "지방공무원 공가 허가 사유는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:10"]
+        },
+        {
+          "id": "ps016",
+          "query": "지방공무원 특별휴가와 경조사휴가 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:11"]
+        },
+        {
+          "id": "ps017",
+          "query": "지방공무원 휴가기간 중 토요일과 공휴일 산입 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:13"]
+        },
+        {
+          "id": "ps018",
+          "query": "지방공무원의 정치적 행위 제한 기준은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:14"]
+        },
+        {
+          "id": "ps019",
+          "query": "공무원 근무시간 면제 시간의 사용 규정은?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:15", "doc_347e00e123d00fc5:19"],
+          "quick": true
+        },
+        {
+          "id": "ps020",
+          "query": "지방공무원 임신검진 동행휴가 적용례는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:16"]
+        },
+        {
+          "id": "ps021",
+          "query": "국가공무원과 지방공무원의 연가일수 산정과 연가보상비 지급 기준 차이는?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:10", "doc_4ae9287eb857d5dd:7"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "ps022",
+          "query": "국가공무원과 지방공무원의 공가 사유는 어떻게 다른가?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:12", "doc_4ae9287eb857d5dd:10"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "ps023",
+          "query": "국가공무원의 출산휴가 등 특별휴가와 지방공무원의 경조사휴가 등 특별휴가 기준을 비교해줘.",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:13", "doc_4ae9287eb857d5dd:11"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "ps024",
+          "query": "근무시간 면제 시간의 사용과 비상근무 발령 사이의 운용 관계는?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:15", "doc_4ae9287eb857d5dd:1", "doc_347e00e123d00fc5:19"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "ps025",
+          "query": "국가공무원의 영리업무 금지와 지방공무원의 정치적 행위 제한 규정의 공통 취지는?",
+          "relevantChunkKeys": ["doc_347e00e123d00fc5:17", "doc_4ae9287eb857d5dd:14"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "ps026",
+          "query": "지방공무원 비상근무는 종류, 발령, 보고까지 어떻게 운영되는가?",
+          "relevantChunkKeys": ["doc_4ae9287eb857d5dd:1", "doc_4ae9287eb857d5dd:2", "doc_4ae9287eb857d5dd:3", "doc_4ae9287eb857d5dd:4"],
+          "tags": ["multihop"]
+        }
+      ]
+    },
+    {
+      "id": "audit_law_and_accounting_audit",
+      "notebookId": "nb_c7b5657d196c4910",
+      "description": "공공기관 회계감사 규칙과 공공감사법의 감사기구, 감사절차, 면책 관련 질의",
+      "skip": false,
+      "cases": [
+        {
+          "id": "au001",
+          "query": "회계감사인의 자격과 전문교육 이수 요건은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:1"],
+          "quick": true
+        },
+        {
+          "id": "au002",
+          "query": "회계감사인의 독립성 준수와 독립성 저해 요인은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:2"]
+        },
+        {
+          "id": "au003",
+          "query": "회계감사인 선정 보고와 통보 기한은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:3"]
+        },
+        {
+          "id": "au004",
+          "query": "회계감사인을 변경하거나 감사계약을 해지할 수 있는 사유는?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:4"]
+        },
+        {
+          "id": "au005",
+          "query": "회계감사보고서 제출 기한과 재무제표 차이 자료 제출 의무는?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:5"]
+        },
+        {
+          "id": "au006",
+          "query": "회계감사 과정에서 위법 부당사항을 발견하면 어떻게 보고해야 하나?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:6"],
+          "quick": true
+        },
+        {
+          "id": "au007",
+          "query": "감사원의 결산감사 대상 공기업과 준정부기관 기준은?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:8"]
+        },
+        {
+          "id": "au008",
+          "query": "공공감사법상 자체감사기구 설치 의무는?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:1"],
+          "quick": true
+        },
+        {
+          "id": "au009",
+          "query": "감사기구의 장 신분보장과 임기 중 해지 제한은?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:2"]
+        },
+        {
+          "id": "au010",
+          "query": "감사기구의 장 직급은 어떤 기준으로 정해야 하나?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:3"]
+        },
+        {
+          "id": "au011",
+          "query": "감사기구의 장 결격사유는?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:4"]
+        },
+        {
+          "id": "au012",
+          "query": "자체감사를 위해 자료 제출이나 출석 답변을 요구할 수 있나?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:5"]
+        },
+        {
+          "id": "au013",
+          "query": "적극행정에 대한 면책 기준은?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:7"],
+          "quick": true
+        },
+        {
+          "id": "au014",
+          "query": "자체감사기구 감사활동 예산 편성 시 독립성 존중 의무는?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:8"]
+        },
+        {
+          "id": "au015",
+          "query": "중복감사 금지와 감사계획 협의 규정은?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:9"]
+        },
+        {
+          "id": "au016",
+          "query": "외부 회계감사인과 자체감사기구의 자격 및 독립성 규정을 비교해줘.",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:1", "doc_07ad9aa56ed8ef34:2", "doc_9819307c7057f671:2"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "au017",
+          "query": "회계감사 과정에서 위법ᆞ부당사항을 발견한 경우 자체감사기구의 자료요구권은 어떻게 활용되나?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:6", "doc_9819307c7057f671:5"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "au018",
+          "query": "회계감사인 변경 또는 감사계약 해지 사유와 감사기구의 장 임기 중 해지 제한 규정은 어떻게 다른가?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:4", "doc_9819307c7057f671:2", "doc_9819307c7057f671:4"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "au019",
+          "query": "감사원 결산감사와 자체감사기구의 자체감사가 중복되는 경우 처리 절차는?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:8", "doc_9819307c7057f671:9"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "au020",
+          "query": "적극행정 면책과 자체감사기구의 자료요구권은 어떻게 균형 있게 적용되어야 하나?",
+          "relevantChunkKeys": ["doc_9819307c7057f671:7", "doc_9819307c7057f671:5"],
+          "tags": ["multihop"]
+        },
+        {
+          "id": "au021",
+          "query": "회계감사보고서 제출 의무와 자체감사기구 예산편성 시 독립성 존중 의무의 관계는?",
+          "relevantChunkKeys": ["doc_07ad9aa56ed8ef34:5", "doc_9819307c7057f671:8"],
+          "tags": ["multihop"]
+        }
+      ]
+    }
+  ]
+}

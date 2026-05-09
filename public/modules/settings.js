@@ -1,4 +1,7 @@
-import { state, elements, normalizeColorTheme, DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF } from "./state.js";
+import {
+  state, elements, normalizeColorTheme, normalizeCustomColorTheme,
+  DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF
+} from "./state.js";
 import { scheduleSave } from "./persistence.js";
 
 let activeSettingsTab = "personal";
@@ -10,7 +13,7 @@ export function renderBrand() {
   state.settings.aiName = appName;
   document.title = appName;
   document.documentElement.dataset.theme = state.settings.theme || "light";
-  document.documentElement.dataset.colorTheme = normalizeColorTheme(state.settings.colorTheme);
+  applyColorTheme();
   renderThemeToggle();
   renderColorThemeToggle();
   elements.appNameText.textContent = appName;
@@ -65,6 +68,7 @@ function switchSettingsTab(tab) {
 function setTheme(theme) {
   state.settings.theme = theme === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = state.settings.theme;
+  applyColorTheme();
   renderThemeToggle();
 }
 
@@ -79,9 +83,27 @@ function renderThemeToggle() {
 
 function setColorTheme(colorTheme) {
   state.settings.colorTheme = normalizeColorTheme(colorTheme);
-  document.documentElement.dataset.colorTheme = state.settings.colorTheme;
+  applyColorTheme();
   renderColorThemeToggle();
   scheduleSave();
+}
+
+function applyColorTheme() {
+  const root = document.documentElement;
+  const colorTheme = normalizeColorTheme(state.settings.colorTheme);
+  state.settings.colorTheme = colorTheme;
+  root.dataset.colorTheme = colorTheme;
+  if (colorTheme !== "custom") {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent-dark");
+    root.style.removeProperty("--accent-aux");
+    return;
+  }
+  const palette = normalizeCustomColorTheme(state.settings.customColorTheme);
+  state.settings.customColorTheme = palette;
+  root.style.setProperty("--accent", palette.accent);
+  root.style.setProperty("--accent-dark", palette.accentDark);
+  root.style.setProperty("--accent-aux", palette.accentAux);
 }
 
 function renderColorThemeToggle() {
@@ -91,6 +113,29 @@ function renderColorThemeToggle() {
     option.classList.toggle("active", selected);
     option.setAttribute("aria-pressed", String(selected));
   }
+  renderCustomColorControls();
+}
+
+function renderCustomColorControls() {
+  const palette = normalizeCustomColorTheme(state.settings.customColorTheme);
+  state.settings.customColorTheme = palette;
+  if (elements.customColorPanel) elements.customColorPanel.hidden = normalizeColorTheme(state.settings.colorTheme) !== "custom";
+  for (const input of elements.customColorInputs) {
+    const key = input.dataset.customColorKey;
+    if (key && palette[key]) input.value = palette[key];
+  }
+  if (elements.customColorThemeThumb) {
+    elements.customColorThemeThumb.style.background = `linear-gradient(135deg, ${palette.accentAux} 0%, ${palette.accentDark} 48%, ${palette.accent} 100%)`;
+  }
+}
+
+function updateCustomColor(key, value) {
+  const current = normalizeCustomColorTheme(state.settings.customColorTheme);
+  state.settings.customColorTheme = normalizeCustomColorTheme({ ...current, [key]: value });
+  state.settings.colorTheme = "custom";
+  applyColorTheme();
+  renderColorThemeToggle();
+  scheduleSave();
 }
 
 function renderBannerPreview() {
@@ -216,5 +261,9 @@ export function bindSettingsEvents() {
   }
   for (const colorOption of elements.colorThemeOptions) {
     colorOption.addEventListener("click", () => setColorTheme(colorOption.dataset.colorThemeValue));
+  }
+  for (const input of elements.customColorInputs) {
+    input.addEventListener("input", () => updateCustomColor(input.dataset.customColorKey, input.value));
+    input.addEventListener("change", () => updateCustomColor(input.dataset.customColorKey, input.value));
   }
 }

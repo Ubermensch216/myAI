@@ -3,7 +3,7 @@ import {
   DB_NAME, DB_VERSION, APP_STATE_KEY, KEY_ID,
   documentCacheHeaders, ensureDocumentCacheKey,
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
-  normalizeLayout, ensureRoomStudio
+  normalizeCustomColorTheme, normalizeLayout, ensureRoomStudio
 } from "./state.js";
 
 let saveTimer = null;
@@ -132,6 +132,7 @@ export async function loadAppState() {
     appName,
     theme: stored.settings?.theme === "dark" ? "dark" : "light",
     colorTheme: normalizeColorTheme(stored.settings?.colorTheme),
+    customColorTheme: normalizeCustomColorTheme(stored.settings?.customColorTheme),
     appBannerDataUrl: stored.settings?.appBannerDataUrl || "",
     appLogoDataUrl: stored.settings?.appLogoDataUrl || "",
     systemAvatarDataUrl: stored.settings?.systemAvatarDataUrl || "",

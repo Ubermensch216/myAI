@@ -13,7 +13,7 @@ import {
   sendMessage, uploadFiles, confirmAndRemoveUploadedFile,
   appendMessage, renderFollowupSuggestions, extractImageFilesFromPaste,
   createTitleFromPrompt, submitPromptEdit, confirmAndClearRoomDocuments,
-  estimateAllRoomsStorageBytes, estimateDocumentBytes, estimateRoomStorageBytes, formatBytes
+  estimateAllRoomsStorageBytes, formatBytes
 } from "./modules/chat.js";
 import {
   loadNotebooks, loadAdminStatus, restoreAdminTokenSession, restoreAccessSession,
@@ -26,6 +26,13 @@ import { bindStudioEvents, renderStudio } from "./modules/studio.js";
 
 let titleTimer = null;
 let dragDepth = 0;
+
+const ROOM_FILE_SVG = {
+  paperclip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"></path></svg>',
+  chevronDown: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>',
+  chevronUp: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg>',
+  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>'
+};
 
 // ===== Boot =====
 
@@ -165,29 +172,15 @@ function renderRooms() {
     title.className = "room-item-title";
     title.textContent = room.title || "제목 없는 대화";
 
-    const count = document.createElement("span");
-    count.className = "room-item-count";
-    count.textContent = `${room.messages?.length ?? 0}`;
-
-    const storage = document.createElement("span");
-    storage.className = "room-item-storage";
-    storage.textContent = formatBytes(estimateRoomStorageBytes(room));
-
-    const fileIcons = document.createElement("span");
-    fileIcons.className = "room-file-icons";
     const roomDocs = Array.isArray(room.documents) ? room.documents : [];
-    for (const doc of roomDocs.slice(0, 6)) {
-      const icon = document.createElement("span");
-      icon.className = "room-file-icon";
-      icon.title = doc.fileType?.toUpperCase() || "FILE";
-      icon.textContent = getFileTypeIcon(doc);
-      fileIcons.append(icon);
-    }
-    if (roomDocs.length > 6) {
-      const more = document.createElement("span");
-      more.className = "room-file-more";
-      more.textContent = `+${roomDocs.length - 6}`;
-      fileIcons.append(more);
+    const attachmentIndicator = document.createElement("span");
+    attachmentIndicator.className = "room-attachment-indicator";
+    attachmentIndicator.title = "첨부 있음";
+    attachmentIndicator.setAttribute("role", "img");
+    attachmentIndicator.setAttribute("aria-label", "첨부 있음");
+    attachmentIndicator.hidden = roomDocs.length === 0;
+    if (roomDocs.length) {
+      attachmentIndicator.innerHTML = ROOM_FILE_SVG.paperclip;
     }
 
     const deleteButton = document.createElement("span");
@@ -195,49 +188,75 @@ function renderRooms() {
     deleteButton.title = "대화방 삭제";
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", async (event) => { event.stopPropagation(); await deleteRoom(room.id); });
-    item.append(title, storage, fileIcons, count, deleteButton);
+    item.append(title, attachmentIndicator, deleteButton);
     elements.roomList.append(item);
 
     if (room.id === state.activeRoomId && roomDocs.length) {
       const files = document.createElement("div");
       files.className = "room-file-titles";
+      files.classList.toggle("collapsed", room.attachmentsCollapsed === true);
       const fileToolbar = document.createElement("div");
       fileToolbar.className = "room-file-toolbar";
-      const fileSummary = document.createElement("span");
+      const toggleButton = document.createElement("button");
+      toggleButton.className = "room-file-toggle";
+      toggleButton.type = "button";
+      toggleButton.title = room.attachmentsCollapsed === true ? "첨부 펼치기" : "첨부 접기";
+      toggleButton.setAttribute("aria-label", toggleButton.title);
+      toggleButton.setAttribute("aria-expanded", room.attachmentsCollapsed === true ? "false" : "true");
+      toggleButton.innerHTML = room.attachmentsCollapsed === true ? ROOM_FILE_SVG.chevronDown : ROOM_FILE_SVG.chevronUp;
+      toggleButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        room.attachmentsCollapsed = room.attachmentsCollapsed !== true;
+        room.updatedAt = new Date().toISOString();
+        scheduleSave();
+        renderRooms();
+      });
+      const fileSummary = document.createElement("button");
       fileSummary.className = "room-file-summary";
-      const documentBytes = roomDocs.reduce((sum, doc) => sum + estimateDocumentBytes(doc), 0);
-      fileSummary.textContent = `첨부 ${roomDocs.length}개 · ${formatBytes(documentBytes)}`;
+      fileSummary.type = "button";
+      fileSummary.title = room.attachmentsCollapsed === true ? "첨부 펼치기" : "첨부 접기";
+      fileSummary.setAttribute("aria-label", `첨부 ${roomDocs.length}개 ${room.attachmentsCollapsed === true ? "펼치기" : "접기"}`);
+      fileSummary.innerHTML = `${ROOM_FILE_SVG.paperclip}<span class="room-file-count-badge">${roomDocs.length}</span>`;
+      fileSummary.addEventListener("click", (event) => {
+        event.stopPropagation();
+        toggleButton.click();
+      });
       const clearButton = document.createElement("button");
       clearButton.className = "room-file-clear";
       clearButton.type = "button";
-      clearButton.textContent = "첨부 정리";
+      clearButton.title = "첨부 정리";
+      clearButton.setAttribute("aria-label", "첨부 정리");
+      clearButton.innerHTML = ROOM_FILE_SVG.trash;
       clearButton.addEventListener("click", async (event) => {
         event.stopPropagation();
         await confirmAndClearRoomDocuments(room);
       });
-      fileToolbar.append(fileSummary, clearButton);
+      fileToolbar.append(toggleButton, fileSummary, document.createElement("span"), clearButton);
       files.append(fileToolbar);
-      for (const doc of roomDocs) {
-        const file = document.createElement("div");
-        file.className = "room-file-title";
-        const label = document.createElement("span");
-        label.className = "room-file-title-text";
-        label.textContent = `${getFileTypeIcon(doc)} ${formatDisplayFileName(doc)}`;
-        const size = document.createElement("span");
-        size.className = "room-file-size";
-        size.textContent = formatBytes(estimateDocumentBytes(doc));
-        const removeButton = document.createElement("button");
-        removeButton.className = "room-file-remove";
-        removeButton.type = "button";
-        removeButton.title = "자료 삭제";
-        removeButton.setAttribute("aria-label", `${formatDisplayFileName(doc)} 삭제`);
-        removeButton.textContent = "×";
-        removeButton.addEventListener("click", async (event) => {
-          event.stopPropagation();
-          await confirmAndRemoveUploadedFile(doc);
-        });
-        file.append(label, size, removeButton);
-        files.append(file);
+      if (room.attachmentsCollapsed !== true) {
+        for (const doc of roomDocs) {
+          const file = document.createElement("div");
+          file.className = "room-file-title";
+          const type = document.createElement("span");
+          type.className = "room-file-type";
+          type.title = doc.fileType?.toUpperCase() || "FILE";
+          type.textContent = getFileTypeIcon(doc);
+          const label = document.createElement("span");
+          label.className = "room-file-title-text";
+          label.textContent = formatDisplayFileName(doc);
+          const removeButton = document.createElement("button");
+          removeButton.className = "room-file-remove";
+          removeButton.type = "button";
+          removeButton.title = "자료 삭제";
+          removeButton.setAttribute("aria-label", `${formatDisplayFileName(doc)} 삭제`);
+          removeButton.textContent = "×";
+          removeButton.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            await confirmAndRemoveUploadedFile(doc);
+          });
+          file.append(type, label, removeButton);
+          files.append(file);
+        }
       }
       elements.roomList.append(files);
     }

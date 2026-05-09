@@ -47,20 +47,42 @@ export function computeCaseMetrics(chunks, tc, k) {
 function aggregateVariantMetrics(perCase) {
   const valid = perCase.filter((r) => !r.error);
   if (!valid.length) {
-    return { n: 0, recall: 0, mrr: 0, precision: 0, noEvidenceRate: 0, fallbackRate: 0, rerankAppliedRate: 0 };
+    return { n: 0, recall: 0, mrr: 0, precision: 0, noEvidenceRate: 0, fallbackRate: 0, rerankAppliedRate: 0, byTag: {} };
   }
-  const sum = (key) => valid.reduce((s, r) => s + (r.metrics?.[key] ?? 0), 0);
+  const sumOver = (rows, key) => rows.reduce((s, r) => s + (r.metrics?.[key] ?? 0), 0);
   const noEvidence = valid.filter((r) => (r.returnedCount ?? 0) === 0).length;
   const fallback = valid.filter((r) => r.diagnostics?.fallbackLoadedAllChunks).length;
   const reranked = valid.filter((r) => r.diagnostics?.rerankApplied).length;
+
+  const tagBuckets = new Map();
+  for (const r of valid) {
+    const tags = Array.isArray(r.tags) && r.tags.length ? r.tags : ["_untagged"];
+    for (const tag of tags) {
+      if (!tagBuckets.has(tag)) tagBuckets.set(tag, []);
+      tagBuckets.get(tag).push(r);
+    }
+  }
+  const byTag = {};
+  for (const [tag, rows] of tagBuckets) {
+    const ne = rows.filter((r) => (r.returnedCount ?? 0) === 0).length;
+    byTag[tag] = {
+      n: rows.length,
+      recall: sumOver(rows, "recall") / rows.length,
+      mrr: sumOver(rows, "rr") / rows.length,
+      precision: sumOver(rows, "precision") / rows.length,
+      noEvidenceRate: ne / rows.length
+    };
+  }
+
   return {
     n: valid.length,
-    recall: sum("recall") / valid.length,
-    mrr: sum("rr") / valid.length,
-    precision: sum("precision") / valid.length,
+    recall: sumOver(valid, "recall") / valid.length,
+    mrr: sumOver(valid, "rr") / valid.length,
+    precision: sumOver(valid, "precision") / valid.length,
     noEvidenceRate: noEvidence / valid.length,
     fallbackRate: fallback / valid.length,
-    rerankAppliedRate: reranked / valid.length
+    rerankAppliedRate: reranked / valid.length,
+    byTag
   };
 }
 
@@ -128,7 +150,7 @@ export async function runEvaluation({
 
     for (const tc of suite.cases) {
       totalQueries++;
-      const caseRecord = { id: tc.id, query: tc.query, relevantChunkKeys: tc.relevantChunkKeys || [], variants: {} };
+      const caseRecord = { id: tc.id, query: tc.query, relevantChunkKeys: tc.relevantChunkKeys || [], tags: tc.tags || [], variants: {} };
 
       for (const variant of variants) {
         if (signal?.aborted) throw new Error("aborted");
@@ -195,7 +217,8 @@ export async function runEvaluation({
         error: v.error || null,
         returnedCount: v.returnedCount ?? 0,
         diagnostics: v.diagnostics || null,
-        metrics: v.metrics || null
+        metrics: v.metrics || null,
+        tags: c.tags || []
       };
     }));
     summary[variant.label] = aggregateVariantMetrics(perCase);

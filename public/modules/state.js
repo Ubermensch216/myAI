@@ -26,7 +26,28 @@ export function normalizeCalendarViewMode(value) {
 }
 
 export function normalizeColorTheme(value) {
-  return value === "water" ? "water" : "busan";
+  return value === "water" || value === "custom" ? value : "busan";
+}
+
+export const DEFAULT_CUSTOM_COLOR_THEME = {
+  accent: "#e6007e",
+  accentDark: "#b00062",
+  accentAux: "#00a3e0"
+};
+
+export function normalizeCustomColorTheme(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    accent: normalizeHexColor(source.accent, DEFAULT_CUSTOM_COLOR_THEME.accent),
+    accentDark: normalizeHexColor(source.accentDark, DEFAULT_CUSTOM_COLOR_THEME.accentDark),
+    accentAux: normalizeHexColor(source.accentAux, DEFAULT_CUSTOM_COLOR_THEME.accentAux)
+  };
+}
+
+function normalizeHexColor(value, fallback) {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toLowerCase();
+  return fallback;
 }
 
 export const DEFAULT_LAYOUT = {
@@ -115,6 +136,7 @@ export const state = {
     appName: "Ollama Chatter",
     theme: "light",
     colorTheme: "busan",
+    customColorTheme: { ...DEFAULT_CUSTOM_COLOR_THEME },
     appBannerDataUrl: "",
     appLogoDataUrl: "",
     systemAvatarDataUrl: "",
@@ -205,6 +227,9 @@ export const elements = {
   appNameInput: document.querySelector("#appNameInput"),
   themeOptions: Array.from(document.querySelectorAll(".theme-option")),
   colorThemeOptions: Array.from(document.querySelectorAll(".color-theme-option")),
+  customColorPanel: document.querySelector("#customColorPanel"),
+  customColorInputs: Array.from(document.querySelectorAll(".custom-color-input")),
+  customColorThemeThumb: document.querySelector("#customColorThemeThumb"),
   customPromptInput: document.querySelector("#customPromptInput"),
   appBannerInput: document.querySelector("#appBannerInput"),
   appBannerPreview: document.querySelector("#appBannerPreview"),
@@ -448,6 +473,7 @@ export function createRoom() {
     title: "새 대화",
     messages: [],
     documents: [],
+    attachmentsCollapsed: false,
     pendingCalendarAction: null,
     selectedNotebookId: null,
     studio: {
