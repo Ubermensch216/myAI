@@ -217,7 +217,7 @@ export function neighborsOf(db, nodeId, opts = {}) {
       WHERE e.dst_id = ? AND e.enabled = 1 AND n.enabled = 1`);
     args.push(nodeId);
   }
-  const sql = parts.join(" UNION ") + " ORDER BY confidence DESC LIMIT ?";
+  const sql = parts.join(" UNION ") + " ORDER BY 3 DESC LIMIT ?";
   args.push(limit);
   return db.prepare(sql).all(...args);
 }

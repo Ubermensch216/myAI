@@ -46,13 +46,30 @@ function maybeScrollToBottom(shouldScroll = isMessagesNearBottom()) {
 }
 
 export function setDeepAnalysisEnabled(enabled) {
-  state.deepAnalysisEnabled = Boolean(enabled);
+  state.deepAnalysisEnabled = Boolean(enabled) && hasDeepAnalysisContext();
+  renderDeepAnalysisToggle();
+}
+
+export function renderDeepAnalysisToggle() {
   if (elements.deepAnalysisToggle) {
+    const available = hasDeepAnalysisContext();
+    if (!available) state.deepAnalysisEnabled = false;
+    elements.deepAnalysisToggle.disabled = !available;
     elements.deepAnalysisToggle.setAttribute("aria-pressed", state.deepAnalysisEnabled ? "true" : "false");
+    elements.deepAnalysisToggle.setAttribute("aria-label", available ? "정밀 분석" : "정밀 분석 사용 불가");
+    elements.deepAnalysisToggle.title = available
+      ? "첨부 파일 또는 부서노트북 전체를 정밀 분석합니다 (시간이 오래 걸림)"
+      : "첨부 파일을 추가하거나 부서노트북을 선택하면 정밀 분석을 사용할 수 있습니다";
   }
 }
 
 // ===== Active room helpers =====
+
+function hasDeepAnalysisContext() {
+  const room = getActiveRoom();
+  if (!room) return false;
+  return (Array.isArray(room.documents) && room.documents.length > 0) || Boolean(room.selectedNotebookId);
+}
 
 export function getActiveDocuments() {
   const room = getActiveRoom();

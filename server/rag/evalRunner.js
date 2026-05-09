@@ -157,6 +157,7 @@ export async function runEvaluation({
         const opts = { signal };
         if (typeof variant.rerank === "boolean") opts.rerank = variant.rerank;
         if (typeof variant.queryExpansion === "boolean") opts.queryExpansion = variant.queryExpansion;
+        if (typeof variant.graphExpansion === "boolean") opts.graphExpansion = variant.graphExpansion;
 
         let result;
         try {

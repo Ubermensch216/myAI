@@ -10,6 +10,7 @@ import {
 } from "./modules/calendar.js";
 import {
   setBusy, stopGeneration, scrollToBottom, setDeepAnalysisEnabled,
+  renderDeepAnalysisToggle,
   sendMessage, uploadFiles, confirmAndRemoveUploadedFile,
   appendMessage, renderFollowupSuggestions, extractImageFilesFromPaste,
   createTitleFromPrompt, submitPromptEdit, confirmAndClearRoomDocuments,
@@ -18,7 +19,7 @@ import {
 import {
   loadNotebooks, loadAdminStatus, restoreAdminTokenSession, restoreAccessSession,
   renderActiveNotebookUi, openNotebookSelector, closeNotebookSelector,
-  isAdminDialogOpen, bindAdminEvents
+  findNotebookSummary, isAdminDialogOpen, bindAdminEvents
 } from "./modules/notebook.js";
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
@@ -29,9 +30,7 @@ let dragDepth = 0;
 
 const ROOM_FILE_SVG = {
   paperclip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"></path></svg>',
-  chevronDown: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>',
-  chevronUp: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg>',
-  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>'
+  notebook: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"></path><path d="M5 17a3 3 0 0 1 3-3h11"></path></svg>'
 };
 
 // ===== Boot =====
@@ -55,7 +54,7 @@ init();
 // ===== Custom events from sub-modules =====
 // Modules avoid importing app.js to prevent circular deps; they signal via events instead.
 
-window.addEventListener("myai:renderrooms", () => { renderRooms(); renderStudio(); });
+window.addEventListener("myai:renderrooms", () => { renderRooms(); renderMaterialContext(); renderStudio(); });
 window.addEventListener("myai:rendermessages", () => renderMessages());
 window.addEventListener("myai:renderall", () => renderAll());
 window.addEventListener("myai:closeattachmenu", () => closeAttachMenu());
@@ -124,6 +123,7 @@ export function renderAll() {
   renderMessages();
   renderCalendar();
   renderActiveNotebookUi();
+  renderMaterialContext();
   applyLayoutState();
   renderStudio();
 }
@@ -173,94 +173,224 @@ function renderRooms() {
     title.textContent = room.title || "제목 없는 대화";
 
     const roomDocs = Array.isArray(room.documents) ? room.documents : [];
+    const indicators = document.createElement("span");
+    indicators.className = "room-status-indicators";
+
     const attachmentIndicator = document.createElement("span");
-    attachmentIndicator.className = "room-attachment-indicator";
+    attachmentIndicator.className = "room-status-indicator room-attachment-indicator";
     attachmentIndicator.title = "첨부 있음";
     attachmentIndicator.setAttribute("role", "img");
     attachmentIndicator.setAttribute("aria-label", "첨부 있음");
-    attachmentIndicator.hidden = roomDocs.length === 0;
     if (roomDocs.length) {
       attachmentIndicator.innerHTML = ROOM_FILE_SVG.paperclip;
+      indicators.append(attachmentIndicator);
     }
+
+    const notebookIndicator = document.createElement("span");
+    notebookIndicator.className = "room-status-indicator room-notebook-indicator";
+    notebookIndicator.title = "부서노트북 있음";
+    notebookIndicator.setAttribute("role", "img");
+    notebookIndicator.setAttribute("aria-label", "부서노트북 있음");
+    if (room.selectedNotebookId) {
+      notebookIndicator.innerHTML = ROOM_FILE_SVG.notebook;
+      indicators.append(notebookIndicator);
+    }
+    indicators.hidden = !indicators.childElementCount;
 
     const deleteButton = document.createElement("span");
     deleteButton.className = "room-delete";
     deleteButton.title = "대화방 삭제";
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", async (event) => { event.stopPropagation(); await deleteRoom(room.id); });
-    item.append(title, attachmentIndicator, deleteButton);
+    item.append(title, indicators, deleteButton);
     elements.roomList.append(item);
-
-    if (room.id === state.activeRoomId && roomDocs.length) {
-      const files = document.createElement("div");
-      files.className = "room-file-titles";
-      files.classList.toggle("collapsed", room.attachmentsCollapsed === true);
-      const fileToolbar = document.createElement("div");
-      fileToolbar.className = "room-file-toolbar";
-      const toggleButton = document.createElement("button");
-      toggleButton.className = "room-file-toggle";
-      toggleButton.type = "button";
-      toggleButton.title = room.attachmentsCollapsed === true ? "첨부 펼치기" : "첨부 접기";
-      toggleButton.setAttribute("aria-label", toggleButton.title);
-      toggleButton.setAttribute("aria-expanded", room.attachmentsCollapsed === true ? "false" : "true");
-      toggleButton.innerHTML = room.attachmentsCollapsed === true ? ROOM_FILE_SVG.chevronDown : ROOM_FILE_SVG.chevronUp;
-      toggleButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        room.attachmentsCollapsed = room.attachmentsCollapsed !== true;
-        room.updatedAt = new Date().toISOString();
-        scheduleSave();
-        renderRooms();
-      });
-      const fileSummary = document.createElement("button");
-      fileSummary.className = "room-file-summary";
-      fileSummary.type = "button";
-      fileSummary.title = room.attachmentsCollapsed === true ? "첨부 펼치기" : "첨부 접기";
-      fileSummary.setAttribute("aria-label", `첨부 ${roomDocs.length}개 ${room.attachmentsCollapsed === true ? "펼치기" : "접기"}`);
-      fileSummary.innerHTML = `${ROOM_FILE_SVG.paperclip}<span class="room-file-count-badge">${roomDocs.length}</span>`;
-      fileSummary.addEventListener("click", (event) => {
-        event.stopPropagation();
-        toggleButton.click();
-      });
-      const clearButton = document.createElement("button");
-      clearButton.className = "room-file-clear";
-      clearButton.type = "button";
-      clearButton.title = "첨부 정리";
-      clearButton.setAttribute("aria-label", "첨부 정리");
-      clearButton.innerHTML = ROOM_FILE_SVG.trash;
-      clearButton.addEventListener("click", async (event) => {
-        event.stopPropagation();
-        await confirmAndClearRoomDocuments(room);
-      });
-      fileToolbar.append(toggleButton, fileSummary, document.createElement("span"), clearButton);
-      files.append(fileToolbar);
-      if (room.attachmentsCollapsed !== true) {
-        for (const doc of roomDocs) {
-          const file = document.createElement("div");
-          file.className = "room-file-title";
-          const type = document.createElement("span");
-          type.className = "room-file-type";
-          type.title = doc.fileType?.toUpperCase() || "FILE";
-          type.textContent = getFileTypeIcon(doc);
-          const label = document.createElement("span");
-          label.className = "room-file-title-text";
-          label.textContent = formatDisplayFileName(doc);
-          const removeButton = document.createElement("button");
-          removeButton.className = "room-file-remove";
-          removeButton.type = "button";
-          removeButton.title = "자료 삭제";
-          removeButton.setAttribute("aria-label", `${formatDisplayFileName(doc)} 삭제`);
-          removeButton.textContent = "×";
-          removeButton.addEventListener("click", async (event) => {
-            event.stopPropagation();
-            await confirmAndRemoveUploadedFile(doc);
-          });
-          file.append(type, label, removeButton);
-          files.append(file);
-        }
-      }
-      elements.roomList.append(files);
-    }
   }
+}
+
+function getActiveMaterials(room = getActiveRoom()) {
+  const documents = Array.isArray(room?.documents) ? room.documents : [];
+  const notebook = room?.selectedNotebookId ? findNotebookSummary(room.selectedNotebookId) : null;
+  return {
+    documents,
+    notebook,
+    hasNotebook: Boolean(room?.selectedNotebookId),
+    count: documents.length + (room?.selectedNotebookId ? 1 : 0)
+  };
+}
+
+function renderMaterialContext() {
+  const room = getActiveRoom();
+  const { documents, notebook, hasNotebook, count } = getActiveMaterials(room);
+  const expanded = Boolean(room?.materialsExpanded && count);
+
+  if (elements.materialToggleButton) {
+    elements.materialToggleButton.disabled = count === 0;
+    elements.materialToggleButton.classList.toggle("has-materials", count > 0);
+    elements.materialToggleButton.classList.toggle("expanded", expanded);
+    elements.materialToggleButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+    elements.materialToggleButton.setAttribute("aria-label", count ? `자료 ${count}개` : "자료 없음");
+    elements.materialToggleButton.title = count ? (expanded ? "자료 접기" : `자료 ${count}개 보기`) : "자료 없음";
+  }
+
+  if (elements.materialCountBadge) {
+    elements.materialCountBadge.hidden = count === 0;
+    elements.materialCountBadge.textContent = `${count}`;
+  }
+
+  if (!count) {
+    if (room?.materialsExpanded) {
+      room.materialsExpanded = false;
+      scheduleSave();
+    }
+    if (elements.materialPanel) elements.materialPanel.hidden = true;
+    if (elements.materialSummaryLabel) elements.materialSummaryLabel.textContent = "자료 0개";
+    if (elements.materialList) elements.materialList.innerHTML = "";
+    if (elements.materialClearButton) elements.materialClearButton.hidden = true;
+    setDeepAnalysisEnabled(false);
+    return;
+  }
+
+  if (elements.materialPanel) elements.materialPanel.hidden = !expanded;
+  if (elements.materialSummaryLabel) elements.materialSummaryLabel.textContent = `자료(${count}개)`;
+  if (elements.materialClearButton) elements.materialClearButton.hidden = documents.length === 0;
+  renderMaterialList({ room, documents, notebook, hasNotebook });
+  renderDeepAnalysisToggle();
+}
+
+function renderMaterialList({ room, documents, notebook, hasNotebook }) {
+  if (!elements.materialList) return;
+  elements.materialList.innerHTML = "";
+  const groups = ensureMaterialGroupState(room);
+
+  if (hasNotebook) {
+    elements.materialList.append(buildMaterialTreeGroup({
+      key: "notebook",
+      title: "부서노트북",
+      count: 1,
+      preview: notebook?.name || "부서노트북",
+      collapsed: groups.notebook,
+      children: [buildNotebookMaterialItem(notebook)]
+    }));
+  }
+
+  if (documents.length) {
+    const preview = documents.length === 1
+      ? formatDisplayFileName(documents[0])
+      : `${formatDisplayFileName(documents[0])} 외 ${documents.length - 1}개`;
+    elements.materialList.append(buildMaterialTreeGroup({
+      key: "attachments",
+      title: "첨부",
+      count: documents.length,
+      preview,
+      collapsed: groups.attachments,
+      children: documents.map(buildAttachmentMaterialItem)
+    }));
+  }
+}
+
+function ensureMaterialGroupState(room = getActiveRoom()) {
+  if (!room) return { notebook: false, attachments: false };
+  if (!room.materialGroups || typeof room.materialGroups !== "object") {
+    room.materialGroups = { notebook: false, attachments: false };
+  }
+  room.materialGroups.notebook = Boolean(room.materialGroups.notebook);
+  room.materialGroups.attachments = Boolean(room.materialGroups.attachments);
+  return room.materialGroups;
+}
+
+function buildMaterialTreeGroup({ key, title, count, preview, collapsed, children }) {
+  const group = document.createElement("section");
+  group.className = "material-tree-group";
+  group.classList.toggle("collapsed", collapsed);
+
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "material-tree-header";
+  header.title = collapsed ? `${title} 펼치기` : `${title} 접기`;
+  header.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  header.addEventListener("click", () => toggleMaterialGroup(key));
+
+  const caret = document.createElement("span");
+  caret.className = "material-tree-caret";
+  caret.textContent = collapsed ? ">" : "v";
+  const label = document.createElement("span");
+  label.className = "material-tree-label";
+  label.textContent = `${title}(${count})`;
+  const previewText = document.createElement("span");
+  previewText.className = "material-tree-preview";
+  previewText.textContent = preview ? `: ${preview}` : "";
+  header.append(caret, label, previewText);
+
+  const childList = document.createElement("div");
+  childList.className = "material-tree-children";
+  childList.hidden = collapsed;
+  for (const child of children) childList.append(child);
+
+  group.append(header, childList);
+  return group;
+}
+
+function buildNotebookMaterialItem(notebook) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "material-tree-item material-tree-item-action";
+  item.title = "부서노트북 변경";
+  const icon = document.createElement("span");
+  icon.className = "material-tree-icon";
+  icon.innerHTML = ROOM_FILE_SVG.notebook;
+  const name = document.createElement("span");
+  name.className = "material-tree-name";
+  name.textContent = notebook?.name || "부서노트북";
+  item.append(icon, name);
+  item.addEventListener("click", (event) => {
+    event.preventDefault();
+    openNotebookSelector();
+  });
+  return item;
+}
+
+function buildAttachmentMaterialItem(doc) {
+  const item = document.createElement("div");
+  item.className = "material-tree-item";
+  const type = document.createElement("span");
+  type.className = "material-tree-type";
+  type.textContent = getFileTypeIcon(doc);
+  const name = document.createElement("span");
+  name.className = "material-tree-name";
+  name.textContent = formatDisplayFileName(doc);
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "material-tree-remove";
+  removeButton.title = "첨부 삭제";
+  removeButton.setAttribute("aria-label", `${formatDisplayFileName(doc)} 삭제`);
+  removeButton.textContent = "×";
+  removeButton.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await confirmAndRemoveUploadedFile(doc);
+  });
+  item.append(type, name, removeButton);
+  return item;
+}
+
+function toggleMaterialGroup(key) {
+  const room = getActiveRoom();
+  const groups = ensureMaterialGroupState(room);
+  if (!room || !(key in groups)) return;
+  groups[key] = !groups[key];
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  renderMaterialContext();
+}
+
+function toggleMaterialPanel() {
+  const room = getActiveRoom();
+  const { count } = getActiveMaterials(room);
+  if (!room || !count) return;
+  room.materialsExpanded = !room.materialsExpanded;
+  if (!room.materialsExpanded) setDeepAnalysisEnabled(false);
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  renderMaterialContext();
 }
 
 function renderHeader() {
@@ -457,6 +587,18 @@ function bindEvents() {
   });
   elements.attachFileButton.addEventListener("click", (event) => { event.stopPropagation(); toggleAttachMenu(); });
   elements.attachFromDeviceButton.addEventListener("click", (event) => { event.stopPropagation(); elements.fileInput.click(); });
+  if (elements.materialToggleButton) {
+    elements.materialToggleButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleMaterialPanel();
+    });
+  }
+  if (elements.materialClearButton) {
+    elements.materialClearButton.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await confirmAndClearRoomDocuments();
+    });
+  }
 
   // Notebook
   if (elements.attachNotebookButton) {
@@ -468,6 +610,7 @@ function bindEvents() {
   if (elements.deepAnalysisToggle) {
     elements.deepAnalysisToggle.addEventListener("click", (event) => {
       event.preventDefault();
+      if (elements.deepAnalysisToggle.disabled) return;
       setDeepAnalysisEnabled(!state.deepAnalysisEnabled);
     });
   }

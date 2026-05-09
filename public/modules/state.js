@@ -212,6 +212,12 @@ export const elements = {
   chatForm: document.querySelector("#chatForm"),
   promptInput: document.querySelector("#promptInput"),
   sendButton: document.querySelector("#sendButton"),
+  materialToggleButton: document.querySelector("#materialToggleButton"),
+  materialCountBadge: document.querySelector("#materialCountBadge"),
+  materialPanel: document.querySelector("#materialPanel"),
+  materialSummaryLabel: document.querySelector("#materialSummaryLabel"),
+  materialList: document.querySelector("#materialList"),
+  materialClearButton: document.querySelector("#materialClearButton"),
   settingsButton: document.querySelector("#settingsButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   settingsForm: document.querySelector("#settingsForm"),
@@ -473,7 +479,11 @@ export function createRoom() {
     title: "새 대화",
     messages: [],
     documents: [],
-    attachmentsCollapsed: false,
+    materialsExpanded: false,
+    materialGroups: {
+      notebook: false,
+      attachments: false
+    },
     pendingCalendarAction: null,
     selectedNotebookId: null,
     studio: {

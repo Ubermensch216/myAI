@@ -11,6 +11,7 @@ import {
   loadNotebookChunksForRetrieval,
   summarizeNotebookManifest
 } from "../notebooks.js";
+import { expandQueryWithGraph, notebookHasGraph } from "./graph/expander.js";
 
 const NOTEBOOK_QUERY_BUDGET = Number(process.env.NOTEBOOK_QUERY_BUDGET || 12000);
 
@@ -37,12 +38,16 @@ export async function searchNotebook(notebookId, query, options = {}) {
   const rerankConfig = getRerankConfig();
   const rerankEnabled = typeof options.rerank === "boolean" ? options.rerank : rerankConfig.enabled;
   const queryExpansionOverride = typeof options.queryExpansion === "boolean" ? options.queryExpansion : undefined;
+  const graphExpansionEnabled = typeof options.graphExpansion === "boolean"
+    ? options.graphExpansion
+    : (process.env.KG_EXPANSION_ENABLED === "1");
   const manifestChunkCount = estimateManifestChunkCount(manifest);
   let allChunks = null;
   let fallbackLoadedAllChunks = false;
   let ranked = [];
   let queries = trimmedQuery ? [trimmedQuery] : [];
   let queryEmbeddings = [];
+  let graphExpansionResult = null;
 
   const buildDiagnostics = () => ({
     fallbackLoadedAllChunks,
@@ -50,6 +55,16 @@ export async function searchNotebook(notebookId, query, options = {}) {
     rerankApplied,
     rerankEnabled,
     queryExpansionEnabled: queryExpansionOverride,
+    graphExpansion: graphExpansionEnabled
+      ? {
+          enabled: true,
+          ok: graphExpansionResult?.ok || false,
+          reason: graphExpansionResult?.reason,
+          stats: graphExpansionResult?.stats || null,
+          seedLabels: graphExpansionResult?.seedLabels || [],
+          neighborhoodLabels: graphExpansionResult?.neighborhoodLabels || []
+        }
+      : { enabled: false },
     queryVariants: queries.length,
     timing: { ...timing }
   });
@@ -158,8 +173,44 @@ export async function searchNotebook(notebookId, query, options = {}) {
       }
     }
 
+    let graphRankingAdded = false;
+    if (graphExpansionEnabled && notebookHasGraph(notebookId)) {
+      const tGraph = Date.now();
+      try {
+        graphExpansionResult = await expandQueryWithGraph({
+          notebookId,
+          query: trimmedQuery,
+          excludeKeys: new Set(),
+          maxSupplements: Number(process.env.KG_EXPAND_MAX || 5)
+        });
+        timing.graphExpansionMs = Date.now() - tGraph;
+        if (graphExpansionResult.ok && graphExpansionResult.supplements.length) {
+          const allChunksList = await loadAllChunksForFallback();
+          const byKey = new Map(
+            allChunksList.map((c) => [`${c.documentId}:${c.chunkIndex}`, c])
+          );
+          const graphRanking = [];
+          for (const sup of graphExpansionResult.supplements) {
+            const hit = byKey.get(`${sup.documentId}:${sup.chunkIndex}`);
+            if (hit) graphRanking.push(hit);
+          }
+          if (graphRanking.length) {
+            rankingLists.push(graphRanking);
+            graphRankingAdded = true;
+          }
+        }
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        timing.graphExpansionMs = Date.now() - tGraph;
+        graphExpansionResult = { ok: false, reason: `graph_failed:${error.message.slice(0, 80)}` };
+      }
+    }
+
     if (rankingLists.length) {
-      const fusedSorted = fuseRankings(rankingLists);
+      const fusionWeights = graphRankingAdded
+        ? rankingLists.map((_, i) => (i === rankingLists.length - 1 ? Number(process.env.KG_FUSION_WEIGHT || 0.3) : 1))
+        : null;
+      const fusedSorted = fuseRankings(rankingLists, fusionWeights);
       if (rerankEnabled) {
         const tRerank = Date.now();
         const { chunks: rerankedChunks, reranked, reason: rerankReason } = await rerankChunks(
@@ -328,18 +379,19 @@ function estimateManifestChunkCount(manifest) {
   return sawChunkCount ? total : null;
 }
 
-function fuseRankings(rankings) {
+function fuseRankings(rankings, weights = null) {
   const RRF_K = 60;
   const byKey = new Map();
-  for (const ranking of rankings) {
+  rankings.forEach((ranking, idx) => {
+    const w = weights ? (weights[idx] ?? 1) : 1;
     ranking.forEach((chunk, rank) => {
       const key = `${chunk.documentId || ""}:${chunk.chunkIndex ?? ""}:${chunk.text?.slice(0, 32) || ""}`;
       const entry = byKey.get(key) || { chunk, score: 0, bestRank: rank };
-      entry.score += 1 / (RRF_K + rank + 1);
+      entry.score += w / (RRF_K + rank + 1);
       entry.bestRank = Math.min(entry.bestRank, rank);
       byKey.set(key, entry);
     });
-  }
+  });
   return Array.from(byKey.values())
     .sort((left, right) => right.score - left.score || left.bestRank - right.bestRank)
     .map((entry) => entry.chunk);

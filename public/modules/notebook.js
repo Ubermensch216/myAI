@@ -33,6 +33,7 @@ export async function loadNotebooks() {
       scheduleSave();
     }
     renderActiveNotebookUi();
+    window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   } catch (error) {
     console.warn("노트북 목록을 불러오지 못했습니다:", error.message);
   }
@@ -323,6 +324,7 @@ export function selectNotebook(notebookId) {
   room.updatedAt = new Date().toISOString();
   renderActiveNotebookUi();
   scheduleSave();
+  window.dispatchEvent(new CustomEvent("myai:renderrooms"));
 }
 
 // ===== Admin panel =====
