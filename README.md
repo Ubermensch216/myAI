@@ -28,12 +28,12 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and an uploaded-document mind map tool.
-- Whole-document or whole-notebook analysis through the whole-analysis Map-Reduce mode.
+- Whole-document or whole-notebook **Precision Analysis** ("정밀 분석") through the Map-Reduce mode. The control is available only when the active room has uploaded documents or a selected department notebook.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
 - Unified Settings dialog with Personal Settings and an Admin Console tab.
-- Personalized app name, avatars, banner, theme, accent color, and custom prompt.
+- Personalized app name, avatars, banner, theme, built-in or custom 3-color accent palette, and custom prompt.
 - Admin Console for department notebooks, system status, access groups/levels, and notebook access policies.
 
 ## Requirements
@@ -154,7 +154,7 @@ npm.cmd run rag:quality-test:quick
 npm.cmd run rag:quality-test -- --k 10
 ```
 
-Uploaded room files are stored in the browser's encrypted IndexedDB and are sent back in `/api/chat` requests as JSON. The UI shows approximate room/attachment storage, warns before large uploads, provides an active-room attachment cleanup action, and blocks chat requests that are too close to the server JSON body limit.
+Uploaded room files are stored in the browser's encrypted IndexedDB and are sent back in `/api/chat` requests as JSON. The UI shows compact material status in the room list, exposes detailed uploaded-file cleanup from the composer material panel, warns before large uploads, and blocks chat requests that are too close to the server JSON body limit.
 
 The XLSX regression test covers Excel date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, invalid plan validation, and server-computed chart specs.
 
@@ -208,7 +208,7 @@ follow-up suggestions for that no-evidence answer.
 | `DOC_ANALYSIS_MAX_INPUT_CHARS` | `12000` | document analysis sample budget |
 | `DOC_ANALYSIS_TIMEOUT_MS` | `30000` | document analysis timeout |
 | `MAP_REDUCE_BATCH_CHUNKS` | `4` | chunks per map call |
-| `MAP_REDUCE_MAX_CHUNKS` | `80` | maximum chunks per whole-analysis run |
+| `MAP_REDUCE_MAX_CHUNKS` | `80` | maximum chunks per Precision Analysis / Map-Reduce run |
 | `MAP_REDUCE_PARALLELISM` | `2` | concurrent map calls |
 | `MAP_REDUCE_MAP_TIMEOUT_MS` | `45000` | map-call timeout |
 | `TRUST_PROXY` | `false` | enables Express proxy IP handling when behind a trusted reverse proxy |
@@ -308,8 +308,26 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 
 The gear button in the main header opens one Settings dialog with two tabs:
 
-- **Personal Settings**: app name, banner, system/user avatars, theme, accent color, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
+- **Personal Settings**: app name, banner, system/user avatars, theme, built-in/custom color palette, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
 - **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, admins use the nested menu for **Department Notebook Management**, **System Status**, and **Access Management**.
+
+The chat composer keeps the main input row focused on four controls: add (`+`),
+material context, prompt input, and send. When the active room has uploaded
+documents or a selected department notebook, the material button shows a count
+and can expand a tree-style panel:
+
+```text
+자료(3개)
+|- 부서노트북(1)
+|  |- 공공AI 서비스 지원사업 제안요청서
+|- 첨부(2)
+|  |- 검토 보고.hwpx
+|  |- 참고 자료.pdf
+```
+
+The room list shows only compact state icons for uploaded attachments and
+department notebooks. Detailed material names and attachment deletion controls
+live in the composer material panel to avoid duplicate lists.
 
 Department notebook read access is optional. Until at least one group level or
 Super password is configured, notebook reads remain public for compatibility.
@@ -327,7 +345,7 @@ continues to protect management APIs only and is not a notebook-read identity.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects Admin Console management actions only. Use group/level or Super access passwords for notebook reads, and reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.
-- Map-Reduce is slower than normal chat and truncates beyond `MAP_REDUCE_MAX_CHUNKS`.
+- Precision Analysis / Map-Reduce is slower than normal chat and truncates beyond `MAP_REDUCE_MAX_CHUNKS`.
 - Legacy binary `.hwp` and `.xls` are not parsed directly. Use HWPX/XLSX.
 
 ## License

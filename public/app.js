@@ -267,21 +267,16 @@ function renderMaterialList({ room, documents, notebook, hasNotebook }) {
       key: "notebook",
       title: "부서노트북",
       count: 1,
-      preview: notebook?.name || "부서노트북",
       collapsed: groups.notebook,
       children: [buildNotebookMaterialItem(notebook)]
     }));
   }
 
   if (documents.length) {
-    const preview = documents.length === 1
-      ? formatDisplayFileName(documents[0])
-      : `${formatDisplayFileName(documents[0])} 외 ${documents.length - 1}개`;
     elements.materialList.append(buildMaterialTreeGroup({
       key: "attachments",
       title: "첨부",
       count: documents.length,
-      preview,
       collapsed: groups.attachments,
       children: documents.map(buildAttachmentMaterialItem)
     }));
@@ -298,7 +293,7 @@ function ensureMaterialGroupState(room = getActiveRoom()) {
   return room.materialGroups;
 }
 
-function buildMaterialTreeGroup({ key, title, count, preview, collapsed, children }) {
+function buildMaterialTreeGroup({ key, title, count, collapsed, children }) {
   const group = document.createElement("section");
   group.className = "material-tree-group";
   group.classList.toggle("collapsed", collapsed);
@@ -316,10 +311,7 @@ function buildMaterialTreeGroup({ key, title, count, preview, collapsed, childre
   const label = document.createElement("span");
   label.className = "material-tree-label";
   label.textContent = `${title}(${count})`;
-  const previewText = document.createElement("span");
-  previewText.className = "material-tree-preview";
-  previewText.textContent = preview ? `: ${preview}` : "";
-  header.append(caret, label, previewText);
+  header.append(caret, label);
 
   const childList = document.createElement("div");
   childList.className = "material-tree-children";
@@ -335,6 +327,7 @@ function buildNotebookMaterialItem(notebook) {
   item.type = "button";
   item.className = "material-tree-item material-tree-item-action";
   item.title = "부서노트북 변경";
+  item.addEventListener("click", () => openNotebookSelector());
   const icon = document.createElement("span");
   icon.className = "material-tree-icon";
   icon.innerHTML = ROOM_FILE_SVG.notebook;
@@ -342,10 +335,6 @@ function buildNotebookMaterialItem(notebook) {
   name.className = "material-tree-name";
   name.textContent = notebook?.name || "부서노트북";
   item.append(icon, name);
-  item.addEventListener("click", (event) => {
-    event.preventDefault();
-    openNotebookSelector();
-  });
   return item;
 }
 

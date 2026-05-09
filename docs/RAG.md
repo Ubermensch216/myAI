@@ -194,6 +194,9 @@ document add/delete and notebook delete invalidate the related entry.
 
 ## Map-Reduce Whole Analysis
 
+In the UI this mode is exposed as **Precision Analysis** (`정밀 분석`) inside
+the composer material panel. It is enabled only when the active room has at
+least one uploaded document or a selected department notebook. Internally,
 Map-Reduce is activated with:
 
 ```js
@@ -216,3 +219,16 @@ chunks
 ```
 
 This mode is intended for full-document/full-notebook analysis, not normal fast chat.
+The composer material panel is the single place where users inspect the active
+material tree:
+
+```text
+자료(n개)
+|- 부서노트북(0/1)
+|  |- selected notebook name
+|- 첨부(n)
+|  |- uploaded file name
+```
+
+The room list only shows compact state icons for whether a room has uploaded
+attachments and/or a selected department notebook.

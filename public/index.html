@@ -118,7 +118,7 @@
             <textarea
               id="promptInput"
               rows="1"
-              placeholder="[shift+I] 문서 요약, 이미지 분석, 표 추출, 근거 확인을 요청하거나 캡쳐 이미지를 붙여 넣으세요."
+              placeholder="Ollama Chatter에게 물어보세요 [⇧+I]"
             ></textarea>
             <button id="sendButton" class="send-button" type="submit">전송</button>
           </div>
@@ -218,15 +218,15 @@
 
       <aside id="studioPanel" class="studio-panel" aria-label="Studio">
         <header class="studio-header">
-          <div class="studio-title-block">
-            <span class="studio-kicker">&#xC2A4;&#xD29C;&#xB514;&#xC624;</span>
-          </div>
           <button id="studioToggleButton" class="icon-button studio-toggle-button" type="button" aria-label="Toggle studio panel" aria-expanded="true" title="Studio">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path class="studio-toggle-open-icon" d="m15 6-6 6 6 6"></path>
               <path class="studio-toggle-close-icon" d="m9 6 6 6-6 6"></path>
             </svg>
           </button>
+          <div class="studio-title-block">
+            <span class="studio-kicker">&#xC2A4;&#xD29C;&#xB514;&#xC624;</span>
+          </div>
         </header>
 
         <div class="studio-collapsed-rail" aria-label="Studio shortcuts">

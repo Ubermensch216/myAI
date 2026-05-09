@@ -2,7 +2,7 @@
 
 ## High Priority
 
-- Browser-level E2E smoke tests (Playwright) still absent for Settings tab switching, Admin Console workflows, notebook selection, citations, Map-Reduce, Studio interactions, and calendar flows. API-level smoke tests now cover upload, chat, answer export, Studio mind-map validation, visualization, access status, and notebook list.
+- Browser-level E2E smoke tests (Playwright) still absent for Settings tab switching, Admin Console workflows, notebook selection, composer material-panel interactions, citations, Precision Analysis / Map-Reduce, Studio interactions, and calendar flows. API-level smoke tests now cover upload, chat, answer export, Studio mind-map validation, visualization, access status, and notebook list.
 - Monitor autonomous follow-up suggestion quality and concept depth under varied conversation lengths.
 
 ## Data And Retrieval
@@ -31,6 +31,7 @@
 - `public/app.js` is now a focused orchestrator (~480 lines) handling init, routing, rooms, and drag-drop. Settings/brand live in `modules/settings.js`; admin event binding in `modules/notebook.js`. Rendering functions (renderRooms, renderMessages) remain in app.js and could be further extracted if needed.
 - The answer renderer is markdown-lite, not a full Markdown renderer. Replacing it can regress table/list styling.
 - The composer `+` menu is intended to remain extensible.
+- The composer material panel is the detailed source-of-truth UI for active room materials. The room list should remain compact and show only attachment/notebook presence icons.
 - The right Studio panel is intentionally a first extension point. Keep new Studio tools modular instead of folding their logic into `public/app.js`.
 
 ## Operations

@@ -1824,7 +1824,7 @@ body.panel-resizing .panel-resizer::after {
 
 .material-tree-header {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -1857,16 +1857,6 @@ body.panel-resizing .panel-resizer::after {
   color: var(--accent-dark);
   font-size: 12px;
   font-weight: 900;
-  white-space: nowrap;
-}
-
-.material-tree-preview {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2073,11 +2063,11 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .settings-admin-status[data-status="locked"] {
-  background: #f59e0b;
+  background: color-mix(in srgb, var(--muted) 72%, var(--surface));
 }
 
 .settings-admin-status[data-status="unavailable"] {
-  background: var(--danger);
+  background: color-mix(in srgb, var(--muted) 48%, var(--surface));
 }
 
 .settings-tab-panel {
@@ -2653,7 +2643,7 @@ body.panel-resizing .panel-resizer::after {
 .studio-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   min-width: 0;
@@ -2687,6 +2677,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .studio-title-block {
+  flex: 1 1 auto;
   min-width: 0;
 }
 

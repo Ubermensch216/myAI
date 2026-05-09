@@ -145,8 +145,8 @@ The server has two direct limits:
 The browser also preflights large personal chat payloads:
 
 - Warns before large file uploads.
-- Shows approximate room and attachment storage.
-- Offers active-room attachment cleanup.
+- Shows compact room material status and detailed active materials in the composer material panel.
+- Offers active-room attachment cleanup from the composer material panel.
 - Blocks `/api/chat` before the request gets too close to the server JSON body limit.
 
 Keep proxy body limits equal to or lower than the server limits. If the proxy allows larger bodies than Node.js, users will see late server failures. If the proxy limit is lower, document that limit in the deployment runbook.
@@ -221,7 +221,7 @@ Notebook Management.
 Access control is inactive until at least one enabled group level password or
 an enabled Super password exists. While inactive, notebook reads remain public
 for compatibility. Once active, `/api/notebooks`, `/api/notebooks/:id`, and
-chat or whole-analysis requests that include `notebookId` require
+chat or Precision Analysis / Map-Reduce requests that include `notebookId` require
 `Authorization: Bearer <access token>` from `/api/access/login`.
 
 `ADMIN_TOKEN` is intentionally not accepted as a notebook-read credential for

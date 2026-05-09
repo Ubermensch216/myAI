@@ -170,15 +170,21 @@ users authenticate from the department-notebook selector. Admins manage groups,
 level passwords, Super access, and per-notebook policies from Settings →
 Admin Console → Access Management / Department Notebook Management.
 
-### Whole Analysis
+### Precision Analysis
 
 ```text
-composer "전체 분석" toggle
+composer material panel "정밀 분석" toggle
 -> POST /api/chat { mode: "map_reduce" }
 -> server/ollama.js loads all notebook chunks or active room document chunks
 -> server/mapReduce.js runs map calls with bounded parallelism
 -> reduce answer streams to the browser
 ```
+
+The toggle is visible inside the composer material panel and is enabled only
+when the active room has uploaded documents or a selected department notebook.
+The room list intentionally shows only compact attachment/notebook state icons;
+the composer material panel owns the detailed tree view for department notebook
+and uploaded attachment entries.
 
 ### Visualization
 

@@ -93,7 +93,7 @@ Body:
   documents,
   personalization,
   notebookId, // optional
-  mode        // optional; "map_reduce" activates whole-analysis mode
+  mode        // optional; "map_reduce" activates Precision Analysis / Map-Reduce
 }
 ```
 

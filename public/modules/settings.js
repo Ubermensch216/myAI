@@ -19,6 +19,9 @@ export function renderBrand() {
   elements.appNameText.textContent = appName;
   elements.appBannerImg.src = banner;
   elements.appBannerImg.alt = appName;
+  if (elements.promptInput) {
+    elements.promptInput.placeholder = `${appName}에게 물어보세요 [⇧+I]`;
+  }
   elements.faviconLink.href = DEFAULT_FAVICON_HREF;
 }
 
