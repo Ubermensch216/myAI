@@ -44,7 +44,7 @@ Both paths use the same BM25 + cosine + RRF hybrid retrieval, but differ in wher
 | Ingest embedding | Server-side via Ollama at upload time | Server-side via Ollama at admin ingest |
 | Query embedding | Server-side per request | Server-side per request |
 | Persistence | Browser (AES-GCM encrypted) | Server JSON (ADMIN_TOKEN-protected writes) |
-| Access control | Per-browser encryption key | `ADMIN_TOKEN` for writes; read for all |
+| Access control | Per-browser encryption key | `ADMIN_TOKEN` for management writes; optional group/level or Super token for reads |
 
 ### Implications for Future Work
 
@@ -146,6 +146,8 @@ The server memory document store is a convenience cache only. The durable source
 ```text
 chat prompt + room.selectedNotebookId
 -> POST /api/chat { notebookId }
+-> if Department Notebook Access Control is active:
+   -> validate Authorization: Bearer <access token>
 -> server/rag/departmentRag.js#searchNotebook()
    -> query expansion (queryExpansion.js)
    -> embed query variants (embeddings.js, validated dim)
@@ -161,6 +163,12 @@ chat prompt + room.selectedNotebookId
 -> X-Notebook-Meta returns citation metadata
 -> browser renders citation markers and panel
 ```
+
+Department notebook access control is inactive until an admin configures at
+least one enabled group level password or an enabled Super password. Normal
+users authenticate from the department-notebook selector. Admins manage groups,
+level passwords, Super access, and per-notebook policies from Settings →
+Admin Console → Access Management / Department Notebook Management.
 
 ### Whole Analysis
 
@@ -224,15 +232,16 @@ The LLM does not directly mutate calendar data.
 - `server/holidays.js` - Korean public-holiday API and fallback.
 - `server/visualization.js` - plan normalization, validation, execution, fallback chart specs.
 - `server/auth.js` - admin token middleware.
+- `server/accessControl.js` - department notebook read-access groups, level passwords, Super password, access-token signing/verification, and notebook policy checks.
 - `public/app.js` - orchestrator: init, routing, room management, drag-drop, global key bindings.
-- `public/modules/settings.js` - brand rendering, settings dialog, theme/color-theme/avatar/banner.
+- `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color/avatar/banner rendering.
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utility functions. No project-level imports.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
-- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, file upload progress, admin event binding.
+- `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.
 
@@ -255,4 +264,6 @@ data/notebooks/<notebookId>/manifest.json
 data/notebooks/<notebookId>/docs/<documentId>.json
 ```
 
-Notebook data is shared server-side state and is protected for writes by `ADMIN_TOKEN`.
+Notebook data is shared server-side state. Management writes are protected by
+`ADMIN_TOKEN`; reads are public until Department Notebook Access Control is
+configured, then require a group/level or Super access token.

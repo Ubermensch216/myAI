@@ -32,7 +32,9 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
+- Unified Settings dialog with Personal Settings and an Admin Console tab.
 - Personalized app name, avatars, banner, theme, accent color, and custom prompt.
+- Admin Console for department notebooks, system status, access groups/levels, and notebook access policies.
 
 ## Requirements
 
@@ -169,6 +171,8 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `EMBED_MODEL` | `bge-m3` | Ollama `/api/embed` model |
 | `KOREA_HOLIDAY_SERVICE_KEY` | unset | optional Korean public-holiday API key |
 | `ADMIN_TOKEN` | unset | bearer token for notebook management APIs |
+| `ACCESS_TOKEN_SECRET` | generated under `data/access/` | optional HMAC secret for notebook-read access tokens; set explicitly for multi-instance deployments |
+| `ACCESS_TOKEN_TTL_SECONDS` | `43200` | lifetime of group/level or Super notebook-read access tokens |
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body limit |
 | `MAX_UPLOAD_BYTES` | `41943040` | single upload limit |
 | `MAX_CONTEXT_CHARS` | `24000` | uploaded-document context budget |
@@ -233,6 +237,7 @@ server/
   rateLimit.js         fixed-window rate limiting for model-calling routes
   abort.js             AbortSignal helpers for streaming chat and Map-Reduce
   auth.js              ADMIN_TOKEN middleware
+  accessControl.js     department notebook read-access groups, passwords, tokens
   parsers.js           file parsers and text splitting primitives
   retrieval.js         BM25/CJK bigram, cosine, RRF retrieval
   visualization.js     visualization validation and chart data
@@ -258,9 +263,9 @@ public/
     calendar.js        calendar rendering, CRUD, reminders
     chat.js            streaming chat, message rendering, file upload, query-trim
     layout.js          three-pane panel resize/collapse behavior
-    notebook.js        notebook selector UI, admin panel, admin event binding
+    notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD
     studio.js          Studio panel UI and mind-map SVG renderer
-    settings.js        brand rendering, settings dialog, theme/avatar/banner
+    settings.js        Personal Settings tab, Admin Console mounting, brand/theme/avatar/banner
   answerRenderer.js
   visualizationRenderer.js
   fileDisplay.js
@@ -299,6 +304,19 @@ myAI uses a two-tier design:
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhost or a trusted LAN.
 
+## Settings And Admin Console
+
+The gear button in the main header opens one Settings dialog with two tabs:
+
+- **Personal Settings**: app name, banner, system/user avatars, theme, accent color, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
+- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, admins use the nested menu for **Department Notebook Management**, **System Status**, and **Access Management**.
+
+Department notebook read access is optional. Until at least one group level or
+Super password is configured, notebook reads remain public for compatibility.
+Once access control is active, normal users authenticate from the department
+notebook selector using a group/level password or Super password. `ADMIN_TOKEN`
+continues to protect management APIs only and is not a notebook-read identity.
+
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
@@ -307,7 +325,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 - Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a two-pass LLM pipeline: Pass 1 extracts concepts spanning the full document (evenly sampled chunks); Pass 2 derives node/edge relationships from the concept list.
 - When uploaded documents are present in a room, explicit search prompts (e.g., "네이버 검색해줘") are blocked client-side before reaching the LLM; a descriptive message is shown instead.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
-- `ADMIN_TOKEN` protects notebook management only. Use reverse-proxy auth/TLS/rate limits for production-like shared deployments.
+- `ADMIN_TOKEN` protects Admin Console management actions only. Use group/level or Super access passwords for notebook reads, and reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.
 - Map-Reduce is slower than normal chat and truncates beyond `MAP_REDUCE_MAX_CHUNKS`.
 - Legacy binary `.hwp` and `.xls` are not parsed directly. Use HWPX/XLSX.

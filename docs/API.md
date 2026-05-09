@@ -290,6 +290,20 @@ public API key when available, otherwise a limited fixed-solar-holiday fallback.
 
 ## Admin And Notebooks
 
+Management UI lives under the main gear button:
+
+```text
+Settings
+├─ Personal Settings
+└─ Admin Console
+   ├─ Department Notebook Management
+   ├─ System Status
+   └─ Access Management
+```
+
+The Admin Console uses `ADMIN_TOKEN` for management routes. Normal notebook
+read access uses `/api/access/login` tokens instead.
+
 ## Access Control
 
 Department notebook access control is inactive until at least one group level or

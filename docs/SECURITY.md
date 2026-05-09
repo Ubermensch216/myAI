@@ -210,11 +210,36 @@ ADMIN_TOKEN=<generated-value>
 
 The token only protects notebook management routes. It does not add login to chat, uploads, notebook reads, calendar intent, or visualization. Use reverse-proxy auth for those.
 
+## Department Notebook Access Control
+
+Department notebook read access is configured in the browser UI through
+Settings → Admin Console → Access Management. Admins authenticate with
+`ADMIN_TOKEN`, then create access groups, set Level 1-3 passwords, optionally
+set a Super read-access password, and assign notebook policies from Department
+Notebook Management.
+
+Access control is inactive until at least one enabled group level password or
+an enabled Super password exists. While inactive, notebook reads remain public
+for compatibility. Once active, `/api/notebooks`, `/api/notebooks/:id`, and
+chat or whole-analysis requests that include `notebookId` require
+`Authorization: Bearer <access token>` from `/api/access/login`.
+
+`ADMIN_TOKEN` is intentionally not accepted as a notebook-read credential for
+normal chat. Keep it as a management secret and distribute separate group/level
+or Super passwords to readers.
+
+Access tokens are stateless signed bearer tokens. By default the signing secret
+is generated under `data/access/access-token-secret`; set `ACCESS_TOKEN_SECRET`
+explicitly if multiple app instances must validate the same tokens. Token
+lifetime defaults to 12 hours and can be adjusted with
+`ACCESS_TOKEN_TTL_SECONDS`.
+
 ## Deployment Checklist
 
 - `HOST=127.0.0.1` when behind a reverse proxy.
 - `OLLAMA_URL=http://127.0.0.1:11434`; do not expose Ollama directly.
 - `ADMIN_TOKEN` set for any shared notebook deployment.
+- Department notebook access groups/passwords configured when notebook reads should be restricted.
 - Reverse proxy terminates TLS.
 - Reverse proxy enforces user auth before `/` and `/api/*`.
 - Proxy body limits match `MAX_JSON_BYTES` / `MAX_UPLOAD_BYTES`.
@@ -227,7 +252,7 @@ The token only protects notebook management routes. It does not add login to cha
 ## What This App Does Not Yet Provide
 
 - No built-in per-user accounts or server-side sessions.
-- No role-based permissions for notebook reads.
+- No per-user role database; notebook read access is group/level password based with optional Super access.
 - No audit log for admin operations.
 - No built-in CSRF/session protection because there is no cookie login model.
 - No external calendar synchronization or account isolation.

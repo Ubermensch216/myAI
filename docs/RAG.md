@@ -20,6 +20,12 @@ the access token before any department notebook retrieval or whole-notebook
 Map-Reduce run starts. `ADMIN_TOKEN` remains a management credential and does
 not grant chat-time notebook read access.
 
+Admins configure notebook read access from Settings → Admin Console. Access
+Management defines groups, enabled levels, level passwords, and optional Super
+access; Department Notebook Management assigns allowed groups and minimum
+level per notebook. Normal users authenticate from the department-notebook
+selector before selecting restricted notebooks.
+
 Web search is a separate, lower-priority context source. Naver Search can run
 only for explicit search prompts in normal chat. It is skipped whenever
 uploaded files are present or `notebookId` is selected, so file-grounded and

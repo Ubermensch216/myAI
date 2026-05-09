@@ -10,6 +10,8 @@ retrieval when optional services are unavailable.
 - Keep the browser/private-data boundary unchanged: personal rooms, uploads,
   calendar events, and settings remain in encrypted IndexedDB.
 - Treat department notebooks as shared server-side knowledge managed by admins.
+- Treat notebook read restrictions as optional group/level or Super access
+  policies managed from Settings → Admin Console.
 - Keep `data/notebooks/` as the source of truth until an explicit metadata-store
   migration is complete.
 - Use Qdrant as the department vector index and keep lexical retrieval as a
@@ -129,7 +131,7 @@ POST /api/notebooks/:id/ingest-jobs/:jobId/retry
 ```
 
 The current synchronous upload endpoint remains available for compatibility.
-The admin UI now creates ingest jobs and polls job status while uploads are
+The Settings → Admin Console notebook UI creates ingest jobs and polls job status while uploads are
 parsed, embedded, and indexed in the background.
 
 On server startup, queued or running jobs are recovered from `data/ingest-jobs/`.

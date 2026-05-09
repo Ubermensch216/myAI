@@ -181,6 +181,8 @@ docker compose exec ollama ollama pull bge-m3
 ## Operations Notes
 
 - Keep `ADMIN_TOKEN`, `QDRANT_API_KEY`, and Naver API secrets server-side.
+- Use the main gear button → Admin Console to manage department notebooks,
+  access groups/levels, Super read access, notebook policies, and system status.
 - Use `docs/SECURITY.md` before exposing the app beyond localhost or a trusted LAN.
 - Reverse proxies must not buffer `/api/chat`; streamed responses should flush as they arrive.
 - Docker Desktop may need at least 8 GiB memory for `gemma4:e2b` inside the Ollama container.

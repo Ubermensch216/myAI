@@ -2,7 +2,7 @@
 
 ## High Priority
 
-- Browser-level E2E smoke tests (Playwright) still absent for notebook selection, citations, Map-Reduce, Studio interactions, and calendar flows. API-level smoke tests now cover upload, chat, answer export, Studio mind-map validation, visualization, and notebook list.
+- Browser-level E2E smoke tests (Playwright) still absent for Settings tab switching, Admin Console workflows, notebook selection, citations, Map-Reduce, Studio interactions, and calendar flows. API-level smoke tests now cover upload, chat, answer export, Studio mind-map validation, visualization, access status, and notebook list.
 - Monitor autonomous follow-up suggestion quality and concept depth under varied conversation lengths.
 
 ## Data And Retrieval
@@ -35,7 +35,7 @@
 
 ## Operations
 
-- `ADMIN_TOKEN` protects notebook management routes only.
+- `ADMIN_TOKEN` protects Admin Console management routes only. Notebook reads are public until Department Notebook Access Control is configured; then group/level or Super access tokens are required.
 - The security boundary and deployment checklist now live in `docs/SECURITY.md`.
 - For production-like deployment, bind the app to `127.0.0.1` behind a reverse proxy and add TLS, external auth, body-size limits, and rate limits.
 - Reverse proxies must not buffer streaming chat responses.

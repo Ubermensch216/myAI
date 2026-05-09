@@ -48,7 +48,8 @@ Server:
 - `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
 - `server/naverSearch.js` - Naver Search API integration for explicit search prompts.
-- `server/notebooks.js` - department-notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache.
+- `server/notebooks.js` - department-notebook storage, access policy metadata, dual-write to Qdrant/SQLite, ingest, chunk cache.
+- `server/accessControl.js` - group/level and Super read-access passwords, signed access tokens, notebook policy checks.
 - `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
 - `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → log.
 - `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
@@ -77,9 +78,9 @@ Frontend:
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
-- `public/modules/notebook.js` - notebook selector UI, admin panel, CRUD, admin event binding.
+- `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook/status/access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
-- `public/modules/settings.js` - brand rendering, settings dialog, theme/color-theme/avatar/banner.
+- `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color-theme/avatar/banner.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
 - `public/styles.css` - layout and theme styles.
@@ -111,6 +112,7 @@ Docs:
 
 - Personal data (uploads, calendar, settings, history) lives only in the user's browser IndexedDB.
 - Department notebooks live on the server filesystem; GPU-class hardware embeds and queries them.
+- Department notebook read restrictions are optional group/level or Super access policies. Admins manage them from Settings → Admin Console; normal users authenticate from the notebook selector when access control is active.
 - Upload temp files are deleted after the parse response — no personal data is retained server-side.
 - There is no per-user server account; isolation is by browser AES-GCM key.
 
@@ -193,7 +195,8 @@ current room uploaded documents
 - Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only cache; empty after server restart.
 - `/api/chat` receives active documents in the JSON body. The browser warns on large uploads, shows room/attachment storage estimates, and preflights chat payload size before sending.
 - Studio mind maps also use active room uploaded document payloads. They do not use Naver Search or department notebook RAG.
-- Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects notebook management only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
+- Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects Admin Console management actions only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
+- `ADMIN_TOKEN` protects Admin Console management actions only. Do not treat it as a chat-time notebook read token; use group/level or Super passwords for notebook reads when Department Notebook Access Control is active.
 - Calendar data is local-only. There is no Google/Outlook/ICS sync.
 - Destructive actions (room delete, file delete, notebook/document delete) use `showConfirmDialog` from `public/modules/state.js` (in-app modal, falls back to `window.confirm`).
 - Visualization is plan-first and server-validated. XLSX QA covers date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, and chart spec regression.
