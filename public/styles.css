@@ -5546,3 +5546,300 @@ body.panel-resizing .panel-resizer::after {
     display: none;
   }
 }
+
+/* ===== RAG eval dashboard ===== */
+
+.admin-rag-eval-panel {
+  gap: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rag-eval-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.rag-eval-tab {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rag-eval-tab.active {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent-dark);
+}
+
+.rag-eval-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rag-eval-tab-panel[hidden] { display: none; }
+
+.rag-eval-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.rag-eval-toolbar .text-input {
+  min-width: 160px;
+}
+
+.rag-eval-stats {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rag-eval-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 60vh;
+}
+
+.rag-eval-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.rag-eval-table th,
+.rag-eval-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rag-eval-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  z-index: 1;
+  font-weight: 600;
+}
+
+.rag-eval-query-cell {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-eval-keys-cell code {
+  font-size: 11px;
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-right: 3px;
+}
+
+.rag-eval-row-actions {
+  white-space: nowrap;
+}
+
+.rag-eval-cell-error {
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.rag-eval-run-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.rag-eval-field { display: flex; flex-direction: column; gap: 4px; }
+.rag-eval-field-wide { grid-column: 1 / -1; }
+
+.rag-eval-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.rag-eval-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rag-eval-preset.active {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent-dark);
+}
+
+.rag-eval-variants-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.rag-eval-variant-chip {
+  display: inline-flex;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface-3);
+}
+
+.rag-eval-run-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+}
+
+.rag-eval-run-status {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rag-eval-progress-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rag-eval-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.rag-eval-run-log {
+  grid-column: 1 / -1;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.rag-eval-run-log-line { padding: 1px 0; }
+
+.rag-eval-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.rag-eval-summary-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.rag-eval-summary-card header {
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.rag-eval-summary-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  font-size: 12px;
+}
+
+.rag-eval-summary-card dt { color: var(--muted); }
+.rag-eval-summary-card dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+.rag-eval-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rag-eval-run-meta code { background: var(--surface-2); padding: 1px 4px; border-radius: 3px; }
+
+.rag-eval-failures {
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+}
+
+.rag-eval-failures summary {
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.rag-eval-failures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rag-eval-failure-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.rag-eval-failure-head { color: var(--muted); margin-bottom: 4px; font-size: 11px; }
+.rag-eval-failure-query { margin-bottom: 4px; }
+.rag-eval-failure-expected,
+.rag-eval-failure-got { font-size: 11px; line-height: 1.6; }
+.rag-eval-failure-label {
+  display: inline-block;
+  width: 38px;
+  color: var(--muted);
+  margin-right: 6px;
+}
+
+.rag-eval-case-dialog {
+  max-width: 600px;
+  width: 95%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 18px;
+  color: var(--text);
+}
+
+.rag-eval-case-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+
+.rag-eval-case-form { display: flex; flex-direction: column; gap: 10px; }
+
+.rag-eval-case-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+

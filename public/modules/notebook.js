@@ -1,5 +1,6 @@
 import { state, elements, accessAuthHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave } from "./persistence.js";
+import { bindRagEvalEvents, showAdminRagEvalPanel as activateRagEvalPanel } from "./ragEval.js";
 
 const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
 const ACCESS_TOKEN_SESSION_KEY = "myai_access_token";
@@ -452,6 +453,7 @@ export function showAdminNewNotebookForm() {
   renderAdminList();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
@@ -790,6 +792,7 @@ export function renderAdminDetail() {
   renderAdminConsoleNav();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
   const notebook = adminUiState.selectedNotebook;
   const creating = elements.adminNewNotebookForm && !elements.adminNewNotebookForm.hidden;
   if (creating) return;
@@ -934,6 +937,7 @@ function renderAdminConsoleNav() {
   elements.adminNotebookMenuButton?.classList.toggle("active", active === "notebooks");
   elements.adminStatusButton?.classList.toggle("active", active === "status");
   elements.adminAccessButton?.classList.toggle("active", active === "access");
+  elements.adminRagEvalButton?.classList.toggle("active", active === "ragEval");
   if (elements.adminNotebookNavSection) elements.adminNotebookNavSection.hidden = active !== "notebooks";
 }
 
@@ -969,6 +973,7 @@ export async function showAdminAccessPanel() {
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1277,6 +1282,24 @@ function normalizeClientPolicy(policy) {
   return { groups, minLevel };
 }
 
+// ===== RAG eval panel =====
+
+export function showAdminRagEval() {
+  adminUiState.activePanel = "ragEval";
+  renderAdminConsoleNav();
+  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
+  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
+  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  applyAdminMobileView();
+  activateRagEvalPanel().catch((err) => alert(`RAG 평가 패널 로드 실패: ${err.message}`));
+}
+
 // ===== System status panel =====
 
 export function showAdminStatus() {
@@ -1286,6 +1309,7 @@ export function showAdminStatus() {
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1545,6 +1569,8 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
   if (elements.adminNotebookMenuButton) elements.adminNotebookMenuButton.addEventListener("click", showAdminNotebooksPanel);
   if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
   if (elements.adminAccessButton) elements.adminAccessButton.addEventListener("click", () => showAdminAccessPanel().catch((error) => alert(error.message)));
+  if (elements.adminRagEvalButton) elements.adminRagEvalButton.addEventListener("click", showAdminRagEval);
+  bindRagEvalEvents();
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
   if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.addEventListener("click", () => refreshAdminAccessConfig().catch((error) => alert(error.message)));
   if (elements.adminAccessAddGroupButton) elements.adminAccessAddGroupButton.addEventListener("click", () => addAdminAccessGroup().catch((error) => alert(error.message)));

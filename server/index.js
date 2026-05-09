@@ -40,6 +40,7 @@ import {
   retryNotebookIngestJob
 } from "./ingest/notebookIngestJobs.js";
 import { isAdminConfigured, isAdminRequest, requireAdmin } from "./auth.js";
+import { ragEvalRouter } from "./ragEvalApi.js";
 import {
   canAccessNotebook,
   getAccessConfiguration,
@@ -715,6 +716,8 @@ app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
     response.status(500).json({ ok: false, error: error.message });
   }
 });
+
+app.use("/api/admin/rag-eval", ragEvalRouter);
 
 app.get("/api/notebooks/:id/ingest-jobs", requireAdmin, async (request, response) => {
   try {

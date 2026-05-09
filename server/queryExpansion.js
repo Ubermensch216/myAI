@@ -21,10 +21,11 @@ function clampInt(raw, fallback, min, max) {
  * Returns an array starting with the original query, followed by 0..MAX_VARIANTS
  * paraphrases. On any failure (disabled, timeout, parse error) returns [original].
  */
-export async function expandQuery(query, { model = DEFAULT_MODEL, signal } = {}) {
+export async function expandQuery(query, { model = DEFAULT_MODEL, signal, enabled } = {}) {
   const original = String(query ?? "").trim();
   if (!original) return [];
-  if (!ENABLED || MAX_VARIANTS <= 0) return [original];
+  const effectiveEnabled = typeof enabled === "boolean" ? enabled : ENABLED;
+  if (!effectiveEnabled || MAX_VARIANTS <= 0) return [original];
   if (original.length > 500) return [original];
 
   const controller = createLinkedAbortController(signal, TIMEOUT_MS, "Query expansion timed out.");

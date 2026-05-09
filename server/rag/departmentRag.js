@@ -35,6 +35,8 @@ export async function searchNotebook(notebookId, query, options = {}) {
   let fallbackReason = null;
   let rerankApplied = false;
   const rerankConfig = getRerankConfig();
+  const rerankEnabled = typeof options.rerank === "boolean" ? options.rerank : rerankConfig.enabled;
+  const queryExpansionOverride = typeof options.queryExpansion === "boolean" ? options.queryExpansion : undefined;
   const manifestChunkCount = estimateManifestChunkCount(manifest);
   let allChunks = null;
   let fallbackLoadedAllChunks = false;
@@ -42,8 +44,19 @@ export async function searchNotebook(notebookId, query, options = {}) {
   let queries = trimmedQuery ? [trimmedQuery] : [];
   let queryEmbeddings = [];
 
+  const buildDiagnostics = () => ({
+    fallbackLoadedAllChunks,
+    fallbackReason,
+    rerankApplied,
+    rerankEnabled,
+    queryExpansionEnabled: queryExpansionOverride,
+    queryVariants: queries.length,
+    timing: { ...timing }
+  });
+
   if (manifestChunkCount === 0) {
     timing.totalMs = Date.now() - t0;
+    fallbackReason = "empty_notebook";
     logDepartmentRetrieval({
       backend,
       notebookId,
@@ -57,13 +70,14 @@ export async function searchNotebook(notebookId, query, options = {}) {
       rerankApplied,
       timing,
       citations: [],
-      fallbackReason: "empty_notebook"
+      fallbackReason
     });
     return {
       ok: true,
       notebook: summarizeNotebookManifest(manifest),
       chunks: [],
-      documentSummaries: []
+      documentSummaries: [],
+      diagnostics: buildDiagnostics()
     };
   }
 
@@ -78,7 +92,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
   if (trimmedQuery) {
     const tExpand = Date.now();
     try {
-      queries = await expandQuery(trimmedQuery, { signal: options.signal });
+      queries = await expandQuery(trimmedQuery, { signal: options.signal, enabled: queryExpansionOverride });
     } catch (error) {
       if (options.signal?.aborted) throw error;
       fallbackReason = "expand_failed";
@@ -146,7 +160,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
 
     if (rankingLists.length) {
       const fusedSorted = fuseRankings(rankingLists);
-      if (rerankConfig.enabled) {
+      if (rerankEnabled) {
         const tRerank = Date.now();
         const { chunks: rerankedChunks, reranked, reason: rerankReason } = await rerankChunks(
           trimmedQuery,
@@ -195,7 +209,8 @@ export async function searchNotebook(notebookId, query, options = {}) {
       ok: true,
       notebook: summarizeNotebookManifest(manifest),
       chunks: [],
-      documentSummaries: []
+      documentSummaries: [],
+      diagnostics: buildDiagnostics()
     };
   }
 
@@ -246,7 +261,8 @@ export async function searchNotebook(notebookId, query, options = {}) {
     ok: true,
     notebook: summarizeNotebookManifest(manifest),
     chunks: citations,
-    documentSummaries
+    documentSummaries,
+    diagnostics: buildDiagnostics()
   };
 }
 

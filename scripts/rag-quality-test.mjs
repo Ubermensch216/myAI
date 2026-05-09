@@ -1,5 +1,5 @@
 /**
- * RAG quality evaluation — Recall@K and MRR@K against a golden fixture.
+ * RAG quality evaluation — Recall@K, MRR@K, Precision@K against a golden fixture.
  *
  * Usage:
  *   node scripts/rag-quality-test.mjs [options]
@@ -20,7 +20,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { searchNotebook } from "../server/rag/departmentRag.js";
+import { runEvaluation } from "../server/rag/evalRunner.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_FIXTURE = path.join(rootDir, "fixtures", "rag", "department-golden.json");
@@ -50,25 +50,44 @@ for (let i = 0; i < args.length; i++) {
 
 // ── Load fixture ─────────────────────────────────────────────────────────────
 
-let fixture;
+let golden;
 try {
-  fixture = JSON.parse(await fs.readFile(fixturePath, "utf8"));
+  golden = JSON.parse(await fs.readFile(fixturePath, "utf8"));
 } catch (err) {
   console.error(`Cannot read fixture: ${fixturePath}\n${err.message}`);
   process.exit(1);
 }
 
-const suites = (fixture.suites || []).filter((s) => {
-  if (s.skip) return false;
-  if (filterSuite && s.id !== filterSuite) return false;
-  if (filterNotebook && s.notebookId !== filterNotebook) return false;
-  return true;
-}).map((suite) => ({
-  ...suite,
-  cases: quickMode ? (suite.cases || []).filter((tc) => tc.quick === true) : (suite.cases || [])
-})).filter((suite) => (suite.cases || []).length > 0);
+const variants = compareRerank
+  ? [{ label: "base", rerank: false }, { label: "rerank", rerank: true }]
+  : [{ label: "base" }];
 
-if (!suites.length) {
+let run;
+try {
+  run = await runEvaluation({
+    golden,
+    filter: { notebookId: filterNotebook || undefined, suiteId: filterSuite || undefined, quick: quickMode },
+    k: topK,
+    variants
+  });
+} catch (err) {
+  if (err.message === "invalid_golden_set" || /no_suites/.test(err.message)) {
+    const quickHint = quickMode
+      ? "  No cases matched --quick. Mark selected fixture cases with \"quick\": true.\n"
+      : "";
+    console.error(
+      "No suites to evaluate.\n" +
+      "  Check --notebook / --suite filter arguments.\n" +
+      quickHint +
+      "  Make sure suites in the fixture have 'skip: false' (or no skip field).\n" +
+      `  Fixture: ${fixturePath}`
+    );
+    process.exit(1);
+  }
+  throw err;
+}
+
+if (run.totalQueries === 0) {
   const quickHint = quickMode
     ? "  No cases matched --quick. Mark selected fixture cases with \"quick\": true.\n"
     : "";
@@ -81,196 +100,94 @@ if (!suites.length) {
   );
   process.exit(1);
 }
-// ── Metrics ──────────────────────────────────────────────────────────────────
-
-function relevantKeys(tc) {
-  if (tc.relevantChunkKeys?.length) return new Set(tc.relevantChunkKeys);
-  return new Set(tc.relevantDocIds || []);
-}
-
-function isHit(citation, tc) {
-  if (tc.relevantChunkKeys?.length) {
-    return tc.relevantChunkKeys.includes(`${citation.documentId}:${citation.chunkIndex}`);
-  }
-  return (tc.relevantDocIds || []).includes(citation.documentId);
-}
-
-function computeMetrics(chunks, tc, k) {
-  const topChunks = chunks.slice(0, k);
-  const relevant = relevantKeys(tc);
-
-  let hitCount = 0;
-  let rr = 0;
-
-  for (let i = 0; i < topChunks.length; i++) {
-    const c = topChunks[i];
-    const key = tc.relevantChunkKeys?.length ? `${c.documentId}:${c.chunkIndex}` : c.documentId;
-    if (relevant.has(key)) {
-      hitCount++;
-      if (rr === 0) rr = 1 / (i + 1);
-    }
-  }
-
-  const recall = relevant.size > 0 ? hitCount / relevant.size : 0;
-  return { recall, rr, hitCount, relevantCount: relevant.size };
-}
-
-function aggregateMetrics(caseResults, key) {
-  const valid = caseResults.filter((c) => !c.error && c[key]);
-  if (!valid.length) return null;
-  const recall = valid.reduce((sum, c) => sum + c[key].recall, 0) / valid.length;
-  const mrr = valid.reduce((sum, c) => sum + c[key].rr, 0) / valid.length;
-  return { recall, mrr, n: valid.length };
-}
-
-// ── Run evaluation ────────────────────────────────────────────────────────────
-
-const origRerankEnabled = process.env.RAG_RERANK_ENABLED;
-const allSuiteResults = [];
-let totalQueries = 0;
-let failedQueries = 0;
-
-for (const suite of suites) {
-  const suiteResult = {
-    suiteId: suite.id,
-    notebookId: suite.notebookId,
-    description: suite.description || "",
-    cases: []
-  };
-
-  for (const tc of suite.cases || []) {
-    totalQueries++;
-    const caseResult = { id: tc.id, query: tc.query };
-
-    // ── Base pass (reranker disabled when comparing, otherwise from env) ────
-    if (compareRerank) process.env.RAG_RERANK_ENABLED = "false";
-
-    try {
-      const result = await searchNotebook(suite.notebookId, tc.query);
-      if (!result.ok) {
-        caseResult.error = result.reason || "search_failed";
-        failedQueries++;
-        suiteResult.cases.push(caseResult);
-        continue;
-      }
-      caseResult.base = { ...computeMetrics(result.chunks, tc, topK), chunks: result.chunks.length };
-    } catch (err) {
-      caseResult.error = err.message;
-      failedQueries++;
-      suiteResult.cases.push(caseResult);
-      continue;
-    }
-
-    // ── Rerank pass ────────────────────────────────────────────────────────
-    if (compareRerank) {
-      process.env.RAG_RERANK_ENABLED = "true";
-      try {
-        const rerankResult = await searchNotebook(suite.notebookId, tc.query);
-        if (rerankResult.ok) {
-          caseResult.rerank = { ...computeMetrics(rerankResult.chunks, tc, topK), chunks: rerankResult.chunks.length };
-          caseResult.recallDelta = caseResult.rerank.recall - caseResult.base.recall;
-          caseResult.mrrDelta = caseResult.rerank.rr - caseResult.base.rr;
-        }
-      } catch (err) {
-        caseResult.rerankError = err.message;
-      }
-    }
-
-    suiteResult.cases.push(caseResult);
-  }
-
-  allSuiteResults.push(suiteResult);
-}
-
-if (compareRerank) process.env.RAG_RERANK_ENABLED = origRerankEnabled;
-
-// ── Summary ───────────────────────────────────────────────────────────────────
-
-const allCases = allSuiteResults.flatMap((s) => s.cases);
-const summary = {
-  fixture: fixturePath,
-  mode: quickMode ? "quick" : "full",
-  k: topK,
-  totalQueries,
-  failedQueries,
-  base: aggregateMetrics(allCases, "base"),
-  ...(compareRerank ? { rerank: aggregateMetrics(allCases, "rerank") } : {})
-};
-
-if (compareRerank && summary.base && summary.rerank) {
-  summary.recallImprovement = summary.rerank.recall - summary.base.recall;
-  summary.mrrImprovement = summary.rerank.mrr - summary.base.mrr;
-}
 
 // ── Output ────────────────────────────────────────────────────────────────────
 
 if (jsonOutput) {
-  console.log(JSON.stringify({ summary, suites: allSuiteResults }, null, 2));
+  console.log(JSON.stringify({ fixture: fixturePath, ...run }, null, 2));
 } else {
   const fmt = (v) => (typeof v === "number" ? v.toFixed(4) : "—");
   const delta = (v) => (typeof v === "number" ? `${v >= 0 ? "+" : ""}${v.toFixed(4)}` : "—");
 
   console.log(`\n=== RAG Quality — Recall@${topK} / MRR@${topK} ===`);
   console.log(`Fixture : ${fixturePath}`);
-  console.log(`Mode    : ${summary.mode}`);
-  console.log(`Queries : ${totalQueries}${failedQueries ? `  (${failedQueries} failed)` : ""}\n`);
+  console.log(`Mode    : ${run.mode}`);
+  console.log(`Queries : ${run.totalQueries}${run.failedQueries ? `  (${run.failedQueries} failed)` : ""}\n`);
 
-  for (const suite of allSuiteResults) {
+  for (const suite of run.suites) {
     console.log(`Suite: ${suite.suiteId}  [${suite.notebookId}]`);
     if (suite.description) console.log(`       ${suite.description}`);
 
     for (const c of suite.cases) {
       const q = c.query.slice(0, 52).padEnd(52);
-      if (c.error) {
-        console.log(`  [FAIL] ${q} — ${c.error}`);
+      const base = c.variants.base;
+      const rerank = c.variants.rerank;
+
+      if (base?.error) {
+        console.log(`  [FAIL] ${q} — ${base.error}`);
         continue;
       }
-      if (compareRerank && c.rerank) {
+      if (compareRerank && rerank?.metrics && base?.metrics) {
+        const recallDelta = rerank.metrics.recall - base.metrics.recall;
+        const mrrDelta = rerank.metrics.rr - base.metrics.rr;
         console.log(
           `  [${c.id}] ${q}` +
-          `  R@${topK}: ${fmt(c.base.recall)} → ${fmt(c.rerank.recall)} (${delta(c.recallDelta)})` +
-          `  MRR: ${fmt(c.base.rr)} → ${fmt(c.rerank.rr)} (${delta(c.mrrDelta)})`
+          `  R@${topK}: ${fmt(base.metrics.recall)} → ${fmt(rerank.metrics.recall)} (${delta(recallDelta)})` +
+          `  MRR: ${fmt(base.metrics.rr)} → ${fmt(rerank.metrics.rr)} (${delta(mrrDelta)})`
         );
-      } else {
+      } else if (base?.metrics) {
         console.log(
           `  [${c.id}] ${q}` +
-          `  R@${topK}: ${fmt(c.base.recall)}` +
-          `  MRR: ${fmt(c.base.rr)}` +
-          `  hits: ${c.base.hitCount}/${c.base.relevantCount}`
+          `  R@${topK}: ${fmt(base.metrics.recall)}` +
+          `  MRR: ${fmt(base.metrics.rr)}` +
+          `  hits: ${base.metrics.hitCount}/${base.metrics.relevantCount}`
         );
       }
     }
 
-    // Per-suite aggregate (only when multiple cases)
-    const validCases = suite.cases.filter((c) => !c.error && c.base);
+    const validCases = suite.cases.filter((c) => c.variants.base?.metrics);
     if (validCases.length > 1) {
-      const sBase = aggregateMetrics(validCases, "base");
-      const sRerank = compareRerank ? aggregateMetrics(validCases, "rerank") : null;
-      if (sRerank) {
+      const avg = (key) => validCases.reduce((s, c) => s + c.variants.base.metrics[key], 0) / validCases.length;
+      const avgRerank = (key) => validCases
+        .filter((c) => c.variants.rerank?.metrics)
+        .reduce((s, c, _, arr) => s + c.variants.rerank.metrics[key] / arr.length, 0);
+
+      if (compareRerank) {
+        const baseRecall = avg("recall");
+        const baseMrr = avg("rr");
+        const rkRecall = avgRerank("recall");
+        const rkMrr = avgRerank("rr");
         console.log(
-          `  ── avg  R@${topK}: ${fmt(sBase.recall)} → ${fmt(sRerank.recall)} (${delta(sRerank.recall - sBase.recall)})` +
-          `  MRR: ${fmt(sBase.mrr)} → ${fmt(sRerank.mrr)} (${delta(sRerank.mrr - sBase.mrr)})`
+          `  ── avg  R@${topK}: ${fmt(baseRecall)} → ${fmt(rkRecall)} (${delta(rkRecall - baseRecall)})` +
+          `  MRR: ${fmt(baseMrr)} → ${fmt(rkMrr)} (${delta(rkMrr - baseMrr)})`
         );
       } else {
-        console.log(`  ── avg  R@${topK}: ${fmt(sBase.recall)}  MRR: ${fmt(sBase.mrr)}`);
+        console.log(`  ── avg  R@${topK}: ${fmt(avg("recall"))}  MRR: ${fmt(avg("rr"))}`);
       }
     }
     console.log();
   }
 
-  if (summary.base) {
+  const baseSummary = run.summary.base;
+  const rerankSummary = run.summary.rerank;
+  if (baseSummary) {
     console.log("=== Overall ===");
-    if (compareRerank && summary.rerank) {
-      console.log(`  Recall@${topK} (no-rerank): ${fmt(summary.base.recall)}`);
-      console.log(`  Recall@${topK} (reranked) : ${fmt(summary.rerank.recall)}  (${delta(summary.recallImprovement)})`);
-      console.log(`  MRR@${topK}    (no-rerank): ${fmt(summary.base.mrr)}`);
-      console.log(`  MRR@${topK}    (reranked) : ${fmt(summary.rerank.mrr)}  (${delta(summary.mrrImprovement)})`);
+    if (compareRerank && rerankSummary) {
+      console.log(`  Recall@${topK} (no-rerank): ${fmt(baseSummary.recall)}`);
+      console.log(`  Recall@${topK} (reranked) : ${fmt(rerankSummary.recall)}  (${delta(rerankSummary.recall - baseSummary.recall)})`);
+      console.log(`  MRR@${topK}    (no-rerank): ${fmt(baseSummary.mrr)}`);
+      console.log(`  MRR@${topK}    (reranked) : ${fmt(rerankSummary.mrr)}  (${delta(rerankSummary.mrr - baseSummary.mrr)})`);
+      console.log(`  Precision@${topK} (no-rerank): ${fmt(baseSummary.precision)}`);
+      console.log(`  Precision@${topK} (reranked) : ${fmt(rerankSummary.precision)}  (${delta(rerankSummary.precision - baseSummary.precision)})`);
     } else {
-      console.log(`  Recall@${topK}: ${fmt(summary.base.recall)}`);
-      console.log(`  MRR@${topK}:    ${fmt(summary.base.mrr)}`);
+      console.log(`  Recall@${topK}:    ${fmt(baseSummary.recall)}`);
+      console.log(`  MRR@${topK}:       ${fmt(baseSummary.mrr)}`);
+      console.log(`  Precision@${topK}: ${fmt(baseSummary.precision)}`);
+      console.log(`  No-evidence rate: ${fmt(baseSummary.noEvidenceRate)}`);
+      console.log(`  Fallback rate:    ${fmt(baseSummary.fallbackRate)}`);
     }
     console.log();
   }
 }
 
-process.exitCode = failedQueries > 0 ? 1 : 0;
+process.exitCode = run.failedQueries > 0 ? 1 : 0;

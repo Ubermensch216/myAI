@@ -685,6 +685,10 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 12.3 11 13.8l3.7-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span>권한 관리</span>
             </button>
+            <button id="adminRagEvalButton" class="admin-console-nav-item" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span>RAG 평가</span>
+            </button>
           </nav>
           <section id="adminNotebookNavSection" class="admin-notebook-nav-section">
             <header class="admin-list-header">
@@ -720,6 +724,109 @@
               <button id="adminAccessAddGroupButton" class="send-button" type="button">그룹 추가</button>
             </div>
             <div id="adminAccessBody" class="admin-access-body"></div>
+          </div>
+
+          <div id="adminRagEvalPanel" class="admin-status-panel admin-rag-eval-panel" hidden>
+            <div class="admin-status-panel-header">
+              <h3>RAG 평가 대시보드</h3>
+              <div class="rag-eval-tabs" role="tablist">
+                <button class="rag-eval-tab active" type="button" data-tab="golden" role="tab" aria-selected="true">골든셋</button>
+                <button class="rag-eval-tab" type="button" data-tab="run" role="tab" aria-selected="false">실행</button>
+                <button class="rag-eval-tab" type="button" data-tab="results" role="tab" aria-selected="false">결과</button>
+                <button class="rag-eval-tab" type="button" data-tab="health" role="tab" aria-selected="false">운영 지표</button>
+              </div>
+            </div>
+
+            <section id="ragEvalTabGolden" class="rag-eval-tab-panel" data-tab="golden">
+              <div class="rag-eval-toolbar">
+                <input id="ragEvalGoldenSearch" class="text-input" type="search" placeholder="질의/케이스 ID 검색" />
+                <select id="ragEvalGoldenSuiteFilter" class="text-input"></select>
+                <button id="ragEvalGoldenAddButton" class="send-button" type="button">+ 케이스 추가</button>
+                <button id="ragEvalGoldenRefreshButton" class="ghost-button" type="button">새로고침</button>
+              </div>
+              <div id="ragEvalGoldenStats" class="rag-eval-stats"></div>
+              <div class="rag-eval-table-wrap">
+                <table class="rag-eval-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Suite</th>
+                      <th>질의</th>
+                      <th>관련 청크</th>
+                      <th>quick</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="ragEvalGoldenTableBody"></tbody>
+                </table>
+                <div id="ragEvalGoldenEmpty" class="admin-docs-empty" hidden>골든셋이 비어 있습니다.</div>
+              </div>
+            </section>
+
+            <section id="ragEvalTabRun" class="rag-eval-tab-panel" data-tab="run" hidden>
+              <div class="rag-eval-run-form">
+                <div class="rag-eval-field">
+                  <label class="field-label">노트북 필터</label>
+                  <select id="ragEvalRunNotebook" class="text-input">
+                    <option value="">전체</option>
+                  </select>
+                </div>
+                <div class="rag-eval-field">
+                  <label class="field-label">Suite 필터</label>
+                  <select id="ragEvalRunSuite" class="text-input">
+                    <option value="">전체</option>
+                  </select>
+                </div>
+                <div class="rag-eval-field">
+                  <label class="field-label">모드</label>
+                  <label class="rag-eval-checkbox"><input id="ragEvalRunQuick" type="checkbox" /> quick 케이스만</label>
+                </div>
+                <div class="rag-eval-field">
+                  <label class="field-label">k (Top-K)</label>
+                  <input id="ragEvalRunK" class="text-input" type="number" min="1" max="50" value="10" />
+                </div>
+                <div class="rag-eval-field rag-eval-field-wide">
+                  <label class="field-label">Variant 프리셋</label>
+                  <div class="rag-eval-presets" role="group">
+                    <button class="ghost-button rag-eval-preset" type="button" data-preset="default">기본</button>
+                    <button class="ghost-button rag-eval-preset" type="button" data-preset="rerank">Reranker 비교</button>
+                    <button class="ghost-button rag-eval-preset" type="button" data-preset="qe">QueryExpansion 비교</button>
+                    <button class="ghost-button rag-eval-preset" type="button" data-preset="all">전체 비교</button>
+                  </div>
+                  <div id="ragEvalVariantsPreview" class="rag-eval-variants-preview"></div>
+                </div>
+                <div class="rag-eval-run-actions">
+                  <button id="ragEvalRunStartButton" class="send-button" type="button">평가 시작</button>
+                  <button id="ragEvalRunCancelButton" class="ghost-button admin-danger-button" type="button" hidden>중지</button>
+                </div>
+                <div id="ragEvalRunStatus" class="rag-eval-run-status" aria-live="polite"></div>
+                <div class="rag-eval-progress-track" hidden id="ragEvalProgressTrack">
+                  <div id="ragEvalProgressBar" class="rag-eval-progress-bar"></div>
+                </div>
+                <div id="ragEvalRunLog" class="rag-eval-run-log"></div>
+              </div>
+            </section>
+
+            <section id="ragEvalTabResults" class="rag-eval-tab-panel" data-tab="results" hidden>
+              <div class="rag-eval-toolbar">
+                <select id="ragEvalRunPicker" class="text-input"></select>
+                <button id="ragEvalResultsRefreshButton" class="ghost-button" type="button">실행 목록 새로고침</button>
+                <button id="ragEvalResultsDeleteButton" class="ghost-button admin-danger-button" type="button" hidden>이 실행 삭제</button>
+              </div>
+              <div id="ragEvalResultsBody" class="rag-eval-results-body"></div>
+            </section>
+
+            <section id="ragEvalTabHealth" class="rag-eval-tab-panel" data-tab="health" hidden>
+              <div class="rag-eval-toolbar">
+                <label class="field-label">최근 일수</label>
+                <input id="ragEvalHealthDays" class="text-input" type="number" min="1" max="60" value="7" />
+                <select id="ragEvalHealthNotebook" class="text-input">
+                  <option value="">전체</option>
+                </select>
+                <button id="ragEvalHealthRefreshButton" class="send-button" type="button">갱신</button>
+              </div>
+              <div id="ragEvalHealthBody" class="rag-eval-health-body"></div>
+            </section>
           </div>
 
           <!-- Empty state -->
