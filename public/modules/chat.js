@@ -352,7 +352,9 @@ export async function requestTextAssistantResponse(room) {
 
   setBusy(true);
   state.abortController = new AbortController();
-  const thinking = appendThinking();
+  const latestPrompt = getLastUserPrompt(room);
+  const lawProcessing = shouldShowLawProcessing(latestPrompt);
+  const thinking = appendThinking({ lawProcessing });
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
@@ -363,7 +365,7 @@ export async function requestTextAssistantResponse(room) {
     const payload = {
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
       messages: room.messages.map(({ role, content }) => ({ role, content })),
-      documents: queryTrimDocuments(getActiveDocuments(), getLastUserPrompt(room)),
+      documents: queryTrimDocuments(getActiveDocuments(), latestPrompt),
       personalization: getPersonalizationSettings(),
       notebookId: room.selectedNotebookId || null,
       ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
@@ -383,6 +385,7 @@ export async function requestTextAssistantResponse(room) {
     }
 
     const notebookMeta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
+    if (notebookMeta?.law) updateThinkingLawStatus(thinking, notebookMeta.law);
     const citations = Array.isArray(notebookMeta?.citations) ? notebookMeta.citations : [];
     const webCitations = Array.isArray(notebookMeta?.webSearch?.citations) ? notebookMeta.webSearch.citations : [];
     const lawCitations = Array.isArray(notebookMeta?.law?.citations) ? notebookMeta.law.citations : [];
@@ -878,7 +881,8 @@ export function renderCitationsPanel(article, citations, law = null) {
       list.append(item);
       continue;
     }
-    item.className = `message-citation-item ${citation.sourceType === "law" ? "law-citation" : ""}`;
+    const isLawCitation = citation.sourceType === "law" || String(citation.citationId || "").startsWith("L");
+    item.className = `message-citation-item ${isLawCitation ? "law-citation" : ""}`;
     const marker = document.createElement("span");
     marker.className = "message-citation-marker";
     marker.textContent = `[${citation.citationId}]`;
@@ -886,25 +890,37 @@ export function renderCitationsPanel(article, citations, law = null) {
     source.className = "message-citation-source";
     const docName = citation.url ? document.createElement("a") : document.createElement("span");
     docName.className = "citation-doc";
-    docName.textContent = citation.documentName || citation.lawName || "출처 미상";
+    docName.textContent = formatCitationDocumentName(citation);
     if (citation.url) {
       docName.href = citation.url;
       docName.target = "_blank";
       docName.rel = "noopener noreferrer";
-      docName.title = citation.url;
+      docName.title = isLawCitation ? `공식 법령 원문 열기: ${citation.url}` : citation.url;
+    }
+    if (isLawCitation) {
+      const badge = document.createElement("span");
+      badge.className = "law-source-badge";
+      badge.textContent = "공식 법령";
+      source.append(badge);
     }
     source.append(docName);
-    if (citation.locator) {
+    if (citation.locator && citation.locator !== docName.textContent) {
       const locator = document.createElement("span");
       locator.className = "citation-locator";
       locator.textContent = `· ${citation.locator}`;
       source.append(locator);
     }
-    if (citation.sourceType === "law" && citation.title) {
+    if (isLawCitation && citation.title) {
       const lawTitle = document.createElement("span");
       lawTitle.className = "citation-locator";
       lawTitle.textContent = `· ${citation.title}`;
       source.append(lawTitle);
+    }
+    if (isLawCitation && citation.effectiveDate) {
+      const effectiveDate = document.createElement("span");
+      effectiveDate.className = "citation-locator";
+      effectiveDate.textContent = `· 시행일 ${citation.effectiveDate}`;
+      source.append(effectiveDate);
     }
     item.append(marker, source);
     list.append(item);
@@ -950,6 +966,15 @@ function renderLawDisclaimer(article, law) {
   const citationsPanel = article.querySelector(".message-citations");
   if (citationsPanel) article.insertBefore(disclaimer, citationsPanel);
   else article.append(disclaimer);
+}
+
+function formatCitationDocumentName(citation) {
+  if (citation?.sourceType === "law" || String(citation?.citationId || "").startsWith("L")) {
+    return citation.locator
+      || [citation.lawName || citation.documentName, citation.article].filter(Boolean).join(" ")
+      || "공식 법령";
+  }
+  return citation.documentName || citation.lawName || "출처 미상";
 }
 
 function groupCitationsByType(citations) {
@@ -1260,9 +1285,10 @@ export async function submitPromptEdit(article, nextContent) {
 
 // ===== Thinking card =====
 
-export function appendThinking() {
+export function appendThinking(options = {}) {
   const wrapper = document.createElement("div");
   wrapper.className = "thinking-card";
+  if (options.lawProcessing) wrapper.classList.add("thinking-card-law");
   const row = document.createElement("div");
   row.className = "thinking-row";
   const dots = document.createElement("span");
@@ -1271,7 +1297,7 @@ export function appendThinking() {
   dots.innerHTML = "<span></span><span></span><span></span>";
   const text = document.createElement("span");
   text.className = "thinking-text";
-  text.textContent = "Thinking...";
+  text.textContent = options.lawProcessing ? "공식 법령 근거 확인 중..." : "Thinking...";
   row.append(dots, text);
 
   const details = document.createElement("details");
@@ -1279,7 +1305,7 @@ export function appendThinking() {
   const summary = document.createElement("summary");
   summary.textContent = "처리 단계 보기";
   const list = document.createElement("ul");
-  const steps = buildProcessingSteps();
+  const steps = buildProcessingSteps(options);
   for (const [index, step] of steps.entries()) {
     const item = document.createElement("li");
     item.dataset.stepIndex = String(index);
@@ -1294,6 +1320,12 @@ export function appendThinking() {
   }
   details.append(summary, list);
   wrapper.append(row, details);
+  if (options.lawProcessing) {
+    const status = document.createElement("div");
+    status.className = "thinking-law-status";
+    status.textContent = "Korean Law Engine으로 공식 법령 정보를 조회하고 있습니다.";
+    wrapper.append(status);
+  }
   wrapper.dataset.completedSteps = "0";
   elements.messages.append(wrapper);
   updateThinkingProgress(wrapper, 0);
@@ -1324,11 +1356,31 @@ export function advanceThinkingProgress(thinking, completedCount = null) {
   updateThinkingProgress(thinking, nextCount);
 }
 
+export function updateThinkingLawStatus(thinking, law) {
+  if (!thinking) return;
+  const status = thinking.querySelector(".thinking-law-status");
+  if (!status) return;
+  if (law?.ok && Array.isArray(law.citations) && law.citations.length) {
+    const labels = law.citations
+      .map((item) => item.locator || [item.lawName, item.article].filter(Boolean).join(" "))
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(", ");
+    status.textContent = labels ? `법령 근거 확인: ${labels}` : "법령 근거 확인 완료";
+    status.classList.remove("warning");
+    return;
+  }
+  if (law?.error) {
+    status.textContent = `법령 조회 상태: ${law.error}`;
+    status.classList.add("warning");
+  }
+}
+
 export function getThinkingStepCount(thinking) {
   return thinking?.querySelectorAll(".thinking-details li").length ?? 0;
 }
 
-function buildProcessingSteps() {
+function buildProcessingSteps(options = {}) {
   const steps = ["사용자 질문 확인", "대화 맥락 정리"];
   const { displayFileName: fmt } = { displayFileName: formatDisplayFileName };
   const documents = getActiveDocuments().filter((f) => f.kind === "document");
@@ -1337,7 +1389,16 @@ function buildProcessingSteps() {
   if (images.length) steps.push(`이미지 입력 포함: ${images.map(fmt).join(", ")}`);
   steps.push("Ollama 스트리밍 응답 수신");
   steps.push("근거 중심 답변 표시");
+  if (options.lawProcessing) {
+    steps.splice(Math.max(2, steps.length - 2), 0, "Korean Law Engine으로 공식 법령 정보 조회", "법령명·조항·공식 링크 근거 정리");
+  }
   return steps;
+}
+
+function shouldShowLawProcessing(prompt) {
+  const text = String(prompt || "");
+  if (!text.trim()) return false;
+  return /법령|법률|조문|조항|법에서|법령에서|근거\s*법|인용\s*검증|조문\s*검증|위법|적법|컴플라이언스|준수|판례|해석례|시행령|시행규칙|고시|예규|민법|형법|상법|개인정보\s*보호법|제\s*\d+\s*조/u.test(text);
 }
 
 // ===== Visualization helpers =====

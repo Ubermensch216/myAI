@@ -12,6 +12,7 @@ let failureCount = 0;
 
 await run("app shell ids exist", testAppShellIds);
 const status = await run("GET /api/status", testStatus);
+await run("GET /api/law/status", testLawStatus);
 await run("GET /api/access/status", testAccessStatus);
 await run("GET /api/notebooks", testNotebookList);
 await run("POST /api/upload text file", testUpload);
@@ -23,6 +24,9 @@ await run("POST /api/visualize invalid plan returns 400", testVisualizePlanValid
 await run("POST /api/agent/intent calendar regression set", () => testCalendarIntent(status));
 if (status?.ok) {
   await run("POST /api/chat echo", testChat);
+}
+if (process.env.MYAI_SMOKE_LAW_LIVE === "1") {
+  await run("POST /api/law live endpoints", testLawLiveEndpoints);
 }
 
 if (failureCount > 0) {
@@ -74,6 +78,21 @@ async function testStatus() {
   assert.ok(status.defaultModel.length > 0);
   assert.ok(Array.isArray(status.models));
   return status;
+}
+
+async function testLawStatus() {
+  const response = await fetch(new URL("/api/law/status", baseUrl));
+  assert.ok([200, 503].includes(response.status), `GET /api/law/status returned ${response.status}`);
+  const text = await response.text();
+  const payload = JSON.parse(text);
+  assert.equal(typeof payload.ok, "boolean");
+  assert.equal(typeof payload.enabled, "boolean");
+  assert.equal(typeof payload.configured, "boolean");
+  assert.equal(payload.api?.provider, "law.go.kr");
+  assert.equal(payload.cache?.path, undefined, "law status must not expose server cache path");
+  const lawSecret = String(process.env.LAW_OC || process.env.KOREAN_LAW_API_KEY || "").trim();
+  if (lawSecret) assert.equal(text.includes(lawSecret), false, "law status must not expose API key");
+  return payload;
 }
 
 async function testCalendarIntent(status) {
@@ -278,6 +297,44 @@ async function testChat() {
     throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
   }
   assert.ok(response.status < 500, `POST /api/chat caused server error: ${response.status}`);
+}
+
+async function testLawLiveEndpoints() {
+  const statusResponse = await fetch(new URL("/api/law/status", baseUrl));
+  const status = await statusResponse.json().catch(() => ({}));
+  if (!status.ok || !status.configured) {
+    console.log("skip - POST /api/law live endpoints (LAW_OC not configured)");
+    return;
+  }
+
+  const search = await fetchJson("/api/law/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ query: "\ubbfc\ubc95", display: 3 })
+  });
+  assert.equal(search.ok, true);
+  assert.ok(Array.isArray(search.results));
+  assert.ok(search.results.length > 0, "law search should return candidates");
+
+  const article = await fetchJson("/api/law/article", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ lawName: "\ubbfc\ubc95", article: "\uc81c750\uc870" })
+  });
+  assert.equal(article.ok, true);
+  assert.equal(article.citation?.sourceType, "law");
+  assert.ok(String(article.text || "").length > 0, "law article should include official text");
+
+  const verification = await fetchJson("/api/law/verify-citations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ text: "\ubbfc\ubc95 \uc81c750\uc870\uc640 \ubbfc\ubc95 \uc81c9999\uc870\ub97c \uac80\uc99d\ud574\uc918" })
+  });
+  assert.equal(verification.ok, true);
+  assert.equal(verification.checked, true);
+  assert.ok(Array.isArray(verification.results));
+  assert.ok(verification.results.some((item) => item.valid === true), "verification should include a valid citation");
+  assert.ok(verification.results.some((item) => item.valid === false), "verification should include an invalid citation");
 }
 
 async function fetchJson(route, options = {}) {

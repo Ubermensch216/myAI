@@ -14,7 +14,7 @@ const lawRateLimits = getLawRateLimitDefaults();
 
 lawApiRouter.get("/status", async (_request, response) => {
   const config = getLawConfig();
-  const cache = await getLawCacheHealth();
+  const cache = sanitizeCacheHealth(await getLawCacheHealth());
   const payload = {
     ok: config.enabled && config.configured,
     enabled: config.enabled,
@@ -94,4 +94,10 @@ lawApiRouter.post(
 function sendLawError(response, error) {
   const lawError = toLawError(error);
   response.status(lawError.statusCode || 500).json(lawErrorPayload(lawError));
+}
+
+function sanitizeCacheHealth(cache) {
+  if (!cache || typeof cache !== "object") return cache;
+  const { path: _path, ...publicCache } = cache;
+  return publicCache;
 }
