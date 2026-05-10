@@ -626,10 +626,28 @@
 
     <dialog id="adminNotebookDialog" class="admin-dialog" aria-labelledby="adminDialogTitle">
       <header class="admin-dialog-header">
-        <div class="admin-dialog-title-group">
+        <div id="adminDialogTitleGroup" class="admin-dialog-title-group">
           <h2 id="adminDialogTitle">관리자 콘솔</h2>
           <span id="adminDialogSubtitle" class="admin-dialog-subtitle"></span>
         </div>
+        <nav id="adminConsoleNav" class="admin-console-nav" aria-label="관리자 메뉴" hidden>
+          <button id="adminNotebookMenuButton" class="admin-console-nav-item active" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg>
+            <span>부서노트북 관리</span>
+          </button>
+          <button id="adminStatusButton" class="admin-console-nav-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>시스템 상태</span>
+          </button>
+          <button id="adminAccessButton" class="admin-console-nav-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 12.3 11 13.8l3.7-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>권한 관리</span>
+          </button>
+          <button id="adminRagEvalButton" class="admin-console-nav-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>RAG 평가</span>
+          </button>
+        </nav>
         <div class="admin-dialog-header-actions">
           <button id="adminLogoutButton" class="ghost-button admin-logout-button" type="button" hidden>로그아웃</button>
           <button id="closeAdminNotebookButton" class="icon-button" type="button" aria-label="닫기">×</button>
@@ -703,25 +721,7 @@
 
       <!-- State C: 2-panel workspace -->
       <section id="adminWorkspace" class="admin-workspace" hidden>
-        <aside class="admin-list-pane" aria-label="관리자 콘솔 메뉴">
-          <nav class="admin-console-nav" aria-label="관리자 메뉴">
-            <button id="adminNotebookMenuButton" class="admin-console-nav-item active" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg>
-              <span>부서노트북 관리</span>
-            </button>
-            <button id="adminStatusButton" class="admin-console-nav-item" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-              <span>시스템 상태</span>
-            </button>
-            <button id="adminAccessButton" class="admin-console-nav-item" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 12.3 11 13.8l3.7-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span>권한 관리</span>
-            </button>
-            <button id="adminRagEvalButton" class="admin-console-nav-item" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-              <span>RAG 평가</span>
-            </button>
-          </nav>
+        <aside id="adminListPane" class="admin-list-pane" aria-label="부서노트북 목록">
           <section id="adminNotebookNavSection" class="admin-notebook-nav-section">
             <header class="admin-list-header">
               <h3>노트북</h3>

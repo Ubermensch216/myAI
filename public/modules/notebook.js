@@ -350,6 +350,13 @@ export function resetAdminFileInput() {
   if (elements.adminFileInput) elements.adminFileInput.value = "";
 }
 
+function setAdminHeaderMode(mode) {
+  const contentMode = mode === "content";
+  if (elements.adminNotebookDialog) elements.adminNotebookDialog.dataset.adminState = mode;
+  if (elements.adminDialogTitleGroup) elements.adminDialogTitleGroup.hidden = contentMode;
+  if (elements.adminConsoleNav) elements.adminConsoleNav.hidden = !contentMode;
+}
+
 export function requestAdminFileSelection() {
   if (!isAdminDialogOpen() || !adminUiState.selectedId || !elements.adminFileInput) return;
   resetAdminFileInput();
@@ -374,6 +381,7 @@ export function closeAdminNotebookDialog() {
 
 function showAdminUnconfigured() {
   clearAdminDetailSaveTimer();
+  setAdminHeaderMode("unconfigured");
   if (elements.adminUnconfiguredSection) elements.adminUnconfiguredSection.hidden = false;
   if (elements.adminAuthSection) elements.adminAuthSection.hidden = true;
   if (elements.adminWorkspace) elements.adminWorkspace.hidden = true;
@@ -384,6 +392,7 @@ function showAdminUnconfigured() {
 
 function showAdminLogin() {
   clearAdminDetailSaveTimer();
+  setAdminHeaderMode("login");
   if (elements.adminUnconfiguredSection) elements.adminUnconfiguredSection.hidden = true;
   if (elements.adminAuthSection) elements.adminAuthSection.hidden = false;
   if (elements.adminWorkspace) elements.adminWorkspace.hidden = true;
@@ -396,11 +405,12 @@ function showAdminLogin() {
 }
 
 function showAdminContent() {
+  setAdminHeaderMode("content");
   if (elements.adminUnconfiguredSection) elements.adminUnconfiguredSection.hidden = true;
   if (elements.adminAuthSection) elements.adminAuthSection.hidden = true;
   if (elements.adminWorkspace) elements.adminWorkspace.hidden = false;
   if (elements.adminLogoutButton) elements.adminLogoutButton.hidden = false;
-  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "인증됨";
+  if (elements.adminDialogSubtitle) elements.adminDialogSubtitle.textContent = "";
   if (!adminUiState.activePanel) adminUiState.activePanel = "notebooks";
   renderAdminConsoleNav();
   applyAdminMobileView();
@@ -936,10 +946,12 @@ function formatAdminDate(value) {
 
 function renderAdminConsoleNav() {
   const active = adminUiState.activePanel || "notebooks";
+  if (elements.adminWorkspace) elements.adminWorkspace.dataset.panel = active;
   elements.adminNotebookMenuButton?.classList.toggle("active", active === "notebooks");
   elements.adminStatusButton?.classList.toggle("active", active === "status");
   elements.adminAccessButton?.classList.toggle("active", active === "access");
   elements.adminRagEvalButton?.classList.toggle("active", active === "ragEval");
+  if (elements.adminListPane) elements.adminListPane.hidden = active !== "notebooks";
   if (elements.adminNotebookNavSection) elements.adminNotebookNavSection.hidden = active !== "notebooks";
 }
 

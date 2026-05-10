@@ -4468,9 +4468,9 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .admin-dialog-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
@@ -4503,6 +4503,7 @@ body.panel-resizing .panel-resizer::after {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  justify-self: end;
 }
 
 .admin-logout-button {
@@ -4768,6 +4769,12 @@ body.panel-resizing .panel-resizer::after {
   min-height: 0;
 }
 
+.admin-workspace[data-panel="status"],
+.admin-workspace[data-panel="access"],
+.admin-workspace[data-panel="ragEval"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .admin-list-pane {
   display: flex;
   flex-direction: column;
@@ -4778,27 +4785,29 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-console-nav {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 10px;
-  border-bottom: 1px solid var(--line);
+  min-width: 0;
+  padding: 0;
 }
 
 .admin-console-nav-item {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: 18px auto;
   align-items: center;
-  gap: 9px;
-  min-height: 36px;
-  width: 100%;
-  padding: 0 10px;
+  gap: 7px;
+  min-height: 32px;
+  width: auto;
+  padding: 0 11px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
-  text-align: left;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -5766,6 +5775,16 @@ body.panel-resizing .panel-resizer::after {
     max-width: 100vw;
     border-radius: 0;
     border: 0;
+  }
+
+  .admin-console-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .admin-console-nav-item {
+    flex: 0 0 auto;
   }
 
   .admin-workspace {
