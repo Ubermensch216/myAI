@@ -346,7 +346,8 @@ admins create/search/select groups, configure Level 1-3 passwords in the
 selected group detail pane, and manage Super access separately. Changing an
 existing Super password requires the current Super password plus matching new
 password confirmation; first-time Super setup does not require a current
-password.
+password. Level 1 is the highest group level: it can read notebooks assigned
+to Level 1, 2, or 3 in the same group.
 
 ## Known Constraints
 

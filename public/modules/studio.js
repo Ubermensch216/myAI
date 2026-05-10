@@ -1,6 +1,7 @@
 import { elements, ensureRoomStudio, getActiveRoom } from "./state.js";
 import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
 import { estimateDocumentBytes, getActiveDocuments } from "./chat.js";
+import { bindStudioGraphEvents, showStudioGraphPanel, hideStudioGraphPanel } from "./graphStudio.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -14,11 +15,35 @@ const GAP_V = 14;  // vertical gap between sibling subtrees
 // Module-level interactive map state (preserved across redraws)
 let _map = null;
 let _evBound = false;
+let _activeTool = "mindmap";
 
 // ── Public API ────────────────────────────────────────────────────
 
 export function bindStudioEvents() {
-  elements.studioMindmapButton?.addEventListener("click", () => generateMindmap());
+  elements.studioMindmapButton?.addEventListener("click", () => {
+    if (_activeTool !== "mindmap") setActiveTool("mindmap");
+    else generateMindmap();
+  });
+  elements.studioMindmapRailButton?.addEventListener("click", () => setActiveTool("mindmap"));
+  elements.studioGraphButton?.addEventListener("click", () => setActiveTool("graph"));
+  elements.studioGraphRailButton?.addEventListener("click", () => setActiveTool("graph"));
+  bindStudioGraphEvents();
+}
+
+function setActiveTool(tool) {
+  if (tool !== "mindmap" && tool !== "graph") return;
+  _activeTool = tool;
+  if (elements.studioContent) elements.studioContent.dataset.activeTool = tool;
+  elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
+  elements.studioGraphButton?.classList.toggle("is-active", tool === "graph");
+  if (elements.studioMindmapPanel) elements.studioMindmapPanel.hidden = tool !== "mindmap";
+  if (elements.studioGraphPanel) elements.studioGraphPanel.hidden = tool !== "graph";
+  if (tool === "graph") {
+    showStudioGraphPanel().catch(() => { /* errors logged inside module */ });
+  } else {
+    hideStudioGraphPanel();
+    renderStudio();
+  }
 }
 
 export function renderStudio() {

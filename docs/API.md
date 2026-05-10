@@ -371,6 +371,11 @@ Admin. Deletes an access group.
 
 Admin. Replaces a Level 1-3 password. Existing passwords are not readable.
 
+### `DELETE /api/admin/access/groups/:groupId/levels/:level/password`
+
+Admin. Deletes a Level 1-3 password and disables that level, returning it to
+the unset state.
+
 ### `PATCH /api/admin/access/groups/:groupId/levels/:level`
 
 Admin. Enables or disables a level.
@@ -429,6 +434,10 @@ Admin. Updates notebook access policy:
 ```js
 { access: { groups: ["finance", "planning"], minLevel: 2 } }
 ```
+
+`minLevel` uses Level 1 as the highest privilege. A user authenticated as
+Level 1 can read notebooks that require Level 1, 2, or 3; Level 2 can read
+notebooks that require Level 2 or 3; Level 3 can read only Level 3 notebooks.
 
 ### `DELETE /api/notebooks/:id`
 

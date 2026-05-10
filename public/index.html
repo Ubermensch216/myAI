@@ -238,11 +238,21 @@
               <path d="M8.4 10.6 15.6 7.4M8.4 13.4l7.2 3.2"></path>
             </svg>
           </button>
+          <button id="studioGraphRailButton" class="studio-rail-button" type="button" title="Knowledge graph" aria-label="Knowledge graph">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="6" r="2.4"></circle>
+              <circle cx="18" cy="6" r="2.4"></circle>
+              <circle cx="12" cy="14" r="2.4"></circle>
+              <circle cx="6" cy="20" r="2"></circle>
+              <circle cx="18" cy="20" r="2"></circle>
+              <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
+            </svg>
+          </button>
         </div>
 
-        <div id="studioContent" class="studio-content">
+        <div id="studioContent" class="studio-content" data-active-tool="mindmap">
           <div class="studio-tools-grid">
-            <button id="studioMindmapButton" class="studio-tool-card" type="button" aria-label="마인드맵 생성">
+            <button id="studioMindmapButton" class="studio-tool-card is-active" type="button" data-tool="mindmap" aria-label="마인드맵 생성">
               <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="6" cy="12" r="2.8"></circle>
                 <circle cx="18" cy="6" r="2.8"></circle>
@@ -250,16 +260,63 @@
                 <path d="M8.4 10.6 15.6 7.4M8.4 13.4l7.2 3.2"></path>
               </svg>
               <span class="studio-tool-label">&#xB9C8;&#xC778;&#xB4DC;&#xB9F5;</span>
-              <svg class="studio-tool-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m9 6 6 6-6 6"></path>
+            </button>
+            <button id="studioGraphButton" class="studio-tool-card" type="button" data-tool="graph" aria-label="지식그래프 보기">
+              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6" cy="6" r="2.4"></circle>
+                <circle cx="18" cy="6" r="2.4"></circle>
+                <circle cx="12" cy="14" r="2.4"></circle>
+                <circle cx="6" cy="20" r="2"></circle>
+                <circle cx="18" cy="20" r="2"></circle>
+                <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
               </svg>
+              <span class="studio-tool-label">&#xC9C0;&#xC2DD;&#xADF8;&#xB798;&#xD504;</span>
             </button>
           </div>
-          <div id="studioMindmapCanvas" class="studio-mindmap-canvas">
-            <svg id="studioMindmapSvg" class="studio-mindmap-svg" viewBox="0 0 760 520" role="img" aria-label="Mind map"></svg>
-            <div id="studioMindmapEmpty" class="studio-mindmap-empty"></div>
+
+          <div id="studioMindmapPanel" class="studio-tool-panel" data-tool-panel="mindmap">
+            <div id="studioMindmapCanvas" class="studio-mindmap-canvas">
+              <svg id="studioMindmapSvg" class="studio-mindmap-svg" viewBox="0 0 760 520" role="img" aria-label="Mind map"></svg>
+              <div id="studioMindmapEmpty" class="studio-mindmap-empty"></div>
+            </div>
+            <div id="studioMindmapDetails" class="studio-mindmap-details"></div>
           </div>
-          <div id="studioMindmapDetails" class="studio-mindmap-details"></div>
+
+          <div id="studioGraphPanel" class="studio-tool-panel studio-graph-panel" data-tool-panel="graph" hidden>
+            <div class="kg-toolbar">
+              <div class="kg-toolbar-row">
+                <span class="field-label">&#xB178;&#xD2B8;&#xBD81;</span>
+                <span id="kgActiveNotebookLabel" class="kg-active-notebook" data-state="empty">&#xB300;&#xD654;&#xBC29;&#xC5D0;&#xC11C; &#xBD80;&#xC11C;&#xB178;&#xD2B8;&#xBD81;&#xC744; &#xC120;&#xD0DD;&#xD558;&#xC138;&#xC694;.</span>
+                <button id="kgRefreshButton" class="ghost-button" type="button">&#xC0C8;&#xB85C;&#xACE0;&#xCE68;</button>
+              </div>
+              <div class="kg-toolbar-row">
+                <input id="kgSearchInput" class="text-input" type="search" placeholder="노드 검색 (라벨/별칭)" />
+                <select id="kgTypeFilter" class="text-input">
+                  <option value="">&#xBAA8;&#xB4E0; &#xD0C0;&#xC785;</option>
+                </select>
+                <label class="kg-limit-label">&#xB178;&#xB4DC; &#xC218;
+                  <select id="kgLimitSelect" class="text-input kg-limit-select">
+                    <option value="40">40</option>
+                    <option value="80" selected>80</option>
+                    <option value="160">160</option>
+                  </select>
+                </label>
+                <button id="kgRelayoutButton" class="ghost-button" type="button">&#xC7AC;&#xBC30;&#xCE58;</button>
+              </div>
+            </div>
+            <div id="kgStatsBar" class="kg-stats-bar"></div>
+            <div class="kg-body">
+              <div class="kg-canvas-wrap">
+                <div id="kgCanvas" class="kg-canvas"></div>
+                <div id="kgCanvasEmpty" class="kg-canvas-empty" hidden>&#xC811;&#xADFC; &#xAC00;&#xB2A5;&#xD55C; &#xC9C0;&#xC2DD; &#xADF8;&#xB798;&#xD504;&#xAC00; &#xC5C6;&#xC2B5;&#xB2C8;&#xB2E4;.</div>
+                <div id="kgLegend" class="kg-legend"></div>
+              </div>
+              <aside id="kgDetailPane" class="kg-detail-pane">
+                <div id="kgDetailEmpty" class="kg-detail-empty">&#xB178;&#xB4DC; &#xB610;&#xB294; &#xC5E3;&#xC9C0;&#xB97C; &#xD074;&#xB9AD;&#xD558;&#xBA74; &#xC0C1;&#xC138;&#xAC00; &#xD45C;&#xC2DC;&#xB429;&#xB2C8;&#xB2E4;.</div>
+                <div id="kgDetailBody" class="kg-detail-body" hidden></div>
+              </aside>
+            </div>
+          </div>
         </div>
       </aside>
     </main>
@@ -647,10 +704,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span>RAG 평가</span>
           </button>
-          <button id="adminGraphButton" class="admin-console-nav-item" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="14" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="20" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="20" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
-            <span>지식그래프</span>
-          </button>
         </nav>
         <div class="admin-dialog-header-actions">
           <button id="adminRefreshStatusButton" class="ghost-button admin-header-refresh" type="button" hidden>새로고침</button>
@@ -855,48 +908,6 @@
               </div>
               <div id="ragEvalHealthBody" class="rag-eval-health-body"></div>
             </section>
-          </div>
-
-          <!-- Knowledge Graph admin panel -->
-          <div id="adminGraphPanel" class="admin-status-panel admin-graph-panel" hidden>
-            <div class="kg-toolbar">
-              <div class="kg-toolbar-row">
-                <label class="field-label" for="kgNotebookSelect">노트북</label>
-                <select id="kgNotebookSelect" class="text-input"></select>
-                <button id="kgRefreshButton" class="ghost-button" type="button">새로고침</button>
-              </div>
-              <div class="kg-toolbar-row">
-                <input id="kgSearchInput" class="text-input" type="search" placeholder="노드 검색 (라벨/별칭)" />
-                <select id="kgTypeFilter" class="text-input">
-                  <option value="">모든 타입</option>
-                </select>
-                <label class="kg-limit-label">노드 수
-                  <select id="kgLimitSelect" class="text-input kg-limit-select">
-                    <option value="40">40</option>
-                    <option value="80" selected>80</option>
-                    <option value="160">160</option>
-                    <option value="240">240</option>
-                  </select>
-                </label>
-                <label class="kg-limit-label kg-include-disabled">
-                  <input id="kgIncludeDisabled" type="checkbox" />
-                  <span>비활성 포함</span>
-                </label>
-                <button id="kgRelayoutButton" class="ghost-button" type="button">재배치</button>
-              </div>
-            </div>
-            <div id="kgStatsBar" class="kg-stats-bar"></div>
-            <div class="kg-body">
-              <div class="kg-canvas-wrap">
-                <div id="kgCanvas" class="kg-canvas"></div>
-                <div id="kgCanvasEmpty" class="kg-canvas-empty" hidden>그래프가 없습니다. 먼저 KG를 빌드하세요.</div>
-                <div id="kgLegend" class="kg-legend"></div>
-              </div>
-              <aside id="kgDetailPane" class="kg-detail-pane">
-                <div id="kgDetailEmpty" class="kg-detail-empty">노드 또는 엣지를 클릭하면 상세가 표시됩니다.</div>
-                <div id="kgDetailBody" class="kg-detail-body" hidden></div>
-              </aside>
-            </div>
           </div>
 
           <!-- Empty state -->

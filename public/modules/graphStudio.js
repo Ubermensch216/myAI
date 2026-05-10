@@ -1,4 +1,5 @@
-import { state, elements } from "./state.js";
+import { elements, accessAuthHeaders } from "./state.js";
+import { getActiveNotebookId, findNotebookSummary } from "./notebook.js";
 
 const TYPE_COLORS = {
   Document: "#0f766e",
@@ -21,28 +22,24 @@ const RELATION_LABELS = {
 };
 
 const kgState = {
-  notebooks: [],
-  selectedNotebookId: "",
+  activeNotebookId: "",
   ontology: null,
   stats: null,
   filterType: "",
   searchTerm: "",
   limit: 80,
-  includeDisabled: false,
   cy: null,
   loading: false,
   selectedNodeId: null,
-  selectedEdgeId: null
+  selectedEdgeId: null,
+  initialized: false,
+  panelVisible: false
 };
 
-function authHeaders() {
-  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
-}
-
 async function api(pathname, init = {}) {
-  const headers = { ...authHeaders(), ...(init.headers || {}) };
+  const headers = { ...accessAuthHeaders(), ...(init.headers || {}) };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  const response = await fetch(`/api/admin/graph${pathname}`, { ...init, headers });
+  const response = await fetch(`/api/studio/graph${pathname}`, { ...init, headers });
   if (!response.ok) {
     let body = "";
     try { body = (await response.json()).error || ""; } catch { /* ignore */ }
@@ -65,42 +62,32 @@ function colorFor(type) {
   return TYPE_COLORS[type] || FALLBACK_COLOR;
 }
 
-// ===== Public entry points =====
-
-export async function showAdminGraphPanel() {
-  if (elements.adminGraphPanel) elements.adminGraphPanel.hidden = false;
-  await ensureNotebookList();
+export async function showStudioGraphPanel() {
+  kgState.panelVisible = true;
   await ensureOntology();
-  if (kgState.selectedNotebookId) {
-    await refreshAll();
-  } else {
-    renderStats(null);
-    clearCanvas("노트북을 선택하세요.");
-  }
+  await syncWithActiveRoom({ force: true });
+  if (kgState.cy) kgState.cy.resize();
 }
 
-export function hideAdminGraphPanel() {
-  if (elements.adminGraphPanel) elements.adminGraphPanel.hidden = true;
+export function hideStudioGraphPanel() {
+  kgState.panelVisible = false;
 }
 
-export function bindGraphAdminEvents() {
-  elements.kgNotebookSelect?.addEventListener("change", async (event) => {
-    kgState.selectedNotebookId = event.target.value;
-    await refreshAll();
+export function bindStudioGraphEvents() {
+  if (kgState.initialized) return;
+  kgState.initialized = true;
+
+  elements.kgRefreshButton?.addEventListener("click", () => {
+    syncWithActiveRoom({ force: true }).catch(reportError);
   });
-  elements.kgRefreshButton?.addEventListener("click", () => refreshAll().catch(reportError));
   elements.kgRelayoutButton?.addEventListener("click", () => runLayout());
   elements.kgTypeFilter?.addEventListener("change", (event) => {
     kgState.filterType = event.target.value || "";
-    refreshSubgraph().catch(reportError);
+    if (kgState.activeNotebookId) refreshSubgraph().catch(reportError);
   });
   elements.kgLimitSelect?.addEventListener("change", (event) => {
     kgState.limit = Math.max(10, parseInt(event.target.value, 10) || 80);
-    refreshSubgraph().catch(reportError);
-  });
-  elements.kgIncludeDisabled?.addEventListener("change", (event) => {
-    kgState.includeDisabled = Boolean(event.target.checked);
-    refreshSubgraph().catch(reportError);
+    if (kgState.activeNotebookId) refreshSubgraph().catch(reportError);
   });
 
   let searchTimer = null;
@@ -109,30 +96,46 @@ export function bindGraphAdminEvents() {
     const term = event.target.value || "";
     searchTimer = setTimeout(() => {
       kgState.searchTerm = term;
-      handleSearch(term).catch(reportError);
+      if (kgState.activeNotebookId) handleSearch(term).catch(reportError);
     }, 250);
+  });
+
+  window.addEventListener("myai:renderrooms", () => {
+    if (kgState.panelVisible) syncWithActiveRoom({ force: false }).catch(reportError);
   });
 }
 
-// ===== Data loading =====
-
-async function ensureNotebookList() {
-  if (kgState.notebooks.length) {
-    populateNotebookSelect();
+async function syncWithActiveRoom({ force = false } = {}) {
+  const roomNotebookId = getActiveNotebookId() || "";
+  const changed = roomNotebookId !== kgState.activeNotebookId;
+  if (!force && !changed) return;
+  kgState.activeNotebookId = roomNotebookId;
+  renderActiveNotebookLabel();
+  if (!roomNotebookId) {
+    if (elements.kgSearchInput) elements.kgSearchInput.value = "";
+    kgState.searchTerm = "";
+    renderStats(null);
+    clearCanvas("대화방에서 부서노트북을 선택하면 지식 그래프가 표시됩니다.");
+    clearSelection();
     return;
   }
-  try {
-    const response = await fetch("/api/notebooks", { headers: authHeaders() });
-    if (!response.ok) return;
-    const result = await response.json();
-    kgState.notebooks = Array.isArray(result.notebooks) ? result.notebooks : [];
-    if (!kgState.selectedNotebookId && kgState.notebooks.length) {
-      kgState.selectedNotebookId = kgState.notebooks[0].id;
-    }
-    populateNotebookSelect();
-  } catch (error) {
-    reportError(error);
+  await refreshAll();
+}
+
+function renderActiveNotebookLabel() {
+  const label = elements.kgActiveNotebookLabel;
+  if (!label) return;
+  const id = kgState.activeNotebookId;
+  if (!id) {
+    label.dataset.state = "empty";
+    label.textContent = "대화방에서 부서노트북을 선택하세요.";
+    label.title = "";
+    return;
   }
+  const nb = findNotebookSummary(id);
+  label.dataset.state = "active";
+  label.textContent = nb?.name || id;
+  label.title = nb?.description ? `${nb.name} — ${nb.description}` : (nb?.name || id);
 }
 
 async function ensureOntology() {
@@ -145,33 +148,6 @@ async function ensureOntology() {
     populateTypeFilter();
   } catch (error) {
     reportError(error);
-  }
-}
-
-function populateNotebookSelect() {
-  const select = elements.kgNotebookSelect;
-  if (!select) return;
-  const previous = kgState.selectedNotebookId;
-  select.innerHTML = "";
-  if (!kgState.notebooks.length) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "노트북 없음";
-    select.appendChild(opt);
-    select.disabled = true;
-    return;
-  }
-  select.disabled = false;
-  for (const nb of kgState.notebooks) {
-    const opt = document.createElement("option");
-    opt.value = nb.id;
-    opt.textContent = `${nb.name || nb.id}`;
-    select.appendChild(opt);
-  }
-  if (previous && kgState.notebooks.some((n) => n.id === previous)) {
-    select.value = previous;
-  } else {
-    kgState.selectedNotebookId = select.value;
   }
 }
 
@@ -190,14 +166,14 @@ function populateTypeFilter() {
 }
 
 async function refreshAll() {
-  if (!kgState.selectedNotebookId) return;
+  if (!kgState.activeNotebookId) return;
   await Promise.all([refreshStats(), refreshSubgraph()]);
 }
 
 async function refreshStats() {
-  if (!kgState.selectedNotebookId) { renderStats(null); return; }
+  if (!kgState.activeNotebookId) { renderStats(null); return; }
   try {
-    const data = await api(`/${kgState.selectedNotebookId}/stats`);
+    const data = await api(`/${kgState.activeNotebookId}/stats`);
     kgState.stats = data;
     renderStats(data);
   } catch (error) {
@@ -211,7 +187,7 @@ async function refreshStats() {
 }
 
 async function refreshSubgraph() {
-  if (!kgState.selectedNotebookId) return;
+  if (!kgState.activeNotebookId) return;
   if (kgState.loading) return;
   kgState.loading = true;
   setEmpty("");
@@ -220,12 +196,11 @@ async function refreshSubgraph() {
     params.set("mode", "top");
     params.set("limit", String(kgState.limit));
     if (kgState.filterType) params.set("type", kgState.filterType);
-    if (kgState.includeDisabled) params.set("includeDisabled", "1");
-    const data = await api(`/${kgState.selectedNotebookId}/subgraph?${params.toString()}`);
+    const data = await api(`/${kgState.activeNotebookId}/subgraph?${params.toString()}`);
     renderGraph(data);
   } catch (error) {
     if (/no_graph/.test(error.message)) {
-      clearCanvas("이 노트북에는 KG가 없습니다. 먼저 KG를 빌드하세요.");
+      clearCanvas("이 노트북에는 지식 그래프가 없습니다.");
     } else {
       reportError(error);
       clearCanvas("그래프를 불러오지 못했습니다.");
@@ -241,14 +216,13 @@ async function handleSearch(term) {
     await refreshSubgraph();
     return;
   }
-  if (!kgState.selectedNotebookId) return;
+  if (!kgState.activeNotebookId) return;
   try {
-    const data = await api(`/${kgState.selectedNotebookId}/search?q=${encodeURIComponent(trimmed)}&limit=20`);
+    const data = await api(`/${kgState.activeNotebookId}/search?q=${encodeURIComponent(trimmed)}&limit=20`);
     if (!Array.isArray(data.nodes) || data.nodes.length === 0) {
       clearCanvas(`"${trimmed}"과 일치하는 노드가 없습니다.`);
       return;
     }
-    // Center subgraph around the first hit
     const seedId = data.nodes[0].id;
     await renderAroundNode(seedId);
   } catch (error) {
@@ -257,16 +231,14 @@ async function handleSearch(term) {
 }
 
 async function renderAroundNode(nodeId) {
-  if (!nodeId || !kgState.selectedNotebookId) return;
+  if (!nodeId || !kgState.activeNotebookId) return;
   try {
-    const data = await api(`/${kgState.selectedNotebookId}/subgraph?mode=around&nodeId=${encodeURIComponent(nodeId)}&hops=1&limit=80`);
+    const data = await api(`/${kgState.activeNotebookId}/subgraph?mode=around&nodeId=${encodeURIComponent(nodeId)}&hops=1&limit=80`);
     renderGraph(data, { focusNodeId: nodeId });
   } catch (error) {
     reportError(error);
   }
 }
-
-// ===== Rendering =====
 
 function renderStats(data) {
   const bar = elements.kgStatsBar;
@@ -276,14 +248,13 @@ function renderStats(data) {
     return;
   }
   if (data.noGraph) {
-    bar.innerHTML = `<span class="kg-chip" style="border-color:#dc2626;color:#dc2626;">KG 없음 — 빌드 필요</span>`;
+    bar.innerHTML = `<span class="kg-chip" style="border-color:#dc2626;color:#dc2626;">지식 그래프가 빌드되지 않았습니다</span>`;
     return;
   }
   const parts = [];
-  parts.push(`<span><strong>${data.enabledNodes ?? 0}</strong>/${data.nodeCount ?? 0} 노드</span>`);
-  parts.push(`<span><strong>${data.enabledEdges ?? 0}</strong>/${data.edgeCount ?? 0} 엣지</span>`);
+  parts.push(`<span><strong>${data.enabledNodes ?? 0}</strong> 노드</span>`);
+  parts.push(`<span><strong>${data.enabledEdges ?? 0}</strong> 엣지</span>`);
   parts.push(`<span><strong>${data.refCount ?? 0}</strong> 출처 참조</span>`);
-  if (data.ontologyVersion) parts.push(`<span>온톨로지 v${data.ontologyVersion}</span>`);
   if (Array.isArray(data.nodeTypeCounts)) {
     for (const nt of data.nodeTypeCounts) {
       parts.push(`<span class="kg-chip"><span class="kg-chip-dot" style="background:${colorFor(nt.type)}"></span>${escapeHtml(nt.type)} <strong>${nt.c}</strong></span>`);
@@ -304,9 +275,7 @@ function setEmpty(text) {
 }
 
 function clearCanvas(message) {
-  if (kgState.cy) {
-    kgState.cy.elements().remove();
-  }
+  if (kgState.cy) kgState.cy.elements().remove();
   setEmpty(message || "");
   renderLegend();
 }
@@ -344,35 +313,8 @@ function ensureCytoscape() {
           "text-outline-width": 2
         }
       },
-      {
-        selector: "node.selected",
-        style: {
-          "border-width": 3,
-          "border-color": "#f59e0b"
-        }
-      },
-      {
-        selector: "node.dim",
-        style: {
-          "opacity": 0.25
-        }
-      },
-      {
-        selector: "node[?disabled]",
-        style: {
-          "background-opacity": 0.25,
-          "border-style": "dashed",
-          "border-color": "#94a3b8",
-          "color": "#64748b"
-        }
-      },
-      {
-        selector: "node[?override]",
-        style: {
-          "border-color": "#f59e0b",
-          "border-width": 2
-        }
-      },
+      { selector: "node.selected", style: { "border-width": 3, "border-color": "#f59e0b" } },
+      { selector: "node.dim", style: { "opacity": 0.25 } },
       {
         selector: "edge",
         style: {
@@ -390,43 +332,14 @@ function ensureCytoscape() {
           "text-background-padding": 1
         }
       },
-      {
-        selector: "edge.selected",
-        style: {
-          "line-color": "#f59e0b",
-          "target-arrow-color": "#f59e0b",
-          "width": 3
-        }
-      },
-      {
-        selector: "edge.dim",
-        style: {
-          "opacity": 0.15
-        }
-      },
-      {
-        selector: "edge[?disabled]",
-        style: {
-          "line-style": "dashed",
-          "opacity": 0.45
-        }
-      }
+      { selector: "edge.selected", style: { "line-color": "#f59e0b", "target-arrow-color": "#f59e0b", "width": 3 } },
+      { selector: "edge.dim", style: { "opacity": 0.15 } }
     ]
   });
 
-  kgState.cy.on("tap", "node", (event) => {
-    const id = event.target.id();
-    onNodeClick(id);
-  });
-  kgState.cy.on("tap", "edge", (event) => {
-    const id = event.target.id();
-    onEdgeClick(id);
-  });
-  kgState.cy.on("tap", (event) => {
-    if (event.target === kgState.cy) {
-      clearSelection();
-    }
-  });
+  kgState.cy.on("tap", "node", (e) => onNodeClick(e.target.id()));
+  kgState.cy.on("tap", "edge", (e) => onEdgeClick(e.target.id()));
+  kgState.cy.on("tap", (e) => { if (e.target === kgState.cy) clearSelection(); });
   return kgState.cy;
 }
 
@@ -459,9 +372,7 @@ function renderGraph(payload, opts = {}) {
         type: n.type,
         color: colorFor(n.type),
         confidence: n.confidence ?? 1,
-        degree: typeof n.degree === "number" ? n.degree : (degreeMap.get(n.id) || 0),
-        disabled: n.enabled === 0 ? 1 : 0,
-        override: n.manualOverride ? 1 : 0
+        degree: typeof n.degree === "number" ? n.degree : (degreeMap.get(n.id) || 0)
       }
     });
   }
@@ -476,9 +387,7 @@ function renderGraph(payload, opts = {}) {
         target: e.dstId,
         relType: e.type,
         relLabel: RELATION_LABELS[e.type] || e.type,
-        confidence: e.confidence ?? 1,
-        disabled: e.enabled === 0 ? 1 : 0,
-        override: e.manualOverride ? 1 : 0
+        confidence: e.confidence ?? 1
       }
     });
   }
@@ -501,8 +410,7 @@ function renderGraph(payload, opts = {}) {
 
 function runLayout() {
   if (!kgState.cy) return;
-  const n = kgState.cy.nodes().length;
-  if (n === 0) return;
+  if (kgState.cy.nodes().length === 0) return;
   kgState.cy.layout({
     name: "cose",
     animate: false,
@@ -520,20 +428,14 @@ function renderLegend(counts) {
   if (!legend) return;
   const types = (kgState.ontology?.entityTypes || []).map((t) => t.id);
   const items = types.map((t) => `<span class="kg-legend-item"><span class="kg-legend-dot" style="background:${colorFor(t)}"></span>${escapeHtml(t)}</span>`);
-  if (counts) {
-    items.push(`<span class="kg-legend-item">노드 ${counts.nodes ?? 0} · 엣지 ${counts.edges ?? 0}</span>`);
-  }
+  if (counts) items.push(`<span class="kg-legend-item">노드 ${counts.nodes ?? 0} · 엣지 ${counts.edges ?? 0}</span>`);
   legend.innerHTML = items.join("");
 }
-
-// ===== Detail pane =====
 
 function clearSelection() {
   kgState.selectedNodeId = null;
   kgState.selectedEdgeId = null;
-  if (kgState.cy) {
-    kgState.cy.elements().removeClass("selected dim");
-  }
+  if (kgState.cy) kgState.cy.elements().removeClass("selected dim");
   if (elements.kgDetailEmpty) elements.kgDetailEmpty.hidden = false;
   if (elements.kgDetailBody) {
     elements.kgDetailBody.hidden = true;
@@ -566,12 +468,12 @@ function highlightEdge(edgeId) {
 }
 
 async function onNodeClick(nodeId) {
-  if (!nodeId || !kgState.selectedNotebookId) return;
+  if (!nodeId || !kgState.activeNotebookId) return;
   kgState.selectedNodeId = nodeId;
   kgState.selectedEdgeId = null;
   highlightNode(nodeId);
   try {
-    const data = await api(`/${kgState.selectedNotebookId}/node/${encodeURIComponent(nodeId)}`);
+    const data = await api(`/${kgState.activeNotebookId}/node/${encodeURIComponent(nodeId)}`);
     renderNodeDetail(data);
   } catch (error) {
     reportError(error);
@@ -579,12 +481,12 @@ async function onNodeClick(nodeId) {
 }
 
 async function onEdgeClick(edgeId) {
-  if (!edgeId || !kgState.selectedNotebookId) return;
+  if (!edgeId || !kgState.activeNotebookId) return;
   kgState.selectedNodeId = null;
   kgState.selectedEdgeId = edgeId;
   highlightEdge(edgeId);
   try {
-    const data = await api(`/${kgState.selectedNotebookId}/edge/${encodeURIComponent(edgeId)}`);
+    const data = await api(`/${kgState.activeNotebookId}/edge/${encodeURIComponent(edgeId)}`);
     renderEdgeDetail(data);
   } catch (error) {
     reportError(error);
@@ -602,7 +504,9 @@ function renderNodeDetail(data) {
   const refs = Array.isArray(data?.refs) ? data.refs : [];
 
   const aliasesHtml = (node.aliases || []).map((a) => `<span class="kg-alias-chip">${escapeHtml(a)}</span>`).join("");
-  const summaryHtml = node.summary ? `<div class="kg-detail-summary">${escapeHtml(node.summary)}</div>` : `<div class="kg-detail-empty">요약 없음</div>`;
+  const summaryHtml = node.summary
+    ? `<div class="kg-detail-summary">${escapeHtml(node.summary)}</div>`
+    : `<div class="kg-detail-empty">요약 없음</div>`;
 
   const neighborHtml = neighbors.length
     ? neighbors.map((n) => `
@@ -622,28 +526,12 @@ function renderNodeDetail(data) {
       `).join("")
     : `<div class="kg-detail-empty">출처 참조 없음</div>`;
 
-  const enabled = Boolean(node.enabled);
-  const override = Boolean(node.manualOverride);
-  const stateBadges = `
-    <span class="kg-state-badge ${enabled ? "enabled" : "disabled"}">${enabled ? "활성" : "비활성"}</span>
-    ${override ? `<span class="kg-state-badge override">수동 고정</span>` : ""}
-  `;
-  const actionsHtml = `
-    <div class="kg-actions">
-      <button type="button" class="kg-action-button ${enabled ? "danger" : ""}" data-kg-action="${enabled ? "disable" : "enable"}" data-kg-kind="node" data-kg-id="${escapeHtml(node.id)}">
-        ${enabled ? "노드 비활성화" : "노드 활성화"}
-      </button>
-      ${override ? `<button type="button" class="kg-action-button" data-kg-action="clear-override" data-kg-kind="node" data-kg-id="${escapeHtml(node.id)}">자동 갱신 복구</button>` : ""}
-    </div>
-  `;
-
   body.innerHTML = `
     <h4>${escapeHtml(node.label || "")}</h4>
     <div class="kg-detail-meta">
       <span class="kg-chip"><span class="kg-chip-dot" style="background:${colorFor(node.type)}"></span>${escapeHtml(node.type || "")}</span>
-      conf ${(Number(node.confidence) || 0).toFixed(2)} ${stateBadges}
+      conf ${(Number(node.confidence) || 0).toFixed(2)}
     </div>
-    ${actionsHtml}
     <div class="kg-detail-section">
       <div class="kg-detail-section-title">요약</div>
       ${summaryHtml}
@@ -659,9 +547,6 @@ function renderNodeDetail(data) {
     </div>
   `;
 
-  body.querySelectorAll("[data-kg-action]").forEach((el) => {
-    el.addEventListener("click", () => handleCurationAction(el));
-  });
   body.querySelectorAll("[data-neighbor-id]").forEach((el) => {
     el.addEventListener("click", () => {
       const id = el.getAttribute("data-neighbor-id");
@@ -694,70 +579,20 @@ function renderEdgeDetail(data) {
       `).join("")
     : `<div class="kg-detail-empty">출처 참조 없음</div>`;
 
-  const enabled = Boolean(edge.enabled);
-  const override = Boolean(edge.manualOverride);
-  const stateBadges = `
-    <span class="kg-state-badge ${enabled ? "enabled" : "disabled"}">${enabled ? "활성" : "비활성"}</span>
-    ${override ? `<span class="kg-state-badge override">수동 고정</span>` : ""}
-  `;
-  const actionsHtml = `
-    <div class="kg-actions">
-      <button type="button" class="kg-action-button ${enabled ? "danger" : ""}" data-kg-action="${enabled ? "disable" : "enable"}" data-kg-kind="edge" data-kg-id="${escapeHtml(edge.id)}">
-        ${enabled ? "엣지 비활성화" : "엣지 활성화"}
-      </button>
-      ${override ? `<button type="button" class="kg-action-button" data-kg-action="clear-override" data-kg-kind="edge" data-kg-id="${escapeHtml(edge.id)}">자동 갱신 복구</button>` : ""}
-    </div>
-  `;
-
   body.innerHTML = `
     <h4>관계 · ${escapeHtml(RELATION_LABELS[edge.type] || edge.type || "")}</h4>
     <div class="kg-detail-meta">
-      ${escapeHtml(edge.type || "")} · conf ${(Number(edge.confidence) || 0).toFixed(2)} ${stateBadges}
+      ${escapeHtml(edge.type || "")} · conf ${(Number(edge.confidence) || 0).toFixed(2)}
     </div>
-    ${actionsHtml}
     ${edge.label ? `<div class="kg-detail-section"><div class="kg-detail-section-title">설명</div><div class="kg-detail-summary">${escapeHtml(edge.label)}</div></div>` : ""}
     <div class="kg-detail-section">
       <div class="kg-detail-section-title">출처 청크 (${refs.length})</div>
       <div class="kg-ref-list">${refsHtml}</div>
     </div>
   `;
-
-  body.querySelectorAll("[data-kg-action]").forEach((el) => {
-    el.addEventListener("click", () => handleCurationAction(el));
-  });
-}
-
-async function handleCurationAction(buttonEl) {
-  if (!buttonEl || !kgState.selectedNotebookId) return;
-  const action = buttonEl.getAttribute("data-kg-action");
-  const kind = buttonEl.getAttribute("data-kg-kind");
-  const id = buttonEl.getAttribute("data-kg-id");
-  if (!action || !kind || !id) return;
-  buttonEl.disabled = true;
-  try {
-    if (action === "disable" || action === "enable") {
-      await api(`/${kgState.selectedNotebookId}/${kind}/${encodeURIComponent(id)}/toggle`, {
-        method: "POST",
-        body: JSON.stringify({ enabled: action === "enable" })
-      });
-    } else if (action === "clear-override") {
-      await api(`/${kgState.selectedNotebookId}/${kind}/${encodeURIComponent(id)}/clear-override`, {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-    }
-    await Promise.all([refreshStats(), refreshSubgraph()]);
-    if (kind === "node") await onNodeClick(id);
-    else if (kind === "edge") await onEdgeClick(id);
-  } catch (error) {
-    alert(`작업 실패: ${error.message}`);
-    reportError(error);
-  } finally {
-    buttonEl.disabled = false;
-  }
 }
 
 function reportError(error) {
   const message = error?.message || String(error || "unknown");
-  console.warn("[graphAdmin]", message);
+  console.warn("[graphStudio]", message);
 }

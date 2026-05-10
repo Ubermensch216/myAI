@@ -221,10 +221,11 @@ Notebook Management.
 Access Management separates Group Management from Super Access. Group
 Management is for routine reader groups and Level 1-3 passwords; Level 1 is
 highlighted in the UI because it can satisfy every notebook policy that allows
-the group. Super Access is isolated behind its own tab and should be treated as
-emergency or operator-level read access. When a Super password already exists,
-changing it requires the current Super password and a double-entered new
-password; the API never returns existing password values.
+the group. Level 2 can read notebooks requiring Level 2 or 3; Level 3 can read
+only Level 3 notebooks. Super Access is isolated behind its own tab and should
+be treated as emergency or operator-level read access. When a Super password
+already exists, changing it requires the current Super password and a
+double-entered new password; the API never returns existing password values.
 
 Access control is inactive until at least one enabled group level password or
 an enabled Super password exists. While inactive, notebook reads remain public

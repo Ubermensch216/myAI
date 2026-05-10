@@ -1,7 +1,6 @@
 import { state, elements, accessAuthHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { bindRagEvalEvents, showAdminRagEvalPanel as activateRagEvalPanel } from "./ragEval.js";
-import { bindGraphAdminEvents, showAdminGraphPanel } from "./graphAdmin.js";
 
 const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
 const ACCESS_TOKEN_SESSION_KEY = "myai_access_token";
@@ -474,7 +473,6 @@ export function showAdminNewNotebookForm() {
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
-  if (elements.adminGraphPanel) elements.adminGraphPanel.hidden = true;
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
@@ -814,7 +812,6 @@ export function renderAdminDetail() {
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
-  if (elements.adminGraphPanel) elements.adminGraphPanel.hidden = true;
   const notebook = adminUiState.selectedNotebook;
   const creating = elements.adminNewNotebookForm && !elements.adminNewNotebookForm.hidden;
   if (creating) return;
@@ -961,28 +958,10 @@ function renderAdminConsoleNav() {
   elements.adminStatusButton?.classList.toggle("active", active === "status");
   elements.adminAccessButton?.classList.toggle("active", active === "access");
   elements.adminRagEvalButton?.classList.toggle("active", active === "ragEval");
-  elements.adminGraphButton?.classList.toggle("active", active === "graph");
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.hidden = active !== "status";
   if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.hidden = active !== "access";
   if (elements.adminListPane) elements.adminListPane.hidden = active !== "notebooks";
   if (elements.adminNotebookNavSection) elements.adminNotebookNavSection.hidden = active !== "notebooks";
-}
-
-export function showAdminGraph() {
-  adminUiState.activePanel = "graph";
-  renderAdminConsoleNav();
-  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
-  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
-  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
-  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
-  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
-  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
-  adminUiState.selectedId = null;
-  adminUiState.selectedNotebook = null;
-  adminUiState.mobileView = "detail";
-  renderAdminList();
-  applyAdminMobileView();
-  showAdminGraphPanel().catch((err) => alert(`지식그래프 패널 로드 실패: ${err.message}`));
 }
 
 function showAdminNotebooksPanel() {
@@ -1018,7 +997,6 @@ export async function showAdminAccessPanel() {
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
-  if (elements.adminGraphPanel) elements.adminGraphPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1319,7 +1297,24 @@ function buildAccessLevelDetailRow(group, level) {
     input.value = "";
     await refreshAdminAccessConfig();
   }));
-  row.append(label, status, input, button);
+  const clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.className = "ghost-button admin-danger-button";
+  clearButton.textContent = "삭제";
+  clearButton.disabled = !record.passwordSet;
+  clearButton.title = record.passwordSet ? "비밀번호 삭제" : "삭제할 비밀번호가 없습니다";
+  clearButton.addEventListener("click", () => runAdminAccessTask(async () => {
+    const confirmed = await showConfirmDialog({
+      title: `Level ${level} 비밀번호 삭제`,
+      body: `${group.name || group.id} 그룹의 Level ${level} 비밀번호를 삭제할까요? 삭제하면 해당 레벨은 미설정 상태가 됩니다.`,
+      okText: "삭제",
+      danger: true
+    });
+    if (!confirmed) return;
+    await deleteAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}/levels/${level}/password`);
+    await refreshAdminAccessConfig();
+  }));
+  row.append(label, status, input, button, clearButton);
   return row;
 }
 
@@ -1583,7 +1578,6 @@ export function showAdminStatus() {
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
-  if (elements.adminGraphPanel) elements.adminGraphPanel.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1844,9 +1838,7 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
   if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
   if (elements.adminAccessButton) elements.adminAccessButton.addEventListener("click", () => showAdminAccessPanel().catch((error) => alert(error.message)));
   if (elements.adminRagEvalButton) elements.adminRagEvalButton.addEventListener("click", showAdminRagEval);
-  if (elements.adminGraphButton) elements.adminGraphButton.addEventListener("click", showAdminGraph);
   bindRagEvalEvents();
-  bindGraphAdminEvents();
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
   if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.addEventListener("click", () => refreshAdminAccessConfig().catch((error) => alert(error.message)));
   if (elements.adminAccessGroupsTab) elements.adminAccessGroupsTab.addEventListener("click", () => switchAdminAccessTab("groups"));

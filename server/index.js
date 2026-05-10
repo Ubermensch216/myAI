@@ -42,6 +42,7 @@ import {
 import { isAdminConfigured, isAdminRequest, requireAdmin } from "./auth.js";
 import { ragEvalRouter } from "./ragEvalApi.js";
 import { graphAdminRouter } from "./graphAdminApi.js";
+import { graphStudioRouter } from "./graphStudioApi.js";
 import {
   canAccessNotebook,
   getAccessConfiguration,
@@ -53,6 +54,7 @@ import {
   updateAccessGroup,
   deleteAccessGroup,
   setGroupLevelPassword,
+  clearGroupLevelPassword,
   updateGroupLevel,
   setSuperPassword,
   updateSuperAccess,
@@ -568,6 +570,19 @@ app.post("/api/admin/access/groups/:groupId/levels/:level/password", requireAdmi
   }
 });
 
+app.delete("/api/admin/access/groups/:groupId/levels/:level/password", requireAdmin, async (request, response) => {
+  try {
+    const group = await clearGroupLevelPassword(request.params.groupId, request.params.level);
+    if (!group) {
+      response.status(404).json({ error: "Access group not found." });
+      return;
+    }
+    response.json({ group });
+  } catch (error) {
+    response.status(400).json({ error: error.message });
+  }
+});
+
 app.patch("/api/admin/access/groups/:groupId/levels/:level", requireAdmin, async (request, response) => {
   try {
     const group = await updateGroupLevel(request.params.groupId, request.params.level, request.body || {});
@@ -726,6 +741,7 @@ app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
 
 app.use("/api/admin/rag-eval", ragEvalRouter);
 app.use("/api/admin/graph", graphAdminRouter);
+app.use("/api/studio/graph", graphStudioRouter);
 
 app.get("/api/notebooks/:id/ingest-jobs", requireAdmin, async (request, response) => {
   try {

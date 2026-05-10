@@ -236,6 +236,19 @@ export async function setGroupLevelPassword(groupId, level, password) {
   return publicGroup(group);
 }
 
+export async function clearGroupLevelPassword(groupId, level) {
+  const store = await readStore();
+  const group = findGroup(store, groupId);
+  if (!group) return null;
+  const cleanLevel = normalizeLevel(level);
+  const record = group.levels[String(cleanLevel)] || { enabled: false, passwordHash: "" };
+  record.passwordHash = "";
+  record.enabled = false;
+  group.levels[String(cleanLevel)] = record;
+  await writeStore(store);
+  return publicGroup(group);
+}
+
 export async function updateGroupLevel(groupId, level, input = {}) {
   const store = await readStore();
   const group = findGroup(store, groupId);
@@ -349,13 +362,20 @@ export function canAccessNotebook(access, notebook) {
   const groups = Array.isArray(policy.groups) ? policy.groups : [...DEFAULT_NOTEBOOK_ACCESS.groups];
   const minLevel = normalizePolicyLevel(policy.minLevel);
   const groupAllowed = groups.includes("*") || groups.includes(access?.groupId);
-  const levelAllowed = Number(access?.level || 0) >= minLevel;
+  const levelAllowed = hasSufficientAccessLevel(access?.level, minLevel);
   return Boolean(groupAllowed && levelAllowed);
+}
+
+function hasSufficientAccessLevel(userLevel, requiredLevel) {
+  const level = Number(userLevel);
+  const required = normalizePolicyLevel(requiredLevel);
+  // Level 1 is the highest privilege. It can read notebooks requiring Level 2 or 3.
+  return ACCESS_LEVELS.has(level) && level <= required;
 }
 
 export function isNotebookPublic(notebook) {
   const policy = normalizeNotebookAccessPolicy(notebook?.access);
-  return policy.groups.includes("*") && policy.minLevel <= 1;
+  return policy.groups.includes("*") && policy.minLevel >= 3;
 }
 
 export function redactNotebookAccessForClient(notebook, { includeAccess = false } = {}) {

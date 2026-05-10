@@ -30,6 +30,8 @@ shows group counts/search/list on the left and selected group details on the
 right; Level 1 is visually flagged as broad notebook access. Super password
 changes require the current Super password when one already exists, and new
 password confirmation is checked in the browser before submission.
+Level numbers are ordered by privilege: Level 1 is the highest level and can
+read notebooks assigned to Level 2 or Level 3 within the same group.
 
 Web search is a separate, lower-priority context source. Naver Search can run
 only for explicit search prompts in normal chat. It is skipped whenever
