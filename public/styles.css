@@ -3810,8 +3810,24 @@ body.panel-resizing .panel-resizer::after {
   margin: 0;
 }
 
+.event-dialog form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.event-dialog-body {
+  display: grid;
+  gap: 14px;
+  padding: 4px 18px 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
 .event-dialog-actions {
   align-items: center;
+  padding: 0 18px 16px;
 }
 
 .field-row-calendar-options {
