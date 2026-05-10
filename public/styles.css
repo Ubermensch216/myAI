@@ -4457,6 +4457,61 @@ body.panel-resizing .panel-resizer::after {
   color: var(--muted);
 }
 
+.law-excerpt {
+  grid-column: 2 / -1;
+  margin-top: 6px;
+  border: 1px solid color-mix(in srgb, #0f766e 22%, var(--line));
+  border-radius: 6px;
+  background: color-mix(in srgb, #0f766e 4%, var(--surface));
+}
+
+.law-excerpt-summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f766e;
+  list-style: none;
+}
+
+.law-excerpt-summary::-webkit-details-marker {
+  display: none;
+}
+
+.law-excerpt-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  margin-right: 2px;
+  transition: transform 120ms ease;
+}
+
+.law-excerpt[open] > .law-excerpt-summary::before {
+  content: "▾ ";
+}
+
+.law-excerpt-body {
+  padding: 8px 12px 10px;
+  border-top: 1px dashed color-mix(in srgb, #0f766e 18%, var(--line));
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.law-excerpt-link {
+  display: inline-block;
+  padding: 0 12px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f766e;
+  text-decoration: none;
+}
+
+.law-excerpt-link:hover {
+  text-decoration: underline;
+}
+
 .citation-marker {
   display: inline-block;
   padding: 1px 5px;

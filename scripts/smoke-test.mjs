@@ -27,6 +27,9 @@ if (status?.ok) {
 }
 if (process.env.MYAI_SMOKE_LAW_LIVE === "1") {
   await run("POST /api/law live endpoints", testLawLiveEndpoints);
+  if (status?.ok) {
+    await run("POST /api/chat law-grounded prompt (live)", () => testChatLawPrompt(status));
+  }
 }
 
 if (failureCount > 0) {
@@ -299,6 +302,85 @@ async function testChat() {
   assert.ok(response.status < 500, `POST /api/chat caused server error: ${response.status}`);
 }
 
+function decodeNotebookMetaHeader(header) {
+  if (!header) return null;
+  try {
+    const json = Buffer.from(String(header), "base64").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+async function testChatLawPrompt(status) {
+  // Verifies that the full chat path detects a Korean law prompt, calls
+  // Korean Law Engine, and exposes verified citations + excerpt through the
+  // X-Notebook-Meta header. Independent of the LLM's text — we only assert
+  // metadata, since model output is non-deterministic.
+  const lawStatusResponse = await fetch(new URL("/api/law/status", baseUrl));
+  const lawStatus = await lawStatusResponse.json().catch(() => ({}));
+  if (!lawStatus.ok || !lawStatus.configured) {
+    console.log("skip - chat law prompt (LAW_OC not configured)");
+    return;
+  }
+
+  const model = process.env.MYAI_SMOKE_MODEL || status?.defaultModel || "gemma3n:e2b";
+  const cases = [
+    {
+      label: "law_article",
+      prompt: "민법 제750조 본문을 알려줘.",
+      expectMode: /law_article/,
+      expectCitationMatch: /민법.*제750조/
+    },
+    {
+      label: "verify_citations",
+      prompt: "조문 검증해줘: 민법 제750조, 민법 제9999조.",
+      expectMode: /verify_citations/,
+      expectFailCount: 1
+    }
+  ];
+
+  for (const testCase of cases) {
+    const body = JSON.stringify({
+      prompt: testCase.prompt,
+      messages: [{ role: "user", content: testCase.prompt }],
+      documents: [],
+      model
+    });
+    const response = await fetch(new URL("/api/chat", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body
+    });
+    assert.ok(response.status < 500, `chat ${testCase.label} should not 5xx, got ${response.status}`);
+    const meta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
+    assert.ok(meta, `chat ${testCase.label} should expose X-Notebook-Meta`);
+    assert.ok(meta.law, `chat ${testCase.label} should include law metadata`);
+    assert.match(meta.law.mode, testCase.expectMode, `chat ${testCase.label} mode should match ${testCase.expectMode}`);
+
+    if (testCase.label === "law_article") {
+      assert.ok(Array.isArray(meta.law.citations) && meta.law.citations.length > 0, "law_article should produce at least one citation");
+      const first = meta.law.citations[0];
+      assert.match(`${first.lawName} ${first.article}`, testCase.expectCitationMatch, "first citation should reference 민법 제750조");
+      assert.equal(first.sourceType, "law");
+      assert.ok(first.url, "law citation should expose official url");
+      assert.ok(typeof first.excerpt === "string" && first.excerpt.length > 0, "law citation should expose excerpt");
+    } else if (testCase.label === "verify_citations") {
+      assert.ok(meta.law.verification?.checked, "verify_citations should report checked=true");
+      assert.equal(meta.law.verification?.failCount, testCase.expectFailCount, "verify_citations failCount should match");
+      const invalid = (meta.law.verification.results || []).find((item) => item.valid === false);
+      assert.ok(invalid && /9999/.test(invalid.citation), "fail entry should reference 제9999조");
+    }
+
+    // Body should not leak the API key into chat output.
+    const text = await response.text();
+    const lawSecret = String(process.env.LAW_OC || process.env.KOREAN_LAW_API_KEY || "").trim();
+    if (lawSecret) {
+      assert.equal(text.includes(lawSecret), false, "chat output must not contain LAW_OC");
+    }
+  }
+}
+
 async function testLawLiveEndpoints() {
   const statusResponse = await fetch(new URL("/api/law/status", baseUrl));
   const status = await statusResponse.json().catch(() => ({}));
@@ -307,34 +389,117 @@ async function testLawLiveEndpoints() {
     return;
   }
 
-  const search = await fetchJson("/api/law/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ query: "\ubbfc\ubc95", display: 3 })
-  });
-  assert.equal(search.ok, true);
-  assert.ok(Array.isArray(search.results));
-  assert.ok(search.results.length > 0, "law search should return candidates");
+  // Search across statute families with very different name shapes / agencies
+  // so a single live run exercises the JSON parser against multiple real responses.
+  const searchCases = [
+    { query: "\ubbfc\ubc95", expectMatch: /\ubbfc\ubc95/ },
+    { query: "\ub3c4\ub85c\uad50\ud1b5\ubc95", expectMatch: /\ub3c4\ub85c\uad50\ud1b5\ubc95/ },
+    { query: "\uac1c\uc778\uc815\ubcf4 \ubcf4\ud638\ubc95", expectMatch: /\uac1c\uc778\uc815\ubcf4/ },
+    { query: "\ud615\ubc95", expectMatch: /\ud615\ubc95/ }
+  ];
+  for (const { query, expectMatch } of searchCases) {
+    const search = await fetchJson("/api/law/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ query, display: 5 })
+    });
+    assert.equal(search.ok, true, `search ${query} ok`);
+    assert.ok(Array.isArray(search.results), `search ${query} results array`);
+    assert.ok(search.results.length > 0, `search ${query} should return candidates`);
+    assert.ok(
+      search.results.some((item) => expectMatch.test(String(item.lawName || ""))),
+      `search ${query} should include a result matching ${expectMatch}`
+    );
+    for (const item of search.results) {
+      assert.ok(item.lawName, `search ${query} result must include lawName`);
+      assert.ok(item.lawId || item.mst, `search ${query} result must include lawId or MST`);
+    }
+  }
 
-  const article = await fetchJson("/api/law/article", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ lawName: "\ubbfc\ubc95", article: "\uc81c750\uc870" })
-  });
-  assert.equal(article.ok, true);
-  assert.equal(article.citation?.sourceType, "law");
-  assert.ok(String(article.text || "").length > 0, "law article should include official text");
+  // Fetch articles across statute families and confirm parser yields citation+text
+  // for each. Includes a branched-article case to validate JO code padding.
+  const articleCases = [
+    { lawName: "\ubbfc\ubc95", article: "\uc81c750\uc870", expectMatch: /\ubd88\ubc95\ud589\uc704|\uc190\ud574/ },
+    { lawName: "\ubbfc\ubc95", article: "\uc81c758\uc870", expectMatch: /\uacf5\uc791\ubb3c|\uc810\uc720\uc790/ },
+    { lawName: "\ub3c4\ub85c\uad50\ud1b5\ubc95", article: "\uc81c44\uc870", expectMatch: /\uc220|\uc6b4\uc804/ },
+    { lawName: "\uac1c\uc778\uc815\ubcf4 \ubcf4\ud638\ubc95", article: "\uc81c15\uc870", expectMatch: /\uac1c\uc778\uc815\ubcf4|\uc218\uc9d1/ }
+  ];
+  for (const { lawName, article, expectMatch } of articleCases) {
+    const detail = await fetchJson("/api/law/article", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ lawName, article })
+    });
+    assert.equal(detail.ok, true, `article ${lawName} ${article} ok`);
+    assert.equal(detail.citation?.sourceType, "law", `article ${lawName} ${article} sourceType`);
+    assert.equal(detail.citation?.article, article, `article ${lawName} ${article} canonical mismatch`);
+    assert.ok(String(detail.text || "").length > 0, `article ${lawName} ${article} text should be non-empty`);
+    assert.ok(expectMatch.test(detail.text), `article ${lawName} ${article} body should match ${expectMatch}`);
+    assert.ok(detail.citation?.url, `article ${lawName} ${article} citation should expose url`);
+    assert.ok(
+      !detail.text.includes("<![CDATA["),
+      `article ${lawName} ${article} text must not leak CDATA wrapper`
+    );
+  }
 
   const verification = await fetchJson("/api/law/verify-citations", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ text: "\ubbfc\ubc95 \uc81c750\uc870\uc640 \ubbfc\ubc95 \uc81c9999\uc870\ub97c \uac80\uc99d\ud574\uc918" })
+    body: JSON.stringify({
+      text: "\ubbfc\ubc95 \uc81c750\uc870\uc640 \ub3c4\ub85c\uad50\ud1b5\ubc95 \uc81c44\uc870\uc640 \ubbfc\ubc95 \uc81c9999\uc870\ub97c \uac80\uc99d\ud574\uc918"
+    })
   });
   assert.equal(verification.ok, true);
   assert.equal(verification.checked, true);
   assert.ok(Array.isArray(verification.results));
-  assert.ok(verification.results.some((item) => item.valid === true), "verification should include a valid citation");
-  assert.ok(verification.results.some((item) => item.valid === false), "verification should include an invalid citation");
+  assert.equal(verification.passCount, 2, "verification should accept 2 real citations");
+  assert.equal(verification.failCount, 1, "verification should reject 1 fake citation");
+  const invalid = verification.results.find((item) => item.valid === false);
+  assert.ok(invalid && /9999/.test(invalid.citation), "invalid citation should reference \uc81c9999\uc870");
+
+  // Phase 2: precedent + interpretation endpoints (skip detail step if search empty)
+  const precSearch = await fetchJson("/api/law/precedents/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ query: "\ubd88\ubc95\ud589\uc704 \uc190\ud574\ubc30\uc0c1", display: 3 })
+  });
+  assert.equal(precSearch.ok, true, "precedent search ok");
+  assert.ok(Array.isArray(precSearch.results), "precedent search results array");
+  if (precSearch.results.length) {
+    const top = precSearch.results[0];
+    assert.ok(top.precId || top.title, "precedent search hit should expose id or title");
+    if (top.precId) {
+      const precDetail = await fetchJson("/api/law/precedents/detail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ precId: top.precId })
+      });
+      assert.equal(precDetail.ok, true, "precedent detail ok");
+      assert.equal(precDetail.citation?.sourceType, "law_precedent");
+      assert.ok(precDetail.citation?.url, "precedent citation should expose url");
+    }
+  }
+
+  const expcSearch = await fetchJson("/api/law/interpretations/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ query: "\uac1c\uc778\uc815\ubcf4", display: 3 })
+  });
+  assert.equal(expcSearch.ok, true, "interpretation search ok");
+  assert.ok(Array.isArray(expcSearch.results), "interpretation search results array");
+  if (expcSearch.results.length) {
+    const top = expcSearch.results[0];
+    if (top.expcId) {
+      const expcDetail = await fetchJson("/api/law/interpretations/detail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ expcId: top.expcId })
+      });
+      assert.equal(expcDetail.ok, true, "interpretation detail ok");
+      assert.equal(expcDetail.citation?.sourceType, "law_interpretation");
+      assert.ok(expcDetail.citation?.url, "interpretation citation should expose url");
+    }
+  }
 }
 
 async function fetchJson(route, options = {}) {

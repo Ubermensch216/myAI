@@ -30,7 +30,7 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
 
     if (intent.mode === "law_article" || intent.mode === "department_legal_review") {
       const article = await getArticleDetail(intent.extracted, { signal });
-      const citation = normalizeLawCitationForMeta(article.citation, 0);
+      const citation = normalizeLawCitationForMeta(article.citation, 0, article.text);
       const contextItems = [{ citation, text: article.text }];
       return {
         ok: true,

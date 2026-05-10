@@ -923,6 +923,9 @@ export function renderCitationsPanel(article, citations, law = null) {
       source.append(effectiveDate);
     }
     item.append(marker, source);
+    if (isLawCitation && citation.excerpt) {
+      item.append(buildLawExcerpt(citation));
+    }
     list.append(item);
   }
   wrapper.append(list);
@@ -952,6 +955,34 @@ export function renderLawNoticePanel(article, law) {
   }
   warning.append(list);
   article.append(warning);
+}
+
+function buildLawExcerpt(citation) {
+  const wrapper = document.createElement("details");
+  wrapper.className = "law-excerpt";
+  const summary = document.createElement("summary");
+  summary.className = "law-excerpt-summary";
+  const previewLine = String(citation.excerpt || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  const truncatedHint = citation.excerptTruncated ? " (일부)" : "";
+  summary.textContent = `조문 발췌 보기${truncatedHint}${previewLine ? ` — ${previewLine}…` : ""}`;
+  wrapper.append(summary);
+  const body = document.createElement("div");
+  body.className = "law-excerpt-body";
+  body.textContent = citation.excerpt;
+  wrapper.append(body);
+  if (citation.excerptTruncated && citation.url) {
+    const more = document.createElement("a");
+    more.className = "law-excerpt-link";
+    more.href = citation.url;
+    more.target = "_blank";
+    more.rel = "noopener noreferrer";
+    more.textContent = "law.go.kr에서 전문 보기 →";
+    wrapper.append(more);
+  }
+  return wrapper;
 }
 
 function renderLawDisclaimer(article, law) {

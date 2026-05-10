@@ -6,6 +6,8 @@ import { lawErrorPayload, toLawError, assertLawAvailable } from "./lawErrors.js"
 import { searchLaw } from "./tools/searchLaw.js";
 import { getArticleDetail } from "./tools/articleDetail.js";
 import { verifyLawCitations } from "./tools/verifyCitations.js";
+import { searchPrecedents, getPrecedentDetail } from "./tools/precedents.js";
+import { searchInterpretations, getInterpretationDetail } from "./tools/interpretations.js";
 import { createRateLimiter } from "../rateLimit.js";
 
 export const lawApiRouter = express.Router();
@@ -85,6 +87,87 @@ lawApiRouter.post(
         signal: request.signal
       });
       response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/precedents/search",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await searchPrecedents({
+        query: request.body?.query,
+        display: request.body?.display,
+        court: request.body?.court,
+        caseType: request.body?.caseType
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/precedents/detail",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getPrecedentDetail({
+        precId: request.body?.precId,
+        caseNumber: request.body?.caseNumber
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json({
+        ok: true,
+        citation: result.citation,
+        text: result.text,
+        cacheHit: Boolean(result.cacheHit)
+      });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/interpretations/search",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await searchInterpretations({
+        query: request.body?.query,
+        display: request.body?.display,
+        agency: request.body?.agency
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/interpretations/detail",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getInterpretationDetail({
+        expcId: request.body?.expcId,
+        query: request.body?.query
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json({
+        ok: true,
+        citation: result.citation,
+        text: result.text,
+        cacheHit: Boolean(result.cacheHit)
+      });
     } catch (error) {
       sendLawError(response, error);
     }

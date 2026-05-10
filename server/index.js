@@ -418,7 +418,10 @@ app.post("/api/chat", async (request, response) => {
                     documentType: "law",
                     locator: item.locator,
                     effectiveDate: item.effectiveDate,
-                    url: item.url
+                    url: item.url,
+                    excerpt: item.excerpt,
+                    excerptTruncated: item.excerptTruncated,
+                    excerptLength: item.excerptLength
                   })),
                   verification: meta.law.verification || { checked: false, failCount: 0, results: [] }
                 }

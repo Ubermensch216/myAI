@@ -14,8 +14,10 @@ export function formatLawContext(citations = []) {
   return lines.join("\n\n");
 }
 
-export function normalizeLawCitationForMeta(citation, index = 0) {
-  return {
+const LAW_EXCERPT_MAX = 800;
+
+export function normalizeLawCitationForMeta(citation, index = 0, articleText = "") {
+  const meta = {
     citationId: citation.citationId || `L${index + 1}`,
     sourceType: "law",
     lawName: citation.lawName || "",
@@ -28,6 +30,15 @@ export function normalizeLawCitationForMeta(citation, index = 0) {
     effectiveDate: citation.effectiveDate || "",
     url: citation.url || ""
   };
+  const text = String(articleText || "").trim();
+  if (text) {
+    meta.excerpt = text.length > LAW_EXCERPT_MAX
+      ? `${text.slice(0, LAW_EXCERPT_MAX).trimEnd()}…`
+      : text;
+    meta.excerptTruncated = text.length > LAW_EXCERPT_MAX;
+    meta.excerptLength = text.length;
+  }
+  return meta;
 }
 
 export function disclaimerForLawMode(mode) {

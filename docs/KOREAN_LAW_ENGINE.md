@@ -35,24 +35,23 @@ Implemented MVP pieces:
 - `POST /api/law/search`
 - `POST /api/law/article`
 - `POST /api/law/verify-citations`
+- `POST /api/law/precedents/search`
+- `POST /api/law/precedents/detail`
+- `POST /api/law/interpretations/search`
+- `POST /api/law/interpretations/detail`
 - Chat integration through `server/ollama.js` and `lawContextBuilder.js`
 - `X-Notebook-Meta.law` response metadata
 - Frontend law citation grouping, verification warning, and disclaimer rendering
 - Frontend legal-prompt processing indicator that shows Korean Law Engine use
 - Law source panel detail with official-law badge, law/article label, effective
-  date, and official link
+  date, official link, and an expandable article excerpt with deep-link to
+  law.go.kr when the official text is truncated
 - SQLite law cache at `data/cache/law-cache.sqlite`
 - API key masking tests and cache normalization tests
 - Smoke coverage for `/api/law/status`; optional live law.go.kr smoke coverage
 
 Still incomplete or follow-up work:
 
-- Validate real law.go.kr response parsing against several live statutes, not
-  only the current smoke sample.
-- Improve Korean legal intent extraction after false-positive evaluation.
-- Add deeper article detail display, such as expandable excerpts, in the source
-  panel.
-- Add live tests for chat-level legal prompts when `LAW_OC` is configured.
 - Post-MVP tools: precedents, interpretations, admin rules, ordinances, impact
   map, historical comparison, and action-plan mode.
 - Post-MVP knowledge graph integration using the existing per-notebook
@@ -103,6 +102,7 @@ Current MVP modules:
 ```text
 server/law/lawApi.js
 server/law/lawApiClient.js
+server/law/lawApiParser.js
 server/law/lawArticleRef.js
 server/law/lawCache.js
 server/law/lawCitationFormatter.js
@@ -112,10 +112,18 @@ server/law/lawErrors.js
 server/law/lawIntent.js
 server/law/lawLogger.js
 server/law/tools/articleDetail.js
+server/law/tools/interpretations.js
 server/law/tools/lawText.js
+server/law/tools/precedents.js
 server/law/tools/searchLaw.js
 server/law/tools/verifyCitations.js
 ```
+
+`lawApiParser.js` owns law.go.kr JSON normalization (search results, article
+payloads, CDATA/HTML stripping, upstream error detection). It is exercised by
+`scripts/law-parser-test.mjs` against fixtures in `scripts/fixtures/law/` that
+cover several statute families, branched articles, paragraphs, items, CDATA
+wrappers, and HTML-encoded revision markers.
 
 Do not add MCP protocol dependencies. Tool handlers should remain plain async
 functions that can be called from Express routes and chat orchestration.
@@ -161,6 +169,54 @@ Request:
 
 Extracts statute/article citations and verifies whether each official article
 can be retrieved.
+
+### `POST /api/law/precedents/search`
+
+Request:
+
+```json
+{ "query": "불법행위 손해배상", "display": 5, "court": "", "caseType": "" }
+```
+
+Searches official 판례 (precedents) by keyword. Returns case number, court,
+선고일자, 사건종류명, and a `precId` that can be passed to the detail
+endpoint. Uses the `law_research` rate-limit bucket.
+
+### `POST /api/law/precedents/detail`
+
+Request:
+
+```json
+{ "precId": "230001" }
+```
+
+Returns the canonical precedent record: 판시사항, 판결요지, 이유, plus a
+`law_precedent` citation. Either `precId` or `caseNumber` may be supplied;
+when only `caseNumber` is given the search step is performed first.
+
+### `POST /api/law/interpretations/search`
+
+Request:
+
+```json
+{ "query": "개인정보 보호법 제15조", "display": 5, "agency": "" }
+```
+
+Searches official 법령해석례 (legal interpretations) issued by 법령해석
+기관. Returns 안건명, 회신기관, 회신일자, and an `expcId`.
+
+### `POST /api/law/interpretations/detail`
+
+Request:
+
+```json
+{ "expcId": "EXPC-2023-0099" }
+```
+
+Returns the interpretation record split into 질의요지, 회답, 이유 sections,
+combined into the `text` field with `[질의요지]/[회답]/[이유]` markers, plus a
+`law_interpretation` citation. Either `expcId` or `query` may be supplied;
+`query` resolves to the top hit through the search endpoint.
 
 ## Chat Behavior
 
@@ -213,7 +269,10 @@ law: {
       title: "...",
       locator: "...",
       effectiveDate: "...",
-      url: "..."
+      url: "...",
+      excerpt: "...",
+      excerptTruncated: false,
+      excerptLength: 240
     }
   ],
   verification: {
@@ -309,6 +368,17 @@ npm.cmd run test:law
 npm.cmd run test:smoke
 ```
 
+`test:law` runs three suites:
+- `scripts/law-unit-test.mjs` — intent, normalization, masking, cache.
+- `scripts/law-parser-test.mjs` — law.go.kr JSON parsing across fixture
+  statutes (`scripts/fixtures/law/`). Run only this with
+  `npm run test:law:parser`.
+- `scripts/law-intent-eval.mjs` — true-positive / false-positive evaluation
+  for legal intent detection. Covers cases like "라면 끓이는 방법 알려줘",
+  "Git 사용법 1조 5호", "야구 규칙 30조" (must NOT trigger) and "민법 제750조",
+  "헌법 제10조", "도로교통법 제44조" (must trigger). Run only this with
+  `npm run test:law:intent`.
+
 `test:smoke` checks `/api/law/status` whether or not `LAW_OC` is configured and
 asserts the response does not expose the server cache path or API key.
 
@@ -320,8 +390,14 @@ npm.cmd run test:smoke
 ```
 
 When the flag is set and `/api/law/status` reports `ok: true`, the smoke test
-also exercises `/api/law/search`, `/api/law/article`, and
-`/api/law/verify-citations`.
+exercises `/api/law/search`, `/api/law/article`, and `/api/law/verify-citations`
+across several statute families (민법, 형법, 도로교통법, 개인정보 보호법) so a
+single run validates parser robustness against multiple real responses. It also
+runs `POST /api/chat` with two grounded legal prompts and asserts that
+`X-Notebook-Meta.law` carries the expected mode, citation list (with `excerpt`
+field), and verification fail-count. The chat live test covers `law_article`
+("민법 제750조 본문을 알려줘") and `verify_citations` ("조문 검증해줘:
+민법 제750조, 민법 제9999조") modes.
 
 ## Acceptance Criteria
 
@@ -341,13 +417,14 @@ The MVP is acceptable when:
 
 ## Roadmap
 
-Phase 2:
+Phase 2 (in progress):
 
-- Precedent search/text tools
-- Interpretation search/text tools
-- Admin rule and ordinance tools
-- `legal_research` mode and `/api/law/research`
-- Richer law source-panel details
+- ✅ Precedent search/text tools (`/api/law/precedents/search`, `/api/law/precedents/detail`)
+- ✅ Interpretation search/text tools (`/api/law/interpretations/search`, `/api/law/interpretations/detail`)
+- ⬜ Admin rule and ordinance tools
+- ⬜ `legal_research` chat mode (intent + context wiring)
+- ✅ Richer law source-panel details (expandable article excerpt + deep-link)
+- ⬜ Frontend rendering for `law_precedent` and `law_interpretation` citations
 
 Phase 3:
 

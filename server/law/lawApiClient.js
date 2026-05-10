@@ -3,9 +3,24 @@ import { getCachedLawResponse, setCachedLawResponse, buildLawCacheKey } from "./
 import { normalizeArticleRef, normalizeLawName } from "./lawArticleRef.js";
 import { LAW_ERROR_MARKERS, LawError, assertLawAvailable } from "./lawErrors.js";
 import { throwIfAborted } from "../abort.js";
+import {
+  buildCitation,
+  buildInterpretationCitation,
+  buildPrecedentCitation,
+  chooseLawSearchResult,
+  findUpstreamError,
+  normalizeArticlePayload,
+  normalizeInterpretationPayload,
+  normalizeInterpretationResults,
+  normalizePrecedentPayload,
+  normalizePrecedentResults,
+  normalizeSearchResults
+} from "./lawApiParser.js";
 
 const LAW_TEXT_TTL_MS = 7 * 86_400_000;
 const LAW_SEARCH_TTL_MS = 86_400_000;
+const PRECEDENT_TTL_MS = 30 * 86_400_000;
+const INTERPRETATION_TTL_MS = 30 * 86_400_000;
 
 export class LawApiClient {
   constructor(config = getLawConfig()) {
@@ -109,6 +124,137 @@ export class LawApiClient {
     return { ...response, cacheHit: false };
   }
 
+  async searchPrecedents({ query, display, court, caseType } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedQuery = String(query || "").trim();
+    if (!normalizedQuery) {
+      throw new LawError("Precedent search query is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const normalizedInput = {
+      query: normalizedQuery,
+      display: clampInt(display, this.config.maxResults, 1, 100),
+      court: court || "",
+      caseType: caseType || ""
+    };
+    const cacheKey = buildLawCacheKey("search_precedent", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const params = {
+      target: "prec",
+      type: "JSON",
+      query: normalizedQuery,
+      display: normalizedInput.display
+    };
+    if (court) params.curt = court;
+    if (caseType) params.caseClass = caseType;
+
+    const payload = await this.requestSearch(params, { signal });
+    const results = normalizePrecedentResults(payload).slice(0, normalizedInput.display);
+    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getPrecedentDetail({ precId, caseNumber } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    let resolvedId = String(precId || "").trim();
+    if (!resolvedId && caseNumber) {
+      const search = await this.searchPrecedents({ query: caseNumber, display: 5 }, { signal });
+      const exact = search.results.find((item) => item.caseNumber === String(caseNumber).trim());
+      resolvedId = (exact || search.results[0])?.precId || "";
+    }
+    if (!resolvedId) {
+      throw new LawError("Precedent ID is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const cacheKey = buildLawCacheKey("precedent_detail", { precId: resolvedId });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: PRECEDENT_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const payload = await this.requestService({
+      target: "prec",
+      type: "JSON",
+      ID: resolvedId
+    }, { signal });
+    const data = normalizePrecedentPayload(payload);
+    if (!data.text && !data.title) {
+      throw new LawError(`Precedent not found: ${resolvedId}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+    if (!data.precId) data.precId = resolvedId;
+    const response = {
+      ok: true,
+      citation: buildPrecedentCitation(data),
+      text: data.text,
+      raw: data.raw
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: PRECEDENT_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async searchInterpretations({ query, display, agency } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedQuery = String(query || "").trim();
+    if (!normalizedQuery) {
+      throw new LawError("Interpretation search query is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const normalizedInput = {
+      query: normalizedQuery,
+      display: clampInt(display, this.config.maxResults, 1, 100),
+      agency: agency || ""
+    };
+    const cacheKey = buildLawCacheKey("search_interpretation", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const params = {
+      target: "expc",
+      type: "JSON",
+      query: normalizedQuery,
+      display: normalizedInput.display
+    };
+    if (agency) params.org = agency;
+
+    const payload = await this.requestSearch(params, { signal });
+    const results = normalizeInterpretationResults(payload).slice(0, normalizedInput.display);
+    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getInterpretationDetail({ expcId, query } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    let resolvedId = String(expcId || "").trim();
+    if (!resolvedId && query) {
+      const search = await this.searchInterpretations({ query, display: 1 }, { signal });
+      resolvedId = search.results[0]?.expcId || "";
+    }
+    if (!resolvedId) {
+      throw new LawError("Interpretation ID is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const cacheKey = buildLawCacheKey("interpretation_detail", { expcId: resolvedId });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: INTERPRETATION_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const payload = await this.requestService({
+      target: "expc",
+      type: "JSON",
+      ID: resolvedId
+    }, { signal });
+    const data = normalizeInterpretationPayload(payload);
+    if (!data.text && !data.title) {
+      throw new LawError(`Interpretation not found: ${resolvedId}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+    if (!data.expcId) data.expcId = resolvedId;
+    const response = {
+      ok: true,
+      citation: buildInterpretationCitation(data),
+      text: data.text,
+      raw: data.raw
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: INTERPRETATION_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
   async requestSearch(params, options) {
     return this.request(this.config.searchUrl, params, options);
   }
@@ -177,171 +323,6 @@ function parseJson(text) {
       statusCode: 502
     });
   }
-}
-
-function findUpstreamError(payload) {
-  if (!payload || typeof payload !== "object") return "";
-  if (payload.result && String(payload.result).includes("실패")) return String(payload.msg || payload.result);
-  if (payload.error) return String(payload.error);
-  if (payload.Error) return String(payload.Error);
-  return "";
-}
-
-function normalizeSearchResults(payload) {
-  const candidates = findObjects(payload).filter((item) => {
-    const lawName = readFirst(item, ["법령명한글", "법령명", "법령명_한글", "lawName", "name"]);
-    const lawId = readFirst(item, ["법령ID", "법령아이디", "ID", "id", "lawId"]);
-    const mst = readFirst(item, ["법령일련번호", "MST", "mst", "lsiSeq"]);
-    return lawName && (lawId || mst);
-  });
-  const seen = new Set();
-  const results = [];
-  for (const item of candidates) {
-    const lawName = stripHtml(readFirst(item, ["법령명한글", "법령명", "법령명_한글", "lawName", "name"]));
-    const lawId = readFirst(item, ["법령ID", "법령아이디", "ID", "id", "lawId"]);
-    const mst = readFirst(item, ["법령일련번호", "MST", "mst", "lsiSeq"]);
-    const key = `${lawName}|${lawId}|${mst}`;
-    if (!lawName || seen.has(key)) continue;
-    seen.add(key);
-    results.push({
-      lawName,
-      lawId: String(lawId || ""),
-      mst: String(mst || ""),
-      lawType: stripHtml(readFirst(item, ["법령구분명", "법령구분", "lawType"])),
-      effectiveDate: normalizeDate(readFirst(item, ["시행일자", "시행일", "effectiveDate", "efYd"])),
-      promulgationDate: normalizeDate(readFirst(item, ["공포일자", "promulgationDate"])),
-      lastModified: normalizeDate(readFirst(item, ["개정일자", "최종수정일자", "lastModified"])),
-      raw: item
-    });
-  }
-  return results;
-}
-
-function chooseLawSearchResult(results, lawName) {
-  const target = normalizeComparableLawName(lawName);
-  const items = Array.isArray(results) ? results : [];
-  return items.find((item) => normalizeComparableLawName(item.lawName) === target)
-    || items.find((item) => normalizeComparableLawName(item.lawName).includes(target))
-    || items[0]
-    || null;
-}
-
-function normalizeArticlePayload(payload, { lawName, lawId, mst, articleRef }) {
-  const objects = findObjects(payload);
-  const articleObjects = objects.filter((item) => {
-    const jo = readFirst(item, ["조문번호", "조문가지번호", "JO", "jo"]);
-    const title = readFirst(item, ["조문제목", "제목", "title"]);
-    const body = readFirst(item, ["조문내용", "조문내용문", "내용", "text"]);
-    return jo || title || body;
-  });
-  const preferred = articleObjects.find((item) => {
-    const code = String(readFirst(item, ["조문번호", "JO", "jo"]) || "").padStart(4, "0")
-      + String(readFirst(item, ["조문가지번호"]) || "0").padStart(2, "0");
-    return code === articleRef.joCode;
-  }) || articleObjects[0] || {};
-
-  const text = collectArticleText(preferred || payload);
-  return {
-    lawName: stripHtml(readFirst(payload, ["법령명_한글", "법령명한글", "법령명", "lawName"])) || lawName,
-    lawId: readFirst(payload, ["법령ID", "ID", "lawId"]) || lawId,
-    mst: readFirst(payload, ["법령일련번호", "MST", "mst"]) || mst,
-    article: articleRef.canonical,
-    joCode: articleRef.joCode,
-    title: stripHtml(readFirst(preferred, ["조문제목", "제목", "title"])),
-    effectiveDate: normalizeDate(readFirst(payload, ["시행일자", "시행일", "effectiveDate", "efYd"])),
-    lastModified: normalizeDate(readFirst(payload, ["개정일자", "최종수정일자", "lastModified"])),
-    text,
-    raw: preferred
-  };
-}
-
-function collectArticleText(value) {
-  const pieces = [];
-  walk(value, (item, key) => {
-    if (item == null) return;
-    const keyText = String(key || "");
-    if (typeof item === "string" || typeof item === "number") {
-      if (/^(조문내용|항내용|호내용|목내용|내용|본문|text)$/u.test(keyText)) {
-        const text = stripHtml(item);
-        if (text) pieces.push(text);
-      }
-    }
-  });
-  if (!pieces.length && typeof value === "string") pieces.push(stripHtml(value));
-  return Array.from(new Set(pieces)).join("\n").trim();
-}
-
-function buildCitation(articleData, articleRef) {
-  const locator = `${articleData.lawName} ${articleRef.canonical}`;
-  return {
-    citationId: "L1",
-    sourceType: "law",
-    lawName: articleData.lawName,
-    lawId: articleData.lawId,
-    mst: articleData.mst,
-    article: articleRef.canonical,
-    canonical: `${articleData.lawName}/${articleRef.canonical}`,
-    title: articleData.title,
-    locator,
-    effectiveDate: articleData.effectiveDate,
-    url: buildPublicLawUrl(articleData.lawName, articleRef.canonical)
-  };
-}
-
-function buildPublicLawUrl(lawName, article) {
-  const query = encodeURIComponent(`${lawName} ${article}`.trim());
-  return `https://www.law.go.kr/법령/${query}`;
-}
-
-function findObjects(value) {
-  const results = [];
-  walk(value, (item) => {
-    if (item && typeof item === "object" && !Array.isArray(item)) results.push(item);
-  });
-  return results;
-}
-
-function walk(value, visitor, key = "") {
-  visitor(value, key);
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => walk(item, visitor, String(index)));
-    return;
-  }
-  if (value && typeof value === "object") {
-    for (const [childKey, childValue] of Object.entries(value)) {
-      walk(childValue, visitor, childKey);
-    }
-  }
-}
-
-function readFirst(object, keys) {
-  if (!object || typeof object !== "object") return "";
-  for (const key of keys) {
-    if (object[key] != null && object[key] !== "") return String(object[key]).trim();
-  }
-  return "";
-}
-
-function stripHtml(value) {
-  return String(value ?? "")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeDate(value) {
-  const text = String(value || "").replace(/[^\d]/g, "");
-  if (text.length === 8) return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
-  return String(value || "").trim();
-}
-
-function normalizeComparableLawName(value) {
-  return normalizeLawName(value).replace(/\s+/g, "").toLowerCase();
 }
 
 function clampInt(raw, fallback, min, max) {

@@ -15,6 +15,7 @@ const {
 } = await import("../server/law/lawArticleRef.js");
 const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
+const { normalizeLawCitationForMeta } = await import("../server/law/lawCitationFormatter.js");
 const {
   buildLawCacheKey,
   getCachedLawResponse,
@@ -29,6 +30,7 @@ await run("citation extraction", testCitationExtraction);
 await run("law intent detection", testLawIntentDetection);
 await run("API key masking", testApiKeyMasking);
 await run("law cache normalization and invalidation", testLawCache);
+await run("citation meta carries article excerpt", testCitationExcerptMeta);
 
 await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 if (failureCount > 0) process.exitCode = 1;
@@ -104,6 +106,37 @@ function testApiKeyMasking() {
   const masked = maskLawSecrets("GET https://x.test/path?OC=SECRET-LAW-KEY failed with SECRET-LAW-KEY");
   assert.equal(masked.includes("SECRET-LAW-KEY"), false);
   assert.ok(masked.includes("[REDACTED_LAW_OC]"));
+}
+
+function testCitationExcerptMeta() {
+  const baseCitation = {
+    citationId: "L1",
+    sourceType: "law",
+    lawName: "민법",
+    article: "제750조",
+    canonical: "민법/제750조",
+    title: "불법행위의 내용",
+    locator: "민법 제750조",
+    effectiveDate: "2023-01-04",
+    url: "https://www.law.go.kr/법령/민법%20제750조"
+  };
+
+  const short = normalizeLawCitationForMeta(baseCitation, 0, "고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다.");
+  assert.equal(short.sourceType, "law");
+  assert.equal(short.excerptTruncated, false, "short excerpt must not be marked truncated");
+  assert.match(short.excerpt, /고의 또는 과실/);
+  assert.equal(short.excerptLength, short.excerpt.length, "excerptLength should equal full text length when not truncated");
+
+  const longText = "가".repeat(900);
+  const long = normalizeLawCitationForMeta(baseCitation, 0, longText);
+  assert.equal(long.excerptTruncated, true, "long excerpt must be marked truncated");
+  assert.ok(long.excerpt.endsWith("…"), "truncated excerpt should end with ellipsis");
+  assert.ok(long.excerpt.length <= 801, `truncated excerpt should fit budget, got ${long.excerpt.length}`);
+  assert.equal(long.excerptLength, longText.length, "excerptLength should reflect original text length");
+
+  const empty = normalizeLawCitationForMeta(baseCitation, 0, "");
+  assert.equal(empty.excerpt, undefined, "no excerpt field when text is empty");
+  assert.equal(empty.excerptTruncated, undefined);
 }
 
 async function testLawCache() {
