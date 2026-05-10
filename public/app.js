@@ -135,12 +135,19 @@ function renderPrimaryNav() {
     const isActive = item.dataset.viewTarget === view;
     item.classList.toggle("active", isActive);
     item.setAttribute("aria-pressed", isActive ? "true" : "false");
+    updatePrimaryNavTooltip(item);
   }
   for (const content of elements.sidebarContents) {
     content.hidden = content.dataset.viewContent !== view;
   }
   if (elements.calendarArea) elements.calendarArea.hidden = view !== "calendar";
   if (elements.chatArea) elements.chatArea.hidden = view !== "chat";
+}
+
+function updatePrimaryNavTooltip(item) {
+  const label = item.dataset.navLabel || item.textContent.trim();
+  const shortcutKey = item.dataset.shortcutKey;
+  item.title = shortcutKey ? `${label} (shift+${shortcutKey.toUpperCase()})` : label;
 }
 
 function applyActiveView(view) {
@@ -507,6 +514,43 @@ function hasDraggedFiles(event) {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
 
+function isTypingShortcutTarget(target) {
+  return target instanceof HTMLElement
+    && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+}
+
+function isShortcutDialogOpen() {
+  return Boolean(elements.settingsDialog.open || elements.eventDialog.open);
+}
+
+function findPrimaryNavShortcutView(key) {
+  const navItem = elements.primaryNavItems.find((item) => item.dataset.shortcutKey?.toLowerCase() === key);
+  return navItem?.dataset.viewTarget || "";
+}
+
+function handleGlobalShortcut(key) {
+  if (key === "n") {
+    if (!state.busy) {
+      if (state.activeView === "calendar") openEventDialogForCreate(state.calendar.cursorISO);
+      else createNewRoom();
+    }
+    return true;
+  }
+
+  const viewTarget = findPrimaryNavShortcutView(key);
+  if (viewTarget) {
+    applyActiveView(viewTarget);
+    return true;
+  }
+
+  if (key === "i") {
+    elements.promptInput.focus();
+    return true;
+  }
+
+  return false;
+}
+
 // ===== Event binding =====
 
 function bindEvents() {
@@ -685,20 +729,9 @@ function bindEvents() {
   window.addEventListener("keydown", (event) => {
     const isShiftOnly = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
     const key = event.key.toLowerCase();
-    if (isShiftOnly && (key === "n" || key === "d" || key === "c" || key === "i")) {
-      const target = event.target;
-      const isTyping = target instanceof HTMLElement
-        && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-      const dialogOpen = elements.settingsDialog.open || elements.eventDialog.open;
-      if (!isTyping && !dialogOpen) {
+    if (isShiftOnly && !isTypingShortcutTarget(event.target) && !isShortcutDialogOpen()) {
+      if (handleGlobalShortcut(key)) {
         event.preventDefault();
-        if (key === "n") {
-          if (state.busy) return;
-          if (state.activeView === "calendar") openEventDialogForCreate(state.calendar.cursorISO);
-          else createNewRoom();
-        } else if (key === "d") { applyActiveView("chat"); }
-        else if (key === "c") { applyActiveView("calendar"); }
-        else if (key === "i") { elements.promptInput.focus(); }
         return;
       }
     }

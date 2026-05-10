@@ -221,12 +221,6 @@ body.panel-resizing .panel-resizer::after {
   background: rgba(255, 255, 255, 0.18);
 }
 
-.primary-nav-item .shortcut-hint {
-  margin-left: auto;
-  font-size: 10px;
-  background: color-mix(in srgb, var(--surface) 8%, var(--line));
-}
-
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
