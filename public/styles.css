@@ -3195,10 +3195,6 @@ body.panel-resizing .panel-resizer::after {
   height: 100vh;
 }
 
-.calendar-area > .calendar-command-result[hidden] {
-  display: none;
-}
-
 .calendar-header {
   display: flex;
   align-items: center;
@@ -3265,13 +3261,6 @@ body.panel-resizing .panel-resizer::after {
   background: var(--surface);
   border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
   color: var(--accent-dark);
-}
-
-.calendar-command-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 12px min(5vw, 56px) 0;
 }
 
 .calendar-header-trailing {
@@ -3348,61 +3337,6 @@ body.panel-resizing .panel-resizer::after {
   font-size: 12px;
   line-height: 1.45;
   color: color-mix(in srgb, var(--ink) 65%, transparent);
-}
-
-.calendar-command-input {
-  height: 40px;
-}
-
-.calendar-command-send {
-  min-height: 40px;
-  padding: 0 18px;
-}
-
-.calendar-command-bar.busy .calendar-command-input,
-.calendar-command-bar.busy .calendar-command-send {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.calendar-command-result {
-  position: relative;
-  margin: 10px min(5vw, 56px) 0;
-  padding: 10px 36px 10px 14px;
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--accent);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.calendar-command-result.kind-warning {
-  border-left-color: #d97706;
-}
-
-.calendar-command-result.kind-error {
-  border-left-color: var(--danger);
-}
-
-.calendar-command-result-body {
-  display: grid;
-  gap: 8px;
-}
-
-.calendar-command-result-text {
-  white-space: pre-wrap;
-}
-
-.calendar-command-result-close {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 26px;
-  height: 26px;
-  font-size: 18px;
-  line-height: 1;
 }
 
 .calendar-body {

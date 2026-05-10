@@ -284,7 +284,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
-- `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, intent command bar.
+- `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, and chat-triggered calendar intent helpers.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.

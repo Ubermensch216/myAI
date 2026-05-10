@@ -181,22 +181,6 @@
         </div>
         <input id="calendarImportInput" type="file" accept=".ics,text/calendar" hidden />
 
-        <form id="calendarCommandForm" class="calendar-command-bar">
-          <input
-            id="calendarCommandInput"
-            class="text-input calendar-command-input"
-            type="text"
-            placeholder="AI에게 일정을 요청하세요. 예: 내일 오후 3시 회의 잡아줘"
-            autocomplete="off"
-          />
-          <button id="calendarCommandSendButton" class="send-button calendar-command-send" type="submit">요청</button>
-        </form>
-
-        <div id="calendarCommandResult" class="calendar-command-result" hidden>
-          <button id="calendarCommandResultClose" class="icon-button calendar-command-result-close" type="button" aria-label="결과 닫기" title="닫기">×</button>
-          <div id="calendarCommandResultBody" class="calendar-command-result-body"></div>
-        </div>
-
         <div class="calendar-body">
           <div class="calendar-day-name-row" aria-hidden="true">
             <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>

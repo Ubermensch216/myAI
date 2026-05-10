@@ -5,7 +5,7 @@ import {
   renderCalendar, shiftCalendarMonth, jumpCalendarToToday, setCalendarViewMode,
   openEventDialogForCreate, openEventDialogForEdit, closeEventDialog, submitEventForm,
   deleteCurrentEvent, applyAllDayUiState, setEventColor,
-  submitCalendarCommand, hideCalendarCommandResult, startReminderWatcher,
+  startReminderWatcher,
   exportCalendarIcs, importCalendarIcsFile
 } from "./modules/calendar.js";
 import {
@@ -577,8 +577,6 @@ function bindEvents() {
   for (const option of elements.eventColorOptions) {
     option.addEventListener("click", (event) => { event.preventDefault(); setEventColor(option.dataset.color); });
   }
-  if (elements.calendarCommandForm) elements.calendarCommandForm.addEventListener("submit", submitCalendarCommand);
-  if (elements.calendarCommandResultClose) elements.calendarCommandResultClose.addEventListener("click", hideCalendarCommandResult);
   if (elements.calendarSettingsButton) {
     elements.calendarSettingsButton.addEventListener("click", (event) => { event.stopPropagation(); toggleCalendarSettingsMenu(); });
   }
