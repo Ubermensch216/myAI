@@ -244,6 +244,80 @@ export function getStats(db) {
   };
 }
 
+export function listNodes(db, { type = null, search = "", limit = 100, offset = 0, enabledOnly = true } = {}) {
+  const where = [];
+  const args = [];
+  if (enabledOnly) where.push("n.enabled = 1");
+  if (type) { where.push("n.type = ?"); args.push(type); }
+  let join = "";
+  if (search && search.trim()) {
+    const norm = `%${normalizeLabel(search)}%`;
+    join = "LEFT JOIN kg_aliases a ON a.node_id = n.id";
+    where.push("(n.normalized_label LIKE ? OR a.normalized_alias LIKE ?)");
+    args.push(norm, norm);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  args.push(Number(limit), Number(offset));
+  return db.prepare(`
+    SELECT DISTINCT n.id, n.type, n.label, n.summary, n.confidence,
+           (SELECT COUNT(*) FROM kg_edges e WHERE (e.src_id = n.id OR e.dst_id = n.id) AND e.enabled = 1) AS degree
+    FROM kg_nodes n
+    ${join}
+    ${whereSql}
+    ORDER BY degree DESC, n.confidence DESC, n.label ASC
+    LIMIT ? OFFSET ?
+  `).all(...args);
+}
+
+export function getNode(db, nodeId) {
+  if (!nodeId) return null;
+  const node = db.prepare(`
+    SELECT id, type, label, normalized_label AS normalizedLabel, summary, confidence, enabled,
+           extracted_by_model AS extractedByModel, created_at AS createdAt, updated_at AS updatedAt
+    FROM kg_nodes WHERE id = ?
+  `).get(nodeId);
+  if (!node) return null;
+  const aliases = db.prepare("SELECT alias FROM kg_aliases WHERE node_id = ? ORDER BY alias").all(nodeId).map((r) => r.alias);
+  return { ...node, aliases };
+}
+
+export function topNodes(db, { limit = 80, type = null, enabledOnly = true } = {}) {
+  const where = [];
+  const args = [];
+  if (enabledOnly) where.push("n.enabled = 1");
+  if (type) { where.push("n.type = ?"); args.push(type); }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  args.push(Number(limit));
+  return db.prepare(`
+    SELECT n.id, n.type, n.label, n.confidence,
+           (SELECT COUNT(*) FROM kg_edges e WHERE (e.src_id = n.id OR e.dst_id = n.id) AND e.enabled = 1) AS degree
+    FROM kg_nodes n
+    ${whereSql}
+    ORDER BY degree DESC, n.confidence DESC, n.label ASC
+    LIMIT ?
+  `).all(...args);
+}
+
+export function edgesAmong(db, nodeIds, { enabledOnly = true } = {}) {
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) return [];
+  const placeholders = nodeIds.map(() => "?").join(",");
+  const enabledSql = enabledOnly ? "AND e.enabled = 1" : "";
+  return db.prepare(`
+    SELECT e.id, e.src_id AS srcId, e.dst_id AS dstId, e.type, e.label, e.confidence
+    FROM kg_edges e
+    WHERE e.src_id IN (${placeholders}) AND e.dst_id IN (${placeholders}) ${enabledSql}
+  `).all(...nodeIds, ...nodeIds);
+}
+
+export function getEdge(db, edgeId) {
+  if (!edgeId) return null;
+  return db.prepare(`
+    SELECT id, src_id AS srcId, dst_id AS dstId, type, label, confidence, enabled,
+           extracted_by_model AS extractedByModel, created_at AS createdAt
+    FROM kg_edges WHERE id = ?
+  `).get(edgeId);
+}
+
 export function clearGraph(db) {
   db.exec("BEGIN; DELETE FROM kg_source_refs; DELETE FROM kg_edges; DELETE FROM kg_aliases; DELETE FROM kg_nodes; COMMIT;");
 }

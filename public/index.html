@@ -647,6 +647,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span>RAG 평가</span>
           </button>
+          <button id="adminGraphButton" class="admin-console-nav-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="14" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="6" cy="20" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="20" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+            <span>지식그래프</span>
+          </button>
         </nav>
         <div class="admin-dialog-header-actions">
           <button id="adminRefreshStatusButton" class="ghost-button admin-header-refresh" type="button" hidden>새로고침</button>
@@ -853,6 +857,44 @@
             </section>
           </div>
 
+          <!-- Knowledge Graph admin panel -->
+          <div id="adminGraphPanel" class="admin-status-panel admin-graph-panel" hidden>
+            <div class="kg-toolbar">
+              <div class="kg-toolbar-row">
+                <label class="field-label" for="kgNotebookSelect">노트북</label>
+                <select id="kgNotebookSelect" class="text-input"></select>
+                <button id="kgRefreshButton" class="ghost-button" type="button">새로고침</button>
+              </div>
+              <div class="kg-toolbar-row">
+                <input id="kgSearchInput" class="text-input" type="search" placeholder="노드 검색 (라벨/별칭)" />
+                <select id="kgTypeFilter" class="text-input">
+                  <option value="">모든 타입</option>
+                </select>
+                <label class="kg-limit-label">노드 수
+                  <select id="kgLimitSelect" class="text-input kg-limit-select">
+                    <option value="40">40</option>
+                    <option value="80" selected>80</option>
+                    <option value="160">160</option>
+                    <option value="240">240</option>
+                  </select>
+                </label>
+                <button id="kgRelayoutButton" class="ghost-button" type="button">재배치</button>
+              </div>
+            </div>
+            <div id="kgStatsBar" class="kg-stats-bar"></div>
+            <div class="kg-body">
+              <div class="kg-canvas-wrap">
+                <div id="kgCanvas" class="kg-canvas"></div>
+                <div id="kgCanvasEmpty" class="kg-canvas-empty" hidden>그래프가 없습니다. 먼저 KG를 빌드하세요.</div>
+                <div id="kgLegend" class="kg-legend"></div>
+              </div>
+              <aside id="kgDetailPane" class="kg-detail-pane">
+                <div id="kgDetailEmpty" class="kg-detail-empty">노드 또는 엣지를 클릭하면 상세가 표시됩니다.</div>
+                <div id="kgDetailBody" class="kg-detail-body" hidden></div>
+              </aside>
+            </div>
+          </div>
+
           <!-- Empty state -->
           <div id="adminDetailEmpty" class="admin-detail-empty">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>
@@ -947,6 +989,7 @@
       </section>
     </dialog>
 
+    <script src="/vendor/cytoscape.min.js" defer></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
