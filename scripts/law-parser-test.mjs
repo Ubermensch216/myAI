@@ -271,8 +271,11 @@ function testBuildCitation() {
   assert.equal(citation.sourceType, "law");
   assert.equal(citation.locator, "민법 제750조");
   assert.equal(citation.canonical, "민법/제750조");
-  assert.match(citation.url, /^https:\/\/www\.law\.go\.kr\/법령\//);
-  assert.match(decodeURIComponent(citation.url), /민법 제750조/);
+  assert.match(citation.url, /^https:\/\/www\.law\.go\.kr\/lsInfoP\.do\?lsiSeq=001234$/);
+
+  const citationNoMst = buildCitation({ lawName: "민법", lawId: "001110", mst: "", title: "불법행위의 내용", effectiveDate: "2023-01-04" }, articleRef);
+  assert.match(citationNoMst.url, /^https:\/\/www\.law\.go\.kr\/법령\//);
+  assert.match(decodeURIComponent(citationNoMst.url), /민법/);
 }
 
 function testNormalizeDate() {

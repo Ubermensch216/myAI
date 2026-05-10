@@ -126,9 +126,9 @@ export function collectArticleText(value) {
   return Array.from(new Set(pieces)).join("\n").trim();
 }
 
-export function buildPublicLawUrl(lawName, article) {
-  const query = encodeURIComponent(`${String(lawName || "").trim()} ${String(article || "").trim()}`.trim());
-  return `https://www.law.go.kr/법령/${query}`;
+export function buildPublicLawUrl(lawName, _article, mst) {
+  if (mst) return `https://www.law.go.kr/lsInfoP.do?lsiSeq=${encodeURIComponent(String(mst).trim())}`;
+  return `https://www.law.go.kr/법령/${encodeURIComponent(String(lawName || "").trim())}`;
 }
 
 export function buildCitation(articleData, articleRef, citationId = "L1") {
@@ -144,7 +144,7 @@ export function buildCitation(articleData, articleRef, citationId = "L1") {
     title: articleData.title,
     locator,
     effectiveDate: articleData.effectiveDate,
-    url: buildPublicLawUrl(articleData.lawName, articleRef.canonical)
+    url: buildPublicLawUrl(articleData.lawName, articleRef.canonical, articleData.mst)
   };
 }
 

@@ -9,6 +9,7 @@ import {
   buildInterpretationCitation,
   buildOrdinanceCitation,
   buildPrecedentCitation,
+  buildPublicLawUrl,
   chooseLawSearchResult,
   findUpstreamError,
   normalizeAdminRulePayload,
@@ -97,7 +98,13 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("article_detail", normalizedInput, effectiveDate || resolved.effectiveDate || "");
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_TEXT_TTL_MS, lastModified: resolved.lastModified || "" });
-    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+    if (cached) {
+      const stripped = stripLawPrivateFields(cached);
+      if (stripped.citation) {
+        stripped.citation = { ...stripped.citation, url: buildPublicLawUrl(stripped.citation.lawName, stripped.citation.article, stripped.citation.mst) };
+      }
+      return { ...stripped, cacheHit: true };
+    }
 
     const params = {
       target: "lawjosub",

@@ -44,6 +44,7 @@ export function bindStudioEvents() {
     }
     generateLawImpactMap();
   });
+  elements.lawExplorerResetButton?.addEventListener("click", resetLawExplorer);
   bindStudioGraphEvents();
 }
 
@@ -265,21 +266,99 @@ async function generateLawImpactMap() {
   }
 }
 
+function resetLawExplorer() {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!studio) return;
+  delete studio.lawExplorer;
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  setLawExplorerStatus("", "idle");
+  renderLawExplorer();
+}
+
 function renderLawExplorer() {
   const room = getActiveRoom();
   const studio = ensureRoomStudio(room);
   const data = studio?.lawExplorer?.data;
   if (!data?.impactMap) {
+    if (elements.lawExplorerSummary) elements.lawExplorerSummary.hidden = true;
     if (elements.lawExplorerMap) {
-      elements.lawExplorerMap.innerHTML = `<div class="law-explorer-empty">공식 법령 조문 기반 영향맵이 여기에 표시됩니다.</div>`;
+      elements.lawExplorerMap.innerHTML = `<div class="law-explorer-empty">법령명과 조문을 입력하면 공식 조문 기반 영향맵을 보여줍니다.</div>`;
     }
     if (elements.lawExplorerDetail) {
-      elements.lawExplorerDetail.innerHTML = `<p class="law-explorer-empty">법령명과 조문을 입력하면 공식 조문 기반 영향맵을 보여줍니다.</p>`;
+      elements.lawExplorerDetail.innerHTML = `<p class="law-explorer-empty">분석 항목을 클릭하면 상세 내용이 표시됩니다.</p>`;
     }
     return;
   }
+  renderLawExplorerSummary(data.impactMap, data.citation, studio.lawExplorer?.input);
   renderLawImpactMap(data.impactMap, data.citation);
-  setLawExplorerStatus(data.citation?.locator ? `확인된 조문: ${data.citation.locator}` : "영향맵 생성 완료", "done");
+  setLawExplorerStatus("", "idle");
+}
+
+function renderLawExplorerSummary(impactMap, citation, input) {
+  const target = elements.lawExplorerSummary;
+  if (!target) return;
+  target.innerHTML = "";
+
+  const articleNode = (impactMap.nodes || []).find((n) => n.type === "law_article");
+  const subjectNode = (impactMap.nodes || []).find((n) => n.type === "review_subject");
+
+  const articleSection = document.createElement("div");
+  articleSection.className = "law-explorer-summary-article";
+
+  const info = document.createElement("div");
+  info.className = "law-explorer-summary-article-info";
+
+  const badge = document.createElement("span");
+  badge.className = "law-explorer-summary-badge";
+  badge.textContent = "법령 조문";
+
+  const locator = document.createElement("div");
+  locator.className = "law-explorer-summary-locator";
+  locator.textContent = articleNode?.label || citation?.locator || "법령 조문";
+
+  const title = document.createElement("div");
+  title.className = "law-explorer-summary-title";
+  title.textContent = citation?.title || articleNode?.summary || "";
+
+  info.append(badge, locator);
+  if (title.textContent) info.append(title);
+  articleSection.append(info);
+
+  if (citation?.url) {
+    const link = document.createElement("a");
+    link.className = "law-explorer-summary-link";
+    link.href = citation.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = `${citation.citationId || "L1"} 원문 ↗`;
+    articleSection.append(link);
+  }
+
+  target.append(articleSection);
+
+  const subjectText = input?.subject || subjectNode?.label || "";
+  if (subjectText) {
+    const divider = document.createElement("div");
+    divider.className = "law-explorer-summary-divider";
+
+    const subjectSection = document.createElement("div");
+    subjectSection.className = "law-explorer-summary-subject";
+
+    const label = document.createElement("span");
+    label.className = "law-explorer-summary-subject-label";
+    label.textContent = "검토 대상";
+
+    const text = document.createElement("span");
+    text.className = "law-explorer-summary-subject-text";
+    text.textContent = subjectText;
+
+    subjectSection.append(label, text);
+    target.append(divider, subjectSection);
+  }
+
+  target.hidden = false;
 }
 
 function renderLawImpactMap(impactMap, citation) {
@@ -293,7 +372,8 @@ function renderLawImpactMap(impactMap, citation) {
     if (!byType.has(type)) byType.set(type, []);
     byType.get(type).push(node);
   });
-  const order = ["law_article", "review_subject", "obligation", "condition", "risk", "material_signal", "other"];
+  const order = ["obligation", "condition", "risk", "material_signal", "other"];
+  let firstNode = null;
   for (const type of order) {
     const group = byType.get(type);
     if (!group?.length) continue;
@@ -303,39 +383,58 @@ function renderLawImpactMap(impactMap, citation) {
     heading.textContent = lawImpactTypeLabel(type);
     section.append(heading);
     for (const node of group) {
+      if (!firstNode) firstNode = node;
       const button = document.createElement("button");
       button.type = "button";
       button.className = `law-impact-node law-impact-node-${type}`;
       button.textContent = node.label || node.id;
-      button.addEventListener("click", () => renderLawImpactDetail(node, impactMap, citation));
+      button.addEventListener("click", () => {
+        target.querySelectorAll(".law-impact-node").forEach((b) => b.classList.remove("is-active"));
+        button.classList.add("is-active");
+        renderLawImpactDetail(node, impactMap, citation);
+      });
       section.append(button);
     }
     target.append(section);
   }
-  renderLawImpactDetail(nodes[0], impactMap, citation);
+  if (firstNode) {
+    target.querySelector(".law-impact-node")?.classList.add("is-active");
+    renderLawImpactDetail(firstNode, impactMap, citation);
+  }
 }
 
 function renderLawImpactDetail(node, impactMap, citation) {
   const target = elements.lawExplorerDetail;
   if (!target || !node) return;
   target.innerHTML = "";
-  const title = document.createElement("h3");
-  title.textContent = node.label || "Impact node";
+
+  const header = document.createElement("div");
+  header.className = "law-explorer-detail-header";
+
   const meta = document.createElement("div");
   meta.className = "law-explorer-detail-meta";
   meta.textContent = lawImpactTypeLabel(node.type);
-  const summary = document.createElement("p");
-  summary.textContent = node.summary || "";
-  target.append(title, meta, summary);
+
+  const title = document.createElement("h3");
+  title.textContent = node.label || "";
+
+  header.append(meta, title);
+  target.append(header);
+
+  const body = document.createElement("p");
+  body.textContent = node.summary || "";
+  target.append(body);
+
   if (node.citationId && citation?.url) {
     const link = document.createElement("a");
     link.className = "law-explorer-link";
     link.href = citation.url;
     link.target = "_blank";
     link.rel = "noreferrer";
-    link.textContent = `${node.citationId} law.go.kr 원문`;
+    link.textContent = `${node.citationId} law.go.kr 원문 ↗`;
     target.append(link);
   }
+
   const related = (impactMap.edges || []).filter((edge) => edge.from === node.id || edge.to === node.id);
   if (related.length) {
     const list = document.createElement("div");

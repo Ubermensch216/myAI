@@ -429,7 +429,9 @@ export const elements = {
   lawExplorerArticle: document.querySelector("#lawExplorerArticle"),
   lawExplorerSubject: document.querySelector("#lawExplorerSubject"),
   lawExplorerRunButton: document.querySelector("#lawExplorerRunButton"),
+  lawExplorerResetButton: document.querySelector("#lawExplorerResetButton"),
   lawExplorerStatus: document.querySelector("#lawExplorerStatus"),
+  lawExplorerSummary: document.querySelector("#lawExplorerSummary"),
   lawExplorerMap: document.querySelector("#lawExplorerMap"),
   lawExplorerDetail: document.querySelector("#lawExplorerDetail")
 };

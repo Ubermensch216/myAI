@@ -339,6 +339,7 @@ body.panel-resizing .panel-resizer::after {
   padding: 0 10px;
   background: var(--surface);
   color: var(--ink);
+  font-size: 13px;
 }
 
 .custom-prompt-input {
@@ -1322,7 +1323,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .thinking-card-law {
-  border-left: 3px solid #0f766e;
+  border-left: 3px solid color-mix(in srgb, var(--muted) 35%, var(--line));
 }
 
 .thinking-row {
@@ -1331,9 +1332,9 @@ body.panel-resizing .panel-resizer::after {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  color: var(--accent-dark);
+  color: var(--muted);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   min-height: 22px;
 }
 
@@ -1352,7 +1353,7 @@ body.panel-resizing .panel-resizer::after {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--accent);
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
   animation: thinkingBounce 0.9s ease-in-out infinite;
 }
 
@@ -1403,8 +1404,8 @@ body.panel-resizing .panel-resizer::after {
 
 .thinking-step-marker {
   flex: 0 0 auto;
-  color: var(--accent-dark);
-  font-weight: 900;
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .thinking-details li.done {
@@ -1428,12 +1429,12 @@ body.panel-resizing .panel-resizer::after {
 .thinking-law-status {
   margin-top: 10px;
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, #0f766e 28%, var(--line));
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: color-mix(in srgb, #0f766e 7%, var(--surface));
-  color: var(--ink);
+  background: var(--surface-2);
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -2797,6 +2798,11 @@ body.panel-resizing .panel-resizer::after {
   display: none;
 }
 
+.studio-mindmap-panel {
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
 .studio-graph-panel {
   gap: 10px;
   padding: 10px 12px 12px;
@@ -2884,9 +2890,8 @@ body.panel-resizing .panel-resizer::after {
   position: relative;
   flex: 1 1 auto;
   min-height: 220px;
-  margin: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
   overflow: hidden;
 }
@@ -3094,9 +3099,8 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-mindmap-details {
   min-height: 84px;
-  margin: 0 12px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px;
   background: var(--surface);
   color: var(--muted);
@@ -6907,7 +6911,7 @@ body.panel-resizing .panel-resizer::after {
 
 .kg-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   flex: 1 1 auto;
   min-height: 0;
@@ -7174,123 +7178,346 @@ body.panel-resizing .panel-resizer::after {
 }
 
 /* ==== Studio Law Explorer ==== */
+/* ── Law Explorer Panel ─────────────────────────────────────── */
+
 .studio-law-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
+  padding: 10px 12px 12px;
+  overflow: hidden;
 }
+
+/* ── Toolbar ─────────────────────────────────────────────────── */
 
 .law-explorer-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.7fr) minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: center;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface-2);
+  flex-shrink: 0;
 }
+
+.law-explorer-toolbar-row1 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(90px, 0.7fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.law-explorer-toolbar-row2 {
+  display: flex;
+}
+
+.law-explorer-subject {
+  width: 100%;
+  resize: vertical;
+  min-height: 54px;
+  max-height: 130px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  box-sizing: border-box;
+}
+
+/* 영향맵 버튼 — input 높이(38px)에 맞춤 */
+#lawExplorerRunButton {
+  height: 38px;
+  padding: 0 14px;
+  min-width: 72px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.law-explorer-reset-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.law-explorer-reset-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+/* ── Status bar ──────────────────────────────────────────────── */
 
 .law-explorer-status {
-  min-height: 20px;
-  color: var(--muted);
+  flex-shrink: 0;
   font-size: 12px;
+  color: var(--muted);
+  padding: 0 2px;
+  line-height: 1.4;
 }
 
-.law-explorer-status[data-mode="error"] {
-  color: var(--danger);
+.law-explorer-status:empty {
+  display: none;
 }
 
-.law-explorer-status[data-mode="done"] {
+.law-explorer-status[data-mode="error"] { color: var(--danger); }
+.law-explorer-status[data-mode="running"] { color: var(--accent-dark); }
+
+/* ── Summary card ────────────────────────────────────────────── */
+
+.law-explorer-summary {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.law-explorer-summary-article {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 14px;
+  align-items: start;
+  padding: 12px 14px 10px;
+}
+
+.law-explorer-summary-article-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.law-explorer-summary-badge {
+  display: inline-block;
+  width: fit-content;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 1px;
 }
+
+.law-explorer-summary-locator {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  word-break: keep-all;
+  line-height: 1.4;
+}
+
+.law-explorer-summary-title {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.law-explorer-summary-link {
+  display: inline-flex;
+  align-items: center;
+  align-self: start;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.law-explorer-summary-link:hover {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  border-color: var(--accent);
+}
+
+.law-explorer-summary-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--line));
+  margin: 0 14px;
+}
+
+.law-explorer-summary-subject {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: baseline;
+  padding: 8px 14px 11px;
+}
+
+.law-explorer-summary-subject-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--accent) 60%, var(--muted));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.law-explorer-summary-subject-text {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+/* ── Results body ────────────────────────────────────────────── */
 
 .law-explorer-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .law-explorer-map,
 .law-explorer-detail {
-  min-height: 320px;
-  max-height: 58vh;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
-  padding: 12px;
+  padding: 14px;
 }
+
+/* ── Map — section groups ────────────────────────────────────── */
 
 .law-impact-section {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
+.law-impact-section:last-child { margin-bottom: 0; }
+
 .law-impact-section h4 {
-  margin: 0 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.law-impact-section h4::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 
 .law-impact-node {
+  display: block;
   width: 100%;
-  min-height: 34px;
+  margin-bottom: 5px;
   border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 7px 9px;
-  background: var(--surface-3);
+  border-radius: 8px;
+  padding: 8px 11px;
+  background: var(--surface-2);
   color: var(--ink);
   cursor: pointer;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   text-align: left;
+  line-height: 1.45;
+  transition: border-color 0.12s, background 0.12s;
 }
 
+.law-impact-node:last-child { margin-bottom: 0; }
+
 .law-impact-node:hover,
-.law-impact-node:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+.law-impact-node.is-active {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
   outline: none;
 }
 
-.law-impact-node-law_article {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+.law-impact-node-obligation {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.law-impact-node-condition {
+  border-left: 3px solid color-mix(in srgb, #8888ff 55%, transparent);
 }
 
 .law-impact-node-risk {
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-left: 3px solid color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.law-impact-node-material_signal {
+  border-left: 3px solid color-mix(in srgb, #44bb88 55%, transparent);
+  font-style: italic;
+}
+
+/* ── Detail panel ────────────────────────────────────────────── */
+
+.law-explorer-detail-header {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
 }
 
 .law-explorer-detail h3 {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
+.law-explorer-detail-meta {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .law-explorer-detail p {
-  margin: 8px 0;
+  margin: 0;
   color: var(--ink);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.law-explorer-detail-meta,
-.law-explorer-empty {
-  color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: keep-all;
 }
 
 .law-explorer-link {
   display: inline-flex;
-  margin-top: 6px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   color: var(--accent-dark);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.law-explorer-link:hover {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
 }
 
 .law-explorer-related {
@@ -7301,7 +7528,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .law-explorer-related span {
-  padding: 2px 7px;
+  padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface-2);
@@ -7309,8 +7536,20 @@ body.panel-resizing .panel-resizer::after {
   font-size: 11px;
 }
 
+.law-explorer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 80px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+
 @media (max-width: 900px) {
-  .law-explorer-toolbar,
+  .law-explorer-toolbar-row1,
   .law-explorer-body {
     grid-template-columns: minmax(0, 1fr);
   }
