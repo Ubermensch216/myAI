@@ -339,13 +339,16 @@ Management UI lives under the main gear button:
 ```text
 Settings
 ├─ Personal Settings
-└─ Admin Console
+└─ Admin Console        (nav grouped by purpose with a thin vertical divider)
    ├─ Department Notebook Management
-   ├─ System Status
    ├─ Access Management
    │  ├─ Group Management
    │  └─ Super Access
-   └─ RAG Evaluation
+   │      ── divider ──
+   ├─ RAG Status         (UI label: RAG 현황)
+   └─ RAG Quality        (UI label: RAG 품질)
+      ├─ 골든셋 › 실행 › 결과   (chevron-arrow workflow)
+      └─ 운영 지표              (separated by an inner divider)
 ```
 
 The Admin Console uses `ADMIN_TOKEN` for management routes. Normal notebook

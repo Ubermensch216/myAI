@@ -7,7 +7,7 @@ This file is intentionally short. Keep long explanations in `docs/`.
 ## Quick Start
 
 ```powershell
-cd d:\Dev\myAI
+cd c:\Dev\myAI
 npm.cmd start
 ```
 
@@ -63,7 +63,7 @@ Server:
 - `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
 - `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25 and CJK bigram search.
 - `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
-- `server/reranker.js` - cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback.
+- `server/reranker.js` - cross-encoder reranking via `/api/rerank`; off by default. Ollama does not expose `/api/rerank`, so enabling it requires an external reranker server (e.g., HF Text Embeddings Inference). Hybrid RRF results are used directly when disabled; the Admin "RAG Status" badge tooltip explains this.
 - `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.
 - `server/retrieval.js` - BM25/CJK bigram, cosine similarity, RRF hybrid retrieval.
 - `server/embeddings.js` - Ollama `/api/embed` helpers.
@@ -85,7 +85,7 @@ Frontend:
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
-- `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook/status/access panels, CRUD, admin event binding.
+- `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for selected department notebooks.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation UI.

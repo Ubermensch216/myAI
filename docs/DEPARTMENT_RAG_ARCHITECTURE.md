@@ -1,9 +1,11 @@
 # Department RAG Architecture
 
 This document describes the department RAG stack: Qdrant (vector) + SQLite FTS5
-(lexical) + cross-encoder reranker on top of the JSON source-of-truth
-in `data/notebooks/`. All components have graceful fallback to JSON/in-memory
-retrieval when optional services are unavailable.
+(lexical) + an optional cross-encoder reranker on top of the JSON
+source-of-truth in `data/notebooks/`. All components have graceful fallback to
+JSON/in-memory retrieval when optional services are unavailable. The reranker
+is currently disabled by design (see [docs/RAG.md](RAG.md#reranker)) because
+Ollama does not expose `/api/rerank`; hybrid RRF output is used directly.
 
 ## Design Goals
 
@@ -49,7 +51,7 @@ stay centralized.
 | `server/indexes/qdrantVectorIndex.js` | Qdrant collection lifecycle, point upsert/delete/search, health checks. |
 | `server/indexes/sqliteFtsIndex.js` | SQLite FTS5 lexical index for exact Korean terms, IDs, titles, and CJK bigram matching. |
 | `server/rag/retrievalLogger.js` | Privacy-safe JSONL retrieval telemetry. |
-| `server/reranker.js` | Cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback. |
+| `server/reranker.js` | Cross-encoder reranking via `/api/rerank`; off by default. Requires an external reranker server (e.g., HF TEI) since Ollama does not expose this endpoint. |
 | `server/ingest/notebookIngestJobs.js` | Async ingest job queue with retry and startup recovery. |
 | `npm run rag:check` / `rag:rebuild` | Index consistency checks and full index rebuilds. |
 | `npm run rag:quality-test:quick` | Fast Recall@K / MRR@K evaluation for representative golden cases. |

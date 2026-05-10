@@ -225,7 +225,7 @@ enabled graph content.
 
 When `RAG_RERANK_ENABLED=true`, the department RAG pipeline passes the top
 `RERANK_TOP_K` (default 40) RRF-fused candidates to `server/reranker.js` for
-cross-encoder scoring via Ollama `/api/rerank`.
+cross-encoder scoring via a `/api/rerank` endpoint.
 
 ```env
 RAG_RERANK_ENABLED=true
@@ -234,9 +234,20 @@ RERANK_TOP_K=40
 RERANK_TIMEOUT_MS=8000
 ```
 
-On timeout or Ollama error, the reranker degrades gracefully — results return
-in RRF order with `reranked: false` logged. The reranker call is queued through
-`modelQueue.rerankQueue` so it respects GPU concurrency limits.
+**Current status: intentionally disabled.** As of 2026-05, the local Ollama
+runtime does not expose `/api/rerank` and `bge-reranker-v2-m3` is not in the
+Ollama library, so flipping the flag without a separate reranker server only
+produces 404 fallbacks. To actually enable reranking you must point
+`OLLAMA_URL` (or a future dedicated reranker URL) at a server that implements
+`/api/rerank` — for example HuggingFace Text Embeddings Inference (TEI) hosting
+the cross-encoder. The Admin Console **RAG Status** (`RAG 현황`) panel shows
+the reranker badge as `비활성` with a tooltip explaining the same; hybrid RRF
+results are used directly until a reranker server is introduced.
+
+When a working reranker server is configured, the reranker degrades gracefully
+on timeout or HTTP error — results return in RRF order with `reranked: false`
+logged. The reranker call is queued through `modelQueue.rerankQueue` so it
+respects GPU concurrency limits.
 
 Quality evaluation:
 

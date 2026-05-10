@@ -266,7 +266,7 @@ The LLM does not directly mutate calendar data.
 - `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
 - `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25/CJK bigram search with per-notebook scope tokens.
 - `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
-- `server/reranker.js` - cross-encoder reranking via Ollama `/api/rerank`; timeout + graceful fallback.
+- `server/reranker.js` - cross-encoder reranking via `/api/rerank`; off by default. Ollama lacks this endpoint, so enabling it requires an external reranker server (e.g., HF TEI). Graceful fallback to RRF order on error/timeout.
 - `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.
 - `server/retrieval.js` - tokenization, BM25, CJK bigrams, cosine similarity, RRF fusion, greedy fitting.
 - `server/embeddings.js` - Ollama `/api/embed`.
