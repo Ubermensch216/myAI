@@ -1609,7 +1609,13 @@ function buildRagStatusFragment(data) {
   backendGrid.append(
     makeStatusBadge("벡터", data.backend?.vector ?? "—"),
     makeStatusBadge("어휘", data.backend?.lexical ?? "—"),
-    makeStatusBadge("리랭커", data.reranker?.enabled ? "활성" : "비활성")
+    makeStatusBadge(
+      "리랭커",
+      data.reranker?.enabled ? "활성" : "비활성",
+      data.reranker?.enabled
+        ? null
+        : "별도 리랭커 서버 미도입으로 의도된 비활성. 하이브리드 RRF 결과를 그대로 사용합니다."
+    )
   );
   backendSection.append(backendGrid);
   frag.append(backendSection);
@@ -1686,9 +1692,10 @@ function makeStatusSection(title) {
   return section;
 }
 
-function makeStatusBadge(label, value) {
+function makeStatusBadge(label, value, title) {
   const badge = document.createElement("div");
   badge.className = "admin-status-badge";
+  if (title) badge.title = title;
   const lbl = document.createElement("span");
   lbl.className = "admin-status-badge-label";
   lbl.textContent = label;
