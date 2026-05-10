@@ -16,14 +16,13 @@
         </section>
 
         <nav id="primaryNav" class="primary-nav" aria-label="주요 메뉴">
-          <button class="primary-nav-item active" type="button" data-view-target="chat" aria-pressed="true">
+          <button class="primary-nav-item active" type="button" data-view-target="chat" aria-pressed="true" title="대화 (shift+D)">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
             <span>대화</span>
-            <span class="shortcut-hint" aria-hidden="true">shift+D</span>
           </button>
-          <button class="primary-nav-item" type="button" data-view-target="calendar" aria-pressed="false">
+          <button class="primary-nav-item" type="button" data-view-target="calendar" aria-pressed="false" title="캘린더 (shift+C)">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="4" width="18" height="17" rx="2"></rect>
               <path d="M16 2v4"></path>
@@ -31,7 +30,6 @@
               <path d="M3 10h18"></path>
             </svg>
             <span>캘린더</span>
-            <span class="shortcut-hint" aria-hidden="true">shift+C</span>
           </button>
         </nav>
 
@@ -700,17 +698,18 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path></svg>
             <span>부서노트북 관리</span>
           </button>
-          <button id="adminStatusButton" class="admin-console-nav-item" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            <span>시스템 상태</span>
-          </button>
           <button id="adminAccessButton" class="admin-console-nav-item" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 12.3 11 13.8l3.7-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>권한 관리</span>
           </button>
+          <span class="admin-console-nav-divider" aria-hidden="true"></span>
+          <button id="adminStatusButton" class="admin-console-nav-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>RAG 현황</span>
+          </button>
           <button id="adminRagEvalButton" class="admin-console-nav-item" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8M10 18V4M16 18v-7M22 18H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            <span>RAG 평가</span>
+            <span>RAG 품질</span>
           </button>
         </nav>
         <div class="admin-dialog-header-actions">
@@ -820,8 +819,11 @@
             <div class="admin-status-panel-header">
               <div class="rag-eval-tabs" role="tablist">
                 <button class="rag-eval-tab active" type="button" data-tab="golden" role="tab" aria-selected="true">골든셋</button>
+                <span class="rag-eval-tab-arrow" aria-hidden="true">›</span>
                 <button class="rag-eval-tab" type="button" data-tab="run" role="tab" aria-selected="false">실행</button>
+                <span class="rag-eval-tab-arrow" aria-hidden="true">›</span>
                 <button class="rag-eval-tab" type="button" data-tab="results" role="tab" aria-selected="false">결과</button>
+                <span class="rag-eval-tab-divider" aria-hidden="true"></span>
                 <button class="rag-eval-tab" type="button" data-tab="health" role="tab" aria-selected="false">운영 지표</button>
               </div>
             </div>

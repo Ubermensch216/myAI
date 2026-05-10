@@ -1,5 +1,7 @@
-import { elements, accessAuthHeaders } from "./state.js";
+import { elements, accessAuthHeaders, state } from "./state.js";
 import { getActiveNotebookId, findNotebookSummary } from "./notebook.js";
+
+const REBUILD_POLL_MS = 3000;
 
 const TYPE_COLORS = {
   Document: "#0f766e",
@@ -33,13 +35,32 @@ const kgState = {
   selectedNodeId: null,
   selectedEdgeId: null,
   initialized: false,
-  panelVisible: false
+  panelVisible: false,
+  rebuilding: false,
+  rebuildPollTimer: null
 };
 
 async function api(pathname, init = {}) {
   const headers = { ...accessAuthHeaders(), ...(init.headers || {}) };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   const response = await fetch(`/api/studio/graph${pathname}`, { ...init, headers });
+  if (!response.ok) {
+    let body = "";
+    try { body = (await response.json()).error || ""; } catch { /* ignore */ }
+    throw new Error(body || `HTTP ${response.status}`);
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+function adminAuthHeaders() {
+  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
+}
+
+async function adminGraphApi(pathname, init = {}) {
+  const headers = { ...adminAuthHeaders(), ...(init.headers || {}) };
+  if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const response = await fetch(`/api/admin/graph${pathname}`, { ...init, headers });
   if (!response.ok) {
     let body = "";
     try { body = (await response.json()).error || ""; } catch { /* ignore */ }
@@ -67,11 +88,14 @@ export async function showStudioGraphPanel() {
   await ensureOntology();
   await syncWithActiveRoom({ force: true });
   if (kgState.cy) kgState.cy.resize();
+  updateRebuildVisibility();
+  pollRebuildStatus().catch(() => {});
 }
 
 export function hideStudioGraphPanel() {
   kgState.panelVisible = false;
   toggleGraphFullscreen(false);
+  stopRebuildPolling();
 }
 
 export function bindStudioGraphEvents() {
@@ -80,6 +104,9 @@ export function bindStudioGraphEvents() {
 
   elements.kgRefreshButton?.addEventListener("click", () => {
     syncWithActiveRoom({ force: true }).catch(reportError);
+  });
+  elements.kgRebuildButton?.addEventListener("click", () => {
+    startRebuild().catch(reportError);
   });
   elements.kgRelayoutButton?.addEventListener("click", () => runLayout());
   elements.kgFullscreenButton?.addEventListener("click", () => toggleGraphFullscreen());
@@ -113,6 +140,12 @@ async function syncWithActiveRoom({ force = false } = {}) {
   if (!force && !changed) return;
   kgState.activeNotebookId = roomNotebookId;
   renderActiveNotebookLabel();
+  if (changed) {
+    stopRebuildPolling();
+    setRebuildStatus("");
+    kgState.rebuilding = false;
+  }
+  updateRebuildVisibility();
   if (!roomNotebookId) {
     if (elements.kgSearchInput) elements.kgSearchInput.value = "";
     kgState.searchTerm = "";
@@ -122,6 +155,7 @@ async function syncWithActiveRoom({ force = false } = {}) {
     return;
   }
   await refreshAll();
+  if (changed) pollRebuildStatus().catch(() => {});
 }
 
 function renderActiveNotebookLabel() {
@@ -615,4 +649,116 @@ function renderEdgeDetail(data) {
 function reportError(error) {
   const message = error?.message || String(error || "unknown");
   console.warn("[graphStudio]", message);
+}
+
+function updateRebuildVisibility() {
+  const btn = elements.kgRebuildButton;
+  if (!btn) return;
+  const isAdmin = Boolean(state.admin?.authenticated && state.admin?.token);
+  const hasNotebook = Boolean(kgState.activeNotebookId);
+  btn.hidden = !(isAdmin && hasNotebook);
+  btn.disabled = !!kgState.rebuilding;
+  btn.textContent = kgState.rebuilding ? "리빌드 중..." : "리빌드";
+}
+
+function setRebuildStatus(text, mode = "info") {
+  const el = elements.kgRebuildStatus;
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    el.textContent = "";
+    el.dataset.mode = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+  el.dataset.mode = mode;
+}
+
+function startRebuildPolling() {
+  if (kgState.rebuildPollTimer) return;
+  kgState.rebuildPollTimer = setInterval(() => {
+    pollRebuildStatus().catch(() => {});
+  }, REBUILD_POLL_MS);
+}
+
+function stopRebuildPolling() {
+  if (kgState.rebuildPollTimer) {
+    clearInterval(kgState.rebuildPollTimer);
+    kgState.rebuildPollTimer = null;
+  }
+}
+
+async function pollRebuildStatus() {
+  if (!kgState.activeNotebookId) { stopRebuildPolling(); return; }
+  if (!state.admin?.token) { stopRebuildPolling(); return; }
+  let data;
+  try {
+    data = await adminGraphApi(`/${encodeURIComponent(kgState.activeNotebookId)}/rebuild/status`);
+  } catch {
+    return;
+  }
+  const job = data?.job;
+  if (!job) {
+    stopRebuildPolling();
+    kgState.rebuilding = false;
+    setRebuildStatus("");
+    updateRebuildVisibility();
+    return;
+  }
+  if (job.status === "running") {
+    kgState.rebuilding = true;
+    const pct = job.total > 0 ? Math.floor((job.processed / job.total) * 100) : 0;
+    const totalText = job.total > 0 ? `${job.processed}/${job.total} (${pct}%)` : `${job.processed}`;
+    setRebuildStatus(`리빌드 중 · ${totalText}`, "running");
+    startRebuildPolling();
+    updateRebuildVisibility();
+    return;
+  }
+  stopRebuildPolling();
+  kgState.rebuilding = false;
+  if (job.status === "done") {
+    const elapsed = Math.round((job.elapsedMs || 0) / 1000);
+    setRebuildStatus(
+      `완료 · ${job.processed}/${job.total} 청크 · ${job.nodesCreated} 노드 · ${job.edgesCreated} 엣지 · ${elapsed}s`,
+      "done"
+    );
+    await refreshAll();
+    setTimeout(() => {
+      if (!kgState.rebuilding) setRebuildStatus("");
+    }, 8000);
+  } else if (job.status === "failed") {
+    setRebuildStatus(`실패: ${job.error || "unknown"}`, "error");
+  } else {
+    setRebuildStatus("");
+  }
+  updateRebuildVisibility();
+}
+
+async function startRebuild() {
+  if (!kgState.activeNotebookId) return;
+  if (!state.admin?.token) {
+    setRebuildStatus("관리자 인증이 필요합니다.", "error");
+    return;
+  }
+  if (kgState.rebuilding) return;
+  const ok = window.confirm(
+    "지식 그래프를 다시 만듭니다.\n기존 그래프는 모두 지워지고 처음부터 추출합니다.\n시간이 오래 걸릴 수 있습니다. 계속할까요?"
+  );
+  if (!ok) return;
+  try {
+    setRebuildStatus("시작 중...", "running");
+    kgState.rebuilding = true;
+    updateRebuildVisibility();
+    await adminGraphApi(`/${encodeURIComponent(kgState.activeNotebookId)}/rebuild`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    startRebuildPolling();
+    pollRebuildStatus().catch(() => {});
+  } catch (error) {
+    kgState.rebuilding = false;
+    setRebuildStatus(`시작 실패: ${error.message}`, "error");
+    updateRebuildVisibility();
+  }
 }

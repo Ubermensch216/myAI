@@ -1556,7 +1556,7 @@ export function showAdminRagEval() {
   adminUiState.mobileView = "detail";
   renderAdminList();
   applyAdminMobileView();
-  activateRagEvalPanel().catch((err) => alert(`RAG 평가 패널 로드 실패: ${err.message}`));
+  activateRagEvalPanel().catch((err) => alert(`RAG 품질 패널 로드 실패: ${err.message}`));
 }
 
 // ===== System status panel =====

@@ -4895,6 +4895,14 @@ body.panel-resizing .panel-resizer::after {
   stroke: currentColor;
 }
 
+.admin-console-nav-divider {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1px;
+  margin: 6px 8px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+
 .admin-console-nav-item:hover,
 .admin-console-nav-item:focus-visible {
   color: var(--ink);
@@ -6331,8 +6339,27 @@ body.panel-resizing .panel-resizer::after {
 
 .rag-eval-tabs {
   display: flex;
+  align-items: center;
   gap: 4px;
   margin-left: auto;
+}
+
+.rag-eval-tab-arrow {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+  padding: 0 1px;
+}
+
+.rag-eval-tab-divider {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
 }
 
 .rag-eval-tab {
@@ -6673,6 +6700,36 @@ body.panel-resizing .panel-resizer::after {
   color: var(--muted);
   font-style: italic;
   font-weight: 500;
+}
+
+.kg-rebuild-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.kg-rebuild-status[data-mode="running"] {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.kg-rebuild-status[data-mode="done"] {
+  border-color: #16a34a;
+  color: #15803d;
+  background: #f0fdf4;
+}
+
+.kg-rebuild-status[data-mode="error"] {
+  border-color: #dc2626;
+  color: #b91c1c;
+  background: #fef2f2;
 }
 
 .kg-toolbar-row #kgSearchInput {
