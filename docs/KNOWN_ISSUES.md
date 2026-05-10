@@ -17,6 +17,8 @@
 - Answer export supports MD, XLSX, PDF, HWPX, and DOCX. PDF export embeds a Korean-capable server font when available; HWPX generation is text-first and intentionally simpler than a full Hancom-authored document package.
 - Studio mind maps use a two-pass LLM pipeline: Pass 1 extracts concepts from evenly sampled chunks spanning the full document; Pass 2 builds node/edge relationships from the concept list. Chunk-boundary relationship loss is therefore reduced compared to a single-pass approach.
 - Image-only uploads and files without extracted text are skipped by the Studio mind map pipeline until a multimodal Pass 1 is added.
+- Department notebook knowledge graphs are optional per-notebook indexes. Graph expansion is disabled unless `KG_EXPANSION_ENABLED=1`, and graph quality depends on the extraction model plus admin review of low-confidence nodes/edges.
+- Graph files live beside notebook data as `data/notebooks/<notebookId>/graph.sqlite`; rebuild or back them up together with the notebook source records when graph-backed retrieval matters.
 
 ## Calendar
 
@@ -33,6 +35,7 @@
 - The composer `+` menu is intended to remain extensible.
 - The composer material panel is the detailed source-of-truth UI for active room materials. The room list should remain compact and show only attachment/notebook presence icons.
 - The right Studio panel is intentionally a first extension point. Keep new Studio tools modular instead of folding their logic into `public/app.js`.
+- The Studio mind map and Studio knowledge graph are different tools: mind maps use current-room uploaded documents, while the knowledge graph uses the selected department notebook's server-side graph index.
 
 ## Operations
 

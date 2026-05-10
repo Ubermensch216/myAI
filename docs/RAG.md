@@ -127,6 +127,7 @@ server/rag/departmentRag.js#searchNotebook(notebookId, query)
 -> embedTexts(queries)         // validated against manifest.embedding.dim
 -> searchQdrantNotebookChunks()   // when DEPARTMENT_VECTOR_BACKEND=qdrant
 -> searchSqliteNotebookChunks()   // when DEPARTMENT_LEXICAL_BACKEND=sqlite
+-> optional graph expansion       // when KG_EXPANSION_ENABLED=1 and graph.sqlite exists
 -> fuseRankings() via RRF
 -> rerankChunks()              // cross-encoder, when RAG_RERANK_ENABLED=true
 -> greedyFit(budget)
@@ -159,6 +160,66 @@ The selected chunks become `[N]` citation IDs. `server/ollama.js` injects them i
 If retrieval returns no usable evidence and the assistant says the requested
 information cannot be found, the frontend hides the citation panel and does not
 generate follow-up suggestions for that no-evidence answer.
+
+## Department Knowledge Graph
+
+Department notebook knowledge graphs are optional per-notebook SQLite indexes:
+
+```text
+data/notebooks/<notebookId>/graph.sqlite
+```
+
+They are separate from uploaded-document Studio mind maps. Mind maps are
+generated on demand from active room uploads; notebook knowledge graphs are
+server-side indexes built from department notebook chunks and can be inspected
+from the Studio graph viewer.
+
+Build or rebuild a graph for one notebook:
+
+```powershell
+node --env-file=.env scripts/build-notebook-graph.mjs <notebookId> --rebuild
+```
+
+Admins can also start the same class of rebuild from the API:
+
+```text
+POST /api/admin/graph/:notebookId/rebuild
+GET  /api/admin/graph/:notebookId/rebuild/status
+```
+
+The graph builder uses `server/rag/graph/extractor.js` to extract entities and
+relations, stores normalized nodes/edges/source references through
+`server/rag/graph/store.js`, and uses the base ontology in
+`server/rag/graph/ontology.js`. The API rebuild path is backed by
+`server/rag/graph/builder.js` and keeps only current-process job state; the
+finished graph itself is persisted in `graph.sqlite`.
+
+At query time, graph expansion is off by default and can be enabled with:
+
+```env
+KG_EXPANSION_ENABLED=1
+KG_EXPAND_TERMS=8
+KG_EXPAND_NEIGHBORS=8
+KG_EXPAND_REFS=4
+KG_EXPAND_MAX=12
+```
+
+When enabled, `server/rag/graph/expander.js` matches query terms to graph
+nodes, expands one-hop neighborhoods, collects source chunk references, and
+adds those referenced chunks as a weighted ranking list before RRF fusion. If a
+graph is missing or produces no supplements, retrieval continues through the
+normal Qdrant/SQLite/JSON fallback chain.
+
+Compare baseline retrieval against graph-expanded retrieval:
+
+```powershell
+node --env-file=.env scripts/eval-graph-ab.mjs --quick
+```
+
+Admin graph endpoints (`/api/admin/graph/*`) allow inspecting source
+references and toggling node/edge enablement overrides. Studio graph endpoints
+(`/api/studio/graph/*`) honor normal notebook read access and return only
+enabled graph content.
 
 ## Reranker
 

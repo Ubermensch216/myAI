@@ -25,6 +25,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Upload-time document summary/topic extraction through local Ollama.
 - Long-document retrieval with query expansion, BM25/CJK bigram ranking, and optional vector ranking.
 - Department notebooks stored on the server filesystem with citation panels in chat and optional group/level access control.
+- Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and an uploaded-document mind map tool.
@@ -197,6 +198,11 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `QUERY_EXPANSION_ENABLED` | `true` | enable LLM query expansion |
 | `QUERY_EXPANSION_VARIANTS` | `3` | generated query variants |
 | `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | query expansion timeout |
+| `KG_EXPANSION_ENABLED` | unset | set `1` to use per-notebook knowledge graphs as supplemental RAG ranking input |
+| `KG_EXPAND_TERMS` | `8` | max graph seed terms/nodes considered during query expansion |
+| `KG_EXPAND_NEIGHBORS` | `8` | max one-hop neighbors loaded per graph seed |
+| `KG_EXPAND_REFS` | `4` | max source references collected per graph node |
+| `KG_EXPAND_MAX` | `12` | max graph-derived chunk supplements added before RRF fusion |
 | `NAVER_SEARCH_ENABLED` | `true` | enable Naver Search context for explicit web-search prompts |
 | `NAVER_SEARCH_CLIENT_ID` | unset | Naver Search API client ID; server-side only |
 | `NAVER_SEARCH_CLIENT_SECRET` | unset | Naver Search API client secret; server-side only |
@@ -242,6 +248,9 @@ server/
   reranker.js          cross-encoder reranking via Ollama /api/rerank
   modelQueue.js        in-process concurrency queues (embedding, analysis, rerank, map-reduce)
   rateLimit.js         fixed-window rate limiting for model-calling routes
+  ragEvalApi.js        Admin RAG evaluation API, run history, and retrieval-log summaries
+  graphStudioApi.js    read-only Studio knowledge-graph API for accessible notebooks
+  graphAdminApi.js     Admin knowledge-graph inspection, overrides, and rebuild API
   abort.js             AbortSignal helpers for streaming chat and Map-Reduce
   auth.js              ADMIN_TOKEN middleware
   accessControl.js     department notebook read-access groups, passwords, tokens
@@ -255,6 +264,10 @@ server/
     departmentRag.js     department retrieval orchestration
     embeddingValidator.js embedding dimension and integrity validation
     retrievalLogger.js   privacy-safe JSONL retrieval telemetry
+    retrievalLogReader.js retrieval telemetry summary reader for RAG Evaluation
+    evalRunner.js        golden-set Recall/MRR evaluation runner
+    evalStore.js         golden-set and persisted run storage
+    graph/               notebook knowledge-graph store, ontology, extraction, expansion, rebuild jobs
   indexes/
     qdrantVectorIndex.js Qdrant collection lifecycle, upsert/delete/search
     sqliteFtsIndex.js    SQLite FTS5 lexical index for BM25 and CJK bigrams
@@ -271,6 +284,8 @@ public/
     chat.js            streaming chat, message rendering, file upload, query-trim
     layout.js          three-pane panel resize/collapse behavior
     notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD
+    graphStudio.js     Studio knowledge-graph viewer for selected department notebooks
+    ragEval.js         Admin RAG Evaluation panel
     studio.js          Studio panel UI and mind-map SVG renderer
     settings.js        Personal Settings tab, Admin Console mounting, brand/theme/avatar/banner
   answerRenderer.js
@@ -317,6 +332,7 @@ The gear button in the main header opens one Settings dialog with two tabs:
 
 - **Personal Settings**: app name, banner, system/user avatars, theme, built-in/custom color palette, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
 - **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, admins use the top console menu for **Department Notebook Management**, **System Status**, **Access Management**, and **RAG Evaluation**.
+- **Studio graph**: when the selected department notebook has a built graph, the Studio panel can show searchable nodes, relationships, source references, and notebook graph statistics. Normal notebook read-access rules still apply.
 
 The chat composer keeps the main input row focused on four controls: add (`+`),
 material context, prompt input, and send. When the active room has uploaded
@@ -355,6 +371,7 @@ to Level 1, 2, or 3 in the same group.
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
 - Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
 - Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a two-pass LLM pipeline: Pass 1 extracts concepts spanning the full document (evenly sampled chunks); Pass 2 derives node/edge relationships from the concept list.
+- Department notebook knowledge graphs are separate from uploaded-document mind maps. Graph data lives under the notebook index area, can be inspected from Studio, and can be moderated from admin graph endpoints.
 - When uploaded documents are present in a room, explicit search prompts (e.g., "네이버 검색해줘") are blocked client-side before reaching the LLM; a descriptive message is shown instead.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects Admin Console management actions only. Use group/level or Super access passwords for notebook reads, and reverse-proxy auth/TLS/rate limits for production-like shared deployments.

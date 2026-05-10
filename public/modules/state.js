@@ -394,6 +394,8 @@ export const elements = {
   ragEvalHealthBody: document.querySelector("#ragEvalHealthBody"),
   kgActiveNotebookLabel: document.querySelector("#kgActiveNotebookLabel"),
   kgRefreshButton: document.querySelector("#kgRefreshButton"),
+  kgRebuildButton: document.querySelector("#kgRebuildButton"),
+  kgRebuildStatus: document.querySelector("#kgRebuildStatus"),
   kgSearchInput: document.querySelector("#kgSearchInput"),
   kgTypeFilter: document.querySelector("#kgTypeFilter"),
   kgLimitSelect: document.querySelector("#kgLimitSelect"),

@@ -19,6 +19,8 @@ import {
 } from "./rag/graph/store.js";
 import { describeOntology } from "./rag/graph/ontology.js";
 import { notebookHasGraph } from "./rag/graph/expander.js";
+import { startRebuild, getRebuildJob, snapshotJob } from "./rag/graph/builder.js";
+import { getNotebook } from "./notebooks.js";
 
 export const graphAdminRouter = express.Router();
 
@@ -239,4 +241,30 @@ graphAdminRouter.post("/:notebookId/edge/:edgeId/clear-override", requireAdmin, 
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+graphAdminRouter.post("/:notebookId/rebuild", requireAdmin, async (req, res) => {
+  const { notebookId } = req.params;
+  if (!notebookId) { res.status(400).json({ error: "notebookId required" }); return; }
+  try {
+    const notebook = await getNotebook(notebookId);
+    if (!notebook) { res.status(404).json({ error: "notebook not found", notebookId }); return; }
+    const model = typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : "";
+    const concurrency = Math.max(1, Math.min(4, parseInt(req.body?.concurrency, 10) || 1));
+    const result = await startRebuild(notebookId, { model, concurrency });
+    if (!result.ok) {
+      res.status(409).json({ error: "already_running", job: result.job });
+      return;
+    }
+    res.status(202).json({ ok: true, job: result.job });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+graphAdminRouter.get("/:notebookId/rebuild/status", requireAdmin, (req, res) => {
+  const { notebookId } = req.params;
+  if (!notebookId) { res.status(400).json({ error: "notebookId required" }); return; }
+  const job = getRebuildJob(notebookId);
+  res.json({ notebookId, job: snapshotJob(job) });
 });

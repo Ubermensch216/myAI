@@ -207,6 +207,50 @@ If Ollama fails after documents are supplied, the server returns a deterministic
 fallback graph from document names, summaries, and topics. Requests without
 text-bearing uploaded documents return `400`.
 
+### `GET /api/studio/graph/ontology`
+
+Returns the notebook knowledge-graph ontology used by the Studio graph viewer:
+entity types, relation types, and display metadata.
+
+### `GET /api/studio/graph/notebooks`
+
+Returns department notebooks that both have a built knowledge graph and are
+visible to the current user. When Department Notebook Access Control is active,
+the caller must include a valid notebook-read access token.
+
+### `GET /api/studio/graph/:notebookId/stats`
+
+Returns graph counts and ontology version for an accessible notebook graph.
+
+### `GET /api/studio/graph/:notebookId/search?q=term&limit=20`
+
+Searches enabled graph nodes by alias/label for an accessible notebook graph.
+
+### `GET /api/studio/graph/:notebookId/subgraph`
+
+Returns graph nodes and edges for rendering. Query parameters:
+
+```text
+mode=top | around
+type=<entity type>
+limit=80
+nodeId=<seed node id>   // required for mode=around
+hops=1                 // 1-2 for mode=around
+```
+
+Only enabled nodes and edges are returned through the Studio endpoint.
+
+### `GET /api/studio/graph/:notebookId/node/:nodeId`
+
+Returns one enabled node, its neighbors, and source references.
+
+### `GET /api/studio/graph/:notebookId/edge/:edgeId`
+
+Returns one enabled edge and source references.
+
+Studio graph endpoints use normal notebook read access, not `ADMIN_TOKEN`.
+They return `404` with `error: "no_graph"` when a notebook has no graph index.
+
 ## Visualization
 
 ### `POST /api/visualize`
@@ -408,6 +452,151 @@ Public. Returns whether `ADMIN_TOKEN` is configured:
 ### `POST /api/admin/verify`
 
 Requires `Authorization: Bearer <ADMIN_TOKEN>`.
+
+## Admin RAG Evaluation
+
+All endpoints under `/api/admin/rag-eval` require
+`Authorization: Bearer <ADMIN_TOKEN>`.
+
+### `GET /api/admin/rag-eval/golden`
+
+Returns the persisted golden set used for department RAG quality checks.
+
+### `PUT /api/admin/rag-eval/golden`
+
+Replaces the full golden set:
+
+```js
+{ golden: { suites: [...] } }
+```
+
+### `PUT /api/admin/rag-eval/golden/case`
+
+Creates or updates one golden case:
+
+```js
+{ suiteId, case: { id, query, relevantChunkKeys, ... } }
+```
+
+### `DELETE /api/admin/rag-eval/golden/case?suiteId=...&caseId=...`
+
+Deletes one golden case.
+
+### `GET /api/admin/rag-eval/runs?limit=50`
+
+Lists active and persisted RAG evaluation runs.
+
+### `POST /api/admin/rag-eval/runs`
+
+Starts a background evaluation run and returns `202`:
+
+```js
+{
+  filter: { quick: true },
+  k: 10,
+  variants: [{ label: "default" }]
+}
+```
+
+Progress can be watched through the stream endpoint below.
+
+### `GET /api/admin/rag-eval/runs/:id`
+
+Returns active progress, a completed run payload, or `404` when the run is not
+known.
+
+### `GET /api/admin/rag-eval/runs/:id/stream`
+
+Server-Sent Events stream for an active run. Events include `hello`,
+`progress`, `done`, and `error`.
+
+### `DELETE /api/admin/rag-eval/runs/:id`
+
+Aborts an active run when possible and removes the persisted run record.
+
+### `GET /api/admin/rag-eval/retrieval-log/summary?days=7&profile=department&notebookId=...`
+
+Summarizes privacy-safe retrieval telemetry for the Admin Console RAG
+Evaluation panel.
+
+## Admin Knowledge Graph
+
+All endpoints under `/api/admin/graph` require
+`Authorization: Bearer <ADMIN_TOKEN>`. These endpoints are for graph
+inspection and moderation; normal users should use `/api/studio/graph`.
+
+### `GET /api/admin/graph/ontology`
+
+Returns the configured graph ontology.
+
+### `GET /api/admin/graph/:notebookId/stats`
+
+Returns counts and ontology version for a notebook graph.
+
+### `GET /api/admin/graph/:notebookId/nodes?type=...&q=...&limit=50&offset=0&enabledOnly=1`
+
+Lists graph nodes, optionally including disabled nodes when `enabledOnly=0`.
+
+### `GET /api/admin/graph/:notebookId/search?q=term&limit=20`
+
+Searches graph nodes by alias/label, including admin-visible records.
+
+### `GET /api/admin/graph/:notebookId/subgraph`
+
+Returns a renderable graph. It supports the same `mode`, `type`, `limit`,
+`nodeId`, and `hops` parameters as the Studio endpoint, plus
+`includeDisabled=1`.
+
+### `GET /api/admin/graph/:notebookId/node/:nodeId`
+
+Returns one node, neighbors, and source references.
+
+### `GET /api/admin/graph/:notebookId/edge/:edgeId`
+
+Returns one edge and source references.
+
+### `POST /api/admin/graph/:notebookId/node/:nodeId/toggle`
+
+Enables or disables a node:
+
+```js
+{ enabled: boolean }
+```
+
+### `POST /api/admin/graph/:notebookId/node/:nodeId/clear-override`
+
+Clears the manual override and restores confidence-threshold based node
+enablement.
+
+### `POST /api/admin/graph/:notebookId/edge/:edgeId/toggle`
+
+Enables or disables an edge:
+
+```js
+{ enabled: boolean }
+```
+
+### `POST /api/admin/graph/:notebookId/edge/:edgeId/clear-override`
+
+Clears the manual override and restores confidence-threshold based edge
+enablement.
+
+### `POST /api/admin/graph/:notebookId/rebuild`
+
+Starts an in-process background rebuild of one notebook knowledge graph and
+returns `202`:
+
+```js
+{ model: "gemma4:e2b", concurrency: 1 }
+```
+
+`model` is optional and falls back to `KG_EXTRACT_MODEL` or the graph
+extractor default. `concurrency` is clamped by the server.
+
+### `GET /api/admin/graph/:notebookId/rebuild/status`
+
+Returns the latest rebuild job snapshot for the notebook, or `job: null` when
+no rebuild has been started in the current server process.
 
 ### `GET /api/notebooks`
 

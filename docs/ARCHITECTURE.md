@@ -164,6 +164,28 @@ chat prompt + room.selectedNotebookId
 -> browser renders citation markers and panel
 ```
 
+### Department Knowledge Graph
+
+Department notebook graphs are a separate server-side index from the
+uploaded-document Studio mind map. The graph index is scoped to a notebook,
+uses the ontology in `server/rag/graph/ontology.js`, and is opened through
+`server/rag/graph/store.js`.
+
+```text
+selected department notebook
+-> public/modules/graphStudio.js requests /api/studio/graph/*
+-> graphStudioApi.js checks normal notebook read access
+-> graph store returns ontology, stats, nodes, edges, neighbors, and source refs
+-> browser renders the graph with Cytoscape in the Studio panel
+```
+
+Admin graph inspection, moderation, and rebuild jobs use `/api/admin/graph/*` with
+`ADMIN_TOKEN`. Admins can list/search nodes, inspect source references, and
+toggle or clear manual node/edge enablement overrides. They can also start an
+in-process rebuild for one notebook and poll the current process' rebuild job
+snapshot. Normal Studio graph reads honor group/level or Super notebook access
+tokens and expose only enabled nodes and edges.
+
 Department notebook access control is inactive until an admin configures at
 least one enabled group level password or an enabled Super password. Normal
 users authenticate from the department-notebook selector. Admins manage groups,
@@ -219,6 +241,9 @@ The LLM does not directly mutate calendar data.
 - `server/index.js` - Express setup, static serving, upload route, chat/visualize/followup/calendar/notebook endpoints.
 - `server/exportFiles.js` - answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
 - `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
+- `server/graphStudioApi.js` - Studio knowledge-graph endpoints for notebooks the current reader can access.
+- `server/graphAdminApi.js` - Admin knowledge-graph inspection, source-reference, enable/disable override, and rebuild endpoints.
+- `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, and retrieval-log summaries.
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
@@ -230,6 +255,14 @@ The LLM does not directly mutate calendar data.
 - `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → lazy JSON fallback → log.
 - `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
 - `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry, including `fallbackLoadedAllChunks`.
+- `server/rag/retrievalLogReader.js` - aggregates retrieval telemetry for the RAG Evaluation panel.
+- `server/rag/evalRunner.js` - golden-set Recall@K / MRR@K evaluation runner.
+- `server/rag/evalStore.js` - golden-set and persisted evaluation-run storage.
+- `server/rag/graph/store.js` - notebook graph SQLite store, schema, node/edge lookup, and manual overrides.
+- `server/rag/graph/ontology.js` - graph entity and relation type definitions.
+- `server/rag/graph/extractor.js` - LLM JSON extraction and validation for graph candidates.
+- `server/rag/graph/builder.js` - in-process notebook graph rebuild jobs and progress snapshots.
+- `server/rag/graph/expander.js` - query-time graph seed and neighborhood expansion helpers.
 - `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
 - `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25/CJK bigram search with per-notebook scope tokens.
 - `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
@@ -250,9 +283,11 @@ The LLM does not directly mutate calendar data.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
+- `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
+- `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.
 
