@@ -403,6 +403,7 @@ async function testLawLiveEndpoints() {
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ query, display: 5 })
     });
+    assertNoLawSecrets(search, `search ${query}`);
     assert.equal(search.ok, true, `search ${query} ok`);
     assert.ok(Array.isArray(search.results), `search ${query} results array`);
     assert.ok(search.results.length > 0, `search ${query} should return candidates`);
@@ -413,6 +414,7 @@ async function testLawLiveEndpoints() {
     for (const item of search.results) {
       assert.ok(item.lawName, `search ${query} result must include lawName`);
       assert.ok(item.lawId || item.mst, `search ${query} result must include lawId or MST`);
+      assert.equal(item.raw, undefined, `search ${query} result must not expose raw upstream payload`);
     }
   }
 
@@ -430,6 +432,7 @@ async function testLawLiveEndpoints() {
       headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ lawName, article })
     });
+    assertNoLawSecrets(detail, `article ${lawName} ${article}`);
     assert.equal(detail.ok, true, `article ${lawName} ${article} ok`);
     assert.equal(detail.citation?.sourceType, "law", `article ${lawName} ${article} sourceType`);
     assert.equal(detail.citation?.article, article, `article ${lawName} ${article} canonical mismatch`);
@@ -440,6 +443,7 @@ async function testLawLiveEndpoints() {
       !detail.text.includes("<![CDATA["),
       `article ${lawName} ${article} text must not leak CDATA wrapper`
     );
+    assert.equal(detail.raw, undefined, `article ${lawName} ${article} must not expose raw upstream payload`);
   }
 
   const verification = await fetchJson("/api/law/verify-citations", {
@@ -449,6 +453,7 @@ async function testLawLiveEndpoints() {
       text: "\ubbfc\ubc95 \uc81c750\uc870\uc640 \ub3c4\ub85c\uad50\ud1b5\ubc95 \uc81c44\uc870\uc640 \ubbfc\ubc95 \uc81c9999\uc870\ub97c \uac80\uc99d\ud574\uc918"
     })
   });
+  assertNoLawSecrets(verification, "verify citations");
   assert.equal(verification.ok, true);
   assert.equal(verification.checked, true);
   assert.ok(Array.isArray(verification.results));
@@ -463,6 +468,7 @@ async function testLawLiveEndpoints() {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ query: "\ubd88\ubc95\ud589\uc704 \uc190\ud574\ubc30\uc0c1", display: 3 })
   });
+  assertNoLawSecrets(precSearch, "precedent search");
   assert.equal(precSearch.ok, true, "precedent search ok");
   assert.ok(Array.isArray(precSearch.results), "precedent search results array");
   if (precSearch.results.length) {
@@ -474,9 +480,11 @@ async function testLawLiveEndpoints() {
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ precId: top.precId })
       });
+      assertNoLawSecrets(precDetail, "precedent detail");
       assert.equal(precDetail.ok, true, "precedent detail ok");
       assert.equal(precDetail.citation?.sourceType, "law_precedent");
       assert.ok(precDetail.citation?.url, "precedent citation should expose url");
+      assert.equal(precDetail.raw, undefined, "precedent detail must not expose raw upstream payload");
     }
   }
 
@@ -485,6 +493,7 @@ async function testLawLiveEndpoints() {
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ query: "\uac1c\uc778\uc815\ubcf4", display: 3 })
   });
+  assertNoLawSecrets(expcSearch, "interpretation search");
   assert.equal(expcSearch.ok, true, "interpretation search ok");
   assert.ok(Array.isArray(expcSearch.results), "interpretation search results array");
   if (expcSearch.results.length) {
@@ -495,11 +504,21 @@ async function testLawLiveEndpoints() {
         headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ expcId: top.expcId })
       });
+      assertNoLawSecrets(expcDetail, "interpretation detail");
       assert.equal(expcDetail.ok, true, "interpretation detail ok");
       assert.equal(expcDetail.citation?.sourceType, "law_interpretation");
       assert.ok(expcDetail.citation?.url, "interpretation citation should expose url");
+      assert.equal(expcDetail.raw, undefined, "interpretation detail must not expose raw upstream payload");
     }
   }
+}
+
+function assertNoLawSecrets(payload, label) {
+  const text = JSON.stringify(payload);
+  const lawSecret = String(process.env.LAW_OC || process.env.KOREAN_LAW_API_KEY || "").trim();
+  if (lawSecret) assert.equal(text.includes(lawSecret), false, `${label} must not expose API key`);
+  assert.equal(/[?&]OC=/.test(text), false, `${label} must not expose upstream OC query values`);
+  assert.equal(text.includes("/DRF/lawService.do"), false, `${label} must not expose upstream service URLs`);
 }
 
 async function fetchJson(route, options = {}) {

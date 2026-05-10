@@ -14,7 +14,7 @@
 - Query expansion adds an extra local LLM call per RAG turn and may increase latency.
 - Naver Search only runs for explicit search prompts in normal chat. It is intentionally disabled when uploaded files or a department notebook are active. When uploaded documents are detected and the prompt matches a search intent pattern, `chat.js` blocks the request client-side and shows a descriptive message before any server call is made.
 - Naver Search quality depends on Naver Open API availability, credentials, and selected search categories (`NAVER_SEARCH_TYPES`).
-- Korean Law Engine MVP covers law search, article retrieval, and citation verification only. Precedents, legal interpretations, impact maps, time-travel comparison, and action-plan guidance remain later phases.
+- Korean Law Engine covers statute search, article retrieval, citation verification, and Phase 2 official-source research for precedents, legal interpretations, admin rules, and ordinances. Impact maps, time-travel comparison, action-plan guidance, and notebook knowledge-graph integration remain later phases.
 - Korean Law Engine requires `LAW_OC`; with it unset, `/api/law/*` returns structured disabled/not-configured responses and non-legal chat continues normally.
 - Answer export supports MD, XLSX, PDF, HWPX, and DOCX. PDF export embeds a Korean-capable server font when available; HWPX generation is text-first and intentionally simpler than a full Hancom-authored document package.
 - Studio mind maps use a two-pass LLM pipeline: Pass 1 extracts concepts from evenly sampled chunks spanning the full document; Pass 2 builds node/edge relationships from the concept list. Chunk-boundary relationship loss is therefore reduced compared to a single-pass approach.

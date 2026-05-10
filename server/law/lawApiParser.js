@@ -311,9 +311,9 @@ export function buildPrecedentCitation(prec, citationId = "P1") {
 
 // ===== Interpretation (법령해석례) =====
 
-const EXPC_ID_KEYS = ["해석례일련번호", "안건번호", "id", "expcId"];
+const EXPC_ID_KEYS = ["법령해석례일련번호", "해석례일련번호", "안건번호", "expcId"];
 const EXPC_TITLE_KEYS = ["안건명", "해석례명", "제목", "title", "name"];
-const EXPC_AGENCY_KEYS = ["회신기관", "회신청", "회신부서", "회신부처", "회신일자기관", "agency"];
+const EXPC_AGENCY_KEYS = ["회신기관명", "회신기관", "회신청", "회신부서", "회신부처", "회신일자기관", "agency"];
 const EXPC_DATE_KEYS = ["회신일자", "해석일자", "date"];
 const EXPC_QUERY_KEYS = ["질의요지", "질의", "question"];
 const EXPC_ANSWER_KEYS = ["회답", "회신", "answer"];
@@ -459,11 +459,11 @@ export function buildAdminRuleCitation(rule, citationId = "R1") {
 
 const ORDIN_ID_KEYS = ["자치법규일련번호", "자치법규ID", "자치법규id", "id", "ordinId"];
 const ORDIN_TITLE_KEYS = ["자치법규명", "자치법규명한글", "title", "name"];
-const ORDIN_REGION_KEYS = ["지자체명", "지방자치단체명", "지방자치단체", "관할기관", "region"];
+const ORDIN_REGION_KEYS = ["지자체기관명", "지자체명", "지방자치단체명", "지방자치단체", "관할기관", "region"];
 const ORDIN_KIND_KEYS = ["자치법규종류", "자치법규종류명", "kind"];
 const ORDIN_PROMULGATION_KEYS = ["공포일자", "promulgationDate"];
 const ORDIN_EFFECTIVE_DATE_KEYS = ["시행일자", "effectiveDate"];
-const ORDIN_BODY_KEYS = ["자치법규내용", "조문내용", "본문", "내용", "text"];
+const ORDIN_BODY_KEYS = ["자치법규내용", "조문내용", "조내용", "본문", "내용", "text"];
 
 export function normalizeOrdinanceResults(payload) {
   const candidates = findObjects(payload).filter((item) => {

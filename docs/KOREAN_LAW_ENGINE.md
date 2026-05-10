@@ -57,7 +57,8 @@ Implemented pieces:
   선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
   종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
 - SQLite law cache at `data/cache/law-cache.sqlite`
-- API key masking tests and cache normalization tests
+- API key masking tests, private-response-field stripping tests, and cache
+  normalization tests
 - Smoke coverage for `/api/law/status`; optional live law.go.kr smoke coverage
 
 Still incomplete or follow-up work:
@@ -102,6 +103,8 @@ Security rules:
 - Never send `LAW_OC`, `KOREAN_LAW_API_KEY`, upstream `OC=` query values, full
   upstream URLs, or server cache paths to browser JavaScript, response metadata,
   retrieval logs, or error bodies.
+- Public `/api/law/*` responses must strip internal `raw` upstream payloads
+  before sending or returning cached results.
 - All formatted errors and logs must pass through masking.
 
 ## Server Modules

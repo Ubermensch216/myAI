@@ -52,12 +52,15 @@ await run("normalizeComparableLawName ignores spaces and brackets", testComparab
 await run("precedent search results", testPrecedentSearch);
 await run("precedent detail payload", testPrecedentDetail);
 await run("interpretation search results", testInterpretationSearch);
+await run("interpretation search official ID key wins over row id", testInterpretationOfficialId);
 await run("interpretation detail payload (질의/회답/이유)", testInterpretationDetail);
 await run("citation builders for precedent and interpretation", testNonLawCitationBuilders);
 await run("admin rule search results", testAdminRuleSearch);
 await run("admin rule detail payload", testAdminRuleDetail);
 await run("ordinance search results", testOrdinanceSearch);
+await run("ordinance search official region key", testOrdinanceOfficialRegion);
 await run("ordinance detail payload", testOrdinanceDetail);
+await run("ordinance detail official article body key", testOrdinanceOfficialBody);
 await run("citation builders for admin rule and ordinance", testAdminOrdinanceCitations);
 
 if (failureCount > 0) process.exitCode = 1;
@@ -332,6 +335,27 @@ async function testInterpretationSearch() {
   assert.equal(top.date, "2023-08-20");
 }
 
+function testInterpretationOfficialId() {
+  const results = normalizeInterpretationResults({
+    "LawSearch": {
+      "law": [
+        {
+          "id": "1",
+          "안건명": "개인정보보호위원회 - 자료제출 명령 관련",
+          "안건번호": "20-0370",
+          "법령해석례일련번호": "328859",
+          "회신기관명": "법제처",
+          "회신일자": "20201105"
+        }
+      ]
+    }
+  });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].expcId, "328859");
+  assert.equal(results[0].agency, "법제처");
+  assert.equal(results[0].date, "2020-11-05");
+}
+
 async function testInterpretationDetail() {
   const payload = await loadFixture("interpretation-detail.json");
   const data = normalizeInterpretationPayload(payload);
@@ -382,6 +406,27 @@ async function testOrdinanceSearch() {
   assert.equal(top.effectiveDate, "2024-03-01");
 }
 
+function testOrdinanceOfficialRegion() {
+  const results = normalizeOrdinanceResults({
+    "LawSearch": {
+      "law": [
+        {
+          "id": "1",
+          "자치법규명": "서울특별시 강남구 주차장 설치 및 관리 조례",
+          "자치법규일련번호": "2082681",
+          "지자체기관명": "서울특별시 강남구",
+          "자치법규종류": "조례",
+          "시행일자": "20250919"
+        }
+      ]
+    }
+  });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].ordinId, "2082681");
+  assert.equal(results[0].region, "서울특별시 강남구");
+  assert.equal(results[0].effectiveDate, "2025-09-19");
+}
+
 async function testOrdinanceDetail() {
   const payload = await loadFixture("ordinance-detail.json");
   const data = normalizeOrdinancePayload(payload);
@@ -392,6 +437,32 @@ async function testOrdinanceDetail() {
   assert.equal(data.effectiveDate, "2024-03-01");
   assert.match(data.text, /제1조\(목적\)/);
   assert.match(data.text, /주차장법/);
+}
+
+function testOrdinanceOfficialBody() {
+  const data = normalizeOrdinancePayload({
+    "자치법규": {
+      "자치법규기본정보": {
+        "자치법규명": "서울특별시 강남구 주차장 설치 및 관리 조례",
+        "자치법규일련번호": "2082681",
+        "지자체기관명": "서울특별시 강남구",
+        "자치법규종류": "조례",
+        "시행일자": "20251107"
+      },
+      "조문": {
+        "조문단위": [
+          {
+            "조문번호": "000100",
+            "조제목": "목적",
+            "조내용": "제1조(목적) 이 조례는 주차장 설치 및 관리에 필요한 사항을 규정한다."
+          }
+        ]
+      }
+    }
+  });
+  assert.equal(data.ordinId, "2082681");
+  assert.equal(data.region, "서울특별시 강남구");
+  assert.match(data.text, /제1조\(목적\)/);
 }
 
 function testAdminOrdinanceCitations() {

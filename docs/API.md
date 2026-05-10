@@ -194,6 +194,97 @@ Body:
 Extracts Korean statute/article citations and verifies them against official
 law data.
 
+### `POST /api/law/precedents/search`
+
+Body:
+
+```js
+{ query: "불법행위 손해배상", display: 5, court: "", caseType: "" }
+```
+
+Searches official precedent records. Results expose normalized public fields
+such as `precId`, title, case number, court, date, and case type.
+
+### `POST /api/law/precedents/detail`
+
+Body:
+
+```js
+{ precId: "230001" }
+```
+
+Returns precedent text plus `law_precedent` citation metadata. `caseNumber` may
+be supplied when the caller does not already have `precId`.
+
+### `POST /api/law/interpretations/search`
+
+Body:
+
+```js
+{ query: "개인정보", display: 5, agency: "" }
+```
+
+Searches official legal interpretation records. Results expose `expcId`, title,
+agency, and date.
+
+### `POST /api/law/interpretations/detail`
+
+Body:
+
+```js
+{ expcId: "EXPC-2023-0099" }
+```
+
+Returns legal interpretation text plus `law_interpretation` citation metadata.
+`query` may be supplied when the caller does not already have `expcId`.
+
+### `POST /api/law/admin-rules/search`
+
+Body:
+
+```js
+{ query: "개인정보 안전성 확보조치", display: 5, agency: "" }
+```
+
+Searches official admin-rule records. Results expose `admrulId`, title, agency,
+kind, issue date, and effective date.
+
+### `POST /api/law/admin-rules/detail`
+
+Body:
+
+```js
+{ admrulId: "ADM-2024-0001" }
+```
+
+Returns admin-rule text plus `law_admin_rule` citation metadata. `query` may be
+supplied when the caller does not already have `admrulId`.
+
+### `POST /api/law/ordinances/search`
+
+Body:
+
+```js
+{ query: "서울특별시 주차장 조례", display: 5, region: "서울특별시" }
+```
+
+Searches official ordinance records. Results expose `ordinId`, title, region,
+kind, promulgation date, and effective date.
+
+### `POST /api/law/ordinances/detail`
+
+Body:
+
+```js
+{ ordinId: "ORD-SEOUL-12345" }
+```
+
+Returns ordinance text plus `law_ordinance` citation metadata. `query` may be
+supplied when the caller does not already have `ordinId`.
+
+All `/api/law/*` public responses must omit upstream `raw` payloads, upstream
+service URLs, and `OC=` query values.
+
 ## Answer Export
 
 ### `GET /api/export/formats`

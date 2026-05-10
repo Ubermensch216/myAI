@@ -15,6 +15,7 @@ const {
 } = await import("../server/law/lawArticleRef.js");
 const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
+const { stripLawPrivateFields } = await import("../server/law/lawApiClient.js");
 const { normalizeLawCitationForMeta } = await import("../server/law/lawCitationFormatter.js");
 const {
   buildLawCacheKey,
@@ -29,6 +30,7 @@ await run("paragraph/item/subitem parsing", testParagraphParsing);
 await run("citation extraction", testCitationExtraction);
 await run("law intent detection", testLawIntentDetection);
 await run("API key masking", testApiKeyMasking);
+await run("law private response field stripping", testPrivateFieldStripping);
 await run("law cache normalization and invalidation", testLawCache);
 await run("citation meta carries article excerpt", testCitationExcerptMeta);
 
@@ -106,6 +108,30 @@ function testApiKeyMasking() {
   const masked = maskLawSecrets("GET https://x.test/path?OC=SECRET-LAW-KEY failed with SECRET-LAW-KEY");
   assert.equal(masked.includes("SECRET-LAW-KEY"), false);
   assert.ok(masked.includes("[REDACTED_LAW_OC]"));
+}
+
+function testPrivateFieldStripping() {
+  const clean = stripLawPrivateFields({
+    ok: true,
+    results: [
+      {
+        lawName: "test law",
+        raw: {
+          detailLink: "/DRF/lawService.do?OC=SECRET-LAW-KEY&target=law"
+        }
+      }
+    ],
+    nested: {
+      raw: { secret: "SECRET-LAW-KEY" },
+      keep: "public"
+    }
+  });
+  const text = JSON.stringify(clean);
+  assert.equal(text.includes("SECRET-LAW-KEY"), false);
+  assert.equal(text.includes("OC="), false);
+  assert.equal(clean.results[0].raw, undefined);
+  assert.equal(clean.nested.raw, undefined);
+  assert.equal(clean.nested.keep, "public");
 }
 
 function testCitationExcerptMeta() {

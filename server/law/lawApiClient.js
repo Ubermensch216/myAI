@@ -55,7 +55,7 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("search_law", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const payload = await this.requestSearch({
       target: "law",
@@ -63,7 +63,7 @@ export class LawApiClient {
       query: normalizedQuery,
       display: normalizedInput.display
     }, { signal });
-    const results = normalizeSearchResults(payload).slice(0, normalizedInput.display);
+    const results = stripLawPrivateFields(normalizeSearchResults(payload).slice(0, normalizedInput.display));
     const response = { ok: results.length > 0, query: normalizedQuery, results };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
     return { ...response, cacheHit: false };
@@ -97,7 +97,7 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("article_detail", normalizedInput, effectiveDate || resolved.effectiveDate || "");
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_TEXT_TTL_MS, lastModified: resolved.lastModified || "" });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const params = {
       target: "lawjosub",
@@ -125,8 +125,7 @@ export class LawApiClient {
     const response = {
       ok: true,
       citation: buildCitation(articleData, articleRef),
-      text: articleData.text,
-      raw: articleData.raw
+      text: articleData.text
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_TEXT_TTL_MS, lastModified: articleData.lastModified || "" });
     return { ...response, cacheHit: false };
@@ -146,7 +145,7 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("search_precedent", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const params = {
       target: "prec",
@@ -158,7 +157,7 @@ export class LawApiClient {
     if (caseType) params.caseClass = caseType;
 
     const payload = await this.requestSearch(params, { signal });
-    const results = normalizePrecedentResults(payload).slice(0, normalizedInput.display);
+    const results = stripLawPrivateFields(normalizePrecedentResults(payload).slice(0, normalizedInput.display));
     const response = { ok: results.length > 0, query: normalizedQuery, results };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
     return { ...response, cacheHit: false };
@@ -177,7 +176,7 @@ export class LawApiClient {
     }
     const cacheKey = buildLawCacheKey("precedent_detail", { precId: resolvedId });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: PRECEDENT_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const payload = await this.requestService({
       target: "prec",
@@ -192,8 +191,7 @@ export class LawApiClient {
     const response = {
       ok: true,
       citation: buildPrecedentCitation(data),
-      text: data.text,
-      raw: data.raw
+      text: data.text
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: PRECEDENT_TTL_MS });
     return { ...response, cacheHit: false };
@@ -212,7 +210,9 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("search_interpretation", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached && !hasStaleInterpretationSearchCache(cached)) {
+      return { ...stripLawPrivateFields(cached), cacheHit: true };
+    }
 
     const params = {
       target: "expc",
@@ -223,7 +223,7 @@ export class LawApiClient {
     if (agency) params.org = agency;
 
     const payload = await this.requestSearch(params, { signal });
-    const results = normalizeInterpretationResults(payload).slice(0, normalizedInput.display);
+    const results = stripLawPrivateFields(normalizeInterpretationResults(payload).slice(0, normalizedInput.display));
     const response = { ok: results.length > 0, query: normalizedQuery, results };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
     return { ...response, cacheHit: false };
@@ -241,7 +241,7 @@ export class LawApiClient {
     }
     const cacheKey = buildLawCacheKey("interpretation_detail", { expcId: resolvedId });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: INTERPRETATION_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const payload = await this.requestService({
       target: "expc",
@@ -256,8 +256,7 @@ export class LawApiClient {
     const response = {
       ok: true,
       citation: buildInterpretationCitation(data),
-      text: data.text,
-      raw: data.raw
+      text: data.text
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: INTERPRETATION_TTL_MS });
     return { ...response, cacheHit: false };
@@ -276,7 +275,7 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("search_admin_rule", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const params = {
       target: "admrul",
@@ -287,7 +286,7 @@ export class LawApiClient {
     if (agency) params.org = agency;
 
     const payload = await this.requestSearch(params, { signal });
-    const results = normalizeAdminRuleResults(payload).slice(0, normalizedInput.display);
+    const results = stripLawPrivateFields(normalizeAdminRuleResults(payload).slice(0, normalizedInput.display));
     const response = { ok: results.length > 0, query: normalizedQuery, results };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
     return { ...response, cacheHit: false };
@@ -305,7 +304,7 @@ export class LawApiClient {
     }
     const cacheKey = buildLawCacheKey("admin_rule_detail", { admrulId: resolvedId });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: ADMIN_RULE_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const payload = await this.requestService({
       target: "admrul",
@@ -320,8 +319,7 @@ export class LawApiClient {
     const response = {
       ok: true,
       citation: buildAdminRuleCitation(data),
-      text: data.text,
-      raw: data.raw
+      text: data.text
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: ADMIN_RULE_TTL_MS });
     return { ...response, cacheHit: false };
@@ -340,7 +338,7 @@ export class LawApiClient {
     };
     const cacheKey = buildLawCacheKey("search_ordinance", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const params = {
       target: "ordin",
@@ -351,7 +349,7 @@ export class LawApiClient {
     if (region) params.org = region;
 
     const payload = await this.requestSearch(params, { signal });
-    const results = normalizeOrdinanceResults(payload).slice(0, normalizedInput.display);
+    const results = stripLawPrivateFields(normalizeOrdinanceResults(payload).slice(0, normalizedInput.display));
     const response = { ok: results.length > 0, query: normalizedQuery, results };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
     return { ...response, cacheHit: false };
@@ -369,12 +367,12 @@ export class LawApiClient {
     }
     const cacheKey = buildLawCacheKey("ordinance_detail", { ordinId: resolvedId });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: ORDINANCE_TTL_MS });
-    if (cached) return { ...cached, cacheHit: true };
+    if (cached?.text) return { ...stripLawPrivateFields(cached), cacheHit: true };
 
     const payload = await this.requestService({
       target: "ordin",
       type: "JSON",
-      ID: resolvedId
+      MST: resolvedId
     }, { signal });
     const data = normalizeOrdinancePayload(payload);
     if (!data.text && !data.title) {
@@ -384,8 +382,7 @@ export class LawApiClient {
     const response = {
       ok: true,
       citation: buildOrdinanceCitation(data),
-      text: data.text,
-      raw: data.raw
+      text: data.text
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: ORDINANCE_TTL_MS });
     return { ...response, cacheHit: false };
@@ -465,4 +462,20 @@ function clampInt(raw, fallback, min, max) {
   const value = Number(raw);
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+export function stripLawPrivateFields(value) {
+  if (Array.isArray(value)) return value.map((item) => stripLawPrivateFields(item));
+  if (!value || typeof value !== "object") return value;
+  const clean = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "raw") continue;
+    clean[key] = stripLawPrivateFields(item);
+  }
+  return clean;
+}
+
+function hasStaleInterpretationSearchCache(value) {
+  const results = Array.isArray(value?.results) ? value.results : [];
+  return results.some((item) => /^\d{2}-\d{4}$/.test(String(item?.expcId || "")));
 }
