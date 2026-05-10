@@ -77,13 +77,17 @@ export function normalizeArticlePayload(payload, { lawName, lawId, mst, articleR
     const body = readFirst(item, ARTICLE_BODY_KEYS);
     return jo || title || body;
   });
-  const preferred = articleObjects.find((item) => {
+  const matchesJoCode = (item) => {
     const articleDigits = String(readFirst(item, ARTICLE_NUMBER_KEYS) || "").replace(/\D+/g, "");
     const branchDigits = String(readFirst(item, ARTICLE_BRANCH_KEYS) || "").replace(/\D+/g, "");
     if (!articleDigits) return false;
     const code = `${articleDigits.padStart(4, "0")}${(branchDigits || "0").padStart(2, "0")}`;
     return code === articleRef.joCode;
-  }) || articleObjects[0] || {};
+  };
+  const preferred = articleObjects.find((item) => matchesJoCode(item) && readFirst(item, ARTICLE_BODY_KEYS))
+    || articleObjects.find(matchesJoCode)
+    || articleObjects[0]
+    || {};
 
   const text = collectArticleText(preferred || payload);
   return {
