@@ -232,7 +232,7 @@ app.post("/api/studio/mindmap", async (request, response) => {
     response.json({ mindmap });
   } catch (error) {
     if (studioAbort.signal.aborted || response.destroyed) return;
-    const status = /requires at least one uploaded document/i.test(error.message) ? 400 : 500;
+    const status = error.statusCode || (/requires at least one uploaded document/i.test(error.message) ? 400 : 500);
     response.status(status).json({ error: error.message });
   } finally {
     studioAbort.cleanup();

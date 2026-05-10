@@ -1,5 +1,5 @@
 import { loadLocalEnv } from "./env.js";
-import { throwIfAborted } from "./abort.js";
+import { createLinkedAbortController, throwIfAborted } from "./abort.js";
 import { chunkDocumentSections } from "./chunking.js";
 import { analysisQueue } from "./modelQueue.js";
 
@@ -12,6 +12,7 @@ const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const P1_MAX_CONTEXT = Number(process.env.MINDMAP_P1_MAX_CONTEXT || 18000);
 const P1_MAX_CHUNKS  = Number(process.env.MINDMAP_P1_MAX_CHUNKS  || 8);
 const P1_MAX_CONCEPTS = Number(process.env.MINDMAP_P1_MAX_CONCEPTS || 20);
+const OLLAMA_TIMEOUT_MS = clampInt(process.env.MINDMAP_OLLAMA_TIMEOUT_MS, 60000, 5000, 300000);
 
 // Pass 2 — mindmap structure
 const MAX_NODES = Number(process.env.MINDMAP_MAX_NODES || 16);
@@ -44,6 +45,10 @@ export async function generateMindmap({ documents = [], model = DEFAULT_MODEL, s
     return normalizeMindmap(parsed, usableDocs, fallback);
   } catch (error) {
     if (signal?.aborted) throw error;
+    if (isQueueCapacityError(error)) {
+      error.statusCode = 429;
+      throw error;
+    }
     return {
       ...fallback,
       warnings: [...(fallback.warnings || []), `model_fallback: ${error.message}`]
@@ -57,9 +62,11 @@ async function extractConcepts({ documents, model, signal }) {
   const context = buildP1Context(documents);
   if (!context.trim()) return [];
 
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const controller = createLinkedAbortController(signal, OLLAMA_TIMEOUT_MS, "Mind-map concept extraction timed out.");
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
-    signal,
+    signal: controller.signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -86,22 +93,23 @@ async function extractConcepts({ documents, model, signal }) {
     })
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Ollama concept extraction failed: ${response.status} ${text.slice(0, 160)}`.trim());
-  }
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Ollama concept extraction failed: ${response.status} ${text.slice(0, 160)}`.trim());
+    }
 
-  const payload = await response.json();
-  return parseConceptsJson(payload?.message?.content || payload?.response || "");
+    const payload = await response.json();
+    return parseConceptsJson(payload?.message?.content || payload?.response || "");
+  } finally {
+    controller.cleanup();
+  }
 }
 
 function buildP1Context(documents) {
   const sections = [];
-  let remaining = P1_MAX_CONTEXT;
+  const perDocBudget = Math.max(360, Math.floor(P1_MAX_CONTEXT / Math.max(1, documents.length)));
 
   for (const [idx, doc] of documents.entries()) {
-    if (remaining <= 0) break;
-
     const header = [
       `Document ${idx + 1}: ${doc.fileName}`,
       doc.fileType  ? `Type: ${doc.fileType}`            : "",
@@ -124,12 +132,11 @@ function buildP1Context(documents) {
         }).join("\n\n")
       : doc.text.slice(0, 6000);
 
-    const entry = `${header}\n\n${body}`.slice(0, remaining);
+    const entry = `${header}\n\n${body}`.slice(0, perDocBudget);
     sections.push(entry);
-    remaining -= entry.length + 2;
   }
 
-  return sections.join("\n\n---\n\n");
+  return sections.join("\n\n---\n\n").slice(0, P1_MAX_CONTEXT);
 }
 
 function sampleEvenly(array, maxCount) {
@@ -168,9 +175,11 @@ async function buildMindmapFromConcepts({ concepts, documents, model, signal }) 
 
   const docNames = documents.map(d => d.fileName).join(", ");
 
-  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const controller = createLinkedAbortController(signal, OLLAMA_TIMEOUT_MS, "Mind-map structuring timed out.");
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
-    signal,
+    signal: controller.signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
@@ -198,13 +207,16 @@ async function buildMindmapFromConcepts({ concepts, documents, model, signal }) 
     })
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Ollama mindmap build failed: ${response.status} ${text.slice(0, 160)}`.trim());
-  }
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Ollama mindmap build failed: ${response.status} ${text.slice(0, 160)}`.trim());
+    }
 
-  const payload = await response.json();
-  return parseMindmapJson(payload?.message?.content || payload?.response || "");
+    const payload = await response.json();
+    return parseMindmapJson(payload?.message?.content || payload?.response || "");
+  } finally {
+    controller.cleanup();
+  }
 }
 
 // ─── JSON helpers ────────────────────────────────────────────────────────────
@@ -264,9 +276,12 @@ function normalizeMindmap(value, documents, fallback) {
   const groupIds = new Set(groups.map(g => g.id));
   const nodes   = [];
   const seenNodes = new Set();
+  const idAliases = new Map();
 
   for (const [i, node] of (Array.isArray(value?.nodes) ? value.nodes : []).entries()) {
-    const id = sanitizeId(node?.id || `node-${i + 1}`, `node-${i + 1}`);
+    const fallbackId = `node-${i + 1}`;
+    const rawId = node?.id || fallbackId;
+    const id = sanitizeId(rawId, fallbackId);
     if (seenNodes.has(id)) continue;
     const label = cleanText(node?.label, 42);
     if (!label) continue;
@@ -276,6 +291,9 @@ function normalizeMindmap(value, documents, fallback) {
       groupIds.add(group);
     }
     seenNodes.add(id);
+    addIdAlias(idAliases, rawId, id);
+    addIdAlias(idAliases, id, id);
+    addIdAlias(idAliases, label, id);
     nodes.push({
       id,
       label,
@@ -294,8 +312,8 @@ function normalizeMindmap(value, documents, fallback) {
   const edgeKeys = new Set();
 
   for (const edge of Array.isArray(value?.edges) ? value.edges : []) {
-    const from = sanitizeId(edge?.from, "");
-    const to   = sanitizeId(edge?.to,   "");
+    const from = resolveNodeId(edge?.from, idAliases);
+    const to   = resolveNodeId(edge?.to, idAliases);
     if (!nodeIds.has(from) || !nodeIds.has(to) || from === to) continue;
     const key = `${from}->${to}`;
     if (edgeKeys.has(key)) continue;
@@ -304,9 +322,8 @@ function normalizeMindmap(value, documents, fallback) {
     if (edges.length >= MAX_EDGES) break;
   }
 
-  // Ensure every non-root node is reachable
-  for (const node of nodes.slice(1)) {
-    if (edges.some(e => e.from === node.id || e.to === node.id)) continue;
+  // Ensure every non-root node is reachable from the root in the directed graph.
+  for (const node of findUnreachableNodes(rootId, nodes, edges)) {
     edges.push({ from: rootId, to: node.id, label: "", strength: 2 });
   }
 
@@ -369,9 +386,41 @@ function buildFallbackMindmap(documents) {
 
 function normalizeSourceRefs(value, sourceNames) {
   const refs = Array.isArray(value) ? value : value ? [value] : [];
-  const normalized = refs.map(r => cleanText(r, 120)).filter(Boolean).filter((r, i, a) => a.indexOf(r) === i);
+  const normalized = refs
+    .map(r => cleanText(r, 120))
+    .filter(ref => sourceNames.has(ref))
+    .filter((r, i, a) => a.indexOf(r) === i);
   if (!normalized.length) return Array.from(sourceNames).slice(0, 2);
   return normalized.slice(0, 5);
+}
+
+function addIdAlias(map, value, id) {
+  const keys = [
+    String(value ?? "").trim(),
+    sanitizeId(value, "")
+  ].filter(Boolean);
+  for (const key of keys) map.set(key, id);
+}
+
+function resolveNodeId(value, aliases) {
+  const raw = String(value ?? "").trim();
+  return aliases.get(raw) || aliases.get(sanitizeId(raw, "")) || "";
+}
+
+function findUnreachableNodes(rootId, nodes, edges) {
+  const outgoing = new Map(nodes.map((node) => [node.id, []]));
+  for (const edge of edges) {
+    if (outgoing.has(edge.from)) outgoing.get(edge.from).push(edge.to);
+  }
+  const reachable = new Set();
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (reachable.has(id)) continue;
+    reachable.add(id);
+    for (const next of outgoing.get(id) || []) stack.push(next);
+  }
+  return nodes.slice(1).filter((node) => !reachable.has(node.id));
 }
 
 function cleanText(value, maxLength) {
@@ -388,4 +437,8 @@ function clampInt(value, fallback, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+function isQueueCapacityError(error) {
+  return /queue is full/i.test(String(error?.message || ""));
 }

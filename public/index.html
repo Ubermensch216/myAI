@@ -107,6 +107,13 @@
                 </button>
               </div>
             </div>
+            <button id="notebookBadge" class="notebook-badge" type="button" hidden>
+              <svg class="notebook-badge-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                <path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+              </svg>
+              <span id="notebookBadgeName" class="notebook-badge-name"></span>
+            </button>
             <button id="materialToggleButton" class="material-toggle-button" type="button" aria-expanded="false" aria-label="자료 없음" title="자료 없음" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M5 4h10l4 4v12H5z"></path>
@@ -310,6 +317,12 @@
                 <div id="kgCanvas" class="kg-canvas"></div>
                 <div id="kgCanvasEmpty" class="kg-canvas-empty" hidden>&#xC811;&#xADFC; &#xAC00;&#xB2A5;&#xD55C; &#xC9C0;&#xC2DD; &#xADF8;&#xB798;&#xD504;&#xAC00; &#xC5C6;&#xC2B5;&#xB2C8;&#xB2E4;.</div>
                 <div id="kgLegend" class="kg-legend"></div>
+                <button id="kgFullscreenButton" class="map-fs-btn kg-fs-btn" type="button" title="&#xC804;&#xCCB4;&#xD654;&#xBA74;" aria-label="&#xC804;&#xCCB4;&#xD654;&#xBA74; &#xC804;&#xD658;">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path class="fs-expand" d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                    <path class="fs-shrink" d="M4 14h6v6M20 14h-6v6M4 10h6V4M20 10h-6V4"/>
+                  </svg>
+                </button>
               </div>
               <aside id="kgDetailPane" class="kg-detail-pane">
                 <div id="kgDetailEmpty" class="kg-detail-empty">&#xB178;&#xB4DC; &#xB610;&#xB294; &#xC5E3;&#xC9C0;&#xB97C; &#xD074;&#xB9AD;&#xD558;&#xBA74; &#xC0C1;&#xC138;&#xAC00; &#xD45C;&#xC2DC;&#xB429;&#xB2C8;&#xB2E4;.</div>

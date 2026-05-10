@@ -71,6 +71,7 @@ export async function showStudioGraphPanel() {
 
 export function hideStudioGraphPanel() {
   kgState.panelVisible = false;
+  toggleGraphFullscreen(false);
 }
 
 export function bindStudioGraphEvents() {
@@ -81,6 +82,7 @@ export function bindStudioGraphEvents() {
     syncWithActiveRoom({ force: true }).catch(reportError);
   });
   elements.kgRelayoutButton?.addEventListener("click", () => runLayout());
+  elements.kgFullscreenButton?.addEventListener("click", () => toggleGraphFullscreen());
   elements.kgTypeFilter?.addEventListener("change", (event) => {
     kgState.filterType = event.target.value || "";
     if (kgState.activeNotebookId) refreshSubgraph().catch(reportError);
@@ -421,6 +423,24 @@ function runLayout() {
     nodeOverlap: 12,
     randomize: true
   }).run();
+}
+
+function toggleGraphFullscreen(force) {
+  const wrap = elements.kgCanvasWrap;
+  const button = elements.kgFullscreenButton;
+  if (!wrap) return;
+  const shouldFullscreen = typeof force === "boolean" ? force : !wrap.classList.contains("is-fullscreen");
+  wrap.classList.toggle("is-fullscreen", shouldFullscreen);
+  if (button) {
+    button.title = shouldFullscreen ? "\uC6D0\uB798 \uD06C\uAE30\uB85C" : "\uC804\uCCB4\uD654\uBA74";
+    button.setAttribute("aria-label", shouldFullscreen ? "\uC6D0\uB798 \uD06C\uAE30\uB85C \uBCF5\uC6D0" : "\uC804\uCCB4\uD654\uBA74 \uC804\uD658");
+    button.setAttribute("aria-pressed", shouldFullscreen ? "true" : "false");
+  }
+  requestAnimationFrame(() => {
+    if (!kgState.cy) return;
+    kgState.cy.resize();
+    if (kgState.cy.elements().length) kgState.cy.fit(undefined, shouldFullscreen ? 48 : 30);
+  });
 }
 
 function renderLegend(counts) {

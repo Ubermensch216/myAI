@@ -18,6 +18,7 @@ await run("POST /api/upload text file", testUpload);
 await run("POST /api/export docx", testExportDocx);
 await run("POST /api/export pdf and hwpx", testExportPdfAndHwpx);
 await run("POST /api/studio/mindmap without documents returns 400", testMindmapNoDocuments);
+await run("POST /api/studio/mindmap fallback includes warnings", testMindmapFallbackWarnings);
 await run("POST /api/visualize invalid plan returns 400", testVisualizePlanValidation);
 await run("POST /api/agent/intent calendar regression set", () => testCalendarIntent(status));
 if (status?.ok) {
@@ -228,6 +229,35 @@ async function testMindmapNoDocuments() {
     throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
   }
   assert.equal(response.status, 400, `POST /api/studio/mindmap without documents returned ${response.status}`);
+}
+
+async function testMindmapFallbackWarnings() {
+  let response;
+  try {
+    response = await fetch(new URL("/api/studio/mindmap", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        documents: [{
+          kind: "document",
+          id: "smoke-mindmap-doc",
+          fileName: "mindmap-smoke.txt",
+          fileType: "txt",
+          text: "마인드맵 스모크 테스트 문서입니다. 핵심 주제는 생성 실패 시 기본 마인드맵 경고 표시입니다.",
+          summary: "마인드맵 fallback 경고 테스트",
+          topics: ["마인드맵", "fallback", "경고"]
+        }],
+        model: "myai-nonexistent-mindmap-model"
+      })
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ${baseUrl}. ${err.message}`);
+  }
+  assert.equal(response.status, 200, `POST /api/studio/mindmap fallback returned ${response.status}`);
+  const payload = await response.json();
+  assert.ok(Array.isArray(payload.mindmap?.warnings), "fallback response should include warnings");
+  assert.ok(payload.mindmap.warnings.includes("fallback_mindmap"), "fallback warning should be present");
+  assert.ok(payload.mindmap.warnings.some((warning) => String(warning).startsWith("model_fallback:")), "model fallback warning should be present");
 }
 
 async function testChat() {

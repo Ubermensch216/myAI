@@ -1,6 +1,6 @@
 import { elements, ensureRoomStudio, getActiveRoom } from "./state.js";
 import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
-import { estimateDocumentBytes, getActiveDocuments } from "./chat.js";
+import { estimateDocumentBytes, estimateJsonBytes, formatBytes, getActiveDocuments } from "./chat.js";
 import { bindStudioGraphEvents, showStudioGraphPanel, hideStudioGraphPanel } from "./graphStudio.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -11,16 +11,23 @@ const NODE_H = 42;
 const ROOT_W = 174;
 const GAP_H = 78;  // horizontal gap between parent right edge and child left edge
 const GAP_V = 14;  // vertical gap between sibling subtrees
+const REQUEST_TEXT_BUDGET_CHARS = 48000;
+const REQUEST_MAX_BYTES = 8 * 1024 * 1024;
 
 // Module-level interactive map state (preserved across redraws)
 let _map = null;
 let _evBound = false;
 let _activeTool = "mindmap";
+let _mindmapAbortController = null;
 
 // ── Public API ────────────────────────────────────────────────────
 
 export function bindStudioEvents() {
   elements.studioMindmapButton?.addEventListener("click", () => {
+    if (_mindmapAbortController) {
+      _mindmapAbortController.abort();
+      return;
+    }
     if (_activeTool !== "mindmap") setActiveTool("mindmap");
     else generateMindmap();
   });
@@ -62,8 +69,16 @@ export function renderStudio() {
     return;
   }
 
-  if (hasCurrentMap || hasStaleMap) {
+  if (hasCurrentMap) {
     renderMindmap(cache.data, cache.selectedNodeId);
+    return;
+  }
+
+  if (hasStaleMap) {
+    renderEmpty(documents.length
+      ? "첨부 자료가 변경되었습니다. 마인드맵 버튼을 눌러 다시 생성하세요."
+      : "첨부 자료가 없어져 이전 마인드맵을 표시하지 않습니다.");
+    renderDetails(null);
     return;
   }
 
@@ -85,19 +100,20 @@ async function generateMindmap() {
   const signature = buildDocumentSignature(documents);
   if (!documents.length) { renderStudio(); return; }
 
-  if (elements.studioMindmapButton) {
-    elements.studioMindmapButton.disabled = true;
-    elements.studioMindmapButton.classList.add("is-busy");
-  }
-  clearSvg();
-  if (elements.studioMindmapEmpty) elements.studioMindmapEmpty.hidden = true;
-  elements.studioMindmapCanvas?.classList.add("is-loading");
-
   try {
+    const requestDocuments = buildMindmapRequestDocuments(documents);
+    const requestPayload = { model: elements.modelInput?.value?.trim() || "gemma3n:e2b", documents: requestDocuments };
+    validateMindmapPayloadSize(requestPayload);
+    _mindmapAbortController = new AbortController();
+    setMindmapBusy(true);
+    clearSvg();
+    if (elements.studioMindmapEmpty) elements.studioMindmapEmpty.hidden = true;
+    elements.studioMindmapCanvas?.classList.add("is-loading");
     const response = await fetch("/api/studio/mindmap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: elements.modelInput?.value?.trim() || "gemma3n:e2b", documents })
+      signal: _mindmapAbortController.signal,
+      body: JSON.stringify(requestPayload)
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "마인드맵 생성에 실패했습니다.");
@@ -112,13 +128,13 @@ async function generateMindmap() {
     scheduleSave();
     renderStudio();
   } catch (error) {
-    renderEmpty(error.message || "마인드맵 생성에 실패했습니다. 잠시 후 다시 시도하세요.");
+    renderEmpty(error?.name === "AbortError"
+      ? "마인드맵 생성을 중지했습니다."
+      : (error.message || "마인드맵 생성에 실패했습니다. 잠시 후 다시 시도하세요."));
   } finally {
+    _mindmapAbortController = null;
     elements.studioMindmapCanvas?.classList.remove("is-loading");
-    if (elements.studioMindmapButton) {
-      elements.studioMindmapButton.disabled = false;
-      elements.studioMindmapButton.classList.remove("is-busy");
-    }
+    setMindmapBusy(false);
   }
 }
 
@@ -133,6 +149,75 @@ function buildDocumentSignature(documents) {
   return documents
     .map((d) => [d.id || "", d.fileName || "", d.fileType || "", d.textLength || d.text?.length || 0, estimateDocumentBytes(d)].join(":"))
     .join("|");
+}
+
+function buildMindmapRequestDocuments(documents) {
+  const perDocBudget = Math.max(480, Math.floor(REQUEST_TEXT_BUDGET_CHARS / Math.max(1, documents.length)));
+  return documents.map((doc, index) => ({
+    kind: "document",
+    id: doc.id || `doc-${index + 1}`,
+    fileName: doc.fileName || `document-${index + 1}`,
+    fileType: doc.fileType || "",
+    textLength: doc.textLength || doc.text?.length || 0,
+    summary: doc.summary || "",
+    topics: Array.isArray(doc.topics) ? doc.topics.slice(0, 12) : [],
+    text: sampleDocumentText(doc, perDocBudget)
+  }));
+}
+
+function sampleDocumentText(doc, budget) {
+  const sections = collectDocumentSections(doc);
+  if (!sections.length) return "";
+  const perSection = Math.max(400, Math.floor(budget / Math.min(sections.length, 8)));
+  return sampleEvenly(sections, 8)
+    .map((section) => {
+      const label = section.label ? `[${section.label}]` : "";
+      return `${label}\n${section.text.slice(0, perSection)}`.trim();
+    })
+    .join("\n\n")
+    .slice(0, budget);
+}
+
+function collectDocumentSections(doc) {
+  if (Array.isArray(doc.pages) && doc.pages.some((page) => page?.text)) {
+    return doc.pages
+      .map((page, index) => ({ label: page.label || `page ${page.page || index + 1}`, text: String(page.text || "").trim() }))
+      .filter((section) => section.text);
+  }
+  if (Array.isArray(doc.sheets) && doc.sheets.some((sheet) => sheet?.text)) {
+    return doc.sheets
+      .map((sheet, index) => ({ label: sheet.name || `sheet ${index + 1}`, text: String(sheet.text || "").trim() }))
+      .filter((section) => section.text);
+  }
+  return String(doc.text || "")
+    .split(/\n{2,}/)
+    .map((text, index) => ({ label: `section ${index + 1}`, text: text.trim() }))
+    .filter((section) => section.text);
+}
+
+function sampleEvenly(array, maxCount) {
+  if (array.length <= maxCount) return array;
+  return Array.from({ length: maxCount }, (_, index) =>
+    array[Math.round(index * (array.length - 1) / (maxCount - 1))]
+  );
+}
+
+function validateMindmapPayloadSize(payload) {
+  const bytes = estimateJsonBytes(payload);
+  if (bytes > REQUEST_MAX_BYTES) {
+    throw new Error(`마인드맵 요청 용량이 ${formatBytes(bytes)}입니다. 첨부를 줄인 뒤 다시 시도해주세요.`);
+  }
+}
+
+function setMindmapBusy(isBusy) {
+  const button = elements.studioMindmapButton;
+  if (!button) return;
+  button.classList.toggle("is-busy", isBusy);
+  button.setAttribute("aria-busy", isBusy ? "true" : "false");
+  button.title = isBusy ? "마인드맵 생성 중지" : "마인드맵 생성";
+  button.setAttribute("aria-label", isBusy ? "마인드맵 생성 중지" : "마인드맵 생성");
+  const label = button.querySelector(".studio-tool-label");
+  if (label) label.textContent = isBusy ? "중지" : "마인드맵";
 }
 
 // ── Mindmap entry point ───────────────────────────────────────────
@@ -171,15 +256,35 @@ function renderMindmap(mindmap, selectedNodeId = "") {
 function buildTreeStructure(mindmap) {
   const nodeMap = new Map(mindmap.nodes.map((n) => [n.id, { ...n, _pos: null }]));
   const childrenMap = new Map(mindmap.nodes.map((n) => [n.id, []]));
-  const hasParent = new Set();
+  const root = nodeMap.get(mindmap.nodes[0].id);
+  const visited = new Set([root.id]);
+  const outgoing = new Map(mindmap.nodes.map((n) => [n.id, []]));
 
   for (const edge of Array.isArray(mindmap.edges) ? mindmap.edges : []) {
-    if (!nodeMap.has(edge.from) || !nodeMap.has(edge.to) || hasParent.has(edge.to)) continue;
-    childrenMap.get(edge.from).push(nodeMap.get(edge.to));
-    hasParent.add(edge.to);
+    if (!nodeMap.has(edge.from) || !nodeMap.has(edge.to) || edge.from === edge.to) continue;
+    outgoing.get(edge.from).push(edge);
   }
 
-  return { root: nodeMap.get(mindmap.nodes[0].id), childrenMap };
+  function attach(parent) {
+    for (const edge of outgoing.get(parent.id) || []) {
+      if (visited.has(edge.to)) continue;
+      const child = nodeMap.get(edge.to);
+      child._treeEdge = edge;
+      childrenMap.get(parent.id).push(child);
+      visited.add(child.id);
+      attach(child);
+    }
+  }
+  attach(root);
+
+  for (const node of nodeMap.values()) {
+    if (visited.has(node.id)) continue;
+    node._treeEdge = { from: root.id, to: node.id, label: "", strength: 1 };
+    childrenMap.get(root.id).push(node);
+    visited.add(node.id);
+  }
+
+  return { root, childrenMap };
 }
 
 // Collapse all nodes that have children, except root (so root's children are visible)
@@ -266,7 +371,7 @@ function drawMap() {
   for (const node of visible) {
     if (collapsed.has(node.id)) continue;
     for (const child of childrenMap.get(node.id) || []) {
-      if (node._pos && child._pos) edgeG.append(makeEdge(node._pos, child._pos));
+      if (node._pos && child._pos) edgeG.append(makeEdge(node._pos, child._pos, child._treeEdge));
     }
   }
 
@@ -280,17 +385,30 @@ function drawMap() {
   }
 }
 
-function makeEdge(from, to) {
+function makeEdge(from, to, edge = {}) {
   const x1 = from.x + from.w;
   const y1 = from.y;
   const x2 = to.x;
   const y2 = to.y;
   const cx = (x1 + x2) / 2;
-  return svgEl("path", {
-    class: "map-edge",
+  const group = svgEl("g", { class: "map-edge-group" });
+  group.append(svgEl("path", {
+    class: `map-edge strength-${Math.max(1, Math.min(5, Number(edge.strength) || 1))}`,
     d: `M ${x1} ${y1} C ${cx} ${y1} ${cx} ${y2} ${x2} ${y2}`,
     fill: "none"
-  });
+  }));
+  const label = String(edge.label || "").trim();
+  if (label) {
+    const text = svgEl("text", {
+      class: "map-edge-label",
+      x: cx,
+      y: (y1 + y2) / 2 - 4,
+      "text-anchor": "middle"
+    });
+    text.textContent = label.slice(0, 18);
+    group.append(text);
+  }
+  return group;
 }
 
 function makeNode(node, isRoot, hasChildren, isCollapsed, isSelected) {
@@ -300,7 +418,8 @@ function makeNode(node, isRoot, hasChildren, isCollapsed, isSelected) {
 
   const g = svgEl("g", {
     class: `map-node${isRoot ? " is-root" : ""}${isSelected ? " is-selected" : ""}`,
-    transform: `translate(${x} ${y - h / 2})`
+    transform: `translate(${x} ${y - h / 2})`,
+    "data-importance": String(Math.max(1, Math.min(5, Number(node.importance) || 3)))
   });
 
   g.append(svgEl("rect", { width: w, height: h, rx: 7, ry: 7 }));
@@ -323,6 +442,7 @@ function makeNode(node, isRoot, hasChildren, isCollapsed, isSelected) {
   });
   g.setAttribute("tabindex", "0");
   g.setAttribute("role", "button");
+  g.setAttribute("aria-label", node.label || "Mind map node");
 
   // Expand/collapse toggle badge
   if (hasChildren) {
@@ -492,8 +612,11 @@ function renderDetails(node) {
   const target = elements.studioMindmapDetails;
   if (!target) return;
   target.innerHTML = "";
+  appendMindmapWarnings(target);
   if (!node) {
-    target.textContent = "노드를 선택하면 요약이 표시됩니다.";
+    const empty = document.createElement("p");
+    empty.textContent = "노드를 선택하면 요약이 표시됩니다.";
+    target.append(empty);
     return;
   }
   const title = document.createElement("h3");
@@ -501,6 +624,11 @@ function renderDetails(node) {
   const summary = document.createElement("p");
   summary.textContent = node.summary || "요약이 없습니다.";
   target.append(title, summary);
+  const meta = document.createElement("div");
+  meta.className = "studio-detail-meta";
+  const groupLabel = getGroupLabel(node.group);
+  meta.textContent = `${groupLabel} · 중요도 ${Math.max(1, Math.min(5, Number(node.importance) || 3))}`;
+  target.append(meta);
   const refs = Array.isArray(node.sourceRefs) ? node.sourceRefs.filter(Boolean) : [];
   if (refs.length) {
     const wrap = document.createElement("div");
@@ -513,11 +641,59 @@ function renderDetails(node) {
     }
     target.append(wrap);
   }
+  appendRelatedEdges(target, node);
+}
+
+function getGroupLabel(groupId) {
+  const groups = Array.isArray(_map?.mindmap?.groups) ? _map.mindmap.groups : [];
+  return groups.find((group) => group.id === groupId)?.label || groupId || "group";
+}
+
+function appendRelatedEdges(target, node) {
+  const edges = Array.isArray(_map?.mindmap?.edges)
+    ? _map.mindmap.edges.filter((edge) => edge.from === node.id || edge.to === node.id)
+    : [];
+  if (!edges.length) return;
+  const nodeById = new Map((_map?.mindmap?.nodes || []).map((item) => [item.id, item]));
+  const wrap = document.createElement("div");
+  wrap.className = "studio-detail-relations";
+  for (const edge of edges.slice(0, 6)) {
+    const otherId = edge.from === node.id ? edge.to : edge.from;
+    const other = nodeById.get(otherId);
+    const item = document.createElement("div");
+    item.className = "studio-detail-relation";
+    item.textContent = `${edge.from === node.id ? "→" : "←"} ${other?.label || otherId}${edge.label ? ` · ${edge.label}` : ""}`;
+    wrap.append(item);
+  }
+  target.append(wrap);
+}
+
+function appendMindmapWarnings(target) {
+  const warnings = Array.isArray(_map?.mindmap?.warnings)
+    ? _map.mindmap.warnings.map((warning) => String(warning || "")).filter(Boolean)
+    : [];
+  if (!warnings.length) return;
+
+  const messages = [];
+  if (warnings.some((warning) => warning === "fallback_mindmap")) {
+    messages.push("기본 마인드맵을 표시 중입니다.");
+  }
+  if (warnings.some((warning) => warning.startsWith("model_fallback:"))) {
+    messages.push("Ollama 생성에 실패해 문서 이름, 요약, 주제 기반 지도를 표시합니다.");
+  }
+  if (!messages.length) messages.push("마인드맵 생성 중 확인할 항목이 있습니다.");
+
+  const box = document.createElement("div");
+  box.className = "studio-mindmap-warning";
+  box.setAttribute("role", "status");
+  box.textContent = [...new Set(messages)].join(" ");
+  target.append(box);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
 
 function renderEmpty(message) {
+  _map = null;
   clearSvg();
   if (elements.studioMindmapEmpty) {
     elements.studioMindmapEmpty.hidden = false;

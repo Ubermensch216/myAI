@@ -232,6 +232,7 @@ export async function removeUploadedFile(uploadedFile) {
   const room = getActiveRoom();
   if (!room) return;
   room.documents = getActiveDocuments().filter((f) => f.id !== uploadedFile.id);
+  clearRoomMindmapCache(room);
   room.updatedAt = new Date().toISOString();
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:renderrooms"));
@@ -253,10 +254,20 @@ export async function confirmAndClearRoomDocuments(room = getActiveRoom()) {
     headers: documentCacheHeaders()
   }).catch(() => {})));
   room.documents = [];
+  clearRoomMindmapCache(room);
   room.updatedAt = new Date().toISOString();
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   elements.uploadProgress.textContent = "현재 대화방의 첨부를 정리했습니다.";
+}
+
+function clearRoomMindmapCache(room) {
+  if (!room?.studio?.mindmap) return;
+  room.studio.mindmap = {
+    signature: "",
+    data: null,
+    selectedNodeId: ""
+  };
 }
 
 // ===== Send message =====
