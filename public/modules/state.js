@@ -404,6 +404,7 @@ export const elements = {
   kgSearchInput: document.querySelector("#kgSearchInput"),
   kgTypeFilter: document.querySelector("#kgTypeFilter"),
   kgLimitSelect: document.querySelector("#kgLimitSelect"),
+  kgIncludeDisabled: document.querySelector("#kgIncludeDisabled"),
   kgRelayoutButton: document.querySelector("#kgRelayoutButton"),
   kgStatsBar: document.querySelector("#kgStatsBar"),
   kgCanvas: document.querySelector("#kgCanvas"),

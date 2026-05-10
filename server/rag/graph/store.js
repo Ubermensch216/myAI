@@ -97,6 +97,14 @@ function ensureSchema(db) {
       value TEXT
     );
   `);
+  ensureColumn(db, "kg_nodes", "manual_override", "INTEGER DEFAULT 0");
+  ensureColumn(db, "kg_edges", "manual_override", "INTEGER DEFAULT 0");
+}
+
+function ensureColumn(db, table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 export function normalizeLabel(s) {
@@ -150,7 +158,11 @@ export function upsertNode(db, { type, label, summary = "", confidence = 1.0, mo
       label = CASE WHEN excluded.confidence > kg_nodes.confidence THEN excluded.label ELSE kg_nodes.label END,
       summary = CASE WHEN excluded.summary != '' AND length(excluded.summary) > length(coalesce(kg_nodes.summary, '')) THEN excluded.summary ELSE kg_nodes.summary END,
       confidence = MAX(kg_nodes.confidence, excluded.confidence),
-      enabled = CASE WHEN MAX(kg_nodes.confidence, excluded.confidence) >= ${DEFAULT_CONFIDENCE_THRESHOLD} THEN 1 ELSE 0 END,
+      enabled = CASE
+        WHEN kg_nodes.manual_override = 1 THEN kg_nodes.enabled
+        WHEN MAX(kg_nodes.confidence, excluded.confidence) >= ${DEFAULT_CONFIDENCE_THRESHOLD} THEN 1
+        ELSE 0
+      END,
       updated_at = excluded.updated_at
   `).run(id, type, label, normalized, summary, confidence, enabled, model, now, now);
 
@@ -171,7 +183,11 @@ export function upsertEdge(db, { srcId, dstId, type, label = null, confidence = 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       confidence = MAX(kg_edges.confidence, excluded.confidence),
-      enabled = CASE WHEN MAX(kg_edges.confidence, excluded.confidence) >= ${DEFAULT_CONFIDENCE_THRESHOLD} THEN 1 ELSE 0 END,
+      enabled = CASE
+        WHEN kg_edges.manual_override = 1 THEN kg_edges.enabled
+        WHEN MAX(kg_edges.confidence, excluded.confidence) >= ${DEFAULT_CONFIDENCE_THRESHOLD} THEN 1
+        ELSE 0
+      END,
       label = COALESCE(excluded.label, kg_edges.label)
   `).run(id, srcId, dstId, type, label, confidence, enabled, model, now);
   return id;
@@ -273,6 +289,7 @@ export function getNode(db, nodeId) {
   if (!nodeId) return null;
   const node = db.prepare(`
     SELECT id, type, label, normalized_label AS normalizedLabel, summary, confidence, enabled,
+           manual_override AS manualOverride,
            extracted_by_model AS extractedByModel, created_at AS createdAt, updated_at AS updatedAt
     FROM kg_nodes WHERE id = ?
   `).get(nodeId);
@@ -289,7 +306,7 @@ export function topNodes(db, { limit = 80, type = null, enabledOnly = true } = {
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   args.push(Number(limit));
   return db.prepare(`
-    SELECT n.id, n.type, n.label, n.confidence,
+    SELECT n.id, n.type, n.label, n.confidence, n.enabled, n.manual_override AS manualOverride,
            (SELECT COUNT(*) FROM kg_edges e WHERE (e.src_id = n.id OR e.dst_id = n.id) AND e.enabled = 1) AS degree
     FROM kg_nodes n
     ${whereSql}
@@ -303,7 +320,7 @@ export function edgesAmong(db, nodeIds, { enabledOnly = true } = {}) {
   const placeholders = nodeIds.map(() => "?").join(",");
   const enabledSql = enabledOnly ? "AND e.enabled = 1" : "";
   return db.prepare(`
-    SELECT e.id, e.src_id AS srcId, e.dst_id AS dstId, e.type, e.label, e.confidence
+    SELECT e.id, e.src_id AS srcId, e.dst_id AS dstId, e.type, e.label, e.confidence, e.enabled, e.manual_override AS manualOverride
     FROM kg_edges e
     WHERE e.src_id IN (${placeholders}) AND e.dst_id IN (${placeholders}) ${enabledSql}
   `).all(...nodeIds, ...nodeIds);
@@ -313,9 +330,44 @@ export function getEdge(db, edgeId) {
   if (!edgeId) return null;
   return db.prepare(`
     SELECT id, src_id AS srcId, dst_id AS dstId, type, label, confidence, enabled,
+           manual_override AS manualOverride,
            extracted_by_model AS extractedByModel, created_at AS createdAt
     FROM kg_edges WHERE id = ?
   `).get(edgeId);
+}
+
+export function setNodeEnabled(db, nodeId, enabled) {
+  const result = db.prepare(`
+    UPDATE kg_nodes SET enabled = ?, manual_override = 1, updated_at = ? WHERE id = ?
+  `).run(enabled ? 1 : 0, new Date().toISOString(), nodeId);
+  return result.changes > 0;
+}
+
+export function clearNodeOverride(db, nodeId) {
+  const node = db.prepare("SELECT confidence FROM kg_nodes WHERE id = ?").get(nodeId);
+  if (!node) return false;
+  const enabled = (node.confidence || 0) >= DEFAULT_CONFIDENCE_THRESHOLD ? 1 : 0;
+  const result = db.prepare(`
+    UPDATE kg_nodes SET manual_override = 0, enabled = ?, updated_at = ? WHERE id = ?
+  `).run(enabled, new Date().toISOString(), nodeId);
+  return result.changes > 0;
+}
+
+export function setEdgeEnabled(db, edgeId, enabled) {
+  const result = db.prepare(`
+    UPDATE kg_edges SET enabled = ?, manual_override = 1 WHERE id = ?
+  `).run(enabled ? 1 : 0, edgeId);
+  return result.changes > 0;
+}
+
+export function clearEdgeOverride(db, edgeId) {
+  const edge = db.prepare("SELECT confidence FROM kg_edges WHERE id = ?").get(edgeId);
+  if (!edge) return false;
+  const enabled = (edge.confidence || 0) >= DEFAULT_CONFIDENCE_THRESHOLD ? 1 : 0;
+  const result = db.prepare(`
+    UPDATE kg_edges SET manual_override = 0, enabled = ? WHERE id = ?
+  `).run(enabled, edgeId);
+  return result.changes > 0;
 }
 
 export function clearGraph(db) {

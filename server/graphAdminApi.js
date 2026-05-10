@@ -11,7 +11,11 @@ import {
   sourceRefsOf,
   getNode,
   getEdge,
-  getMeta
+  getMeta,
+  setNodeEnabled,
+  clearNodeOverride,
+  setEdgeEnabled,
+  clearEdgeOverride
 } from "./rag/graph/store.js";
 import { describeOntology } from "./rag/graph/ontology.js";
 import { notebookHasGraph } from "./rag/graph/expander.js";
@@ -91,6 +95,7 @@ graphAdminRouter.get("/:notebookId/subgraph", requireAdmin, async (req, res) => 
     const mode = typeof req.query.mode === "string" ? req.query.mode : "top";
     const limit = Math.min(400, Math.max(10, parseInt(req.query.limit, 10) || 80));
     const type = typeof req.query.type === "string" && req.query.type.trim() ? req.query.type.trim() : null;
+    const includeDisabled = req.query.includeDisabled === "1";
 
     let nodes = [];
     if (mode === "around") {
@@ -100,7 +105,10 @@ graphAdminRouter.get("/:notebookId/subgraph", requireAdmin, async (req, res) => 
       const seedNode = getNode(db, seedId);
       if (!seedNode) { res.status(404).json({ error: "seed node not found" }); return; }
       const accumulated = new Map();
-      accumulated.set(seedNode.id, { id: seedNode.id, type: seedNode.type, label: seedNode.label, confidence: seedNode.confidence, hop: 0 });
+      accumulated.set(seedNode.id, {
+        id: seedNode.id, type: seedNode.type, label: seedNode.label, confidence: seedNode.confidence,
+        enabled: seedNode.enabled, manualOverride: seedNode.manualOverride, hop: 0
+      });
       let frontier = [seedNode.id];
       for (let h = 1; h <= hops && accumulated.size < limit; h++) {
         const next = [];
@@ -109,7 +117,10 @@ graphAdminRouter.get("/:notebookId/subgraph", requireAdmin, async (req, res) => 
           for (const r of nb) {
             if (accumulated.size >= limit) break;
             if (!accumulated.has(r.neighbor_id)) {
-              accumulated.set(r.neighbor_id, { id: r.neighbor_id, type: r.neighbor_type, label: r.neighbor_label, confidence: r.confidence, hop: h });
+              accumulated.set(r.neighbor_id, {
+                id: r.neighbor_id, type: r.neighbor_type, label: r.neighbor_label, confidence: r.confidence,
+                enabled: 1, manualOverride: 0, hop: h
+              });
               next.push(r.neighbor_id);
             }
           }
@@ -119,11 +130,11 @@ graphAdminRouter.get("/:notebookId/subgraph", requireAdmin, async (req, res) => 
       nodes = Array.from(accumulated.values());
     } else {
       // mode === "top" (default)
-      nodes = topNodes(db, { limit, type, enabledOnly: true }).map((n) => ({ ...n, hop: 0 }));
+      nodes = topNodes(db, { limit, type, enabledOnly: !includeDisabled }).map((n) => ({ ...n, hop: 0 }));
     }
 
     const ids = nodes.map((n) => n.id);
-    const edges = edgesAmong(db, ids, { enabledOnly: true });
+    const edges = edgesAmong(db, ids, { enabledOnly: !includeDisabled });
 
     res.json({
       notebookId,
@@ -169,6 +180,62 @@ graphAdminRouter.get("/:notebookId/edge/:edgeId", requireAdmin, async (req, res)
     if (!edge) { res.status(404).json({ error: "edge not found" }); return; }
     const refs = sourceRefsOf(db, "edge", edge.id, 20);
     res.json({ notebookId, edge, refs });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+graphAdminRouter.post("/:notebookId/node/:nodeId/toggle", requireAdmin, async (req, res) => {
+  const notebookId = ensureGraph(req, res);
+  if (!notebookId) return;
+  try {
+    const db = await openNotebookGraph(notebookId);
+    const enabled = req.body && req.body.enabled !== undefined ? Boolean(req.body.enabled) : null;
+    if (enabled === null) { res.status(400).json({ error: "enabled (boolean) required" }); return; }
+    const ok = setNodeEnabled(db, req.params.nodeId, enabled);
+    if (!ok) { res.status(404).json({ error: "node not found" }); return; }
+    res.json({ ok: true, node: getNode(db, req.params.nodeId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+graphAdminRouter.post("/:notebookId/node/:nodeId/clear-override", requireAdmin, async (req, res) => {
+  const notebookId = ensureGraph(req, res);
+  if (!notebookId) return;
+  try {
+    const db = await openNotebookGraph(notebookId);
+    const ok = clearNodeOverride(db, req.params.nodeId);
+    if (!ok) { res.status(404).json({ error: "node not found" }); return; }
+    res.json({ ok: true, node: getNode(db, req.params.nodeId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+graphAdminRouter.post("/:notebookId/edge/:edgeId/toggle", requireAdmin, async (req, res) => {
+  const notebookId = ensureGraph(req, res);
+  if (!notebookId) return;
+  try {
+    const db = await openNotebookGraph(notebookId);
+    const enabled = req.body && req.body.enabled !== undefined ? Boolean(req.body.enabled) : null;
+    if (enabled === null) { res.status(400).json({ error: "enabled (boolean) required" }); return; }
+    const ok = setEdgeEnabled(db, req.params.edgeId, enabled);
+    if (!ok) { res.status(404).json({ error: "edge not found" }); return; }
+    res.json({ ok: true, edge: getEdge(db, req.params.edgeId) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+graphAdminRouter.post("/:notebookId/edge/:edgeId/clear-override", requireAdmin, async (req, res) => {
+  const notebookId = ensureGraph(req, res);
+  if (!notebookId) return;
+  try {
+    const db = await openNotebookGraph(notebookId);
+    const ok = clearEdgeOverride(db, req.params.edgeId);
+    if (!ok) { res.status(404).json({ error: "edge not found" }); return; }
+    res.json({ ok: true, edge: getEdge(db, req.params.edgeId) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

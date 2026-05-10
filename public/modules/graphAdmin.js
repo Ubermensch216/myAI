@@ -28,6 +28,7 @@ const kgState = {
   filterType: "",
   searchTerm: "",
   limit: 80,
+  includeDisabled: false,
   cy: null,
   loading: false,
   selectedNodeId: null,
@@ -38,13 +39,16 @@ function authHeaders() {
   return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
 }
 
-async function api(pathname) {
-  const response = await fetch(`/api/admin/graph${pathname}`, { headers: authHeaders() });
+async function api(pathname, init = {}) {
+  const headers = { ...authHeaders(), ...(init.headers || {}) };
+  if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const response = await fetch(`/api/admin/graph${pathname}`, { ...init, headers });
   if (!response.ok) {
     let body = "";
     try { body = (await response.json()).error || ""; } catch { /* ignore */ }
     throw new Error(body || `HTTP ${response.status}`);
   }
+  if (response.status === 204) return null;
   return response.json();
 }
 
@@ -92,6 +96,10 @@ export function bindGraphAdminEvents() {
   });
   elements.kgLimitSelect?.addEventListener("change", (event) => {
     kgState.limit = Math.max(10, parseInt(event.target.value, 10) || 80);
+    refreshSubgraph().catch(reportError);
+  });
+  elements.kgIncludeDisabled?.addEventListener("change", (event) => {
+    kgState.includeDisabled = Boolean(event.target.checked);
     refreshSubgraph().catch(reportError);
   });
 
@@ -212,6 +220,7 @@ async function refreshSubgraph() {
     params.set("mode", "top");
     params.set("limit", String(kgState.limit));
     if (kgState.filterType) params.set("type", kgState.filterType);
+    if (kgState.includeDisabled) params.set("includeDisabled", "1");
     const data = await api(`/${kgState.selectedNotebookId}/subgraph?${params.toString()}`);
     renderGraph(data);
   } catch (error) {
@@ -349,6 +358,22 @@ function ensureCytoscape() {
         }
       },
       {
+        selector: "node[?disabled]",
+        style: {
+          "background-opacity": 0.25,
+          "border-style": "dashed",
+          "border-color": "#94a3b8",
+          "color": "#64748b"
+        }
+      },
+      {
+        selector: "node[?override]",
+        style: {
+          "border-color": "#f59e0b",
+          "border-width": 2
+        }
+      },
+      {
         selector: "edge",
         style: {
           "width": "mapData(confidence, 0.5, 1, 1, 3)",
@@ -377,6 +402,13 @@ function ensureCytoscape() {
         selector: "edge.dim",
         style: {
           "opacity": 0.15
+        }
+      },
+      {
+        selector: "edge[?disabled]",
+        style: {
+          "line-style": "dashed",
+          "opacity": 0.45
         }
       }
     ]
@@ -427,7 +459,9 @@ function renderGraph(payload, opts = {}) {
         type: n.type,
         color: colorFor(n.type),
         confidence: n.confidence ?? 1,
-        degree: typeof n.degree === "number" ? n.degree : (degreeMap.get(n.id) || 0)
+        degree: typeof n.degree === "number" ? n.degree : (degreeMap.get(n.id) || 0),
+        disabled: n.enabled === 0 ? 1 : 0,
+        override: n.manualOverride ? 1 : 0
       }
     });
   }
@@ -442,7 +476,9 @@ function renderGraph(payload, opts = {}) {
         target: e.dstId,
         relType: e.type,
         relLabel: RELATION_LABELS[e.type] || e.type,
-        confidence: e.confidence ?? 1
+        confidence: e.confidence ?? 1,
+        disabled: e.enabled === 0 ? 1 : 0,
+        override: e.manualOverride ? 1 : 0
       }
     });
   }
@@ -451,6 +487,7 @@ function renderGraph(payload, opts = {}) {
     cy.elements().remove();
     cy.add(elementsList);
   });
+  cy.resize();
   runLayout();
   renderLegend(payload?.counts);
   if (opts.focusNodeId) {
@@ -585,12 +622,28 @@ function renderNodeDetail(data) {
       `).join("")
     : `<div class="kg-detail-empty">출처 참조 없음</div>`;
 
+  const enabled = Boolean(node.enabled);
+  const override = Boolean(node.manualOverride);
+  const stateBadges = `
+    <span class="kg-state-badge ${enabled ? "enabled" : "disabled"}">${enabled ? "활성" : "비활성"}</span>
+    ${override ? `<span class="kg-state-badge override">수동 고정</span>` : ""}
+  `;
+  const actionsHtml = `
+    <div class="kg-actions">
+      <button type="button" class="kg-action-button ${enabled ? "danger" : ""}" data-kg-action="${enabled ? "disable" : "enable"}" data-kg-kind="node" data-kg-id="${escapeHtml(node.id)}">
+        ${enabled ? "노드 비활성화" : "노드 활성화"}
+      </button>
+      ${override ? `<button type="button" class="kg-action-button" data-kg-action="clear-override" data-kg-kind="node" data-kg-id="${escapeHtml(node.id)}">자동 갱신 복구</button>` : ""}
+    </div>
+  `;
+
   body.innerHTML = `
     <h4>${escapeHtml(node.label || "")}</h4>
     <div class="kg-detail-meta">
       <span class="kg-chip"><span class="kg-chip-dot" style="background:${colorFor(node.type)}"></span>${escapeHtml(node.type || "")}</span>
-      conf ${(Number(node.confidence) || 0).toFixed(2)} · ${node.enabled ? "enabled" : "disabled"}
+      conf ${(Number(node.confidence) || 0).toFixed(2)} ${stateBadges}
     </div>
+    ${actionsHtml}
     <div class="kg-detail-section">
       <div class="kg-detail-section-title">요약</div>
       ${summaryHtml}
@@ -606,6 +659,9 @@ function renderNodeDetail(data) {
     </div>
   `;
 
+  body.querySelectorAll("[data-kg-action]").forEach((el) => {
+    el.addEventListener("click", () => handleCurationAction(el));
+  });
   body.querySelectorAll("[data-neighbor-id]").forEach((el) => {
     el.addEventListener("click", () => {
       const id = el.getAttribute("data-neighbor-id");
@@ -638,17 +694,67 @@ function renderEdgeDetail(data) {
       `).join("")
     : `<div class="kg-detail-empty">출처 참조 없음</div>`;
 
+  const enabled = Boolean(edge.enabled);
+  const override = Boolean(edge.manualOverride);
+  const stateBadges = `
+    <span class="kg-state-badge ${enabled ? "enabled" : "disabled"}">${enabled ? "활성" : "비활성"}</span>
+    ${override ? `<span class="kg-state-badge override">수동 고정</span>` : ""}
+  `;
+  const actionsHtml = `
+    <div class="kg-actions">
+      <button type="button" class="kg-action-button ${enabled ? "danger" : ""}" data-kg-action="${enabled ? "disable" : "enable"}" data-kg-kind="edge" data-kg-id="${escapeHtml(edge.id)}">
+        ${enabled ? "엣지 비활성화" : "엣지 활성화"}
+      </button>
+      ${override ? `<button type="button" class="kg-action-button" data-kg-action="clear-override" data-kg-kind="edge" data-kg-id="${escapeHtml(edge.id)}">자동 갱신 복구</button>` : ""}
+    </div>
+  `;
+
   body.innerHTML = `
     <h4>관계 · ${escapeHtml(RELATION_LABELS[edge.type] || edge.type || "")}</h4>
     <div class="kg-detail-meta">
-      ${escapeHtml(edge.type || "")} · conf ${(Number(edge.confidence) || 0).toFixed(2)} · ${edge.enabled ? "enabled" : "disabled"}
+      ${escapeHtml(edge.type || "")} · conf ${(Number(edge.confidence) || 0).toFixed(2)} ${stateBadges}
     </div>
+    ${actionsHtml}
     ${edge.label ? `<div class="kg-detail-section"><div class="kg-detail-section-title">설명</div><div class="kg-detail-summary">${escapeHtml(edge.label)}</div></div>` : ""}
     <div class="kg-detail-section">
       <div class="kg-detail-section-title">출처 청크 (${refs.length})</div>
       <div class="kg-ref-list">${refsHtml}</div>
     </div>
   `;
+
+  body.querySelectorAll("[data-kg-action]").forEach((el) => {
+    el.addEventListener("click", () => handleCurationAction(el));
+  });
+}
+
+async function handleCurationAction(buttonEl) {
+  if (!buttonEl || !kgState.selectedNotebookId) return;
+  const action = buttonEl.getAttribute("data-kg-action");
+  const kind = buttonEl.getAttribute("data-kg-kind");
+  const id = buttonEl.getAttribute("data-kg-id");
+  if (!action || !kind || !id) return;
+  buttonEl.disabled = true;
+  try {
+    if (action === "disable" || action === "enable") {
+      await api(`/${kgState.selectedNotebookId}/${kind}/${encodeURIComponent(id)}/toggle`, {
+        method: "POST",
+        body: JSON.stringify({ enabled: action === "enable" })
+      });
+    } else if (action === "clear-override") {
+      await api(`/${kgState.selectedNotebookId}/${kind}/${encodeURIComponent(id)}/clear-override`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+    }
+    await Promise.all([refreshStats(), refreshSubgraph()]);
+    if (kind === "node") await onNodeClick(id);
+    else if (kind === "edge") await onEdgeClick(id);
+  } catch (error) {
+    alert(`작업 실패: ${error.message}`);
+    reportError(error);
+  } finally {
+    buttonEl.disabled = false;
+  }
 }
 
 function reportError(error) {
