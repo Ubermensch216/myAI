@@ -35,7 +35,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
 - Unified Settings dialog with Personal Settings and an Admin Console tab.
 - Personalized app name, avatars, banner, theme, built-in or custom 3-color accent palette, and custom prompt.
-- Admin Console for department notebooks, system status, access groups/levels, and notebook access policies.
+- Admin Console for department notebooks, access groups/levels, RAG status, and RAG quality (golden-set evaluation).
 
 ## Requirements
 
@@ -245,7 +245,7 @@ server/
   holidays.js          Korean holiday API/fallback
   chunking.js          shared section chunking policy
   notebooks.js         notebook storage, dual-write to Qdrant/SQLite, ingest, chunk cache
-  reranker.js          cross-encoder reranking via Ollama /api/rerank
+  reranker.js          cross-encoder reranking via /api/rerank; off by default (Ollama lacks this endpoint — needs an external reranker server such as TEI to enable)
   modelQueue.js        in-process concurrency queues (embedding, analysis, rerank, map-reduce)
   rateLimit.js         fixed-window rate limiting for model-calling routes
   ragEvalApi.js        Admin RAG evaluation API, run history, and retrieval-log summaries
@@ -331,7 +331,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 The gear button in the main header opens one Settings dialog with two tabs:
 
 - **Personal Settings**: app name, banner, system/user avatars, theme, built-in/custom color palette, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
-- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, admins use the top console menu for **Department Notebook Management**, **System Status**, **Access Management**, and **RAG Evaluation**.
+- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups items by purpose with a thin vertical divider — *operations* (**Department Notebook Management**, **Access Management**) on the left, *RAG visibility* (**RAG Status** / `RAG 현황`, **RAG Quality** / `RAG 품질`) on the right. **RAG Quality** is split into a left-to-right workflow (`골든셋 › 실행 › 결과`) plus a separate `운영 지표` tab.
 - **Studio graph**: when the selected department notebook has a built graph, the Studio panel can show searchable nodes, relationships, source references, and notebook graph statistics. Normal notebook read-access rules still apply.
 
 The chat composer keeps the main input row focused on four controls: add (`+`),
