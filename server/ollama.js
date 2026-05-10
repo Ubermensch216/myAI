@@ -10,7 +10,7 @@ import { PROFILE_PERSONAL } from "./rag/ragConfig.js";
 import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
-import { buildNaverSearchContext } from "./naverSearch.js";
+import { buildNaverSearchContext, shouldUseNaverSearch } from "./naverSearch.js";
 import { buildLawContext } from "./law/lawContextBuilder.js";
 import {
   buildVisualizationContext,
@@ -64,10 +64,13 @@ export async function streamChat({
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
   const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
   const hasDocuments = Array.isArray(documents) && documents.length > 0;
+  const forceWebSearch = shouldUseNaverSearch(latestUserQuery);
   const [notebookContext, lawContext, webSearchContext] = await Promise.all([
     loadNotebookContext(notebookId, messages, { signal }),
-    buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal }),
-    allowWebSearch
+    !forceWebSearch
+      ? buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal })
+      : Promise.resolve(null),
+    allowWebSearch || forceWebSearch
       ? buildNaverSearchContext(latestUserQuery, { signal }).catch((error) => {
           if (signal?.aborted) throw error;
           console.warn(`Naver search context load failed: ${error.message}`);

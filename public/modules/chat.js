@@ -353,8 +353,9 @@ export async function requestTextAssistantResponse(room) {
   setBusy(true);
   state.abortController = new AbortController();
   const latestPrompt = getLastUserPrompt(room);
-  const lawProcessing = shouldShowLawProcessing(latestPrompt);
-  const thinking = appendThinking({ lawProcessing });
+  const naverSearch = wantsExplicitWebSearch(latestPrompt);
+  const lawProcessing = !naverSearch && shouldShowLawProcessing(latestPrompt);
+  const thinking = appendThinking({ lawProcessing, naverSearch });
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
@@ -1400,7 +1401,9 @@ export function appendThinking(options = {}) {
   dots.innerHTML = "<span></span><span></span><span></span>";
   const text = document.createElement("span");
   text.className = "thinking-text";
-  text.textContent = options.lawProcessing ? "공식 법령 근거 확인 중..." : "Thinking...";
+  text.textContent = options.naverSearch
+    ? "네이버 검색 중..."
+    : options.lawProcessing ? "공식 법령 근거 확인 중..." : "Thinking...";
   row.append(dots, text);
 
   const details = document.createElement("details");
@@ -1423,7 +1426,12 @@ export function appendThinking(options = {}) {
   }
   details.append(summary, list);
   wrapper.append(row, details);
-  if (options.lawProcessing) {
+  if (options.naverSearch) {
+    const status = document.createElement("div");
+    status.className = "thinking-law-status";
+    status.textContent = "네이버 검색으로 최신 정보를 조회하고 있습니다.";
+    wrapper.append(status);
+  } else if (options.lawProcessing) {
     const status = document.createElement("div");
     status.className = "thinking-law-status";
     status.textContent = "Korean Law Engine으로 공식 법령 정보를 조회하고 있습니다.";
@@ -1492,15 +1500,24 @@ function buildProcessingSteps(options = {}) {
   if (images.length) steps.push(`이미지 입력 포함: ${images.map(fmt).join(", ")}`);
   steps.push("Ollama 스트리밍 응답 수신");
   steps.push("근거 중심 답변 표시");
-  if (options.lawProcessing) {
+  if (options.naverSearch) {
+    steps.splice(Math.max(2, steps.length - 2), 0, "네이버 검색으로 최신 정보 조회", "검색 결과 정리 및 근거 구성");
+  } else if (options.lawProcessing) {
     steps.splice(Math.max(2, steps.length - 2), 0, "Korean Law Engine으로 공식 법령 정보 조회", "법령명·조항·공식 링크 근거 정리");
   }
   return steps;
 }
 
+function wantsExplicitWebSearch(prompt) {
+  const text = String(prompt || "").trim();
+  if (!text) return false;
+  return /네이버.{0,12}(검색|조회|뉴스|웹|찾아)|웹\s*검색|인터넷\s*(에서|검색)/u.test(text);
+}
+
 function shouldShowLawProcessing(prompt) {
   const text = String(prompt || "");
   if (!text.trim()) return false;
+  if (wantsExplicitWebSearch(text)) return false;
   return /법령|법률|조문|조항|법에서|법령에서|근거\s*법|인용\s*검증|조문\s*검증|위법|적법|컴플라이언스|준수|판례|해석례|시행령|시행규칙|고시|예규|민법|형법|상법|개인정보\s*보호법|제\s*\d+\s*조/u.test(text);
 }
 
