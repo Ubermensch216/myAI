@@ -649,6 +649,8 @@
           </button>
         </nav>
         <div class="admin-dialog-header-actions">
+          <button id="adminRefreshStatusButton" class="ghost-button admin-header-refresh" type="button" hidden>새로고침</button>
+          <button id="adminAccessRefreshButton" class="ghost-button admin-header-refresh" type="button" hidden>새로고침</button>
           <button id="adminLogoutButton" class="ghost-button admin-logout-button" type="button" hidden>로그아웃</button>
           <button id="closeAdminNotebookButton" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
@@ -738,29 +740,19 @@
 
           <!-- System status panel -->
           <div id="adminStatusPanel" class="admin-status-panel" hidden>
-            <div class="admin-status-panel-header">
-              <h3>시스템 상태</h3>
-              <button id="adminRefreshStatusButton" class="ghost-button admin-status-refresh" type="button">새로고침</button>
-            </div>
             <div id="adminStatusBody" class="admin-status-body"></div>
           </div>
 
           <div id="adminAccessPanel" class="admin-status-panel admin-access-panel" hidden>
-            <div class="admin-status-panel-header">
-              <h3>권한 관리</h3>
-              <button id="adminAccessRefreshButton" class="ghost-button admin-status-refresh" type="button">새로고침</button>
-            </div>
-            <div class="admin-access-add-row">
-              <input id="adminAccessGroupNameInput" class="text-input" maxlength="80" placeholder="그룹명" />
-              <input id="adminAccessGroupDescriptionInput" class="text-input" maxlength="400" placeholder="설명" />
-              <button id="adminAccessAddGroupButton" class="send-button" type="button">그룹 추가</button>
+            <div class="admin-access-tabs" role="tablist" aria-label="권한 관리 메뉴">
+              <button id="adminAccessGroupsTab" class="admin-access-tab active" type="button" role="tab" aria-selected="true">그룹 관리</button>
+              <button id="adminAccessSuperTab" class="admin-access-tab" type="button" role="tab" aria-selected="false">Super 권한</button>
             </div>
             <div id="adminAccessBody" class="admin-access-body"></div>
           </div>
 
           <div id="adminRagEvalPanel" class="admin-status-panel admin-rag-eval-panel" hidden>
             <div class="admin-status-panel-header">
-              <h3>RAG 평가 대시보드</h3>
               <div class="rag-eval-tabs" role="tablist">
                 <button class="rag-eval-tab active" type="button" data-tab="golden" role="tab" aria-selected="true">골든셋</button>
                 <button class="rag-eval-tab" type="button" data-tab="run" role="tab" aria-selected="false">실행</button>

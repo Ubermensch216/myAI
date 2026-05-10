@@ -168,7 +168,12 @@ Department notebook access control is inactive until an admin configures at
 least one enabled group level password or an enabled Super password. Normal
 users authenticate from the department-notebook selector. Admins manage groups,
 level passwords, Super access, and per-notebook policies from Settings →
-Admin Console → Access Management / Department Notebook Management.
+Admin Console → Access Management / Department Notebook Management. Access
+Management has separate Group Management and Super Access tabs: the group tab
+uses a left group list and right selected-group detail pane for Level 1-3
+passwords, while the Super tab keeps emergency read access isolated. Existing
+Super password changes require the current Super password plus matching new
+password confirmation.
 
 ### Precision Analysis
 

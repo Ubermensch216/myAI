@@ -248,10 +248,15 @@ export async function updateGroupLevel(groupId, level, input = {}) {
   return publicGroup(group);
 }
 
-export async function setSuperPassword(password) {
+export async function setSuperPassword(password, options = {}) {
   const store = await readStore();
   const cleanPassword = String(password || "");
-  if (cleanPassword.length < 4) throw new Error("Password must be at least 4 characters.");
+  if (cleanPassword.length < 4) throw new Error("비밀번호는 4자 이상이어야 합니다.");
+  if (store.super.passwordHash) {
+    const currentPassword = String(options.currentPassword || "");
+    const currentOk = await verifyPassword(currentPassword, store.super.passwordHash);
+    if (!currentOk) throw new Error("기존 Super 비밀번호가 일치하지 않습니다.");
+  }
   store.super.passwordHash = await hashPassword(cleanPassword);
   store.super.enabled = true;
   await writeStore(store);

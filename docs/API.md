@@ -298,7 +298,10 @@ Settings
 └─ Admin Console
    ├─ Department Notebook Management
    ├─ System Status
-   └─ Access Management
+   ├─ Access Management
+   │  ├─ Group Management
+   │  └─ Super Access
+   └─ RAG Evaluation
 ```
 
 The Admin Console uses `ADMIN_TOKEN` for management routes. Normal notebook
@@ -374,7 +377,16 @@ Admin. Enables or disables a level.
 
 ### `POST /api/admin/access/super/password`
 
-Admin. Replaces the Super read-access password.
+Admin. Replaces the Super read-access password. When a Super password already
+exists, the request must include the existing password:
+
+```js
+{ currentPassword: string, password: string }
+```
+
+For first-time setup, `currentPassword` may be omitted. Existing passwords are
+never returned by the API. The browser UI also double-checks the new Super
+password before sending the request.
 
 ### `PATCH /api/admin/access/super`
 

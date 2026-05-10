@@ -24,7 +24,12 @@ Admins configure notebook read access from Settings → Admin Console. Access
 Management defines groups, enabled levels, level passwords, and optional Super
 access; Department Notebook Management assigns allowed groups and minimum
 level per notebook. Normal users authenticate from the department-notebook
-selector before selecting restricted notebooks.
+selector before selecting restricted notebooks. In the Admin Console, Access
+Management is split into Group Management and Super Access. Group Management
+shows group counts/search/list on the left and selected group details on the
+right; Level 1 is visually flagged as broad notebook access. Super password
+changes require the current Super password when one already exists, and new
+password confirmation is checked in the browser before submission.
 
 Web search is a separate, lower-priority context source. Naver Search can run
 only for explicit search prompts in normal chat. It is skipped whenever

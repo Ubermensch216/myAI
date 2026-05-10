@@ -364,6 +364,8 @@ export const elements = {
   adminAccessPanel: document.querySelector("#adminAccessPanel"),
   adminAccessBody: document.querySelector("#adminAccessBody"),
   adminAccessRefreshButton: document.querySelector("#adminAccessRefreshButton"),
+  adminAccessGroupsTab: document.querySelector("#adminAccessGroupsTab"),
+  adminAccessSuperTab: document.querySelector("#adminAccessSuperTab"),
   adminAccessGroupNameInput: document.querySelector("#adminAccessGroupNameInput"),
   adminAccessGroupDescriptionInput: document.querySelector("#adminAccessGroupDescriptionInput"),
   adminAccessAddGroupButton: document.querySelector("#adminAccessAddGroupButton"),

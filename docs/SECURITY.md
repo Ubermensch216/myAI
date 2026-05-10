@@ -218,6 +218,14 @@ Settings → Admin Console → Access Management. Admins authenticate with
 set a Super read-access password, and assign notebook policies from Department
 Notebook Management.
 
+Access Management separates Group Management from Super Access. Group
+Management is for routine reader groups and Level 1-3 passwords; Level 1 is
+highlighted in the UI because it can satisfy every notebook policy that allows
+the group. Super Access is isolated behind its own tab and should be treated as
+emergency or operator-level read access. When a Super password already exists,
+changing it requires the current Super password and a double-entered new
+password; the API never returns existing password values.
+
 Access control is inactive until at least one enabled group level password or
 an enabled Super password exists. While inactive, notebook reads remain public
 for compatibility. Once active, `/api/notebooks`, `/api/notebooks/:id`, and

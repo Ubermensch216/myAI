@@ -4511,6 +4511,11 @@ body.panel-resizing .panel-resizer::after {
   padding: 4px 10px;
 }
 
+.admin-header-refresh {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
 /* ===== Admin: unconfigured state ===== */
 .admin-unconfigured {
   display: flex;
@@ -5426,6 +5431,11 @@ body.panel-resizing .panel-resizer::after {
   font-weight: 700;
 }
 
+.admin-rag-eval-panel .admin-status-panel-header {
+  justify-content: flex-start;
+  margin-bottom: 14px;
+}
+
 .admin-status-refresh {
   font-size: 12px;
   padding: 4px 10px;
@@ -5447,20 +5457,25 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .admin-access-panel {
-  gap: 14px;
+  gap: 16px;
 }
 
 .admin-access-add-row {
   display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(160px, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(140px, 220px) minmax(180px, 1fr) auto;
+  gap: 10px;
   align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
 }
 
 .admin-access-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 
 .admin-access-card,
@@ -5474,16 +5489,39 @@ body.panel-resizing .panel-resizer::after {
   background: var(--surface-3);
 }
 
+.admin-access-card {
+  min-width: 0;
+}
+
+.admin-access-super-card {
+  grid-column: 1 / -1;
+}
+
+.admin-access-group-card.is-disabled {
+  opacity: 0.72;
+}
+
+.admin-access-group-card.is-disabled .admin-access-card-header h4 {
+  color: var(--muted);
+}
+
 .admin-access-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .admin-access-card-header h4 {
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
   font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-access-toggle,
@@ -5497,15 +5535,16 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-access-group-fields {
   display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(160px, 1fr) auto auto;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(150px, 1.2fr) auto auto;
   gap: 8px;
   align-items: center;
 }
 
 .admin-access-levels {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
 }
 
 .admin-access-level-row {
@@ -5517,7 +5556,7 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-access-password-row {
   display: grid;
-  grid-template-columns: minmax(128px, auto) minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(128px, max-content) minmax(160px, 1fr) auto;
   gap: 8px;
   align-items: center;
 }
@@ -5548,6 +5587,349 @@ body.panel-resizing .panel-resizer::after {
   color: var(--muted);
   font-size: 13px;
   padding: 8px 0;
+}
+
+.admin-access-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+}
+
+.admin-access-tab {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-access-tab:hover,
+.admin-access-tab:focus-visible {
+  color: var(--ink);
+  outline: none;
+}
+
+.admin-access-tab.active {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent-dark);
+}
+
+.admin-access-body {
+  display: block;
+  min-height: 0;
+}
+
+.admin-access-groups-workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.admin-access-group-sidebar,
+.admin-access-group-detail,
+.admin-access-super-settings {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+}
+
+.admin-access-group-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.admin-access-group-stats {
+  display: flex;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-access-group-stats span {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.admin-access-create-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.admin-access-search {
+  width: 100%;
+}
+
+.admin-access-group-list {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.admin-access-group-list-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-access-group-list-item:hover,
+.admin-access-group-list-item:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: var(--surface);
+  outline: none;
+}
+
+.admin-access-group-list-item.active {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.admin-access-group-lamp {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.admin-access-group-lamp.is-active {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.admin-access-group-lamp.is-inactive {
+  opacity: 0.45;
+}
+
+.admin-access-group-list-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.admin-access-group-list-name,
+.admin-access-group-list-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-access-group-list-name {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-access-group-list-desc {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-access-level-indicators {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.admin-access-level-indicator {
+  min-width: 22px;
+  padding: 1px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.admin-access-level-indicator.is-enabled {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+}
+
+.admin-access-level-indicator.is-set {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent-dark);
+}
+
+.admin-access-level-indicator.level-1.is-enabled {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+  color: var(--danger);
+}
+
+.admin-access-group-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+
+.admin-access-group-detail.is-empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.admin-access-detail-header,
+.admin-access-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-access-detail-header {
+  justify-content: space-between;
+}
+
+.admin-access-detail-header h4 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-access-detail-info {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.admin-access-field {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.admin-access-level-detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-access-level-detail-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) 78px minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.admin-access-level-detail-row.level-1 {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+}
+
+.admin-access-level-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-access-level-detail-row.level-1 .admin-access-level-name {
+  color: var(--danger);
+}
+
+.admin-access-level-warning {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #fde047 42%, var(--surface));
+  color: #991b1b;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.admin-access-super-panel {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.admin-access-super-warning {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-access-super-warning strong {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.admin-access-super-settings {
+  display: grid;
+  gap: 0;
+  padding: 4px 14px;
+}
+
+.admin-access-super-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-access-super-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-access-super-row .admin-access-toggle,
+.admin-access-super-row .admin-access-password-status {
+  justify-self: start;
+}
+
+.admin-access-super-row .text-input:disabled {
+  opacity: 0.72;
 }
 
 .admin-policy-block {
@@ -5785,6 +6167,41 @@ body.panel-resizing .panel-resizer::after {
 
   .admin-console-nav-item {
     flex: 0 0 auto;
+  }
+
+  .admin-access-add-row,
+  .admin-access-group-fields,
+  .admin-access-level-row,
+  .admin-access-password-row,
+  .admin-access-groups-workspace,
+  .admin-access-detail-info,
+  .admin-access-level-detail-row,
+  .admin-access-super-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-access-add-row > button,
+  .admin-access-group-fields > button,
+  .admin-access-level-row > button,
+  .admin-access-password-row > button,
+  .admin-access-detail-info > button,
+  .admin-access-level-detail-row > button,
+  .admin-access-super-row > button {
+    justify-self: start;
+  }
+
+  .admin-access-tabs {
+    width: 100%;
+  }
+
+  .admin-access-tab {
+    flex: 1;
+  }
+
+  .admin-access-detail-header,
+  .admin-access-detail-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .admin-workspace {

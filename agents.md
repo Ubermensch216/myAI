@@ -112,7 +112,7 @@ Docs:
 
 - Personal data (uploads, calendar, settings, history) lives only in the user's browser IndexedDB.
 - Department notebooks live on the server filesystem; GPU-class hardware embeds and queries them.
-- Department notebook read restrictions are optional group/level or Super access policies. Admins manage them from Settings → Admin Console; normal users authenticate from the notebook selector when access control is active.
+- Department notebook read restrictions are optional group/level or Super access policies. Admins manage them from Settings → Admin Console. Access Management has Group Management and Super Access tabs; existing Super password changes require the current Super password plus matching new-password confirmation. Normal users authenticate from the notebook selector when access control is active.
 - Upload temp files are deleted after the parse response — no personal data is retained server-side.
 - There is no per-user server account; isolation is by browser AES-GCM key.
 

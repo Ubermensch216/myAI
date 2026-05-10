@@ -15,7 +15,10 @@ export const adminUiState = {
   selectedNotebook: null,
   mobileView: "list",
   activePanel: "notebooks",
-  accessConfig: null
+  accessConfig: null,
+  accessActiveTab: "groups",
+  selectedAccessGroupId: null,
+  accessGroupSearch: ""
 };
 
 // ===== Notebook selector =====
@@ -355,6 +358,10 @@ function setAdminHeaderMode(mode) {
   if (elements.adminNotebookDialog) elements.adminNotebookDialog.dataset.adminState = mode;
   if (elements.adminDialogTitleGroup) elements.adminDialogTitleGroup.hidden = contentMode;
   if (elements.adminConsoleNav) elements.adminConsoleNav.hidden = !contentMode;
+  if (!contentMode) {
+    if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.hidden = true;
+    if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.hidden = true;
+  }
 }
 
 export function requestAdminFileSelection() {
@@ -951,6 +958,8 @@ function renderAdminConsoleNav() {
   elements.adminStatusButton?.classList.toggle("active", active === "status");
   elements.adminAccessButton?.classList.toggle("active", active === "access");
   elements.adminRagEvalButton?.classList.toggle("active", active === "ragEval");
+  if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.hidden = active !== "status";
+  if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.hidden = active !== "access";
   if (elements.adminListPane) elements.adminListPane.hidden = active !== "notebooks";
   if (elements.adminNotebookNavSection) elements.adminNotebookNavSection.hidden = active !== "notebooks";
 }
@@ -1003,6 +1012,9 @@ function renderAdminAccessPanel() {
   if (!body) return;
   const config = adminUiState.accessConfig || { groups: [], super: {} };
   body.innerHTML = "";
+  const activeTab = adminUiState.accessActiveTab === "super" ? "super" : "groups";
+  body.className = `admin-access-body admin-access-body-${activeTab}`;
+  renderAdminAccessTabs(activeTab);
   if (config.error) {
     const error = document.createElement("div");
     error.className = "admin-status-error";
@@ -1010,88 +1022,188 @@ function renderAdminAccessPanel() {
     body.append(error);
     return;
   }
-  body.append(buildSuperAccessCard(config.super || {}));
-  for (const group of config.groups || []) body.append(buildAccessGroupCard(group));
-  if (!config.groups?.length) {
+  if (activeTab === "super") {
+    body.append(buildSuperAccessPanel(config.super || {}));
+    return;
+  }
+  body.append(buildAccessGroupsWorkspace(Array.isArray(config.groups) ? config.groups : []));
+}
+
+function renderAdminAccessTabs(activeTab = adminUiState.accessActiveTab) {
+  const groupsActive = activeTab !== "super";
+  elements.adminAccessGroupsTab?.classList.toggle("active", groupsActive);
+  elements.adminAccessSuperTab?.classList.toggle("active", !groupsActive);
+  elements.adminAccessGroupsTab?.setAttribute("aria-selected", String(groupsActive));
+  elements.adminAccessSuperTab?.setAttribute("aria-selected", String(!groupsActive));
+}
+
+function switchAdminAccessTab(tab) {
+  adminUiState.accessActiveTab = tab === "super" ? "super" : "groups";
+  renderAdminAccessPanel();
+}
+
+function buildAccessGroupsWorkspace(groups) {
+  const filtered = filterAccessGroups(groups);
+  const selected = ensureSelectedAccessGroup((adminUiState.accessGroupSearch || "").trim() ? filtered : groups);
+  const workspace = document.createElement("div");
+  workspace.className = "admin-access-groups-workspace";
+  workspace.append(buildAccessGroupSidebar(groups, selected?.id || null));
+  workspace.append(buildAccessGroupDetail(selected));
+  return workspace;
+}
+
+function ensureSelectedAccessGroup(groups) {
+  if (!groups.length) {
+    adminUiState.selectedAccessGroupId = null;
+    return null;
+  }
+  const selected = groups.find((group) => group.id === adminUiState.selectedAccessGroupId);
+  if (selected) return selected;
+  adminUiState.selectedAccessGroupId = groups[0].id;
+  return groups[0];
+}
+
+function filterAccessGroups(groups) {
+  const needle = (adminUiState.accessGroupSearch || "").trim().toLowerCase();
+  if (!needle) return groups;
+  return groups.filter((group) => {
+    const text = `${group.id || ""} ${group.name || ""} ${group.description || ""}`.toLowerCase();
+    return text.includes(needle);
+  });
+}
+
+function buildAccessGroupSidebar(groups, selectedId) {
+  const sidebar = document.createElement("aside");
+  sidebar.className = "admin-access-group-sidebar";
+
+  const total = groups.length;
+  const active = groups.filter((group) => group.enabled).length;
+  const stats = document.createElement("div");
+  stats.className = "admin-access-group-stats";
+  stats.innerHTML = `<span>그룹 ${total}</span><span>활성 ${active}</span>`;
+
+  const createBox = document.createElement("div");
+  createBox.className = "admin-access-create-box";
+  const createName = document.createElement("input");
+  createName.className = "text-input";
+  createName.maxLength = 80;
+  createName.placeholder = "새 그룹명";
+  const createDesc = document.createElement("input");
+  createDesc.className = "text-input";
+  createDesc.maxLength = 400;
+  createDesc.placeholder = "설명";
+  const createButton = document.createElement("button");
+  createButton.type = "button";
+  createButton.className = "send-button";
+  createButton.textContent = "그룹 추가";
+  const submitCreate = () => addAdminAccessGroup(createName.value, createDesc.value).catch((error) => alert(error.message));
+  createButton.addEventListener("click", submitCreate);
+  createName.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); submitCreate(); } });
+  createDesc.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); submitCreate(); } });
+  createBox.append(createName, createDesc, createButton);
+
+  const search = document.createElement("input");
+  search.className = "text-input admin-access-search";
+  search.type = "search";
+  search.placeholder = "그룹 검색";
+  search.value = adminUiState.accessGroupSearch || "";
+  search.addEventListener("input", () => {
+    adminUiState.accessGroupSearch = search.value;
+    renderAdminAccessPanel();
+  });
+
+  const list = document.createElement("div");
+  list.className = "admin-access-group-list";
+  const filtered = filterAccessGroups(groups);
+  if (!filtered.length) {
     const empty = document.createElement("div");
     empty.className = "admin-access-empty";
-    empty.textContent = "등록된 접근 그룹이 없습니다.";
-    body.append(empty);
+    empty.textContent = groups.length ? "검색 결과가 없습니다." : "등록된 접근 그룹이 없습니다.";
+    list.append(empty);
+  } else {
+    for (const group of filtered) list.append(buildAccessGroupListItem(group, selectedId));
   }
+
+  sidebar.append(stats, createBox, search, list);
+  return sidebar;
 }
 
-function buildSuperAccessCard(superState) {
-  const section = document.createElement("section");
-  section.className = "admin-access-card";
-  const header = document.createElement("div");
-  header.className = "admin-access-card-header";
-  const title = document.createElement("h4");
-  title.textContent = "Super 권한";
-  const enabledLabel = document.createElement("label");
-  enabledLabel.className = "admin-access-toggle";
-  const enabled = document.createElement("input");
-  enabled.type = "checkbox";
-  enabled.checked = Boolean(superState.enabled);
-  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
-    await patchAdminAccess("/api/admin/access/super", { enabled: enabled.checked });
-    await refreshAdminAccessConfig();
-  }));
-  enabledLabel.append(enabled, document.createTextNode(" 활성"));
-  header.append(title, enabledLabel);
-
-  const row = document.createElement("div");
-  row.className = "admin-access-password-row";
-  const status = document.createElement("span");
-  status.className = "admin-access-password-status";
-  status.classList.toggle("is-set", Boolean(superState.passwordSet));
-  status.textContent = superState.passwordSet ? "비밀번호 설정됨" : "비밀번호 미설정";
-  const input = document.createElement("input");
-  input.type = "password";
-  input.className = "text-input";
-  input.placeholder = "새 Super 비밀번호";
+function buildAccessGroupListItem(group, selectedId) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "ghost-button";
-  button.textContent = superState.passwordSet ? "변경" : "설정";
-  button.addEventListener("click", () => runAdminAccessTask(async () => {
-    await postAdminAccess("/api/admin/access/super/password", { password: input.value });
-    input.value = "";
-    await refreshAdminAccessConfig();
-  }));
-  row.append(status, input, button);
-  section.append(header, row);
-  return section;
+  button.className = "admin-access-group-list-item";
+  button.classList.toggle("active", group.id === selectedId);
+  button.addEventListener("click", () => {
+    adminUiState.selectedAccessGroupId = group.id;
+    renderAdminAccessPanel();
+  });
+
+  const lamp = document.createElement("span");
+  lamp.className = `admin-access-group-lamp ${group.enabled ? "is-active" : "is-inactive"}`;
+  lamp.title = group.enabled ? "활성 그룹" : "비활성 그룹";
+  const text = document.createElement("span");
+  text.className = "admin-access-group-list-text";
+  const name = document.createElement("span");
+  name.className = "admin-access-group-list-name";
+  name.textContent = group.name || group.id;
+  const desc = document.createElement("span");
+  desc.className = "admin-access-group-list-desc";
+  desc.textContent = group.description || group.id;
+  text.append(name, desc);
+
+  const indicators = document.createElement("span");
+  indicators.className = "admin-access-level-indicators";
+  for (const level of [1, 2, 3]) indicators.append(buildAccessLevelIndicator(group, level));
+
+  button.append(lamp, text, indicators);
+  return button;
 }
 
-function buildAccessGroupCard(group) {
-  const section = document.createElement("section");
-  section.className = "admin-access-card";
+function buildAccessLevelIndicator(group, level) {
+  const record = group.levels?.[String(level)] || {};
+  const indicator = document.createElement("span");
+  indicator.className = `admin-access-level-indicator level-${level}`;
+  indicator.classList.toggle("is-enabled", Boolean(record.enabled));
+  indicator.classList.toggle("is-set", Boolean(record.passwordSet));
+  indicator.textContent = `L${level}`;
+  indicator.title = `Level ${level}: ${record.enabled ? "활성" : "비활성"} / ${record.passwordSet ? "비밀번호 설정됨" : "비밀번호 미설정"}`;
+  return indicator;
+}
+
+function buildAccessGroupDetail(group) {
+  const detail = document.createElement("section");
+  detail.className = "admin-access-group-detail";
+  if (!group) {
+    detail.classList.add("is-empty");
+    detail.textContent = "왼쪽에서 그룹을 선택하거나 새 그룹을 만드세요.";
+    return detail;
+  }
+
   const header = document.createElement("div");
-  header.className = "admin-access-card-header";
+  header.className = "admin-access-detail-header";
   const title = document.createElement("h4");
   title.textContent = group.name || group.id;
-  const enabledLabel = document.createElement("label");
-  enabledLabel.className = "admin-access-toggle";
-  const enabled = document.createElement("input");
-  enabled.type = "checkbox";
-  enabled.checked = Boolean(group.enabled);
-  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
-    await patchAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}`, { enabled: enabled.checked });
-    await refreshAdminAccessConfig();
-  }));
-  enabledLabel.append(enabled, document.createTextNode(" 활성"));
-  header.append(title, enabledLabel);
+  const actions = document.createElement("div");
+  actions.className = "admin-access-detail-actions";
+  actions.append(buildGroupEnabledToggle(group), buildGroupDeleteButton(group));
+  header.append(title, actions);
 
-  const fields = document.createElement("div");
-  fields.className = "admin-access-group-fields";
+  const info = document.createElement("div");
+  info.className = "admin-access-detail-info";
+  const nameField = document.createElement("label");
+  nameField.className = "admin-access-field";
   const nameInput = document.createElement("input");
   nameInput.className = "text-input";
   nameInput.value = group.name || "";
   nameInput.placeholder = "그룹명";
+  nameField.append(document.createTextNode("그룹 정보"), nameInput);
+  const descField = document.createElement("label");
+  descField.className = "admin-access-field";
   const descInput = document.createElement("input");
   descInput.className = "text-input";
   descInput.value = group.description || "";
   descInput.placeholder = "설명";
+  descField.append(document.createTextNode("설명"), descInput);
   const saveButton = document.createElement("button");
   saveButton.type = "button";
   saveButton.className = "ghost-button";
@@ -1103,6 +1215,31 @@ function buildAccessGroupCard(group) {
     });
     await refreshAdminAccessConfig();
   }));
+  info.append(nameField, descField, saveButton);
+
+  const levels = document.createElement("div");
+  levels.className = "admin-access-level-detail-list";
+  for (const level of [1, 2, 3]) levels.append(buildAccessLevelDetailRow(group, level));
+
+  detail.append(header, info, levels);
+  return detail;
+}
+
+function buildGroupEnabledToggle(group) {
+  const label = document.createElement("label");
+  label.className = "admin-access-toggle";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = Boolean(group.enabled);
+  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
+    await patchAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}`, { enabled: enabled.checked });
+    await refreshAdminAccessConfig();
+  }));
+  label.append(enabled, document.createTextNode(" 활성"));
+  return label;
+}
+
+function buildGroupDeleteButton(group) {
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
   deleteButton.className = "ghost-button admin-danger-button";
@@ -1116,26 +1253,19 @@ function buildAccessGroupCard(group) {
     });
     if (!confirmed) return;
     await deleteAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}`);
+    if (adminUiState.selectedAccessGroupId === group.id) adminUiState.selectedAccessGroupId = null;
     await refreshAdminAccessConfig();
   }));
-  fields.append(nameInput, descInput, saveButton, deleteButton);
-
-  const levels = document.createElement("div");
-  levels.className = "admin-access-levels";
-  for (const level of [1, 2, 3]) {
-    levels.append(buildAccessLevelRow(group, level));
-  }
-
-  section.append(header, fields, levels);
-  return section;
+  return deleteButton;
 }
 
-function buildAccessLevelRow(group, level) {
+function buildAccessLevelDetailRow(group, level) {
   const record = group.levels?.[String(level)] || {};
   const row = document.createElement("div");
-  row.className = "admin-access-level-row";
+  row.className = `admin-access-level-detail-row level-${level}`;
+
   const label = document.createElement("label");
-  label.className = "admin-access-toggle";
+  label.className = "admin-access-level-name";
   const enabled = document.createElement("input");
   enabled.type = "checkbox";
   enabled.checked = Boolean(record.enabled);
@@ -1143,11 +1273,17 @@ function buildAccessLevelRow(group, level) {
     await patchAdminAccess(`/api/admin/access/groups/${encodeURIComponent(group.id)}/levels/${level}`, { enabled: enabled.checked });
     await refreshAdminAccessConfig();
   }));
-  label.append(enabled, document.createTextNode(` Level ${level}`));
-  const status = document.createElement("span");
-  status.className = "admin-access-password-status";
-  status.classList.toggle("is-set", Boolean(record.passwordSet));
-  status.textContent = record.passwordSet ? "설정됨" : "미설정";
+  const labelText = document.createElement("span");
+  labelText.textContent = `Level ${level}`;
+  label.append(enabled, labelText);
+  if (level === 1) {
+    const warning = document.createElement("span");
+    warning.className = "admin-access-level-warning";
+    warning.textContent = "전체 노트북 접근";
+    label.append(warning);
+  }
+
+  const status = buildAccessPasswordStatus(record.passwordSet);
   const input = document.createElement("input");
   input.type = "password";
   input.className = "text-input";
@@ -1165,11 +1301,105 @@ function buildAccessLevelRow(group, level) {
   return row;
 }
 
-async function addAdminAccessGroup() {
-  const name = (elements.adminAccessGroupNameInput?.value || "").trim();
-  const description = (elements.adminAccessGroupDescriptionInput?.value || "").trim();
+function buildSuperAccessPanel(superState) {
+  const panel = document.createElement("section");
+  panel.className = "admin-access-super-panel";
+
+  const warning = document.createElement("div");
+  warning.className = "admin-access-super-warning";
+  warning.innerHTML = "<strong>Super 권한 주의</strong><span>Super 비밀번호는 그룹과 등급을 우회해 모든 부서노트북에 접근할 수 있습니다. 운영자 비상 접근이나 점검 용도로만 제한해서 사용하세요.</span>";
+
+  const card = document.createElement("div");
+  card.className = "admin-access-super-settings";
+  const enabledRow = document.createElement("div");
+  enabledRow.className = "admin-access-super-row";
+  const enabledLabel = document.createElement("span");
+  enabledLabel.textContent = "권한 사용";
+  const enabledToggle = document.createElement("label");
+  enabledToggle.className = "admin-access-toggle";
+  const enabled = document.createElement("input");
+  enabled.type = "checkbox";
+  enabled.checked = Boolean(superState.enabled);
+  enabled.addEventListener("change", () => runAdminAccessTask(async () => {
+    await patchAdminAccess("/api/admin/access/super", { enabled: enabled.checked });
+    await refreshAdminAccessConfig();
+  }));
+  enabledToggle.append(enabled, document.createTextNode(" 활성"));
+  enabledRow.append(enabledLabel, enabledToggle);
+
+  const currentRow = document.createElement("div");
+  currentRow.className = "admin-access-super-row";
+  const currentLabel = document.createElement("span");
+  currentLabel.textContent = "기존 비밀번호 확인";
+  const currentInput = document.createElement("input");
+  currentInput.type = "password";
+  currentInput.className = "text-input";
+  currentInput.placeholder = superState.passwordSet ? "기존 Super 비밀번호" : "최초 설정 시 생략";
+  currentInput.disabled = !superState.passwordSet;
+  const currentStatus = buildAccessPasswordStatus(superState.passwordSet, true);
+  currentRow.append(currentLabel, currentInput, currentStatus);
+
+  const passwordRow = document.createElement("div");
+  passwordRow.className = "admin-access-super-row admin-access-super-password-row";
+  const passwordLabel = document.createElement("span");
+  passwordLabel.textContent = "새 비밀번호";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "text-input";
+  input.placeholder = "새 Super 비밀번호";
+  passwordRow.append(passwordLabel, input);
+
+  const confirmRow = document.createElement("div");
+  confirmRow.className = "admin-access-super-row admin-access-super-password-row";
+  const confirmLabel = document.createElement("span");
+  confirmLabel.textContent = "새 비밀번호 확인";
+  const confirmInput = document.createElement("input");
+  confirmInput.type = "password";
+  confirmInput.className = "text-input";
+  confirmInput.placeholder = "새 Super 비밀번호 재입력";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button";
+  button.textContent = superState.passwordSet ? "변경" : "설정";
+  button.addEventListener("click", () => runAdminAccessTask(async () => {
+    const password = input.value;
+    const confirmation = confirmInput.value;
+    if (password !== confirmation) {
+      alert("새 비밀번호와 확인 값이 일치하지 않습니다.");
+      return;
+    }
+    await postAdminAccess("/api/admin/access/super/password", {
+      currentPassword: currentInput.value,
+      password
+    });
+    currentInput.value = "";
+    input.value = "";
+    confirmInput.value = "";
+    await refreshAdminAccessConfig();
+  }));
+  confirmRow.append(confirmLabel, confirmInput, button);
+
+  card.append(enabledRow, currentRow, passwordRow, confirmRow);
+  panel.append(warning, card);
+  return panel;
+}
+
+function buildAccessPasswordStatus(passwordSet, verbose = false) {
+  const status = document.createElement("span");
+  status.className = "admin-access-password-status";
+  status.classList.toggle("is-set", Boolean(passwordSet));
+  status.textContent = passwordSet
+    ? (verbose ? "설정됨" : "설정됨")
+    : (verbose ? "미설정" : "미설정");
+  return status;
+}
+
+async function addAdminAccessGroup(nameValue, descriptionValue) {
+  const name = ((nameValue ?? elements.adminAccessGroupNameInput?.value) || "").trim();
+  const description = ((descriptionValue ?? elements.adminAccessGroupDescriptionInput?.value) || "").trim();
   if (!name) return;
-  await postAdminAccess("/api/admin/access/groups", { name, description });
+  const result = await postAdminAccess("/api/admin/access/groups", { name, description });
+  if (result.group?.id) adminUiState.selectedAccessGroupId = result.group.id;
   if (elements.adminAccessGroupNameInput) elements.adminAccessGroupNameInput.value = "";
   if (elements.adminAccessGroupDescriptionInput) elements.adminAccessGroupDescriptionInput.value = "";
   await refreshAdminAccessConfig();
@@ -1587,6 +1817,8 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
   bindRagEvalEvents();
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
   if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.addEventListener("click", () => refreshAdminAccessConfig().catch((error) => alert(error.message)));
+  if (elements.adminAccessGroupsTab) elements.adminAccessGroupsTab.addEventListener("click", () => switchAdminAccessTab("groups"));
+  if (elements.adminAccessSuperTab) elements.adminAccessSuperTab.addEventListener("click", () => switchAdminAccessTab("super"));
   if (elements.adminAccessAddGroupButton) elements.adminAccessAddGroupButton.addEventListener("click", () => addAdminAccessGroup().catch((error) => alert(error.message)));
   if (elements.adminNotebookAccessSaveButton) elements.adminNotebookAccessSaveButton.addEventListener("click", () => saveAdminNotebookAccessPolicy());
   if (elements.accessGroupSelect) elements.accessGroupSelect.addEventListener("change", renderAccessLevelOptions);

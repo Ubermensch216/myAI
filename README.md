@@ -316,7 +316,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 The gear button in the main header opens one Settings dialog with two tabs:
 
 - **Personal Settings**: app name, banner, system/user avatars, theme, built-in/custom color palette, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
-- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, admins use the nested menu for **Department Notebook Management**, **System Status**, and **Access Management**.
+- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, admins use the top console menu for **Department Notebook Management**, **System Status**, **Access Management**, and **RAG Evaluation**.
 
 The chat composer keeps the main input row focused on four controls: add (`+`),
 material context, prompt input, and send. When the active room has uploaded
@@ -341,6 +341,12 @@ Super password is configured, notebook reads remain public for compatibility.
 Once access control is active, normal users authenticate from the department
 notebook selector using a group/level password or Super password. `ADMIN_TOKEN`
 continues to protect management APIs only and is not a notebook-read identity.
+Access Management is split into **Group Management** and **Super Access** tabs:
+admins create/search/select groups, configure Level 1-3 passwords in the
+selected group detail pane, and manage Super access separately. Changing an
+existing Super password requires the current Super password plus matching new
+password confirmation; first-time Super setup does not require a current
+password.
 
 ## Known Constraints
 

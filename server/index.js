@@ -582,7 +582,11 @@ app.patch("/api/admin/access/groups/:groupId/levels/:level", requireAdmin, async
 
 app.post("/api/admin/access/super/password", requireAdmin, async (request, response) => {
   try {
-    response.json({ super: await setSuperPassword(request.body?.password) });
+    response.json({
+      super: await setSuperPassword(request.body?.password, {
+        currentPassword: request.body?.currentPassword
+      })
+    });
   } catch (error) {
     response.status(400).json({ error: error.message });
   }
