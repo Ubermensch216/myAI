@@ -584,7 +584,9 @@ app.post("/api/admin/access/super/password", requireAdmin, async (request, respo
   try {
     response.json({
       super: await setSuperPassword(request.body?.password, {
-        currentPassword: request.body?.currentPassword
+        currentPassword: request.body?.currentPassword,
+        confirmPassword: request.body?.confirmPassword,
+        requireConfirmation: true
       })
     });
   } catch (error) {

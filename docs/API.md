@@ -381,12 +381,12 @@ Admin. Replaces the Super read-access password. When a Super password already
 exists, the request must include the existing password:
 
 ```js
-{ currentPassword: string, password: string }
+{ currentPassword: string, password: string, confirmPassword: string }
 ```
 
 For first-time setup, `currentPassword` may be omitted. Existing passwords are
-never returned by the API. The browser UI also double-checks the new Super
-password before sending the request.
+never returned by the API. `confirmPassword` must match `password`; the browser
+checks this before sending, and the server validates it again.
 
 ### `PATCH /api/admin/access/super`
 

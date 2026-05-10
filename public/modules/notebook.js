@@ -1364,13 +1364,20 @@ function buildSuperAccessPanel(superState) {
   button.addEventListener("click", () => runAdminAccessTask(async () => {
     const password = input.value;
     const confirmation = confirmInput.value;
+    if (superState.passwordSet && !currentInput.value) {
+      alert("기존 Super 비밀번호를 입력하세요.");
+      currentInput.focus();
+      return;
+    }
     if (password !== confirmation) {
       alert("새 비밀번호와 확인 값이 일치하지 않습니다.");
+      confirmInput.focus();
       return;
     }
     await postAdminAccess("/api/admin/access/super/password", {
       currentPassword: currentInput.value,
-      password
+      password,
+      confirmPassword: confirmation
     });
     currentInput.value = "";
     input.value = "";

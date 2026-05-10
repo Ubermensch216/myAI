@@ -252,6 +252,9 @@ export async function setSuperPassword(password, options = {}) {
   const store = await readStore();
   const cleanPassword = String(password || "");
   if (cleanPassword.length < 4) throw new Error("비밀번호는 4자 이상이어야 합니다.");
+  if (options.requireConfirmation === true && cleanPassword !== String(options.confirmPassword || "")) {
+    throw new Error("새 Super 비밀번호와 확인 값이 일치하지 않습니다.");
+  }
   if (store.super.passwordHash) {
     const currentPassword = String(options.currentPassword || "");
     const currentOk = await verifyPassword(currentPassword, store.super.passwordHash);
