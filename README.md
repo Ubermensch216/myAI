@@ -235,7 +235,7 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `LAW_CACHE_MAX_ENTRIES` | `1000` | max law cache rows in `data/cache/law-cache.sqlite` |
 | `LAW_AUTO_DETECT` | `false` | keep legal auto-detection off except explicit legal prompts/article patterns |
 | `LAW_VERIFY_CITATIONS` | `true` | enable citation verification behavior |
-| `LAW_IMPACT_MAP_ENABLED` | `false` | reserved for later impact-map phase |
+| `LAW_IMPACT_MAP_ENABLED` | `true` | enable the Korean Law Engine impact-map endpoint and Studio Law Explorer |
 
 Naver Search only runs for explicit web-search prompts in normal chat. It is
 skipped when uploaded files are present or a department notebook is selected, so

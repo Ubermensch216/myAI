@@ -282,6 +282,18 @@ Body:
 Returns ordinance text plus `law_ordinance` citation metadata. `query` may be
 supplied when the caller does not already have `ordinId`.
 
+### `POST /api/law/impact-map`
+
+Body:
+
+```js
+{ lawName: "개인정보 보호법", article: "제15조", subject: "회원가입 양식", materialText: "optional excerpt" }
+```
+
+Fetches the official statute article and returns a deterministic impact-map
+graph with law citation metadata, nodes, edges, groups, and warnings. This is
+the backend used by Studio Law Explorer.
+
 All `/api/law/*` public responses must omit upstream `raw` payloads, upstream
 service URLs, and `OC=` query values.
 

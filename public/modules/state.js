@@ -413,15 +413,25 @@ export const elements = {
   studioToggleButton: document.querySelector("#studioToggleButton"),
   studioMindmapRailButton: document.querySelector("#studioMindmapRailButton"),
   studioGraphRailButton: document.querySelector("#studioGraphRailButton"),
+  studioLawRailButton: document.querySelector("#studioLawRailButton"),
   studioContent: document.querySelector("#studioContent"),
   studioMindmapButton: document.querySelector("#studioMindmapButton"),
   studioGraphButton: document.querySelector("#studioGraphButton"),
+  studioLawButton: document.querySelector("#studioLawButton"),
   studioMindmapPanel: document.querySelector("#studioMindmapPanel"),
   studioGraphPanel: document.querySelector("#studioGraphPanel"),
+  studioLawPanel: document.querySelector("#studioLawPanel"),
   studioMindmapCanvas: document.querySelector("#studioMindmapCanvas"),
   studioMindmapSvg: document.querySelector("#studioMindmapSvg"),
   studioMindmapEmpty: document.querySelector("#studioMindmapEmpty"),
-  studioMindmapDetails: document.querySelector("#studioMindmapDetails")
+  studioMindmapDetails: document.querySelector("#studioMindmapDetails"),
+  lawExplorerLawName: document.querySelector("#lawExplorerLawName"),
+  lawExplorerArticle: document.querySelector("#lawExplorerArticle"),
+  lawExplorerSubject: document.querySelector("#lawExplorerSubject"),
+  lawExplorerRunButton: document.querySelector("#lawExplorerRunButton"),
+  lawExplorerStatus: document.querySelector("#lawExplorerStatus"),
+  lawExplorerMap: document.querySelector("#lawExplorerMap"),
+  lawExplorerDetail: document.querySelector("#lawExplorerDetail")
 };
 
 export function ensureRoomStudio(room = getActiveRoom()) {

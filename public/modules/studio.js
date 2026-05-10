@@ -19,6 +19,7 @@ let _map = null;
 let _evBound = false;
 let _activeTool = "mindmap";
 let _mindmapAbortController = null;
+let _lawExplorerAbortController = null;
 
 // ── Public API ────────────────────────────────────────────────────
 
@@ -34,22 +35,34 @@ export function bindStudioEvents() {
   elements.studioMindmapRailButton?.addEventListener("click", () => setActiveTool("mindmap"));
   elements.studioGraphButton?.addEventListener("click", () => setActiveTool("graph"));
   elements.studioGraphRailButton?.addEventListener("click", () => setActiveTool("graph"));
+  elements.studioLawButton?.addEventListener("click", () => setActiveTool("law"));
+  elements.studioLawRailButton?.addEventListener("click", () => setActiveTool("law"));
+  elements.lawExplorerRunButton?.addEventListener("click", () => {
+    if (_lawExplorerAbortController) {
+      _lawExplorerAbortController.abort();
+      return;
+    }
+    generateLawImpactMap();
+  });
   bindStudioGraphEvents();
 }
 
 function setActiveTool(tool) {
-  if (tool !== "mindmap" && tool !== "graph") return;
+  if (tool !== "mindmap" && tool !== "graph" && tool !== "law") return;
   _activeTool = tool;
   if (elements.studioContent) elements.studioContent.dataset.activeTool = tool;
   elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
   elements.studioGraphButton?.classList.toggle("is-active", tool === "graph");
+  elements.studioLawButton?.classList.toggle("is-active", tool === "law");
   if (elements.studioMindmapPanel) elements.studioMindmapPanel.hidden = tool !== "mindmap";
   if (elements.studioGraphPanel) elements.studioGraphPanel.hidden = tool !== "graph";
+  if (elements.studioLawPanel) elements.studioLawPanel.hidden = tool !== "law";
   if (tool === "graph") {
     showStudioGraphPanel().catch(() => { /* errors logged inside module */ });
   } else {
     hideStudioGraphPanel();
-    renderStudio();
+    if (tool === "law") renderLawExplorer();
+    else renderStudio();
   }
 }
 
@@ -207,6 +220,168 @@ function validateMindmapPayloadSize(payload) {
   if (bytes > REQUEST_MAX_BYTES) {
     throw new Error(`마인드맵 요청 용량이 ${formatBytes(bytes)}입니다. 첨부를 줄인 뒤 다시 시도해주세요.`);
   }
+}
+
+async function generateLawImpactMap() {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!room || !studio) return;
+  const lawName = elements.lawExplorerLawName?.value?.trim() || "";
+  const article = elements.lawExplorerArticle?.value?.trim() || "";
+  const subject = elements.lawExplorerSubject?.value?.trim() || room.title || "";
+  if (!lawName || !article) {
+    setLawExplorerStatus("법령명과 조문을 입력하세요.", "error");
+    return;
+  }
+
+  try {
+    if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+    const materialText = collectLawExplorerMaterialText();
+    _lawExplorerAbortController = new AbortController();
+    setLawExplorerBusy(true);
+    setLawExplorerStatus("공식 법령 조문을 확인하고 영향맵을 구성하는 중입니다.", "running");
+    const response = await fetch("/api/law/impact-map", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: _lawExplorerAbortController.signal,
+      body: JSON.stringify({ lawName, article, subject, materialText })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "영향맵 생성에 실패했습니다.");
+    studio.lawExplorer = {
+      input: { lawName, article, subject },
+      data: payload,
+      generatedAt: new Date().toISOString()
+    };
+    room.updatedAt = new Date().toISOString();
+    scheduleSave();
+    renderLawExplorer();
+  } catch (error) {
+    if (error?.name === "AbortError") setLawExplorerStatus("영향맵 생성을 중지했습니다.", "idle");
+    else setLawExplorerStatus(error.message || "영향맵 생성에 실패했습니다.", "error");
+  } finally {
+    _lawExplorerAbortController = null;
+    setLawExplorerBusy(false);
+  }
+}
+
+function renderLawExplorer() {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  const data = studio?.lawExplorer?.data;
+  if (!data?.impactMap) {
+    if (elements.lawExplorerMap) {
+      elements.lawExplorerMap.innerHTML = `<div class="law-explorer-empty">공식 법령 조문 기반 영향맵이 여기에 표시됩니다.</div>`;
+    }
+    if (elements.lawExplorerDetail) {
+      elements.lawExplorerDetail.innerHTML = `<p class="law-explorer-empty">법령명과 조문을 입력하면 공식 조문 기반 영향맵을 보여줍니다.</p>`;
+    }
+    return;
+  }
+  renderLawImpactMap(data.impactMap, data.citation);
+  setLawExplorerStatus(data.citation?.locator ? `확인된 조문: ${data.citation.locator}` : "영향맵 생성 완료", "done");
+}
+
+function renderLawImpactMap(impactMap, citation) {
+  const target = elements.lawExplorerMap;
+  if (!target) return;
+  target.innerHTML = "";
+  const nodes = Array.isArray(impactMap.nodes) ? impactMap.nodes : [];
+  const byType = new Map();
+  nodes.forEach((node) => {
+    const type = node.type || "other";
+    if (!byType.has(type)) byType.set(type, []);
+    byType.get(type).push(node);
+  });
+  const order = ["law_article", "review_subject", "obligation", "condition", "risk", "material_signal", "other"];
+  for (const type of order) {
+    const group = byType.get(type);
+    if (!group?.length) continue;
+    const section = document.createElement("section");
+    section.className = "law-impact-section";
+    const heading = document.createElement("h4");
+    heading.textContent = lawImpactTypeLabel(type);
+    section.append(heading);
+    for (const node of group) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `law-impact-node law-impact-node-${type}`;
+      button.textContent = node.label || node.id;
+      button.addEventListener("click", () => renderLawImpactDetail(node, impactMap, citation));
+      section.append(button);
+    }
+    target.append(section);
+  }
+  renderLawImpactDetail(nodes[0], impactMap, citation);
+}
+
+function renderLawImpactDetail(node, impactMap, citation) {
+  const target = elements.lawExplorerDetail;
+  if (!target || !node) return;
+  target.innerHTML = "";
+  const title = document.createElement("h3");
+  title.textContent = node.label || "Impact node";
+  const meta = document.createElement("div");
+  meta.className = "law-explorer-detail-meta";
+  meta.textContent = lawImpactTypeLabel(node.type);
+  const summary = document.createElement("p");
+  summary.textContent = node.summary || "";
+  target.append(title, meta, summary);
+  if (node.citationId && citation?.url) {
+    const link = document.createElement("a");
+    link.className = "law-explorer-link";
+    link.href = citation.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = `${node.citationId} law.go.kr 원문`;
+    target.append(link);
+  }
+  const related = (impactMap.edges || []).filter((edge) => edge.from === node.id || edge.to === node.id);
+  if (related.length) {
+    const list = document.createElement("div");
+    list.className = "law-explorer-related";
+    related.slice(0, 8).forEach((edge) => {
+      const item = document.createElement("span");
+      item.textContent = edge.label || "related";
+      list.append(item);
+    });
+    target.append(list);
+  }
+}
+
+function collectLawExplorerMaterialText() {
+  const docs = getActiveDocuments();
+  const chunks = [];
+  for (const doc of docs) {
+    if (doc.kind !== "document") continue;
+    chunks.push(sampleDocumentText(doc, 3000));
+    if (chunks.join("\n").length > 9000) break;
+  }
+  return chunks.join("\n\n").slice(0, 10000);
+}
+
+function setLawExplorerBusy(isBusy) {
+  const button = elements.lawExplorerRunButton;
+  if (!button) return;
+  button.textContent = isBusy ? "중지" : "영향맵";
+  button.setAttribute("aria-busy", isBusy ? "true" : "false");
+}
+
+function setLawExplorerStatus(message, mode = "idle") {
+  if (!elements.lawExplorerStatus) return;
+  elements.lawExplorerStatus.textContent = message || "";
+  elements.lawExplorerStatus.dataset.mode = mode;
+}
+
+function lawImpactTypeLabel(type) {
+  return ({
+    law_article: "법령 조문",
+    review_subject: "검토 대상",
+    obligation: "의무/금지",
+    condition: "적용 요건",
+    risk: "리스크",
+    material_signal: "자료 신호"
+  })[type] || "기타";
 }
 
 function setMindmapBusy(isBusy) {

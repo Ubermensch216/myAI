@@ -230,6 +230,13 @@
               <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
             </svg>
           </button>
+          <button id="studioLawRailButton" class="studio-rail-button" type="button" title="Law explorer" aria-label="Law explorer">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3h10l3 3v15H6z"></path>
+              <path d="M15 3v4h4"></path>
+              <path d="M9 11h6M9 15h6M9 19h4"></path>
+            </svg>
+          </button>
         </div>
 
         <div id="studioContent" class="studio-content" data-active-tool="mindmap">
@@ -253,6 +260,14 @@
                 <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
               </svg>
               <span class="studio-tool-label">&#xC9C0;&#xC2DD;&#xADF8;&#xB798;&#xD504;</span>
+            </button>
+            <button id="studioLawButton" class="studio-tool-card" type="button" data-tool="law" aria-label="Law explorer">
+              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 3h10l3 3v15H6z"></path>
+                <path d="M15 3v4h4"></path>
+                <path d="M9 11h6M9 15h6M9 19h4"></path>
+              </svg>
+              <span class="studio-tool-label">&#xBC95;&#xB839;&#xD0D0;&#xC0C9;</span>
             </button>
           </div>
 
@@ -304,6 +319,22 @@
               <aside id="kgDetailPane" class="kg-detail-pane">
                 <div id="kgDetailEmpty" class="kg-detail-empty">&#xB178;&#xB4DC; &#xB610;&#xB294; &#xC5E3;&#xC9C0;&#xB97C; &#xD074;&#xB9AD;&#xD558;&#xBA74; &#xC0C1;&#xC138;&#xAC00; &#xD45C;&#xC2DC;&#xB429;&#xB2C8;&#xB2E4;.</div>
                 <div id="kgDetailBody" class="kg-detail-body" hidden></div>
+              </aside>
+            </div>
+          </div>
+
+          <div id="studioLawPanel" class="studio-tool-panel studio-law-panel" data-tool-panel="law" hidden>
+            <div class="law-explorer-toolbar">
+              <input id="lawExplorerLawName" class="text-input" type="text" placeholder="법령명" />
+              <input id="lawExplorerArticle" class="text-input" type="text" placeholder="조문 예: 제15조" />
+              <input id="lawExplorerSubject" class="text-input" type="text" placeholder="검토 대상" />
+              <button id="lawExplorerRunButton" class="send-button" type="button">&#xC601;&#xD5A5;&#xB9F5;</button>
+            </div>
+            <div id="lawExplorerStatus" class="law-explorer-status"></div>
+            <div class="law-explorer-body">
+              <div id="lawExplorerMap" class="law-explorer-map"></div>
+              <aside id="lawExplorerDetail" class="law-explorer-detail">
+                <p class="law-explorer-empty">&#xBC95;&#xB839;&#xBA85;&#xACFC; &#xC870;&#xBB38;&#xC744; &#xC785;&#xB825;&#xD558;&#xBA74; &#xACF5;&#xC2DD; &#xC870;&#xBB38; &#xAE30;&#xBC18; &#xC601;&#xD5A5;&#xB9F5;&#xC744; &#xBCF4;&#xC5EC;&#xC90D;&#xB2C8;&#xB2E4;.</p>
               </aside>
             </div>
           </div>

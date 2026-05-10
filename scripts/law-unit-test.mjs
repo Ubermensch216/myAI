@@ -17,6 +17,7 @@ const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
 const { stripLawPrivateFields } = await import("../server/law/lawApiClient.js");
 const { normalizeLawCitationForMeta } = await import("../server/law/lawCitationFormatter.js");
+const { buildImpactMap, createDeterministicImpactMap } = await import("../server/law/tools/impactMap.js");
 const {
   buildLawCacheKey,
   getCachedLawResponse,
@@ -33,6 +34,8 @@ await run("API key masking", testApiKeyMasking);
 await run("law private response field stripping", testPrivateFieldStripping);
 await run("law cache normalization and invalidation", testLawCache);
 await run("citation meta carries article excerpt", testCitationExcerptMeta);
+await run("impact map deterministic graph", testImpactMapGraph);
+await run("impact map tool uses official article detail", testImpactMapTool);
 
 await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 if (failureCount > 0) process.exitCode = 1;
@@ -163,6 +166,61 @@ function testCitationExcerptMeta() {
   const empty = normalizeLawCitationForMeta(baseCitation, 0, "");
   assert.equal(empty.excerpt, undefined, "no excerpt field when text is empty");
   assert.equal(empty.excerptTruncated, undefined);
+}
+
+function testImpactMapGraph() {
+  const impact = createDeterministicImpactMap({
+    citation: {
+      citationId: "L1",
+      lawName: "개인정보 보호법",
+      article: "제15조",
+      locator: "개인정보 보호법 제15조",
+      title: "개인정보의 수집ㆍ이용",
+      url: "https://www.law.go.kr/법령/개인정보보호법/제15조"
+    },
+    articleText: "개인정보처리자는 정보주체의 동의를 받은 경우 개인정보를 수집할 수 있다. 법률에 특별한 규정이 있는 경우에는 필요한 범위에서 이용하여야 한다. 이를 위반한 경우 책임이 발생할 수 있다.",
+    subject: "회원가입 양식",
+    materialText: "회원가입 양식은 개인정보 수집 동의 문구와 이용 목적을 표시한다."
+  });
+  assert.equal(impact.mode, "impact_map");
+  assert.ok(impact.nodes.some((node) => node.type === "law_article" && node.citationId === "L1"));
+  assert.ok(impact.nodes.some((node) => node.type === "obligation"));
+  assert.ok(impact.nodes.some((node) => node.type === "condition"));
+  assert.ok(impact.edges.some((edge) => edge.label === "requires"));
+  assert.equal(JSON.stringify(impact).includes("SECRET-LAW-KEY"), false);
+}
+
+async function testImpactMapTool() {
+  const result = await buildImpactMap({
+    lawName: "개인정보 보호법",
+    article: "제15조",
+    subject: "가입 화면"
+  }, {
+    client: {
+      async getLawArticle() {
+        return {
+          ok: true,
+          cacheHit: true,
+          text: "개인정보처리자는 정보주체의 동의를 받은 경우 개인정보를 수집할 수 있다. 필요한 범위에서 이용하여야 한다.",
+          citation: {
+            citationId: "L1",
+            sourceType: "law",
+            lawName: "개인정보 보호법",
+            article: "제15조",
+            canonical: "개인정보 보호법/제15조",
+            title: "개인정보의 수집ㆍ이용",
+            locator: "개인정보 보호법 제15조",
+            url: "https://www.law.go.kr/법령/개인정보보호법/제15조"
+          }
+        };
+      }
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.cacheHit, true);
+  assert.equal(result.citation.citationId, "L1");
+  assert.equal(result.impactMap.mode, "impact_map");
+  assert.ok(result.impactMap.nodes.length >= 4);
 }
 
 async function testLawCache() {

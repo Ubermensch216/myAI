@@ -43,6 +43,7 @@ Implemented pieces:
 - `POST /api/law/admin-rules/detail`
 - `POST /api/law/ordinances/search`
 - `POST /api/law/ordinances/detail`
+- `POST /api/law/impact-map`
 - `legal_research` chat mode that combines statute, precedent, interpretation,
   admin-rule, and ordinance results based on intent flags
 - Chat integration through `server/ollama.js` and `lawContextBuilder.js`
@@ -53,6 +54,9 @@ Implemented pieces:
 - Law source panel detail with official-law badge, law/article label, effective
   date, official link, and an expandable article excerpt with deep-link to
   law.go.kr when the official text is truncated
+- Studio Law Explorer MVP that calls the impact-map endpoint and renders
+  official-article, subject, obligation, condition, risk, and material-signal
+  groups
 - Per-record meta fields rendered for each citation kind (사건번호/선고법원/
   선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
   종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
@@ -63,7 +67,7 @@ Implemented pieces:
 
 Still incomplete or follow-up work:
 
-- Impact map, historical comparison/time-travel, and action-plan mode.
+- Historical comparison/time-travel and action-plan mode.
 - Knowledge graph integration using the existing per-notebook `graph.sqlite`
   infrastructure.
 
@@ -87,7 +91,7 @@ LAW_CACHE_MAX_ENTRIES=1000
 
 LAW_AUTO_DETECT=false
 LAW_VERIFY_CITATIONS=true
-LAW_IMPACT_MAP_ENABLED=false
+LAW_IMPACT_MAP_ENABLED=true
 
 RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
 RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
@@ -126,6 +130,7 @@ server/law/lawLogger.js
 server/law/tools/adminRules.js
 server/law/tools/articleDetail.js
 server/law/tools/interpretations.js
+server/law/tools/impactMap.js
 server/law/tools/lawText.js
 server/law/tools/ordinances.js
 server/law/tools/precedents.js
@@ -281,6 +286,19 @@ Request:
 Returns the canonical ordinance record plus a `law_ordinance` citation. Either
 `ordinId` or `query` may be supplied; `query` resolves to the top hit through
 the search endpoint.
+
+### `POST /api/law/impact-map`
+
+Request:
+
+```json
+{ "lawName": "개인정보 보호법", "article": "제15조", "subject": "회원가입 양식", "materialText": "optional local material excerpt" }
+```
+
+Fetches the official statute article, then returns a deterministic structural
+impact map. It does not ask the model to infer legal duties. The response
+contains one official law citation plus graph-like `nodes`, `edges`, `groups`,
+and `warnings` under `impactMap`.
 
 ## Chat Behavior
 
@@ -506,9 +524,9 @@ Phase 2 (complete):
 
 Phase 3:
 
-- Impact map tool
-- `/api/law/impact-map`
-- Studio Law Explorer MVP
+- ✅ Impact map tool
+- ✅ `/api/law/impact-map`
+- ✅ Studio Law Explorer MVP
 
 Phase 4:
 

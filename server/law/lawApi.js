@@ -10,6 +10,7 @@ import { searchPrecedents, getPrecedentDetail } from "./tools/precedents.js";
 import { searchInterpretations, getInterpretationDetail } from "./tools/interpretations.js";
 import { searchAdminRules, getAdminRuleDetail } from "./tools/adminRules.js";
 import { searchOrdinances, getOrdinanceDetail } from "./tools/ordinances.js";
+import { buildImpactMap } from "./tools/impactMap.js";
 import { createRateLimiter } from "../rateLimit.js";
 
 export const lawApiRouter = express.Router();
@@ -25,6 +26,9 @@ lawApiRouter.get("/status", async (_request, response) => {
     configured: config.configured,
     cache,
     api: { provider: config.apiProvider },
+    features: {
+      impactMap: config.impactMapEnabled
+    },
     usage: {
       todayCalls: 0,
       todayErrors: getLawCacheStats().errors,
@@ -250,6 +254,34 @@ lawApiRouter.post(
         text: result.text,
         cacheHit: Boolean(result.cacheHit)
       });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/impact-map",
+  createRateLimiter({ name: "law_impact", keyPrefix: "law_impact:", ...lawRateLimits.impact }),
+  async (request, response) => {
+    try {
+      const config = getLawConfig();
+      assertLawAvailable(config);
+      if (!config.impactMapEnabled) {
+        response.status(503).json({
+          ok: false,
+          error: "Korean Law impact map is disabled by LAW_IMPACT_MAP_ENABLED=false.",
+          marker: "LAW_DISABLED"
+        });
+        return;
+      }
+      const result = await buildImpactMap({
+        lawName: request.body?.lawName,
+        article: request.body?.article,
+        subject: request.body?.subject,
+        materialText: request.body?.materialText
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
     } catch (error) {
       sendLawError(response, error);
     }
