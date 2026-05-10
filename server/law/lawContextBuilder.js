@@ -301,7 +301,10 @@ function formatSearchContext(result) {
   const lines = [
     "[공식 법령 검색 결과]",
     `Query: ${result.query}`,
-    "These are official law search candidates. Use them only to identify likely law names/IDs; fetch article text before making article-specific claims."
+    "The official law database confirmed the following law(s) exist. " +
+    "Answer the user's question using your knowledge of these laws. " +
+    "If you cite a specific article, clearly note whether you retrieved the full text from the API or are relying on training knowledge. " +
+    "Do NOT fabricate article numbers or content you are not confident about."
   ];
   items.forEach((item, index) => {
     lines.push(`[L-S${index + 1}] ${item.lawName}\nID: ${item.lawId || ""}\nMST: ${item.mst || ""}\nType: ${item.lawType || ""}\nEffective date: ${item.effectiveDate || ""}`);

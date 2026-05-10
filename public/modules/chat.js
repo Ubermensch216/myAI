@@ -236,6 +236,12 @@ export async function removeUploadedFile(uploadedFile) {
   room.updatedAt = new Date().toISOString();
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  if (elements.uploadProgress) {
+    const fileName = String(uploadedFile.fileName || "");
+    const chip = [...elements.uploadProgress.querySelectorAll(".upload-progress-item")]
+      .find((item) => item.querySelector(".upload-progress-name")?.textContent === fileName);
+    chip?.remove();
+  }
 }
 
 export async function confirmAndClearRoomDocuments(room = getActiveRoom()) {
@@ -732,10 +738,14 @@ async function requestFollowupSuggestions(room) {
 }
 
 function buildLocalFollowupSuggestions(room) {
+  const messages = Array.isArray(room?.messages) ? room.messages : [];
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const topic = createFollowupTopic(lastAssistant?.content || lastUser?.content || "");
   return [
-    "방금 논의한 내용의 핵심을 요약하고, 실무 적용 시 가장 주의할 점을 알려줘",
-    "이 주제와 관련하여 우리가 간과했을 만한 리스크나 반대 관점이 있을까?",
-    "이 개념을 실제 운영 환경이나 더 큰 규모의 프로젝트에 적용한다면 어떻게 변화해야 할까?"
+    `${topic}에서 놓친 부분이나 예외 케이스가 있을까?`,
+    `${topic}을 실제로 적용할 때 가장 먼저 해야 할 것은 뭐야?`,
+    `${topic}과 관련해서 더 깊이 알아야 할 개념이나 배경이 있어?`
   ];
 }
 
@@ -1518,7 +1528,7 @@ function shouldShowLawProcessing(prompt) {
   const text = String(prompt || "");
   if (!text.trim()) return false;
   if (wantsExplicitWebSearch(text)) return false;
-  return /법령|법률|조문|조항|법에서|법령에서|근거\s*법|인용\s*검증|조문\s*검증|위법|적법|컴플라이언스|준수|판례|해석례|시행령|시행규칙|고시|예규|민법|형법|상법|개인정보\s*보호법|제\s*\d+\s*조/u.test(text);
+  return /법령|법률|조문|조항|법에서|법령에서|근거\s*법|인용\s*검증|조문\s*검증|위법|적법|컴플라이언스|준수|판례|해석례|시행령|시행규칙|고시|예규|헌법|민법|형법|상법|개인정보\s*보호법|근로기준법|도로교통법|국가공무원법|제\s*\d+\s*조/u.test(text);
 }
 
 // ===== Visualization helpers =====

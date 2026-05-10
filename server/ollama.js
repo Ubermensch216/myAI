@@ -287,22 +287,23 @@ export async function generateFollowupSuggestions({
         {
           role: "system",
           content: [
-            "You are a helpful assistant that generates follow-up questions for a Korean AI chat UI.",
-            "Analyze the provided conversation and generate exactly 3 follow-up questions that the user is most likely to be curious about next.",
-            "The questions must be highly contextual, grounded in the specific topics, nouns, and logic discussed in the recent messages.",
-            "Do not follow a fixed template; instead, use your intelligence to decide whether to ask for clarification, explore a related sub-topic, or suggest a practical next step based on what makes the most sense for this specific talk.",
-            "Return only a strict JSON array of 3 Korean strings.",
-            "Example: [\"질문1\", \"질문2\", \"질문3\"]"
+            "너는 대화 내용을 분석해서 사용자가 다음에 물어볼 만한 후속 질문 3개를 추천하는 도우미야.",
+            "반드시 아래 조건을 지켜:",
+            "1. 대화에서 실제로 언급된 구체적인 주제·용어·상황을 질문에 포함할 것",
+            "2. 세 질문이 각각 다른 방향(구체적 적용 / 심화 이해 / 리스크·예외)을 커버할 것",
+            "3. 한국어로 작성하고, JSON 배열만 출력할 것 — 다른 텍스트는 일절 쓰지 말 것",
+            '출력 형식: ["질문1", "질문2", "질문3"]'
           ].join("\n")
         },
         {
           role: "user",
-          content: `Conversation:\n\n${recentMessages}\n\nCreate concrete follow-up questions grounded in this exact conversation.`
+          content: `대화 내용:\n\n${recentMessages}\n\n위 대화를 바탕으로 후속 질문 3개를 JSON 배열로만 출력해.`
         }
       ],
       options: {
         temperature: 0.45,
-        top_p: 0.9
+        top_p: 0.9,
+        num_predict: 300
       }
     })
   });

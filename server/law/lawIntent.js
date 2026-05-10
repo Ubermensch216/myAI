@@ -9,12 +9,14 @@ const EXPLICIT_LEGAL_PATTERNS = [
   /판례\s*(?:찾아|검색)/u,
   /해석례\s*(?:찾아|검색)/u,
   /공식\s*법령/u,
-  /법률?\s*(?:검토|위반|준수|적법|컴플라이언스)/u
+  /법률?\s*(?:검토|위반|준수|적법|컴플라이언스)/u,
+  // 잘 알려진 법령 이름 + "에는/에서" → 해당 법의 내용을 묻는 쿼리
+  /(?:대한민국\s*)?(?:헌법|민법|형법|상법|민사소송법|형사소송법|행정소송법|행정심판법|행정절차법|행정기본법|국가공무원법|지방공무원법|근로기준법|노동조합법|도로교통법|개인정보\s?보호법|정보통신망법|소득세법|법인세법|부가가치세법|국세기본법|관세법|국가배상법)에[는서]/u
 ];
 
 // Tokens that indicate the prompt is about an actual statute/case body, not a
 // generic mention of "법" or "규정". Used to gate the broad legal-review path.
-const LEGAL_KEYWORDS = /(법령|법률|시행령|시행규칙|판례|대법원|헌법재판소|행정심판|행정소송|해석례|자치법규|조례|고시|예규|불법행위|위법|적법|준법|컴플라이언스|개정이력)/u;
+const LEGAL_KEYWORDS = /(법령|법률|시행령|시행규칙|판례|대법원|헌법재판소|행정심판|행정소송|해석례|자치법규|조례|고시|예규|불법행위|위법|적법|준법|컴플라이언스|개정이력|헌법|근로기준법|개인정보\s?보호법|도로교통법|국가공무원법|국세기본법)/u;
 const NEWS_KEYWORDS = /(뉴스|최근\s*보도|보도|언론|기사|동향)/u;
 const ARTICLE_TOKEN_PATTERN = /제\s*\d{1,4}\s*조(?:\s*의\s*\d{1,2})?/u;
 
@@ -170,8 +172,33 @@ function inferLawName(text) {
   return isLawishName(candidate) ? candidate : "";
 }
 
+// 알려진 법령명 목록 (normalizeSearchQuery와 extractLawPrefix에서 공유)
+const KNOWN_LAW_NAMES =
+  "헌법|민법|형법|상법|민사소송법|형사소송법|행정소송법|행정심판법|행정절차법|행정기본법|" +
+  "국가공무원법|지방공무원법|근로기준법|노동조합법|도로교통법|개인정보보호법|개인정보\\s?보호법|" +
+  "정보통신망법|소득세법|법인세법|부가가치세법|국세기본법|관세법|국가배상법";
+
 function normalizeSearchQuery(text) {
-  return String(text || "")
+  const raw = String(text || "");
+
+  // "법명에[는서] + 내용 질문" 패턴 → 법령명 + 핵심 목적어만 추출
+  const lawPrefixRe = new RegExp(
+    `^(?:대한민국\\s*)?(${KNOWN_LAW_NAMES}|[가-힣]{2,20}법)에[는서]`,
+    "u"
+  );
+  const lawMatch = raw.match(lawPrefixRe);
+  if (lawMatch) {
+    const lawName = lawMatch[1].trim();
+    const after = raw.slice(lawMatch[0].length);
+    // 을/를 앞에 오는 명사(목적어)를 핵심 키워드로 추출
+    const keywords = [...after.matchAll(/([가-힣]{2,10})(?=을|를)/gu)]
+      .map((m) => m[1])
+      .filter((w) => !/^(?:경우|방법|내용|사항|규정|사람|것|여부)$/.test(w))
+      .slice(0, 2);
+    return [lawName, ...keywords].join(" ").trim().slice(0, 80);
+  }
+
+  return raw
     .replace(/법령에서\s*찾아줘?/gu, " ")
     .replace(/법에서\s*찾아줘?/gu, " ")
     .replace(/조문\s*(?:검색|찾아줘?|확인|검증).*/u, " ")
