@@ -1,5 +1,7 @@
 # PRD: Korean Law Engine Integration
 
+**Version: v2 (2026-05-10).** v2 incorporates review feedback. Tightened items: explicit MVP activation default (`LAW_AUTO_DETECT=false`), Naver Search vs Korean Law precedence, mode-by-mode disclaimer policy, article-reference normalization spec, file-naming alignment (`lawApi.js`), cache relocation (`data/cache/`), KG reuse-rather-than-fork policy, concrete rate-limit defaults, external-API privacy/logging rules, `LAW_OC` as canonical env (`KOREAN_LAW_API_KEY` only as compatibility alias), non-functional acceptance criteria, fixed §12/§17 phase numbering.
+
 ## 1. Purpose
 
 This document gives implementation context and concrete requirements for absorbing `korean-law-mcp` into `myAI` as a native Korean law grounding layer.
@@ -45,7 +47,7 @@ Naver Search
 Normal model-only chat
 ```
 
-The Korean law feature must be added as a new grounding source, not as a replacement for existing RAG.
+The Korean law feature must be added as a new grounding layer, not as a replacement for existing RAG.
 
 ### 2.2 korean-law-mcp source project
 
@@ -102,13 +104,13 @@ Non-goals for MVP:
 
 ### 5.1 Official legal grounding layer
 
-Korean law context should be a new source type:
+Korean law context is a new source type:
 
 ```text
 sourceType = "law"
 ```
 
-It should sit beside existing source types:
+It sits beside existing source types:
 
 ```text
 notebook citations -> [N1], [N2]
@@ -118,9 +120,9 @@ law citations      -> [L1], [L2]
 
 ### 5.2 Law search is not normal web search
 
-Current myAI intentionally skips Naver Search when uploaded documents or a department notebook is active. That policy should stay.
+Current myAI intentionally skips Naver Search when uploaded documents or a department notebook is active. That policy stays.
 
-Korean Law Engine is different. It should be allowed to combine with department notebooks and uploaded documents when the user explicitly asks for a legal check.
+Korean Law Engine is different. It is allowed to combine with department notebooks and uploaded documents when the user explicitly asks for a legal check.
 
 Policy:
 
@@ -149,21 +151,41 @@ Use explicit failure markers internally:
 
 If a legal lookup fails, the assistant may explain that official legal lookup failed, but must not fabricate the law text.
 
+### 5.4 Naver Search vs Korean Law precedence
+
+When a single prompt could trigger both Korean Law Engine and Naver Search, apply this precedence:
+
+```text
+1. If the prompt contains a recognizable statute/article pattern (lawName + 제N조),
+   call Korean Law Engine first.
+2. If the user explicitly asks for news/coverage ("뉴스", "최근 보도", "언론", "웹에서"),
+   Naver Search may also run as a separate, lower-priority context source.
+3. When both run, [L] law citations and [W] web citations remain separate in the
+   source panel. Never merge them into one list.
+4. For statute existence and original article text, Korean Law Engine results are
+   authoritative. Web results must not be used to assert that a statute exists.
+5. If Korean Law Engine returns NOT_FOUND or LAW_API_ERROR, the assistant must not
+   conclude statute existence from web evidence alone.
+```
+
+This rule is enforced in the chat orchestrator (`server/ollama.js` prompt build path), not delegated to the LLM through prose instructions alone.
+
 ## 6. Proposed Architecture
 
 ### 6.1 New server module layout
 
-Add native modules under `server/law/`:
+Add native modules under `server/law/`. Naming follows the existing `*Api.js` convention used by `server/ragEvalApi.js`, `server/graphAdminApi.js`, and `server/graphStudioApi.js`:
 
 ```text
 server/law/
   lawConfig.js
   lawApiClient.js
-  lawRouter.js
+  lawApi.js                 # Express router; was lawRouter.js in v1
   lawIntent.js
   lawContextBuilder.js
   lawCitationFormatter.js
   lawCitationVerifier.js
+  lawArticleRef.js          # canonical article-reference normalization (new in v2)
   lawCache.js
   lawErrors.js
   tools/
@@ -198,60 +220,88 @@ export async function buildImpactMap({ lawName, article }) {}
 
 ### 6.3 Environment variables
 
-Add these variables to `.env.example`, `deploy/myai.env.example`, and README configuration tables:
+Add to `.env.example`, `.env.department.example`, `deploy/myai.env.example`, and the README configuration table:
 
 ```env
 LAW_API_ENABLED=true
+
+# Canonical legal API key. Server-side only.
 LAW_OC=
-KOREAN_LAW_API_KEY=
+
 LAW_USER_AGENT=Mozilla/5.0 (compatible; myAI Korean Law Engine)
 LAW_TIMEOUT_MS=8000
 LAW_MAX_RESULTS=8
 LAW_CONTEXT_BUDGET=10000
+
 LAW_CACHE_ENABLED=true
 LAW_CACHE_TTL_MS=86400000
 LAW_CACHE_MAX_ENTRIES=1000
-LAW_AUTO_DETECT=true
+
+# Auto-detect off in MVP. See §8.2 — prefer explicit activation until intent
+# precision is measured. Flip to true only after the keyword set has passed a
+# false-positive evaluation gate.
+LAW_AUTO_DETECT=false
 LAW_VERIFY_CITATIONS=true
 LAW_IMPACT_MAP_ENABLED=false
+
+# Per-route rate limits. See §13.3.
+RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
+RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
+RATE_LIMIT_LAW_VERIFY_PER_MINUTE=20
+RATE_LIMIT_LAW_RESEARCH_PER_MINUTE=8
+RATE_LIMIT_LAW_IMPACT_PER_MINUTE=4
+RATE_LIMIT_LAW_TIME_TRAVEL_PER_MINUTE=4
 ```
 
 Rules:
 
-- `LAW_OC` and `KOREAN_LAW_API_KEY` are aliases. Prefer `LAW_OC` if both are set.
-- Legal API keys are server-side only.
-- Never send the law API key to the browser.
-- Mask API keys in logs and errors.
+- `LAW_OC` is the canonical env name. `KOREAN_LAW_API_KEY` is accepted only as a
+  compatibility alias for users migrating from `korean-law-mcp`. Documentation
+  examples show only `LAW_OC`.
+- Resolution order in code:
+  ```js
+  const apiKey = process.env.LAW_OC || process.env.KOREAN_LAW_API_KEY || "";
+  ```
+- Legal API keys are server-side only. Never send the key, the upstream `OC`
+  query parameter, or full request URLs to the browser or to the JSONL
+  retrieval log.
+- Mask API keys in all logs and error messages (verified by unit test, see §13.6).
 
 ### 6.4 Caching
 
-Add a simple cache layer.
-
-Initial implementation may use an in-memory LRU, but the preferred next step is SQLite:
+Korean law API responses are external-source caches that can be deleted and rebuilt. They are not search indexes. To keep operations and backup policies clean, the cache lives in a dedicated directory:
 
 ```text
-data/indexes/law-cache.sqlite
+data/cache/law-cache.sqlite
 ```
 
-Suggested cache key:
+This separates from `data/indexes/` (which holds Qdrant/SQLite FTS search indexes that are part of the RAG retrieval path).
+
+Initial implementation may use an in-memory LRU during early dev, but persistent SQLite caching is required for the MVP cache-hit acceptance criterion (§18.2).
+
+Cache key:
 
 ```text
 toolName + normalizedInput + effectiveDate
 ```
 
+`normalizedInput` must use the canonical article-reference format defined in §8.6 so that `750`, `750조`, `제750조`, and `민법 제750조` map to the same key.
+
 Suggested TTLs:
 
 ```text
 law search results: 1 day
-law article/text:   7 days
+law article/text:   7 days, but invalidate when manifest's lastModified changes
 precedent/decision: 7 days
 verification:       1 day
 impact map:         1 day
 ```
 
+For article text, the LawApiClient records the law's `lastModified` (or equivalent revision marker) in the cache row. On read, if the freshly fetched manifest reports a newer revision, the cached article body is invalidated. This prevents serving pre-amendment text after a law revision.
+
 ## 7. MVP Scope
 
-The MVP should be called:
+The MVP is called:
 
 ```text
 Korean Law Grounding MVP
@@ -283,7 +333,7 @@ get_article_detail
 verify_citations
 parse_jo_code or equivalent article-code utility
 law alias resolution
-article number / paragraph parser
+article number / paragraph parser (including circled paragraph numbers)
 fetch-with-retry with browser-like User-Agent
 error helpers including NOT_FOUND handling
 ```
@@ -308,10 +358,21 @@ Returns:
   ok: true,
   enabled: true,
   configured: true,
-  cache: { enabled: true },
-  api: { provider: "law.go.kr" }
+  cache: {
+    enabled: true,
+    storage: "sqlite",
+    hitRate: 0.0     // 24h rolling; may be null in early MVP
+  },
+  api: { provider: "law.go.kr" },
+  usage: {
+    todayCalls: 0,
+    todayErrors: 0,
+    lastError: null
+  }
 }
 ```
+
+`hitRate` and `usage.*` may report `0` / `null` in the early MVP if instrumentation is deferred, but the response shape is reserved so frontend and Admin Console status panels can render it without future migration.
 
 #### POST /api/law/search
 
@@ -355,6 +416,8 @@ Request:
 }
 ```
 
+The server normalizes `lawName`, `article`, `paragraph`, and `item` through `lawArticleRef.js` (see §8.6) before any cache lookup or external API call.
+
 Response:
 
 ```js
@@ -365,6 +428,7 @@ Response:
     sourceType: "law",
     lawName: "민법",
     article: "제750조",
+    canonical: "민법/제750조",
     title: "불법행위의 내용",
     effectiveDate: "...",
     url: "..."
@@ -392,11 +456,13 @@ Response:
   passCount: 1,
   failCount: 1,
   results: [
-    { citation: "민법 제750조", valid: true, reason: "exists" },
-    { citation: "형법 제9999조", valid: false, reason: "article_not_found" }
+    { citation: "민법 제750조",  canonical: "민법/제750조",  valid: true,  reason: "exists" },
+    { citation: "형법 제9999조", canonical: "형법/제9999조", valid: false, reason: "article_not_found" }
   ]
 }
 ```
+
+The `canonical` field uses the normalization defined in §8.6 so the frontend can deduplicate and group results.
 
 ## 8. Chat Integration Requirements
 
@@ -404,7 +470,7 @@ Response:
 
 Add `server/law/lawIntent.js`.
 
-It should detect explicit legal prompts using deterministic patterns first.
+It detects explicit legal prompts using deterministic patterns first.
 
 Initial keyword set:
 
@@ -441,10 +507,10 @@ Return shape:
 ```js
 {
   isLegalQuery: true,
-  mode: "law_article" | "law_search" | "verify_citations" | "legal_research" | "none",
+  mode: "law_article" | "law_search" | "verify_citations" | "legal_research" | "department_legal_review" | "action_plan" | "none",
   extracted: {
     lawName,
-    article,
+    article,        // canonical form per §8.6
     paragraph,
     query
   },
@@ -454,17 +520,19 @@ Return shape:
 
 ### 8.2 Explicit vs automatic use
 
-For MVP, prefer explicit activation.
+For MVP, **explicit activation is the default**. `LAW_AUTO_DETECT=false`.
 
-Legal lookup should run when:
+Legal lookup runs only when:
 
 ```text
-- user explicitly says 법령에서 찾아줘 / 법에서 찾아줘 / 조문 검증해줘 / 판례 찾아줘
-- prompt contains recognizable law name + article pattern
-- prompt asks whether a department notebook document complies with a law
+- prompt contains explicit phrasing such as 법령에서 찾아줘 / 법에서 찾아줘 /
+  조문 검증해줘 / 판례 찾아줘
+- prompt contains a recognizable lawName + article pattern (e.g., 민법 제750조)
+  with high confidence from lawIntent.js
+- prompt explicitly asks whether a department-notebook document complies with a law
 ```
 
-Avoid surprising law lookups for ordinary conversation.
+Auto-detect outside these patterns stays disabled until the keyword set has been evaluated against false-positive rates. Post-MVP may flip the default after the intent classifier passes a precision/recall gate.
 
 ### 8.3 Prompt construction
 
@@ -484,20 +552,20 @@ Instructions:
 
 ### 8.4 Metadata
 
-Extend response metadata.
-
-Current chat metadata includes notebook, citations, webSearch, and analysisMode. Add:
+Extend response metadata. Current chat metadata includes `notebook`, `citations`, `webSearch`, and `analysisMode`. Add:
 
 ```js
 law: {
   ok: true,
   query: "민법 제750조",
+  mode: "law_article",     // see §13.5; drives disclaimer rendering
   citations: [
     {
       citationId: "L1",
       sourceType: "law",
       lawName: "민법",
       article: "제750조",
+      canonical: "민법/제750조",
       title: "불법행위의 내용",
       locator: "민법 제750조",
       effectiveDate: "...",
@@ -509,9 +577,70 @@ law: {
     failCount: 0,
     results: []
   },
+  disclaimer: "short" | "mandatory" | null,
   error: ""
 }
 ```
+
+### 8.5 Naver Search precedence in chat orchestrator
+
+See §5.4. The chat orchestrator selects active context source(s) before prompt assembly. When both Korean Law Engine and Naver Search are eligible, both may run and contribute separate citation groups; the law layer always takes precedence for statute-existence claims.
+
+### 8.6 Article reference normalization
+
+`lawArticleRef.js` provides canonical normalization of Korean statute references. It is shared by intent detection, cache keys, citation verification, and KG ingestion.
+
+Input variants that must collapse to the same canonical form:
+
+```text
+750
+750조
+제750조
+민법750
+민법 제750조
+제750조의2
+750조의2
+제750조2
+```
+
+Canonical output:
+
+```text
+제750조
+제750조의2
+```
+
+Function shape:
+
+```js
+normalizeArticleRef(input) => {
+  raw: "750조의2",
+  canonical: "제750조의2",
+  articleNumber: 750,
+  branchNumber: 2,           // null when no 의N suffix
+  joCode: "..."              // when resolvable
+}
+```
+
+Paragraph (항), item (호), and subitem (목) parsing:
+
+```text
+제1항, 1항, ①  → paragraph = 1
+제2호, 2호      → item = 2
+가목, 가.       → subitem = "가"
+```
+
+Circled paragraph numbers (①②③…) must be supported — `korean-law-mcp` documented this case and the parser must keep that behavior.
+
+The combined canonical form for citation IDs:
+
+```text
+민법/제750조
+민법/제750조의2/제1항
+개인정보 보호법/제26조/제2항/제1호/가목
+```
+
+Use this canonical form in `cache key`, `verify-citations.results[].canonical`, and KG `Article` node IDs (§11).
 
 ## 9. Frontend Requirements
 
@@ -533,7 +662,7 @@ Display grouping:
 
 ### 9.2 Law citation detail
 
-Clicking a law citation should show:
+Clicking a law citation shows:
 
 ```text
 법령명
@@ -554,7 +683,11 @@ If verification fails, show a visible warning above or inside the source panel:
 - 상법 제401조의2 제7항: 해당 항을 찾을 수 없습니다.
 ```
 
-### 9.4 Optional composer trigger
+### 9.4 Disclaimer rendering
+
+When response metadata indicates a disclaimer-required mode (see §13.5), the frontend renders a compact disclaimer below the answer body and above the source panel. The disclaimer is metadata-driven (`law.disclaimer = "short" | "mandatory"`), not LLM-generated, so wording stays consistent across answers.
+
+### 9.5 Optional composer trigger
 
 Do not add a large new UI in MVP. Use chat prompts first.
 
@@ -578,7 +711,7 @@ Expected behavior:
 
 ```text
 1. run department notebook RAG
-2. detect legal review intent
+2. detect legal review intent (mode = department_legal_review)
 3. retrieve official law articles
 4. build combined context
 5. answer with separated sections and separated citations
@@ -605,15 +738,33 @@ Use separate citation IDs:
 [L1] official statute article
 ```
 
+### 10.3 Disclaimer
+
+`department_legal_review` is a disclaimer-required mode (§13.5). The frontend always shows the short disclaimer for these answers because they involve compliance interpretation.
+
 ## 11. Knowledge Graph Integration: Later Phase
 
-This is not MVP, but the design should allow it.
+This is not MVP. The design **must reuse the existing department notebook KG infrastructure** rather than create a parallel legal graph store.
 
-### 11.1 Add legal node types to notebook KG
+### 11.1 Reuse existing graph store
 
-Potential entity types:
+Use the existing modules unchanged in concept:
 
 ```text
+server/rag/graph/ontology.js   — extended ontology only
+server/rag/graph/store.js      — same SQLite schema, same store API
+server/rag/graph/extractor.js  — extended prompt only
+data/notebooks/<id>/graph.sqlite — same per-notebook graph file
+```
+
+Do not introduce a separate `data/graphs/law.sqlite` or any parallel store. Legal entities live in the same per-notebook graph as document/concept entities, which lets the existing Studio graph viewer and admin moderation endpoints work without a UI fork.
+
+### 11.2 Add legal entity and relation types
+
+Extend `ontology.js`:
+
+```text
+Entity types added:
 Law
 Article
 Precedent
@@ -622,13 +773,9 @@ AdminRule
 Ordinance
 Treaty
 LegalTerm
-```
 
-Potential relation types:
-
-```text
+Relation types added:
 CITES
-BASED_ON
 INTERPRETED_BY
 APPLIED_IN
 DELEGATES_TO
@@ -637,29 +784,38 @@ CONFLICTS_WITH
 RELATED_TO
 ```
 
-### 11.2 Ingest-time legal reference extraction
+`Article` node identifiers use the canonical form defined in §8.6 (e.g., `민법/제750조`).
 
-During department notebook ingest or KG rebuild:
+### 11.3 Ingest-time legal reference extraction
+
+Extend the extractor prompt in `server/rag/graph/extractor.js`:
 
 ```text
-chunk text
--> extract statute/article references
--> verify citations through Korean Law Engine
--> create Law/Article nodes
--> link document chunk to Article node with CITES edge
+- If a statute/article citation appears in the chunk, extract it as a Law/Article entity.
+- Use canonical article references (see §8.6).
+- If the citation has been verified by Korean Law Engine in this run, set the
+  node's verified flag and link the document chunk to the Article node with a
+  CITES edge.
+- Do not create unverified Article nodes unless explicitly marked unverified.
+  Unverified nodes must not appear in chat-time citation lists by default.
 ```
 
-### 11.3 Query-time law refresh
+### 11.4 Query-time law refresh
 
-If KG contains a Law/Article node, do not rely on stale stored text for final legal claims.
+If a KG path retrieves an `Article` node:
+
+```text
+Article node has:
+- lawName
+- articleCanonical (e.g., 제750조의2)
+- lawId or mst when resolvable
 
 At answer time:
-
-```text
-KG Article node found
--> fetch current official law text if needed
--> cite fresh law source
+- re-fetch official article text through LawApiClient
+- cite the [L] source from live retrieval, not the stale graph text
 ```
+
+This avoids serving pre-amendment text from KG-stored chunk excerpts.
 
 ## 12. Advanced Feature Roadmap
 
@@ -734,7 +890,11 @@ Use case:
 전세금을 못 받았어. 어떻게 해야 해?
 ```
 
-Response must be clearly framed as information, not legal representation.
+Response is clearly framed as information, not legal representation. `action_plan` is a mandatory-disclaimer mode (§13.5).
+
+### KG integration (separate post-MVP track)
+
+KG-related work runs as its own track and may overlap with Phases 2–5. See §11 for design and §17 for the dedicated checklist.
 
 ## 13. Security and Operations
 
@@ -751,17 +911,20 @@ Preserve the `korean-law-mcp` browser-like User-Agent behavior. The law API may 
 
 ### 13.3 Rate limits
 
-Add route-specific limits:
+Default per-route limits with concrete numbers (env-overridable, see §6.3):
 
-```text
-/api/law/search:            moderate
-/api/law/article:           moderate
-/api/law/verify-citations:  moderate
-/api/law/impact-map:        strict
-/api/law/time-travel:       strict
-```
+| Route | Default per minute | Tier | MVP |
+|---|---:|---|---|
+| `/api/law/search` | 15 | moderate | yes |
+| `/api/law/article` | 20 | moderate | yes |
+| `/api/law/verify-citations` | 20 | moderate | yes |
+| `/api/law/research` (Phase 2) | 8 | strict | no |
+| `/api/law/impact-map` (Phase 3) | 4 | strict | no |
+| `/api/law/time-travel` (Phase 4) | 4 | strict | no |
 
-Use existing myAI `rateLimit.js` patterns.
+MVP enables only `search`, `article`, and `verify-citations`. The others are defined upfront so adding endpoints later does not require new env-var plumbing — just routing.
+
+Use the existing `server/rateLimit.js` patterns. Trusted-proxy keying (`TRUST_PROXY`, `RATE_LIMIT_KEY_HEADER`) applies to law routes the same way it applies to chat/upload.
 
 ### 13.4 Failure handling
 
@@ -776,13 +939,42 @@ On external API failure:
 
 ### 13.5 Legal disclaimer
 
-For legal-information answers, add a concise disclaimer only when appropriate:
+Disclaimer policy is mode-driven and rendered by frontend metadata (see §9.4), not by free-form LLM prose.
+
+| Mode | Use case | Disclaimer |
+|---|---|---|
+| `law_article` | direct article lookup | none |
+| `law_search` | law-name / article search | none |
+| `verify_citations` | citation verification | none |
+| `legal_research` | interpretation, precedent synthesis, compliance review | short |
+| `department_legal_review` | internal-policy vs statute comparison | short |
+| `action_plan` (Phase 5) | step-by-step citizen guidance | mandatory |
+
+The short disclaimer is:
 
 ```text
-이 답변은 공식 법령 정보를 바탕으로 한 일반 정보이며, 구체적 사건의 법률 자문은 전문가 상담이 필요합니다.
+이 답변은 공식 법령 정보를 바탕으로 한 일반 정보이며, 구체적 사건의 법률 자문은
+전문가 상담이 필요합니다.
 ```
 
-Do not overuse the disclaimer for simple article lookup answers.
+Avoid attaching it to simple article-lookup answers; over-use erodes its meaning.
+
+### 13.6 External API privacy and logging
+
+Korean law APIs are external services and receive query data on every call. The following rules govern what crosses the boundary and what is recorded:
+
+- Do not forward the full user prompt to the external API. Send only normalized
+  fields (canonical lawName, canonical article reference, search query,
+  display count).
+- The retrieval logger writes a privacy-safe JSONL entry per law call:
+  `{ tool, normalizedQuery, latencyMs, resultCount, cacheHit, errorMarker }`.
+  No raw user prompt, no `LAW_OC`, no full request URL with `OC=` are written.
+- Error messages and stack traces must mask the API key. Validate this with a
+  unit test that injects `LAW_OC=SECRET` and asserts the literal does not
+  appear anywhere in formatted error output.
+- The browser never receives the API key, full upstream URL, or upstream `OC`
+  parameter — only the normalized citation payload (lawName, article, title,
+  effectiveDate, public URL).
 
 ## 14. Testing Requirements
 
@@ -794,10 +986,12 @@ Add tests for:
 law intent detection
 article number parsing
 paragraph/hang number parsing including circled Korean paragraph numbers
+canonical article reference round-trip (§8.6)
 law citation extraction
 NOT_FOUND response handling
-API key masking
+API key masking (§13.6)
 cache key normalization
+cache invalidation on lastModified bump
 ```
 
 ### 14.2 API tests
@@ -811,7 +1005,7 @@ POST /api/law/article with 민법 제750조
 POST /api/law/verify-citations with one valid and one invalid citation
 ```
 
-Live tests should be skipped or marked when `LAW_OC` is not configured.
+Live tests are skipped or marked when `LAW_OC` is not configured.
 
 ### 14.3 Chat tests
 
@@ -821,6 +1015,7 @@ Add tests for:
 법령에서 민법 제750조 찾아줘
 조문 검증해줘: 민법 제750조, 형법 제9999조
 selected notebook + legal compliance prompt
+mixed prompt: news request + statute reference (precedence test, §5.4)
 ```
 
 ### 14.4 Frontend E2E tests
@@ -832,6 +1027,7 @@ When Playwright is added, include:
 - [L1] citation appears
 - verification warning appears for invalid citation
 - department notebook source and law source appear separately
+- disclaimer renders for legal_research / action_plan, not for law_article
 ```
 
 ## 15. Documentation Requirements
@@ -841,6 +1037,7 @@ Update:
 ```text
 README.md
 .env.example
+.env.department.example
 deploy/myai.env.example
 docs/API.md
 docs/RAG.md
@@ -858,14 +1055,14 @@ docs/KOREAN_LAW_ENGINE.md
 
 ```text
 - purpose
-- environment variables
+- environment variables (LAW_OC canonical; KOREAN_LAW_API_KEY compat-only)
 - API endpoints
-- chat behavior
-- citation behavior
+- chat behavior including precedence vs Naver Search (§5.4)
+- citation behavior and canonical article references (§8.6)
 - verification behavior
+- disclaimer policy (§13.5)
+- privacy/logging policy (§13.6)
 - limitations
-- legal disclaimer policy
-- relationship to Naver Search
 - relationship to department notebooks and KG
 ```
 
@@ -880,7 +1077,7 @@ LawApiClient
 fetch-with-retry
 browser User-Agent workaround
 law alias resolution
-article parser
+article parser (including circled paragraph numbers)
 citation verifier
 NOT_FOUND / HALLUCINATION_DETECTED markers
 core search/text/article tools
@@ -924,19 +1121,27 @@ Phase 2: consider TS build only if tool count grows substantially
 ### MVP checklist
 
 ```text
-[ ] Create server/law/ module structure
-[ ] Add law env variables to examples and docs
-[ ] Port LawApiClient/fetch-with-retry/error helpers
-[ ] Implement /api/law/status
+[ ] Create server/law/ module structure (lawApi.js, not lawRouter.js)
+[ ] Add law env variables (LAW_OC canonical) to .env.example,
+    .env.department.example, deploy/myai.env.example, and README env table
+[ ] Port LawApiClient / fetch-with-retry / error helpers
+[ ] Implement lawArticleRef.js canonical normalization (§8.6)
+[ ] Implement lawCache.js at data/cache/law-cache.sqlite with lastModified-aware
+    invalidation
+[ ] Implement /api/law/status (with usage / cache-hit shape reserved)
 [ ] Implement /api/law/search
 [ ] Implement /api/law/article
 [ ] Implement /api/law/verify-citations
-[ ] Add law intent detection
-[ ] Add law context builder
+[ ] Add lawIntent.js with LAW_AUTO_DETECT=false default
+[ ] Add lawContextBuilder.js
 [ ] Integrate law context into chat prompt construction
-[ ] Extend response metadata with law citations
+[ ] Implement Naver-vs-Law precedence in chat orchestrator (§5.4 / §8.5)
+[ ] Extend X-Notebook-Meta with law citations and disclaimer mode
 [ ] Render law citations in frontend source panel
 [ ] Render citation verification warnings
+[ ] Render mode-driven disclaimer (§9.4 / §13.5)
+[ ] Wire concrete rate limits per §13.3
+[ ] Add API-key masking unit test (§13.6)
 [ ] Add smoke/live tests
 [ ] Add docs/KOREAN_LAW_ENGINE.md
 ```
@@ -948,7 +1153,8 @@ Phase 2: consider TS build only if tool count grows substantially
 [ ] Port interpretation search/text tools
 [ ] Port admin rule tools
 [ ] Port ordinance tools
-[ ] Add legal research mode
+[ ] Add legal_research mode
+[ ] Add /api/law/research route + rate limit
 [ ] Add richer law source panel detail
 ```
 
@@ -972,27 +1178,60 @@ Phase 2: consider TS build only if tool count grows substantially
 ### Phase 5 checklist
 
 ```text
-[ ] Extract law citations from department notebook chunks
-[ ] Add Law/Article nodes to notebook KG
-[ ] Add CITES edges from document chunks to legal nodes
-[ ] Add query-time law refresh for KG legal nodes
+[ ] Add action_plan mode with mandatory disclaimer (§13.5)
+[ ] Add structured-step output template
+[ ] Add scenario tests for non-legal-advice framing
+```
+
+### KG integration checklist (separate post-MVP track)
+
+```text
+[ ] Extend server/rag/graph/ontology.js with Law/Article/Precedent/... entity
+    types and CITES/INTERPRETED_BY/... relation types
+[ ] Extend server/rag/graph/extractor.js prompt to extract verified legal
+    citations as Law/Article entities with canonical IDs
+[ ] Use existing graph.sqlite per notebook — no parallel legal graph store
+[ ] Add CITES edges from document chunks to legal Article nodes
+[ ] Add query-time law refresh that re-fetches article text via LawApiClient
+    when an Article node is in the retrieval path
 ```
 
 ## 18. Acceptance Criteria
 
-MVP is complete when all are true:
+MVP is complete when all functional and non-functional criteria are true.
+
+### 18.1 Functional
 
 ```text
-1. LAW_OC configured server can search a Korean law by name.
-2. myAI can retrieve a specific statute article such as 민법 제750조.
-3. Chat prompt "법령에서 민법 제750조 찾아줘" produces an answer grounded in retrieved law text.
-4. The answer includes law citation metadata and frontend displays [L1].
-5. Citation verification detects at least one valid and one invalid citation in a sample text.
-6. When a law article is not found, the assistant does not invent the article.
-7. Department notebook + legal review prompt keeps notebook citations and law citations separate.
-8. API keys are not exposed in frontend responses or logs.
-9. Tests pass with law live tests skipped when LAW_OC is absent.
+1.  LAW_OC configured server can search a Korean law by name.
+2.  myAI can retrieve a specific statute article such as 민법 제750조.
+3.  Chat prompt "법령에서 민법 제750조 찾아줘" produces an answer grounded in
+    retrieved law text.
+4.  The answer includes law citation metadata and frontend displays [L1].
+5.  Citation verification detects at least one valid and one invalid citation
+    in a sample text.
+6.  When a law article is not found, the assistant does not invent the article.
+7.  Department notebook + legal review prompt keeps notebook citations and law
+    citations separate.
+8.  API keys are not exposed in frontend responses or logs.
+9.  Tests pass with law live tests skipped when LAW_OC is absent.
 10. Documentation explains setup and limitations.
+```
+
+### 18.2 Non-functional
+
+```text
+11. With LAW_OC unset, /api/law/* returns a structured 503 / disabled response,
+    and /api/chat continues to work for non-legal prompts.
+12. On external-API 5xx or timeout, response metadata carries [LAW_API_ERROR]
+    and the assistant does not guess article content.
+13. Identical lawName + canonical-article requests within TTL hit the cache and
+    do not re-call the external API. A test hook or /api/law/status counter
+    confirms cache hit.
+14. Article-text cache rows include the source's lastModified marker; a manifest
+    showing a newer revision invalidates the cached body before serve.
+15. The literal value of LAW_OC never appears in error output, retrieval log
+    entries, or response bodies (verified by unit test).
 ```
 
 ## 19. Risks
@@ -1000,26 +1239,40 @@ MVP is complete when all are true:
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Law API instability | Legal lookup fails | structured errors, cache, no guessing |
-| API key leakage | security issue | mask URLs, server-only env, tests |
+| API key leakage | security issue | mask URLs, server-only env, masking unit test |
 | LLM invents legal content | trust issue | strict prompt, citation verification, NOT_FOUND markers |
 | Too much code imported at once | maintainability issue | MVP subset first |
 | TypeScript/JS mismatch | build complexity | port selected modules to JS ESM first |
 | Legal and notebook evidence mixed | confusing answer | separate source groups and citation IDs |
 | Slow impact map/time travel | latency | keep advanced features out of MVP, strict rate limits |
+| Cached pre-amendment text served as current | trust issue | lastModified-aware cache invalidation (§6.4 / §18.2) |
+| Auto-detect false positives derail ordinary chat | UX degradation | LAW_AUTO_DETECT=false default until precision is measured |
 
 ## 20. Recommended First Task for Implementing AI
 
 Start with this exact sequence:
 
 ```text
-1. Read this PRD.
-2. Inspect current myAI chat metadata and source panel handling.
-3. Inspect korean-law-mcp LawApiClient, fetch-with-retry, search_law, get_law_text, get_article_detail, verify_citations.
-4. Create server/law/ with config, client, error helpers, and MVP tools.
-5. Add /api/law/status, /api/law/search, /api/law/article, /api/law/verify-citations.
-6. Add tests for those endpoints.
-7. Only after API works, integrate law context into /api/chat.
-8. Only after chat metadata works, update frontend source panel.
+1.  Read this PRD.
+2.  Inspect current myAI chat metadata construction (server/index.js
+    /api/chat handler, X-Notebook-Meta build path).
+3.  Inspect current frontend citation/source panel rendering
+    (public/answerRenderer.js, public/modules/chat.js, public/styles.css
+    source panel rules).
+4.  Inspect korean-law-mcp LawApiClient, fetch-with-retry, search_law,
+    get_law_text, get_article_detail, verify_citations, and the article-code
+    parser — these are the MVP migration units.
+5.  Create server/law/ with config, client, error helpers, lawArticleRef.js
+    (canonical normalization), and the four MVP tools.
+6.  Add /api/law/status, /api/law/search, /api/law/article,
+    /api/law/verify-citations.
+7.  Add unit and smoke tests for those endpoints, including API-key masking
+    and cache-hit verification.
+8.  Integrate law context into /api/chat, including Naver-vs-Law precedence
+    (§5.4 / §8.5).
+9.  Extend response metadata (X-Notebook-Meta) with law citations and the
+    disclaimer mode field.
+10. Update frontend source panel rendering and disclaimer display.
 ```
 
 Do not start by porting every korean-law-mcp tool. Build the smallest reliable legal grounding layer first.
