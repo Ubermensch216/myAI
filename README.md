@@ -154,6 +154,15 @@ Run the slower live tests when Ollama is running and you want to exercise parser
 npm.cmd run test:live
 ```
 
+Run the Studio knowledge-graph end-to-end check against a running app server when validating graph viewer or admin rebuild changes:
+
+```powershell
+npm.cmd run test:studio-graph
+```
+
+`npm.cmd run test:ci` runs the deterministic XLSX regression and the smoke
+suite together for CI-style validation without Ollama-backed parsers.
+
 For department RAG changes, run the fast golden-set check first and the full
 quality evaluation before release or deployment:
 
@@ -203,6 +212,11 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `KG_EXPAND_NEIGHBORS` | `8` | max one-hop neighbors loaded per graph seed |
 | `KG_EXPAND_REFS` | `4` | max source references collected per graph node |
 | `KG_EXPAND_MAX` | `12` | max graph-derived chunk supplements added before RRF fusion |
+| `KG_FUSION_WEIGHT` | `0.3` | RRF weight applied to graph-derived ranking list when fused with vector/lexical lists |
+| `KG_EXTRACT_MODEL` | `gemma4:e2b` | Ollama model used for notebook graph extraction during rebuild |
+| `KG_EXTRACT_TIMEOUT_MS` | `180000` | per-chunk extraction timeout for graph rebuild |
+| `KG_EXTRACT_MAX_CHARS` | `4000` | max chunk text length passed to the extractor |
+| `KG_CONFIDENCE_THRESHOLD` | `0.6` | confidence cutoff used when auto-enabling new graph nodes/edges |
 | `NAVER_SEARCH_ENABLED` | `true` | enable Naver Search context for explicit web-search prompts |
 | `NAVER_SEARCH_CLIENT_ID` | unset | Naver Search API client ID; server-side only |
 | `NAVER_SEARCH_CLIENT_SECRET` | unset | Naver Search API client secret; server-side only |
