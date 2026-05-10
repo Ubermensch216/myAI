@@ -8,6 +8,8 @@ import { getArticleDetail } from "./tools/articleDetail.js";
 import { verifyLawCitations } from "./tools/verifyCitations.js";
 import { searchPrecedents, getPrecedentDetail } from "./tools/precedents.js";
 import { searchInterpretations, getInterpretationDetail } from "./tools/interpretations.js";
+import { searchAdminRules, getAdminRuleDetail } from "./tools/adminRules.js";
+import { searchOrdinances, getOrdinanceDetail } from "./tools/ordinances.js";
 import { createRateLimiter } from "../rateLimit.js";
 
 export const lawApiRouter = express.Router();
@@ -160,6 +162,86 @@ lawApiRouter.post(
       assertLawAvailable(getLawConfig());
       const result = await getInterpretationDetail({
         expcId: request.body?.expcId,
+        query: request.body?.query
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json({
+        ok: true,
+        citation: result.citation,
+        text: result.text,
+        cacheHit: Boolean(result.cacheHit)
+      });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/admin-rules/search",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await searchAdminRules({
+        query: request.body?.query,
+        display: request.body?.display,
+        agency: request.body?.agency
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/admin-rules/detail",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getAdminRuleDetail({
+        admrulId: request.body?.admrulId,
+        query: request.body?.query
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json({
+        ok: true,
+        citation: result.citation,
+        text: result.text,
+        cacheHit: Boolean(result.cacheHit)
+      });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/ordinances/search",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await searchOrdinances({
+        query: request.body?.query,
+        display: request.body?.display,
+        region: request.body?.region
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/ordinances/detail",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getOrdinanceDetail({
+        ordinId: request.body?.ordinId,
         query: request.body?.query
       }, { client: createLawApiClient(), signal: request.signal });
       response.json({

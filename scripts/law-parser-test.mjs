@@ -21,7 +21,13 @@ const {
   buildPrecedentCitation,
   normalizeInterpretationResults,
   normalizeInterpretationPayload,
-  buildInterpretationCitation
+  buildInterpretationCitation,
+  normalizeAdminRuleResults,
+  normalizeAdminRulePayload,
+  buildAdminRuleCitation,
+  normalizeOrdinanceResults,
+  normalizeOrdinancePayload,
+  buildOrdinanceCitation
 } = await import("../server/law/lawApiParser.js");
 const { normalizeArticleRef } = await import("../server/law/lawArticleRef.js");
 
@@ -48,6 +54,11 @@ await run("precedent detail payload", testPrecedentDetail);
 await run("interpretation search results", testInterpretationSearch);
 await run("interpretation detail payload (질의/회답/이유)", testInterpretationDetail);
 await run("citation builders for precedent and interpretation", testNonLawCitationBuilders);
+await run("admin rule search results", testAdminRuleSearch);
+await run("admin rule detail payload", testAdminRuleDetail);
+await run("ordinance search results", testOrdinanceSearch);
+await run("ordinance detail payload", testOrdinanceDetail);
+await run("citation builders for admin rule and ordinance", testAdminOrdinanceCitations);
 
 if (failureCount > 0) process.exitCode = 1;
 
@@ -332,6 +343,81 @@ async function testInterpretationDetail() {
   assert.match(data.text, /공공기관이 보유한 정보/);
   assert.match(data.text, /\[회답\]/);
   assert.match(data.text, /\[이유\]/);
+}
+
+async function testAdminRuleSearch() {
+  const payload = await loadFixture("search-admin-rule.json");
+  const results = normalizeAdminRuleResults(payload);
+  assert.equal(results.length, 2);
+  const top = results[0];
+  assert.equal(top.admrulId, "ADM-2024-0001");
+  assert.equal(top.title, "개인정보 안전성 확보조치 기준");
+  assert.equal(top.kind, "고시");
+  assert.equal(top.agency, "개인정보보호위원회");
+  assert.equal(top.issueDate, "2024-01-15");
+  assert.equal(top.effectiveDate, "2024-03-01");
+}
+
+async function testAdminRuleDetail() {
+  const payload = await loadFixture("admin-rule-detail.json");
+  const data = normalizeAdminRulePayload(payload);
+  assert.equal(data.admrulId, "ADM-2024-0001");
+  assert.equal(data.title, "개인정보 안전성 확보조치 기준");
+  assert.equal(data.agency, "개인정보보호위원회");
+  assert.equal(data.kind, "고시");
+  assert.equal(data.effectiveDate, "2024-03-01");
+  assert.match(data.text, /제1조\(목적\)/);
+  assert.match(data.text, /개인정보 보호법/);
+}
+
+async function testOrdinanceSearch() {
+  const payload = await loadFixture("search-ordinance.json");
+  const results = normalizeOrdinanceResults(payload);
+  assert.equal(results.length, 2);
+  const top = results[0];
+  assert.equal(top.ordinId, "ORD-SEOUL-12345");
+  assert.equal(top.title, "서울특별시 주차장 설치 및 관리 조례");
+  assert.equal(top.kind, "조례");
+  assert.equal(top.region, "서울특별시");
+  assert.equal(top.effectiveDate, "2024-03-01");
+}
+
+async function testOrdinanceDetail() {
+  const payload = await loadFixture("ordinance-detail.json");
+  const data = normalizeOrdinancePayload(payload);
+  assert.equal(data.ordinId, "ORD-SEOUL-12345");
+  assert.equal(data.title, "서울특별시 주차장 설치 및 관리 조례");
+  assert.equal(data.region, "서울특별시");
+  assert.equal(data.kind, "조례");
+  assert.equal(data.effectiveDate, "2024-03-01");
+  assert.match(data.text, /제1조\(목적\)/);
+  assert.match(data.text, /주차장법/);
+}
+
+function testAdminOrdinanceCitations() {
+  const adminCitation = buildAdminRuleCitation({
+    admrulId: "ADM-2024-0001",
+    title: "개인정보 안전성 확보조치 기준",
+    agency: "개인정보보호위원회",
+    kind: "고시",
+    effectiveDate: "2024-03-01"
+  });
+  assert.equal(adminCitation.sourceType, "law_admin_rule");
+  assert.equal(adminCitation.recordType, "admin_rule");
+  assert.match(adminCitation.locator, /개인정보보호위원회.*고시.*2024-03-01/);
+  assert.match(adminCitation.url, /admRulInfoP\.do\?admRulSeq=ADM-2024-0001/);
+
+  const ordCitation = buildOrdinanceCitation({
+    ordinId: "ORD-SEOUL-12345",
+    title: "서울특별시 주차장 설치 및 관리 조례",
+    region: "서울특별시",
+    kind: "조례",
+    effectiveDate: "2024-03-01"
+  });
+  assert.equal(ordCitation.sourceType, "law_ordinance");
+  assert.equal(ordCitation.recordType, "ordinance");
+  assert.match(ordCitation.locator, /서울특별시.*조례.*2024-03-01/);
+  assert.match(ordCitation.url, /ordinInfoP\.do\?ordinSeq=ORD-SEOUL-12345/);
 }
 
 function testNonLawCitationBuilders() {

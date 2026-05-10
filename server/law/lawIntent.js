@@ -18,6 +18,12 @@ const LEGAL_KEYWORDS = /(법령|법률|시행령|시행규칙|판례|대법원|�
 const NEWS_KEYWORDS = /(뉴스|최근\s*보도|보도|언론|기사|동향)/u;
 const ARTICLE_TOKEN_PATTERN = /제\s*\d{1,4}\s*조(?:\s*의\s*\d{1,2})?/u;
 
+const PRECEDENT_INTENT_PATTERN = /(판례|판결|대법원\s*판결|선고\s*판결)/u;
+const INTERPRETATION_INTENT_PATTERN = /(법령\s*해석례|해석례|법제처\s*해석)/u;
+const ADMIN_RULE_INTENT_PATTERN = /(행정규칙|고시|예규|훈령|행정\s*지침)/u;
+const ORDINANCE_INTENT_PATTERN = /(자치법규|조례|지방자치단체\s*규칙)/u;
+const RESEARCH_VERB_PATTERN = /(찾아|검색|조회|알려|보여|살펴|어떤\s*것|있어\??)/u;
+
 export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = false } = {}) {
   const text = String(prompt || "").trim();
   if (!text) return none();
@@ -55,6 +61,9 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
     };
   }
 
+  const research = detectResearchIntent(text, citations, articlePattern);
+  if (research) return research;
+
   if (articlePattern && (explicit || citations.length || config.autoDetect)) {
     return {
       isLegalQuery: true,
@@ -80,6 +89,43 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
 
 export function isLegalPrompt(prompt, options = {}) {
   return detectLawIntent(prompt, options).isLegalQuery;
+}
+
+function detectResearchIntent(text, citations, articlePattern) {
+  const wantPrecedents = PRECEDENT_INTENT_PATTERN.test(text);
+  const wantInterpretations = INTERPRETATION_INTENT_PATTERN.test(text);
+  const wantAdminRules = ADMIN_RULE_INTENT_PATTERN.test(text);
+  const wantOrdinances = ORDINANCE_INTENT_PATTERN.test(text);
+  if (!(wantPrecedents || wantInterpretations || wantAdminRules || wantOrdinances)) return null;
+  // Require a research verb (찾아/검색/...) or a known law name to avoid
+  // triggering on stray mentions like "판례를 만들었다" or "고시 가격" (price).
+  if (!RESEARCH_VERB_PATTERN.test(text) && citations.length === 0 && !articlePattern) return null;
+  const researchQuery = normalizeResearchQuery(text);
+  return {
+    isLegalQuery: true,
+    mode: "legal_research",
+    extracted: {
+      query: researchQuery || text,
+      lawName: articlePattern?.lawName || (citations[0]?.lawName ?? ""),
+      article: articlePattern?.article || (citations[0]?.article ?? ""),
+      wantPrecedents,
+      wantInterpretations,
+      wantAdminRules,
+      wantOrdinances
+    },
+    confidence: 0.85,
+    mayUseWebSearch: NEWS_KEYWORDS.test(text)
+  };
+}
+
+function normalizeResearchQuery(text) {
+  return String(text || "")
+    .replace(/관련\s*(?:판례|해석례|행정규칙|고시|예규|훈령|조례|자치법규)/gu, " ")
+    .replace(/(?:판례|해석례|행정규칙|고시|예규|훈령|조례|자치법규)\s*(?:찾아|검색|조회|알려|보여|살펴)?\s*(?:줘|주세요)?/gu, " ")
+    .replace(/^(?:관련|있는|어떤|있어\??|있나요\??)\s*/u, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
 }
 
 function buildExtracted(text, citation) {

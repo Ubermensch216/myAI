@@ -27,10 +27,10 @@ web citations      -> [W1], [W2]
 
 ## Current Status
 
-Implemented MVP pieces:
+Implemented pieces:
 
 - `server/law/` module structure with config, router, API client, cache,
-  logging, intent detection, article normalization, and MVP tools.
+  logging, intent detection, article normalization, and tool handlers.
 - `GET /api/law/status`
 - `POST /api/law/search`
 - `POST /api/law/article`
@@ -39,23 +39,32 @@ Implemented MVP pieces:
 - `POST /api/law/precedents/detail`
 - `POST /api/law/interpretations/search`
 - `POST /api/law/interpretations/detail`
+- `POST /api/law/admin-rules/search`
+- `POST /api/law/admin-rules/detail`
+- `POST /api/law/ordinances/search`
+- `POST /api/law/ordinances/detail`
+- `legal_research` chat mode that combines statute, precedent, interpretation,
+  admin-rule, and ordinance results based on intent flags
 - Chat integration through `server/ollama.js` and `lawContextBuilder.js`
 - `X-Notebook-Meta.law` response metadata
-- Frontend law citation grouping, verification warning, and disclaimer rendering
+- Frontend law citation grouping (법령/판례/해석례/행정규칙/자치법규/웹/노트북),
+  per-source-type badge colors, verification warning, and disclaimer rendering
 - Frontend legal-prompt processing indicator that shows Korean Law Engine use
 - Law source panel detail with official-law badge, law/article label, effective
   date, official link, and an expandable article excerpt with deep-link to
   law.go.kr when the official text is truncated
+- Per-record meta fields rendered for each citation kind (사건번호/선고법원/
+  선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
+  종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
 - SQLite law cache at `data/cache/law-cache.sqlite`
 - API key masking tests and cache normalization tests
 - Smoke coverage for `/api/law/status`; optional live law.go.kr smoke coverage
 
 Still incomplete or follow-up work:
 
-- Post-MVP tools: precedents, interpretations, admin rules, ordinances, impact
-  map, historical comparison, and action-plan mode.
-- Post-MVP knowledge graph integration using the existing per-notebook
-  `graph.sqlite` infrastructure.
+- Impact map, historical comparison/time-travel, and action-plan mode.
+- Knowledge graph integration using the existing per-notebook `graph.sqlite`
+  infrastructure.
 
 ## Configuration
 
@@ -97,7 +106,7 @@ Security rules:
 
 ## Server Modules
 
-Current MVP modules:
+Current modules:
 
 ```text
 server/law/lawApi.js
@@ -111,19 +120,23 @@ server/law/lawContextBuilder.js
 server/law/lawErrors.js
 server/law/lawIntent.js
 server/law/lawLogger.js
+server/law/tools/adminRules.js
 server/law/tools/articleDetail.js
 server/law/tools/interpretations.js
 server/law/tools/lawText.js
+server/law/tools/ordinances.js
 server/law/tools/precedents.js
 server/law/tools/searchLaw.js
 server/law/tools/verifyCitations.js
 ```
 
 `lawApiParser.js` owns law.go.kr JSON normalization (search results, article
-payloads, CDATA/HTML stripping, upstream error detection). It is exercised by
+payloads, precedent/interpretation/admin-rule/ordinance payloads, CDATA/HTML
+stripping, upstream error detection). It is exercised by
 `scripts/law-parser-test.mjs` against fixtures in `scripts/fixtures/law/` that
 cover several statute families, branched articles, paragraphs, items, CDATA
-wrappers, and HTML-encoded revision markers.
+wrappers, HTML-encoded revision markers, and each Phase 2 non-statute source
+family.
 
 Do not add MCP protocol dependencies. Tool handlers should remain plain async
 functions that can be called from Express routes and chat orchestration.
@@ -218,15 +231,65 @@ combined into the `text` field with `[질의요지]/[회답]/[이유]` markers, 
 `law_interpretation` citation. Either `expcId` or `query` may be supplied;
 `query` resolves to the top hit through the search endpoint.
 
+### `POST /api/law/admin-rules/search`
+
+Request:
+
+```json
+{ "query": "개인정보 안전성 확보조치", "display": 5, "agency": "" }
+```
+
+Searches official 행정규칙 (고시/예규/훈령/지침) by keyword. Returns title,
+발령기관, 종류, 발령일자, 시행일자, and an `admrulId` that can be passed to
+the detail endpoint. Uses the `law_research` rate-limit bucket.
+
+### `POST /api/law/admin-rules/detail`
+
+Request:
+
+```json
+{ "admrulId": "ADM-2024-0001" }
+```
+
+Returns the canonical admin-rule record plus a `law_admin_rule` citation. Either
+`admrulId` or `query` may be supplied; `query` resolves to the top hit through
+the search endpoint.
+
+### `POST /api/law/ordinances/search`
+
+Request:
+
+```json
+{ "query": "서울특별시 주차장 조례", "display": 5, "region": "서울특별시" }
+```
+
+Searches official 자치법규 (조례/규칙) by keyword. Returns title, 지자체, 종류,
+공포일자, 시행일자, and an `ordinId` that can be passed to the detail endpoint.
+Uses the `law_research` rate-limit bucket.
+
+### `POST /api/law/ordinances/detail`
+
+Request:
+
+```json
+{ "ordinId": "ORD-SEOUL-12345" }
+```
+
+Returns the canonical ordinance record plus a `law_ordinance` citation. Either
+`ordinId` or `query` may be supplied; `query` resolves to the top hit through
+the search endpoint.
+
 ## Chat Behavior
 
-MVP activation is explicit. `LAW_AUTO_DETECT=false` means ordinary chat is not
-diverted into legal lookup.
+Activation is explicit by default. `LAW_AUTO_DETECT=false` means ordinary chat
+is not diverted into legal lookup.
 
 Legal lookup runs when:
 
 - The prompt explicitly asks to find law text or verify legal citations.
 - The prompt contains a recognizable law-name plus article pattern.
+- The prompt asks for official precedent, legal interpretation, admin-rule, or
+  ordinance research with a research verb such as find/search/show/explain.
 - The prompt explicitly asks whether an uploaded document or selected department
   notebook material complies with a law.
 
@@ -283,6 +346,15 @@ law: {
   disclaimer: "short" | "mandatory" | null,
   error: ""
 }
+```
+
+Phase 2 research citations may also use:
+
+```js
+{ citationId: "P1", sourceType: "law_precedent", recordType: "precedent", title, caseNumber, court, date, caseType, locator, url }
+{ citationId: "I1", sourceType: "law_interpretation", recordType: "interpretation", title, agency, date, locator, url }
+{ citationId: "R1", sourceType: "law_admin_rule", recordType: "admin_rule", title, agency, kind, issueDate, effectiveDate, locator, url }
+{ citationId: "O1", sourceType: "law_ordinance", recordType: "ordinance", title, region, kind, promulgationDate, effectiveDate, locator, url }
 ```
 
 The browser stores and renders this metadata, but it must never receive API keys
@@ -369,15 +441,16 @@ npm.cmd run test:smoke
 ```
 
 `test:law` runs three suites:
+
 - `scripts/law-unit-test.mjs` — intent, normalization, masking, cache.
 - `scripts/law-parser-test.mjs` — law.go.kr JSON parsing across fixture
-  statutes (`scripts/fixtures/law/`). Run only this with
-  `npm run test:law:parser`.
+  statutes plus precedent, interpretation, admin-rule, and ordinance fixtures
+  (`scripts/fixtures/law/`). Run only this with `npm run test:law:parser`.
 - `scripts/law-intent-eval.mjs` — true-positive / false-positive evaluation
   for legal intent detection. Covers cases like "라면 끓이는 방법 알려줘",
   "Git 사용법 1조 5호", "야구 규칙 30조" (must NOT trigger) and "민법 제750조",
-  "헌법 제10조", "도로교통법 제44조" (must trigger). Run only this with
-  `npm run test:law:intent`.
+  "헌법 제10조", "도로교통법 제44조", and research prompts for 판례/해석례/조례
+  (must trigger). Run only this with `npm run test:law:intent`.
 
 `test:smoke` checks `/api/law/status` whether or not `LAW_OC` is configured and
 asserts the response does not expose the server cache path or API key.
@@ -401,7 +474,7 @@ field), and verification fail-count. The chat live test covers `law_article`
 
 ## Acceptance Criteria
 
-The MVP is acceptable when:
+The statute-grounding baseline is acceptable when:
 
 - A server with `LAW_OC` configured can search a Korean law by name.
 - myAI can retrieve a specific statute article.
@@ -417,14 +490,16 @@ The MVP is acceptable when:
 
 ## Roadmap
 
-Phase 2 (in progress):
+Phase 2 (complete):
 
 - ✅ Precedent search/text tools (`/api/law/precedents/search`, `/api/law/precedents/detail`)
 - ✅ Interpretation search/text tools (`/api/law/interpretations/search`, `/api/law/interpretations/detail`)
-- ⬜ Admin rule and ordinance tools
-- ⬜ `legal_research` chat mode (intent + context wiring)
+- ✅ Admin rule tools (`/api/law/admin-rules/search`, `/api/law/admin-rules/detail`)
+- ✅ Ordinance tools (`/api/law/ordinances/search`, `/api/law/ordinances/detail`)
+- ✅ `legal_research` chat mode wiring intent flags (wantPrecedents/Interpretations/AdminRules/Ordinances) into a combined context
 - ✅ Richer law source-panel details (expandable article excerpt + deep-link)
-- ⬜ Frontend rendering for `law_precedent` and `law_interpretation` citations
+- ✅ Frontend rendering for precedent/interpretation/admin/ordinance citations
+  with per-source-type badges and meta fields
 
 Phase 3:
 
@@ -455,10 +530,11 @@ Knowledge graph track:
 
 ## Limitations
 
-The current MVP focuses on statute search, article retrieval, and citation
-verification. Precedents, legal interpretations, admin rules, ordinances, impact
-maps, time travel, and legal action plans are later phases.
+The current engine covers statute search/article retrieval/citation
+verification and Phase 2 official-source research for precedents, legal
+interpretations, admin rules, and ordinances. Impact maps, time-travel
+comparison, and legal action plans remain later phases.
 
-The department notebook KG integration is also post-MVP. When added, it should
-reuse the existing per-notebook `graph.sqlite` infrastructure rather than
+The department notebook KG integration is also future work. When added, it
+should reuse the existing per-notebook `graph.sqlite` infrastructure rather than
 creating a parallel legal graph store.

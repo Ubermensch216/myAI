@@ -4425,6 +4425,36 @@ body.panel-resizing .panel-resizer::after {
   line-height: 1.3;
 }
 
+.law-source-badge-statute {
+  background: color-mix(in srgb, #0f766e 12%, var(--surface));
+  color: #0f766e;
+}
+
+.law-source-badge-precedent {
+  background: color-mix(in srgb, #7c3aed 12%, var(--surface));
+  color: #7c3aed;
+}
+
+.law-source-badge-interpretation {
+  background: color-mix(in srgb, #2563eb 12%, var(--surface));
+  color: #2563eb;
+}
+
+.law-source-badge-admin_rule {
+  background: color-mix(in srgb, #c2410c 12%, var(--surface));
+  color: #c2410c;
+}
+
+.law-source-badge-ordinance {
+  background: color-mix(in srgb, #b45309 12%, var(--surface));
+  color: #b45309;
+}
+
+.message-citation-item.law-citation-precedent .message-citation-marker { color: #7c3aed; }
+.message-citation-item.law-citation-interpretation .message-citation-marker { color: #2563eb; }
+.message-citation-item.law-citation-admin_rule .message-citation-marker { color: #c2410c; }
+.message-citation-item.law-citation-ordinance .message-citation-marker { color: #b45309; }
+
 .law-verification-warning,
 .law-disclaimer {
   margin-top: 10px;

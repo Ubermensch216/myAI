@@ -46,7 +46,14 @@ const cases = [
 
   // === Borderline / context-sensitive ===
   ["이 문서가 우리 사내 규정에 맞는지 봐줘", false, { hasDocuments: true }, "internal company rules — no statute reference"],
-  ["민법 검토해줘", true, { hasDocuments: true }, "민법 + 검토 + doc context (legal review)"]
+  ["민법 검토해줘", true, { hasDocuments: true }, "민법 + 검토 + doc context (legal review)"],
+
+  // === legal_research mode ===
+  ["민법 제750조 관련 판례 찾아줘", true, {}, "법령+조문+판례 → legal_research"],
+  ["불법행위 판례 검색", true, {}, "판례 검색"],
+  ["개인정보 보호법 해석례 알려줘", true, {}, "해석례 알려줘"],
+  ["서울특별시 주차장 조례 찾아줘", true, {}, "자치법규 조례 검색"],
+  ["판례를 만들었다", false, {}, "단순 판례 언급 (검색 의도 아님)"]
 ];
 
 const failures = [];

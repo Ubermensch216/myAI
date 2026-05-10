@@ -4,14 +4,20 @@ import { normalizeArticleRef, normalizeLawName } from "./lawArticleRef.js";
 import { LAW_ERROR_MARKERS, LawError, assertLawAvailable } from "./lawErrors.js";
 import { throwIfAborted } from "../abort.js";
 import {
+  buildAdminRuleCitation,
   buildCitation,
   buildInterpretationCitation,
+  buildOrdinanceCitation,
   buildPrecedentCitation,
   chooseLawSearchResult,
   findUpstreamError,
+  normalizeAdminRulePayload,
+  normalizeAdminRuleResults,
   normalizeArticlePayload,
   normalizeInterpretationPayload,
   normalizeInterpretationResults,
+  normalizeOrdinancePayload,
+  normalizeOrdinanceResults,
   normalizePrecedentPayload,
   normalizePrecedentResults,
   normalizeSearchResults
@@ -21,6 +27,8 @@ const LAW_TEXT_TTL_MS = 7 * 86_400_000;
 const LAW_SEARCH_TTL_MS = 86_400_000;
 const PRECEDENT_TTL_MS = 30 * 86_400_000;
 const INTERPRETATION_TTL_MS = 30 * 86_400_000;
+const ADMIN_RULE_TTL_MS = 7 * 86_400_000;
+const ORDINANCE_TTL_MS = 7 * 86_400_000;
 
 export class LawApiClient {
   constructor(config = getLawConfig()) {
@@ -252,6 +260,134 @@ export class LawApiClient {
       raw: data.raw
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: INTERPRETATION_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async searchAdminRules({ query, display, agency } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedQuery = String(query || "").trim();
+    if (!normalizedQuery) {
+      throw new LawError("Admin rule search query is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const normalizedInput = {
+      query: normalizedQuery,
+      display: clampInt(display, this.config.maxResults, 1, 100),
+      agency: agency || ""
+    };
+    const cacheKey = buildLawCacheKey("search_admin_rule", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const params = {
+      target: "admrul",
+      type: "JSON",
+      query: normalizedQuery,
+      display: normalizedInput.display
+    };
+    if (agency) params.org = agency;
+
+    const payload = await this.requestSearch(params, { signal });
+    const results = normalizeAdminRuleResults(payload).slice(0, normalizedInput.display);
+    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getAdminRuleDetail({ admrulId, query } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    let resolvedId = String(admrulId || "").trim();
+    if (!resolvedId && query) {
+      const search = await this.searchAdminRules({ query, display: 1 }, { signal });
+      resolvedId = search.results[0]?.admrulId || "";
+    }
+    if (!resolvedId) {
+      throw new LawError("Admin rule ID is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const cacheKey = buildLawCacheKey("admin_rule_detail", { admrulId: resolvedId });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: ADMIN_RULE_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const payload = await this.requestService({
+      target: "admrul",
+      type: "JSON",
+      ID: resolvedId
+    }, { signal });
+    const data = normalizeAdminRulePayload(payload);
+    if (!data.text && !data.title) {
+      throw new LawError(`Admin rule not found: ${resolvedId}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+    if (!data.admrulId) data.admrulId = resolvedId;
+    const response = {
+      ok: true,
+      citation: buildAdminRuleCitation(data),
+      text: data.text,
+      raw: data.raw
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: ADMIN_RULE_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async searchOrdinances({ query, display, region } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedQuery = String(query || "").trim();
+    if (!normalizedQuery) {
+      throw new LawError("Ordinance search query is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const normalizedInput = {
+      query: normalizedQuery,
+      display: clampInt(display, this.config.maxResults, 1, 100),
+      region: region || ""
+    };
+    const cacheKey = buildLawCacheKey("search_ordinance", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const params = {
+      target: "ordin",
+      type: "JSON",
+      query: normalizedQuery,
+      display: normalizedInput.display
+    };
+    if (region) params.org = region;
+
+    const payload = await this.requestSearch(params, { signal });
+    const results = normalizeOrdinanceResults(payload).slice(0, normalizedInput.display);
+    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getOrdinanceDetail({ ordinId, query } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    let resolvedId = String(ordinId || "").trim();
+    if (!resolvedId && query) {
+      const search = await this.searchOrdinances({ query, display: 1 }, { signal });
+      resolvedId = search.results[0]?.ordinId || "";
+    }
+    if (!resolvedId) {
+      throw new LawError("Ordinance ID is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const cacheKey = buildLawCacheKey("ordinance_detail", { ordinId: resolvedId });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: ORDINANCE_TTL_MS });
+    if (cached) return { ...cached, cacheHit: true };
+
+    const payload = await this.requestService({
+      target: "ordin",
+      type: "JSON",
+      ID: resolvedId
+    }, { signal });
+    const data = normalizeOrdinancePayload(payload);
+    if (!data.text && !data.title) {
+      throw new LawError(`Ordinance not found: ${resolvedId}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+    if (!data.ordinId) data.ordinId = resolvedId;
+    const response = {
+      ok: true,
+      citation: buildOrdinanceCitation(data),
+      text: data.text,
+      raw: data.raw
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: ORDINANCE_TTL_MS });
     return { ...response, cacheHit: false };
   }
 

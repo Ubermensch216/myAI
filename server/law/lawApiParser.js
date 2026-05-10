@@ -378,3 +378,160 @@ export function buildInterpretationCitation(expc, citationId = "I1") {
       : "https://www.law.go.kr/expcSc.do"
   };
 }
+
+// ===== Admin Rule (행정규칙: 고시/예규/훈령/지침) =====
+
+const ADMRUL_ID_KEYS = ["행정규칙일련번호", "행정규칙ID", "행정규칙id", "id", "admrulId"];
+const ADMRUL_TITLE_KEYS = ["행정규칙명", "행정규칙명한글", "title", "name"];
+const ADMRUL_AGENCY_KEYS = ["발령기관명", "발령기관", "소관부처명", "agency"];
+const ADMRUL_KIND_KEYS = ["행정규칙종류", "행정규칙종류명", "kind"];
+const ADMRUL_ISSUE_DATE_KEYS = ["발령일자", "공포일자", "promulgationDate"];
+const ADMRUL_EFFECTIVE_DATE_KEYS = ["시행일자", "효력일자", "effectiveDate"];
+const ADMRUL_BODY_KEYS = ["행정규칙내용", "조문내용", "본문", "내용", "text"];
+
+export function normalizeAdminRuleResults(payload) {
+  const candidates = findObjects(payload).filter((item) => {
+    const id = readFirst(item, ADMRUL_ID_KEYS);
+    const title = readFirst(item, ADMRUL_TITLE_KEYS);
+    return (id || title) && title;
+  });
+  const seen = new Set();
+  const results = [];
+  for (const item of candidates) {
+    const id = readFirst(item, ADMRUL_ID_KEYS);
+    const title = stripHtml(readFirst(item, ADMRUL_TITLE_KEYS));
+    if (!title) continue;
+    const key = `${id}|${title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      admrulId: String(id || ""),
+      title,
+      agency: stripHtml(readFirst(item, ADMRUL_AGENCY_KEYS)),
+      kind: stripHtml(readFirst(item, ADMRUL_KIND_KEYS)),
+      issueDate: normalizeDate(readFirst(item, ADMRUL_ISSUE_DATE_KEYS)),
+      effectiveDate: normalizeDate(readFirst(item, ADMRUL_EFFECTIVE_DATE_KEYS)),
+      raw: item
+    });
+  }
+  return results;
+}
+
+export function normalizeAdminRulePayload(payload) {
+  const objects = findObjects(payload);
+  const root = objects.find((item) => readFirst(item, ADMRUL_TITLE_KEYS) || readFirst(item, ADMRUL_BODY_KEYS)) || payload;
+  const text = collectKeyedText(payload, ADMRUL_BODY_KEYS);
+  return {
+    admrulId: String(deepRead(payload, ADMRUL_ID_KEYS) || ""),
+    title: stripHtml(readFirst(root, ADMRUL_TITLE_KEYS)) || stripHtml(deepRead(payload, ADMRUL_TITLE_KEYS)),
+    agency: stripHtml(deepRead(payload, ADMRUL_AGENCY_KEYS)),
+    kind: stripHtml(deepRead(payload, ADMRUL_KIND_KEYS)),
+    issueDate: normalizeDate(deepRead(payload, ADMRUL_ISSUE_DATE_KEYS)),
+    effectiveDate: normalizeDate(deepRead(payload, ADMRUL_EFFECTIVE_DATE_KEYS)),
+    text,
+    raw: root
+  };
+}
+
+export function buildAdminRuleCitation(rule, citationId = "R1") {
+  const locator = [rule.agency, rule.kind, rule.effectiveDate ? `시행 ${rule.effectiveDate}` : ""].filter(Boolean).join(" · ");
+  return {
+    citationId,
+    sourceType: "law_admin_rule",
+    recordType: "admin_rule",
+    title: rule.title,
+    agency: rule.agency,
+    kind: rule.kind,
+    issueDate: rule.issueDate,
+    effectiveDate: rule.effectiveDate,
+    locator: locator || rule.title,
+    url: rule.admrulId
+      ? `https://www.law.go.kr/admRulInfoP.do?admRulSeq=${encodeURIComponent(rule.admrulId)}`
+      : "https://www.law.go.kr/admRulSc.do"
+  };
+}
+
+// ===== Ordinance (자치법규: 조례/규칙) =====
+
+const ORDIN_ID_KEYS = ["자치법규일련번호", "자치법규ID", "자치법규id", "id", "ordinId"];
+const ORDIN_TITLE_KEYS = ["자치법규명", "자치법규명한글", "title", "name"];
+const ORDIN_REGION_KEYS = ["지자체명", "지방자치단체명", "지방자치단체", "관할기관", "region"];
+const ORDIN_KIND_KEYS = ["자치법규종류", "자치법규종류명", "kind"];
+const ORDIN_PROMULGATION_KEYS = ["공포일자", "promulgationDate"];
+const ORDIN_EFFECTIVE_DATE_KEYS = ["시행일자", "effectiveDate"];
+const ORDIN_BODY_KEYS = ["자치법규내용", "조문내용", "본문", "내용", "text"];
+
+export function normalizeOrdinanceResults(payload) {
+  const candidates = findObjects(payload).filter((item) => {
+    const id = readFirst(item, ORDIN_ID_KEYS);
+    const title = readFirst(item, ORDIN_TITLE_KEYS);
+    return (id || title) && title;
+  });
+  const seen = new Set();
+  const results = [];
+  for (const item of candidates) {
+    const id = readFirst(item, ORDIN_ID_KEYS);
+    const title = stripHtml(readFirst(item, ORDIN_TITLE_KEYS));
+    if (!title) continue;
+    const key = `${id}|${title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      ordinId: String(id || ""),
+      title,
+      region: stripHtml(readFirst(item, ORDIN_REGION_KEYS)),
+      kind: stripHtml(readFirst(item, ORDIN_KIND_KEYS)),
+      promulgationDate: normalizeDate(readFirst(item, ORDIN_PROMULGATION_KEYS)),
+      effectiveDate: normalizeDate(readFirst(item, ORDIN_EFFECTIVE_DATE_KEYS)),
+      raw: item
+    });
+  }
+  return results;
+}
+
+export function normalizeOrdinancePayload(payload) {
+  const objects = findObjects(payload);
+  const root = objects.find((item) => readFirst(item, ORDIN_TITLE_KEYS) || readFirst(item, ORDIN_BODY_KEYS)) || payload;
+  const text = collectKeyedText(payload, ORDIN_BODY_KEYS);
+  return {
+    ordinId: String(deepRead(payload, ORDIN_ID_KEYS) || ""),
+    title: stripHtml(readFirst(root, ORDIN_TITLE_KEYS)) || stripHtml(deepRead(payload, ORDIN_TITLE_KEYS)),
+    region: stripHtml(deepRead(payload, ORDIN_REGION_KEYS)),
+    kind: stripHtml(deepRead(payload, ORDIN_KIND_KEYS)),
+    promulgationDate: normalizeDate(deepRead(payload, ORDIN_PROMULGATION_KEYS)),
+    effectiveDate: normalizeDate(deepRead(payload, ORDIN_EFFECTIVE_DATE_KEYS)),
+    text,
+    raw: root
+  };
+}
+
+export function buildOrdinanceCitation(ord, citationId = "O1") {
+  const locator = [ord.region, ord.kind, ord.effectiveDate ? `시행 ${ord.effectiveDate}` : ""].filter(Boolean).join(" · ");
+  return {
+    citationId,
+    sourceType: "law_ordinance",
+    recordType: "ordinance",
+    title: ord.title,
+    region: ord.region,
+    kind: ord.kind,
+    promulgationDate: ord.promulgationDate,
+    effectiveDate: ord.effectiveDate,
+    locator: locator || ord.title,
+    url: ord.ordinId
+      ? `https://www.law.go.kr/ordinInfoP.do?ordinSeq=${encodeURIComponent(ord.ordinId)}`
+      : "https://www.law.go.kr/ordinSc.do"
+  };
+}
+
+function collectKeyedText(value, keys) {
+  const set = new Set(keys);
+  const pieces = [];
+  walk(value, (item, key) => {
+    if (item == null) return;
+    if ((typeof item === "string" || typeof item === "number") && set.has(String(key))) {
+      const text = stripHtml(item);
+      if (text) pieces.push(text);
+    }
+  });
+  return Array.from(new Set(pieces)).join("\n").trim();
+}

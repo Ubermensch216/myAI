@@ -881,8 +881,9 @@ export function renderCitationsPanel(article, citations, law = null) {
       list.append(item);
       continue;
     }
-    const isLawCitation = citation.sourceType === "law" || String(citation.citationId || "").startsWith("L");
-    item.className = `message-citation-item ${isLawCitation ? "law-citation" : ""}`;
+    const lawKind = classifyLawCitation(citation);
+    const isLawCitation = Boolean(lawKind);
+    item.className = `message-citation-item ${isLawCitation ? "law-citation" : ""}${lawKind ? ` law-citation-${lawKind}` : ""}`;
     const marker = document.createElement("span");
     marker.className = "message-citation-marker";
     marker.textContent = `[${citation.citationId}]`;
@@ -895,33 +896,16 @@ export function renderCitationsPanel(article, citations, law = null) {
       docName.href = citation.url;
       docName.target = "_blank";
       docName.rel = "noopener noreferrer";
-      docName.title = isLawCitation ? `공식 법령 원문 열기: ${citation.url}` : citation.url;
+      docName.title = isLawCitation ? `${LAW_BADGE_LABELS[lawKind] || "공식 법령"} 원문 열기: ${citation.url}` : citation.url;
     }
     if (isLawCitation) {
       const badge = document.createElement("span");
-      badge.className = "law-source-badge";
-      badge.textContent = "공식 법령";
+      badge.className = `law-source-badge law-source-badge-${lawKind}`;
+      badge.textContent = LAW_BADGE_LABELS[lawKind] || "공식 법령";
       source.append(badge);
     }
     source.append(docName);
-    if (citation.locator && citation.locator !== docName.textContent) {
-      const locator = document.createElement("span");
-      locator.className = "citation-locator";
-      locator.textContent = `· ${citation.locator}`;
-      source.append(locator);
-    }
-    if (isLawCitation && citation.title) {
-      const lawTitle = document.createElement("span");
-      lawTitle.className = "citation-locator";
-      lawTitle.textContent = `· ${citation.title}`;
-      source.append(lawTitle);
-    }
-    if (isLawCitation && citation.effectiveDate) {
-      const effectiveDate = document.createElement("span");
-      effectiveDate.className = "citation-locator";
-      effectiveDate.textContent = `· 시행일 ${citation.effectiveDate}`;
-      source.append(effectiveDate);
-    }
+    appendLawCitationMeta(source, citation, lawKind);
     item.append(marker, source);
     if (isLawCitation && citation.excerpt) {
       item.append(buildLawExcerpt(citation));
@@ -955,6 +939,81 @@ export function renderLawNoticePanel(article, law) {
   }
   warning.append(list);
   article.append(warning);
+}
+
+const LAW_BADGE_LABELS = {
+  statute: "공식 법령",
+  precedent: "공식 판례",
+  interpretation: "법령해석례",
+  admin_rule: "행정규칙",
+  ordinance: "자치법규"
+};
+
+function classifyLawCitation(citation) {
+  if (!citation) return null;
+  const sourceType = String(citation.sourceType || "");
+  const recordType = String(citation.recordType || "");
+  const citationId = String(citation.citationId || "");
+  if (sourceType === "law" || recordType === "statute" || /^L\d/.test(citationId)) return "statute";
+  if (sourceType === "law_precedent" || recordType === "precedent" || /^P\d/.test(citationId)) return "precedent";
+  if (sourceType === "law_interpretation" || recordType === "interpretation" || /^I\d/.test(citationId)) return "interpretation";
+  if (sourceType === "law_admin_rule" || recordType === "admin_rule" || /^R\d/.test(citationId)) return "admin_rule";
+  if (sourceType === "law_ordinance" || recordType === "ordinance" || /^O\d/.test(citationId)) return "ordinance";
+  return null;
+}
+
+function appendLawCitationMeta(source, citation, lawKind) {
+  if (!lawKind) {
+    if (citation.locator && citation.locator !== source.querySelector(".citation-doc")?.textContent) {
+      const locator = document.createElement("span");
+      locator.className = "citation-locator";
+      locator.textContent = `· ${citation.locator}`;
+      source.append(locator);
+    }
+    return;
+  }
+  const docNameText = source.querySelector(".citation-doc")?.textContent || "";
+  if (citation.locator && citation.locator !== docNameText) {
+    const locator = document.createElement("span");
+    locator.className = "citation-locator";
+    locator.textContent = `· ${citation.locator}`;
+    source.append(locator);
+  }
+  if (lawKind === "statute") {
+    if (citation.title && citation.title !== docNameText) appendMeta(source, `· ${citation.title}`);
+    if (citation.effectiveDate) appendMeta(source, `· 시행일 ${citation.effectiveDate}`);
+    return;
+  }
+  if (lawKind === "precedent") {
+    if (citation.caseNumber) appendMeta(source, `· ${citation.caseNumber}`);
+    if (citation.court) appendMeta(source, `· ${citation.court}`);
+    if (citation.date) appendMeta(source, `· 선고일 ${citation.date}`);
+    if (citation.caseType) appendMeta(source, `· ${citation.caseType}`);
+    return;
+  }
+  if (lawKind === "interpretation") {
+    if (citation.agency) appendMeta(source, `· ${citation.agency}`);
+    if (citation.date) appendMeta(source, `· 회신일 ${citation.date}`);
+    return;
+  }
+  if (lawKind === "admin_rule") {
+    if (citation.kind) appendMeta(source, `· ${citation.kind}`);
+    if (citation.agency) appendMeta(source, `· ${citation.agency}`);
+    if (citation.effectiveDate) appendMeta(source, `· 시행일 ${citation.effectiveDate}`);
+    return;
+  }
+  if (lawKind === "ordinance") {
+    if (citation.region) appendMeta(source, `· ${citation.region}`);
+    if (citation.kind) appendMeta(source, `· ${citation.kind}`);
+    if (citation.effectiveDate) appendMeta(source, `· 시행일 ${citation.effectiveDate}`);
+  }
+}
+
+function appendMeta(source, text) {
+  const node = document.createElement("span");
+  node.className = "citation-locator";
+  node.textContent = text;
+  source.append(node);
 }
 
 function buildLawExcerpt(citation) {
@@ -1000,19 +1059,32 @@ function renderLawDisclaimer(article, law) {
 }
 
 function formatCitationDocumentName(citation) {
-  if (citation?.sourceType === "law" || String(citation?.citationId || "").startsWith("L")) {
+  const lawKind = classifyLawCitation(citation);
+  if (lawKind === "statute") {
     return citation.locator
       || [citation.lawName || citation.documentName, citation.article].filter(Boolean).join(" ")
       || "공식 법령";
   }
+  if (lawKind === "precedent") return citation.title || citation.locator || "공식 판례";
+  if (lawKind === "interpretation") return citation.title || citation.locator || "법령해석례";
+  if (lawKind === "admin_rule") return citation.title || citation.locator || "행정규칙";
+  if (lawKind === "ordinance") return citation.title || citation.locator || "자치법규";
   return citation.documentName || citation.lawName || "출처 미상";
+}
+
+function isLegalCitation(item) {
+  return Boolean(classifyLawCitation(item));
 }
 
 function groupCitationsByType(citations) {
   const groups = [
-    ["부서노트북", (item) => (!item.sourceType && !/^[LW]/.test(String(item.citationId || ""))) || item.sourceType === "notebook"],
-    ["법령", (item) => item.sourceType === "law" || String(item.citationId || "").startsWith("L")],
-    ["웹", (item) => item.sourceType === "naver" || item.sourceType === "web" || String(item.citationId || "").startsWith("W")]
+    ["부서노트북", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
+    ["법령", (item) => classifyLawCitation(item) === "statute"],
+    ["판례", (item) => classifyLawCitation(item) === "precedent"],
+    ["법령해석례", (item) => classifyLawCitation(item) === "interpretation"],
+    ["행정규칙", (item) => classifyLawCitation(item) === "admin_rule"],
+    ["자치법규", (item) => classifyLawCitation(item) === "ordinance"],
+    ["웹", (item) => !isLegalCitation(item) && (item.sourceType === "naver" || item.sourceType === "web" || /^W/.test(String(item.citationId || "")))]
   ];
   const output = [];
   for (const [label, predicate] of groups) {
