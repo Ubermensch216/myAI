@@ -224,10 +224,26 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `NAVER_SEARCH_DISPLAY` | `5` | result count requested per Naver search type |
 | `NAVER_SEARCH_MAX_RESULTS` | `8` | max normalized search results passed to the LLM |
 | `NAVER_SEARCH_TIMEOUT_MS` | `4500` | timeout per Naver Search API request |
+| `LAW_API_ENABLED` | `true` | enable native Korean Law Engine routes and chat grounding |
+| `LAW_OC` | unset | canonical law.go.kr Open API key; server-side only |
+| `LAW_USER_AGENT` | `Mozilla/5.0 (compatible; myAI Korean Law Engine)` | User-Agent for law.go.kr API requests |
+| `LAW_TIMEOUT_MS` | `8000` | timeout per law.go.kr API request |
+| `LAW_MAX_RESULTS` | `8` | max normalized law search results |
+| `LAW_CONTEXT_BUDGET` | `10000` | law context budget passed to chat |
+| `LAW_CACHE_ENABLED` | `true` | enable law API response cache |
+| `LAW_CACHE_TTL_MS` | `86400000` | default law cache TTL |
+| `LAW_CACHE_MAX_ENTRIES` | `1000` | max law cache rows in `data/cache/law-cache.sqlite` |
+| `LAW_AUTO_DETECT` | `false` | keep legal auto-detection off except explicit legal prompts/article patterns |
+| `LAW_VERIFY_CITATIONS` | `true` | enable citation verification behavior |
+| `LAW_IMPACT_MAP_ENABLED` | `false` | reserved for later impact-map phase |
 
 Naver Search only runs for explicit web-search prompts in normal chat. It is
 skipped when uploaded files are present or a department notebook is selected, so
 file-grounded and RAG-grounded answers stay within their provided evidence.
+Korean Law Engine is separate from Naver Search: explicit legal prompts may use
+official law.go.kr context alongside uploaded documents or department notebooks,
+and law citations render as `[L1]` separately from notebook `[N]` and web `[W]`
+citations.
 When no relevant evidence is found, the UI suppresses source panels and
 follow-up suggestions for that no-evidence answer.
 
@@ -251,6 +267,7 @@ server/
   mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
+  law/                 Korean Law Engine config, law.go.kr client, citation verification, API routes
   embeddings.js        Ollama /api/embed helpers
   queryExpansion.js    LLM query expansion
   documentAnalysis.js  document summary/topic extraction
@@ -327,6 +344,7 @@ docs/
 - [API](docs/API.md)
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
+- [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
 - [Known Issues](docs/KNOWN_ISSUES.md)
 

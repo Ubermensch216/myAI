@@ -7,7 +7,8 @@ All endpoints are served by `server/index.js`.
 ### `GET /api/status`
 
 Returns Ollama connectivity, model names, department RAG backend health, Naver
-Search configuration status, model queue depths, and rate-limit settings.
+Search and Korean Law Engine configuration status, model queue depths, and
+rate-limit settings.
 
 Example shape:
 
@@ -25,7 +26,8 @@ Example shape:
     }
   },
   "search": {
-    "naver": { "enabled": true, "configured": true }
+    "naver": { "enabled": true, "configured": true },
+    "law": { "enabled": true, "configured": true }
   },
   "queues": {
     "embedding": { "concurrency": 2, "running": 0, "queued": 0 },
@@ -109,6 +111,13 @@ Naver Search is intentionally skipped when uploaded files are included in the
 chat payload or when `notebookId` is selected. Those paths must stay grounded in
 the uploaded file context or department notebook RAG context.
 
+When `LAW_API_ENABLED=true` and `LAW_OC` is configured, explicit legal prompts
+such as `법령에서 민법 제750조 찾아줘` or `조문 검증해줘: 민법 제750조` may add
+official law.go.kr context. Law citations use `[L1]`, `[L2]`, etc. and stay
+separate from notebook `[N]` and web `[W]` citations. If official law lookup
+fails, chat metadata carries a law error marker and the assistant must not
+invent statute text.
+
 If notebook, web-search, or analysis metadata exists, the response includes
 `X-Notebook-Meta` as base64 JSON:
 
@@ -126,14 +135,64 @@ If notebook, web-search, or analysis metadata exists, the response includes
       { citationId, documentName, documentType, locator, url, sourceName }
     ]
   },
+  law: {
+    ok,
+    query,
+    mode,
+    error,
+    disclaimer,
+    citations: [
+      { citationId, sourceType, lawName, article, canonical, title, locator, effectiveDate, url }
+    ],
+    verification: { checked, failCount, results }
+  },
   analysisMode: "map_reduce" // or null
 }
 ```
 
-The frontend merges notebook citations and Naver web citations into one source
-panel. If the assistant answer is a no-evidence response, such as "관련 정보를
+The frontend groups notebook, law, and Naver web citations in one source panel.
+If the assistant answer is a no-evidence response, such as "관련 정보를
 찾을 수 없습니다", the frontend suppresses both the source panel and follow-up
 suggestions for that answer.
+
+## Korean Law Engine
+
+### `GET /api/law/status`
+
+Returns enabled/configured state, cache health, provider, and reserved usage
+counters. With `LAW_OC` unset, returns structured `503` with `ok: false`.
+
+### `POST /api/law/search`
+
+Body:
+
+```js
+{ query: "민법", display: 10 }
+```
+
+Searches official Korean law names.
+
+### `POST /api/law/article`
+
+Body:
+
+```js
+{ lawName: "민법", article: "제750조" }
+```
+
+Normalizes the article reference, resolves the law, and returns official
+article text plus `[L]` citation metadata.
+
+### `POST /api/law/verify-citations`
+
+Body:
+
+```js
+{ text: "민법 제750조와 형법 제9999조를 검증해줘." }
+```
+
+Extracts Korean statute/article citations and verifies them against official
+law data.
 
 ## Answer Export
 

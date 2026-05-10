@@ -22,6 +22,8 @@ import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js";
 import { createExportFile, listExportFormats } from "./exportFiles.js";
 import { generateMindmap } from "./mindmap.js";
+import { lawApiRouter } from "./law/lawApi.js";
+import { getLawConfig, getLawRateLimitDefaults } from "./law/lawConfig.js";
 import {
   listNotebooks,
   getNotebook,
@@ -172,10 +174,17 @@ app.get("/api/status", async (_request, response) => {
         naver: {
           enabled: isNaverSearchEnabled(),
           configured: isNaverSearchConfigured()
+        },
+        law: {
+          enabled: getLawConfig().enabled,
+          configured: getLawConfig().configured
         }
       },
       queues: ragStatus.queues,
-      rateLimits: ragStatus.rateLimits
+      rateLimits: {
+        ...ragStatus.rateLimits,
+        law: getLawRateLimitDefaults()
+      }
     });
   } catch (error) {
     response.status(503).json({
@@ -358,6 +367,7 @@ app.post("/api/chat", async (request, response) => {
           (meta.citations && meta.citations.length) ||
           (meta.webSearch?.citations && meta.webSearch.citations.length) ||
           meta.webSearch?.error ||
+          meta.law ||
           meta.analysisMode
         )) {
           pendingMeta = {
@@ -365,6 +375,7 @@ app.post("/api/chat", async (request, response) => {
             analysisMode: meta.analysisMode || null,
             citations: (meta.citations || []).map((chunk) => ({
               citationId: chunk.citationId,
+              sourceType: "notebook",
               documentId: chunk.documentId,
               documentName: chunk.documentName,
               documentType: chunk.documentType,
@@ -377,12 +388,39 @@ app.post("/api/chat", async (request, response) => {
                   error: meta.webSearch.error || "",
                   citations: (meta.webSearch.citations || []).map((item) => ({
                     citationId: item.citationId,
+                    sourceType: item.sourceType || "naver",
                     documentName: item.documentName,
                     documentType: item.documentType,
                     locator: item.locator,
                     url: item.url,
                     sourceName: item.sourceName
                   }))
+                }
+              : null,
+            law: meta.law
+              ? {
+                  ok: Boolean(meta.law.ok),
+                  query: meta.law.query || "",
+                  mode: meta.law.mode || "none",
+                  error: meta.law.error || "",
+                  errorMessage: meta.law.errorMessage || "",
+                  disclaimer: meta.law.disclaimer || null,
+                  citations: (meta.law.citations || []).map((item) => ({
+                    citationId: item.citationId,
+                    sourceType: "law",
+                    lawName: item.lawName,
+                    lawId: item.lawId,
+                    mst: item.mst,
+                    article: item.article,
+                    canonical: item.canonical,
+                    title: item.title,
+                    documentName: item.lawName || item.documentName,
+                    documentType: "law",
+                    locator: item.locator,
+                    effectiveDate: item.effectiveDate,
+                    url: item.url
+                  })),
+                  verification: meta.law.verification || { checked: false, failCount: 0, results: [] }
                 }
               : null
           };
@@ -742,6 +780,7 @@ app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
 app.use("/api/admin/rag-eval", ragEvalRouter);
 app.use("/api/admin/graph", graphAdminRouter);
 app.use("/api/studio/graph", graphStudioRouter);
+app.use("/api/law", lawApiRouter);
 
 app.get("/api/notebooks/:id/ingest-jobs", requireAdmin, async (request, response) => {
   try {

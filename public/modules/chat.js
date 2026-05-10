@@ -385,7 +385,8 @@ export async function requestTextAssistantResponse(room) {
     const notebookMeta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
     const citations = Array.isArray(notebookMeta?.citations) ? notebookMeta.citations : [];
     const webCitations = Array.isArray(notebookMeta?.webSearch?.citations) ? notebookMeta.webSearch.citations : [];
-    const allCitations = [...citations, ...webCitations];
+    const lawCitations = Array.isArray(notebookMeta?.law?.citations) ? notebookMeta.law.citations : [];
+    const allCitations = [...citations, ...lawCitations, ...webCitations];
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -422,7 +423,12 @@ export async function requestTextAssistantResponse(room) {
       assistantMessage.citations = allCitations;
       assistantMessage.notebook = notebookMeta?.notebook ?? null;
       if (notebookMeta?.webSearch) assistantMessage.webSearch = notebookMeta.webSearch;
-      renderCitationsPanel(assistant, allCitations);
+    }
+    if (notebookMeta?.law && !noEvidenceAnswer) assistantMessage.law = notebookMeta.law;
+    if (!noEvidenceAnswer) {
+      renderLawNoticePanel(assistant, notebookMeta?.law);
+      renderCitationsPanel(assistant, allCitations, notebookMeta?.law);
+      if (!allCitations.length) renderLawDisclaimer(assistant, notebookMeta?.law);
     }
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
     room.messages.push(assistantMessage);
@@ -796,7 +802,11 @@ export function appendMessage(role, text, options = {}) {
   article.append(createMessageActions(article, role, options.createdAt));
   if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
   if (role === "assistant" && Array.isArray(options.citations) && options.citations.length && !isNoEvidenceAnswer(text)) {
-    renderCitationsPanel(article, options.citations);
+    renderLawNoticePanel(article, options.law);
+    renderCitationsPanel(article, options.citations, options.law);
+  } else if (role === "assistant" && options.law && !isNoEvidenceAnswer(text)) {
+    renderLawNoticePanel(article, options.law);
+    renderLawDisclaimer(article, options.law);
   }
   elements.messages.append(article);
   if (options.autoScroll !== false) scrollToBottom();
@@ -848,7 +858,7 @@ export function renderFollowupSuggestions(article, suggestions = [], options = {
   maybeScrollToBottom(stickToBottom);
 }
 
-export function renderCitationsPanel(article, citations) {
+export function renderCitationsPanel(article, citations, law = null) {
   if (!article) return;
   article.querySelector(".message-citations")?.remove();
   if (!Array.isArray(citations) || !citations.length) return;
@@ -860,9 +870,15 @@ export function renderCitationsPanel(article, citations) {
   wrapper.append(title);
   const list = document.createElement("ol");
   list.className = "message-citations-list";
-  for (const citation of citations) {
+  for (const citation of groupCitationsByType(citations)) {
     const item = document.createElement("li");
-    item.className = "message-citation-item";
+    if (citation.groupLabel) {
+      item.className = "message-citation-group";
+      item.textContent = citation.groupLabel;
+      list.append(item);
+      continue;
+    }
+    item.className = `message-citation-item ${citation.sourceType === "law" ? "law-citation" : ""}`;
     const marker = document.createElement("span");
     marker.className = "message-citation-marker";
     marker.textContent = `[${citation.citationId}]`;
@@ -870,7 +886,7 @@ export function renderCitationsPanel(article, citations) {
     source.className = "message-citation-source";
     const docName = citation.url ? document.createElement("a") : document.createElement("span");
     docName.className = "citation-doc";
-    docName.textContent = citation.documentName || "출처 미상";
+    docName.textContent = citation.documentName || citation.lawName || "출처 미상";
     if (citation.url) {
       docName.href = citation.url;
       docName.target = "_blank";
@@ -884,11 +900,79 @@ export function renderCitationsPanel(article, citations) {
       locator.textContent = `· ${citation.locator}`;
       source.append(locator);
     }
+    if (citation.sourceType === "law" && citation.title) {
+      const lawTitle = document.createElement("span");
+      lawTitle.className = "citation-locator";
+      lawTitle.textContent = `· ${citation.title}`;
+      source.append(lawTitle);
+    }
     item.append(marker, source);
     list.append(item);
   }
   wrapper.append(list);
   article.append(wrapper);
+  renderLawDisclaimer(article, law);
+}
+
+export function renderLawNoticePanel(article, law) {
+  if (!article) return;
+  article.querySelector(".law-verification-warning")?.remove();
+  const verification = law?.verification;
+  const failed = Array.isArray(verification?.results)
+    ? verification.results.filter((item) => item && item.valid === false)
+    : [];
+  if (!failed.length) return;
+  const warning = document.createElement("div");
+  warning.className = "law-verification-warning";
+  const title = document.createElement("div");
+  title.className = "law-verification-title";
+  title.textContent = "조문 인용 검증 경고";
+  warning.append(title);
+  const list = document.createElement("ul");
+  for (const item of failed.slice(0, 6)) {
+    const li = document.createElement("li");
+    li.textContent = `${item.citation || item.canonical}: ${formatLawVerificationReason(item.reason)}`;
+    list.append(li);
+  }
+  warning.append(list);
+  article.append(warning);
+}
+
+function renderLawDisclaimer(article, law) {
+  article.querySelector(".law-disclaimer")?.remove();
+  const level = law?.disclaimer;
+  if (!level) return;
+  const disclaimer = document.createElement("div");
+  disclaimer.className = `law-disclaimer law-disclaimer-${level}`;
+  disclaimer.textContent = level === "mandatory"
+    ? "이 답변은 공식 법령 정보를 바탕으로 한 일반 정보입니다. 구체적 사건의 법률 자문이나 대리 행위가 아니며, 필요한 경우 변호사 등 전문가 상담을 받으세요."
+    : "이 답변은 공식 법령 정보를 바탕으로 한 일반 정보이며, 구체적 사건의 법률 자문은 전문가 상담이 필요합니다.";
+  const citationsPanel = article.querySelector(".message-citations");
+  if (citationsPanel) article.insertBefore(disclaimer, citationsPanel);
+  else article.append(disclaimer);
+}
+
+function groupCitationsByType(citations) {
+  const groups = [
+    ["부서노트북", (item) => (!item.sourceType && !/^[LW]/.test(String(item.citationId || ""))) || item.sourceType === "notebook"],
+    ["법령", (item) => item.sourceType === "law" || String(item.citationId || "").startsWith("L")],
+    ["웹", (item) => item.sourceType === "naver" || item.sourceType === "web" || String(item.citationId || "").startsWith("W")]
+  ];
+  const output = [];
+  for (const [label, predicate] of groups) {
+    const items = citations.filter(predicate);
+    if (!items.length) continue;
+    if (citations.length !== items.length) output.push({ groupLabel: label });
+    output.push(...items);
+  }
+  return output;
+}
+
+function formatLawVerificationReason(reason) {
+  if (reason === "article_not_found" || reason === "NOT_FOUND") return "해당 조문을 찾을 수 없습니다.";
+  if (reason === "LAW_NOT_CONFIGURED") return "법령 API 키가 설정되어 있지 않습니다.";
+  if (reason === "LAW_API_ERROR") return "공식 법령 조회 중 오류가 발생했습니다.";
+  return String(reason || "검증 실패");
 }
 
 export function createMessageActions(article, role, createdAt = "") {

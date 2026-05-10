@@ -413,7 +413,8 @@ function renderMessages() {
       visualization: message.visualization,
       eventCards: message.eventCards,
       createdAt: message.createdAt,
-      citations: message.citations
+      citations: message.citations,
+      law: message.law
     });
   }
 }

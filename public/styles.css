@@ -4336,6 +4336,17 @@ body.panel-resizing .panel-resizer::after {
   line-height: 1.45;
 }
 
+.message-citation-group {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.message-citation-item.law-citation .message-citation-marker {
+  color: #0f766e;
+}
+
 .message-citation-marker {
   color: var(--accent-dark);
   font-weight: 700;
@@ -4361,6 +4372,38 @@ body.panel-resizing .panel-resizer::after {
 .message-citation-source .citation-locator {
   color: var(--muted);
   margin-left: 4px;
+}
+
+.law-verification-warning,
+.law-disclaimer {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.law-verification-warning {
+  border: 1px solid color-mix(in srgb, #dc2626 34%, var(--line));
+  background: color-mix(in srgb, #dc2626 8%, var(--surface));
+  color: var(--ink);
+}
+
+.law-verification-title {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.law-verification-warning ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.law-disclaimer {
+  border: 1px solid color-mix(in srgb, #0f766e 28%, var(--line));
+  background: color-mix(in srgb, #0f766e 7%, var(--surface));
+  color: var(--muted);
 }
 
 .citation-marker {

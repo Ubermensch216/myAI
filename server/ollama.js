@@ -11,6 +11,7 @@ import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import { buildNaverSearchContext } from "./naverSearch.js";
+import { buildLawContext } from "./law/lawContextBuilder.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -62,8 +63,10 @@ export async function streamChat({
   const latestUserIndex = findLatestUserMessageIndex(messages);
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
   const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
-  const [notebookContext, webSearchContext] = await Promise.all([
+  const hasDocuments = Array.isArray(documents) && documents.length > 0;
+  const [notebookContext, lawContext, webSearchContext] = await Promise.all([
     loadNotebookContext(notebookId, messages, { signal }),
+    buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal }),
     allowWebSearch
       ? buildNaverSearchContext(latestUserQuery, { signal }).catch((error) => {
           if (signal?.aborted) throw error;
@@ -84,6 +87,18 @@ export async function streamChat({
     onMeta({
       notebook: notebookContext?.notebook ?? null,
       citations: notebookContext?.chunks ?? [],
+      law: lawContext
+        ? {
+            ok: Boolean(lawContext.ok),
+            query: lawContext.query || latestUserQuery,
+            mode: lawContext.mode || "none",
+            citations: lawContext.citations ?? [],
+            verification: lawContext.verification ?? { checked: false, failCount: 0, results: [] },
+            disclaimer: lawContext.disclaimer || null,
+            error: lawContext.error || "",
+            errorMessage: lawContext.errorMessage || ""
+          }
+        : null,
       webSearch: webSearchContext
         ? {
             ok: webSearchContext.ok,
@@ -95,7 +110,7 @@ export async function streamChat({
     });
   }
 
-  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, webSearchContext, { signal });
+  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, webSearchContext, lawContext, { signal });
   throwIfAborted(signal);
 
   await runChatStreamWithOptionalQueue({
@@ -618,7 +633,7 @@ function normalizeStringArray(value, limit) {
     .slice(0, limit);
 }
 
-async function buildMessages(messages, documents, personalization, notebookContext = null, webSearchContext = null, { signal } = {}) {
+async function buildMessages(messages, documents, personalization, notebookContext = null, webSearchContext = null, lawContext = null, { signal } = {}) {
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
@@ -627,6 +642,9 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const notebookDocumentSummaries = notebookContext?.documentSummaries ?? [];
   const webSearchText = String(webSearchContext?.contextText ?? "").trim();
   const webSearchError = String(webSearchContext?.error ?? "").trim();
+  const lawContextText = String(lawContext?.contextText ?? "").trim();
+  const lawError = String(lawContext?.error ?? "").trim();
+  const lawErrorMessage = String(lawContext?.errorMessage ?? "").trim();
   const hasUploadedFiles = Array.isArray(documents) && documents.length > 0;
 
   const systemParts = [
@@ -671,6 +689,8 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Supported visualization outputs include bar, line, pie, scatter, table, KPI cards, dashboards, and infographic-style summaries.",
     "When a [Naver Search Results] block is provided, treat it as external search evidence and cite it with [W1], [W2], etc.",
     "Do not invent web search citations. If search evidence is insufficient, state that the search results do not confirm the point.",
+    "When an [공식 법령 근거] block is provided, treat it as the authoritative source for Korean statute/article existence and original article text. Cite legal claims with [L1], [L2], etc.",
+    "Keep law citations [L] separate from notebook citations [N] and web citations [W]. If Korean Law Engine returns NOT_FOUND or LAW_API_ERROR, do not infer statute existence from web evidence alone.",
     "Format answers for scanning: use short section labels such as Summary, Key points, Evidence, Caution, Next steps when helpful.",
     "Put a simple visual symbol before section labels when it improves readability: ◆ Summary, ● Key points, ✓ Evidence, ※ Caution, -> Next steps.",
     "Prefer compact bullet lists with '- ', numbered lists with '1. ', and clear symbols like '->' or '※' for notes.",
@@ -722,6 +742,12 @@ async function buildMessages(messages, documents, personalization, notebookConte
     systemSegments.push(
       `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 이 질문과 관련된 자료를 찾지 못했습니다. "해당 노트북에서 관련 정보를 찾을 수 없습니다."라고만 답하세요.`
     );
+  }
+
+  if (lawContextText) {
+    systemSegments.push(lawContextText);
+  } else if (lawError) {
+    systemSegments.push(`[Korean Law Engine Notice]\n${lawError}${lawErrorMessage ? `: ${lawErrorMessage}` : ""}\nIf the user asked for legal information, explain that official law lookup could not provide the requested legal text. Do not invent statute names, article numbers, paragraphs, items, precedents, or interpretations.`);
   }
 
   if (webSearchText) {
