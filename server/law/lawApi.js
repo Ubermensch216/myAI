@@ -5,6 +5,9 @@ import { createLawApiClient } from "./lawApiClient.js";
 import { lawErrorPayload, toLawError, assertLawAvailable } from "./lawErrors.js";
 import { searchLaw } from "./tools/searchLaw.js";
 import { getArticleDetail } from "./tools/articleDetail.js";
+import { getArticleAt } from "./tools/articleAt.js";
+import { getArticleDiff } from "./tools/articleDiff.js";
+import { getLawHistory } from "./tools/lawHistory.js";
 import { verifyLawCitations } from "./tools/verifyCitations.js";
 import { searchPrecedents, getPrecedentDetail } from "./tools/precedents.js";
 import { searchInterpretations, getInterpretationDetail } from "./tools/interpretations.js";
@@ -76,6 +79,80 @@ lawApiRouter.post(
         text: result.text,
         cacheHit: Boolean(result.cacheHit)
       });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/article/at",
+  createRateLimiter({ name: "law_time_travel", keyPrefix: "law_time_travel:", ...lawRateLimits.timeTravel }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getArticleAt({
+        lawName: request.body?.lawName,
+        lawId: request.body?.lawId,
+        mst: request.body?.mst,
+        article: request.body?.article,
+        paragraph: request.body?.paragraph,
+        item: request.body?.item,
+        subitem: request.body?.subitem,
+        effectiveDate: request.body?.effectiveDate
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json({
+        ok: true,
+        citation: result.citation,
+        text: result.text,
+        effectiveDate: result.effectiveDateRequested,
+        snapshotEffectiveDate: result.citation?.effectiveDate || "",
+        cacheHit: Boolean(result.cacheHit)
+      });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/history",
+  createRateLimiter({ name: "law_time_travel", keyPrefix: "law_time_travel:", ...lawRateLimits.timeTravel }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getLawHistory({
+        lawName: request.body?.lawName,
+        lawId: request.body?.lawId,
+        mst: request.body?.mst
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json({
+        ok: result.ok,
+        lawName: result.lawName,
+        lawId: result.lawId,
+        mst: result.mst,
+        revisions: result.revisions,
+        cacheHit: Boolean(result.cacheHit)
+      });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/article/diff",
+  createRateLimiter({ name: "law_time_travel", keyPrefix: "law_time_travel:", ...lawRateLimits.timeTravel }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await getArticleDiff({
+        lawName: request.body?.lawName,
+        article: request.body?.article,
+        fromDate: request.body?.fromDate,
+        toDate: request.body?.toDate
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
     } catch (error) {
       sendLawError(response, error);
     }

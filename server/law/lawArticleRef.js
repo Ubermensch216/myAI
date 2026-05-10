@@ -225,3 +225,24 @@ function formatLocatorFromParts(parts) {
 export function looksLikeLawName(value) {
   return KNOWN_LAW_SUFFIX.test(normalizeLawName(value));
 }
+
+// Normalizes an effective-date input into ISO (YYYY-MM-DD) and law.go.kr's
+// upstream YYYYMMDD form. Invalid input returns empty fields so the caller can
+// fall back to current-version retrieval.
+export function normalizeEffectiveDate(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return { iso: "", compact: "", raw };
+  const digits = raw.replace(/\D+/g, "");
+  if (digits.length !== 8) return { iso: "", compact: "", raw };
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6));
+  const day = Number(digits.slice(6, 8));
+  if (year < 1948 || year > 2999) return { iso: "", compact: "", raw };
+  if (month < 1 || month > 12) return { iso: "", compact: "", raw };
+  if (day < 1 || day > 31) return { iso: "", compact: "", raw };
+  return {
+    iso: `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`,
+    compact: digits,
+    raw
+  };
+}

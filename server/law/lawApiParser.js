@@ -527,6 +527,44 @@ export function buildOrdinanceCitation(ord, citationId = "O1") {
   };
 }
 
+// ===== Law Revision History (법령 연혁) =====
+
+const HIST_EFFECTIVE_DATE_KEYS = ["시행일자", "효력일자", "시행일", "effectiveDate"];
+const HIST_PROMULGATION_KEYS = ["공포일자", "공포일", "promulgationDate"];
+const HIST_MST_KEYS = ["법령일련번호", "MST", "mst", "lsiSeq"];
+const HIST_PROMULGATION_NUMBER_KEYS = ["공포번호", "promulgationNumber"];
+const HIST_REVISION_TYPE_KEYS = ["제개정구분명", "제개정구분", "개정구분", "revisionType"];
+const HIST_TITLE_KEYS = ["법령명한글", "법령명_한글", "법령명", "title"];
+
+export function normalizeHistoryResults(payload) {
+  const candidates = findObjects(payload).filter((item) => {
+    const eff = readFirst(item, HIST_EFFECTIVE_DATE_KEYS);
+    const mst = readFirst(item, HIST_MST_KEYS);
+    return eff && mst;
+  });
+  const seen = new Set();
+  const results = [];
+  for (const item of candidates) {
+    const effective = normalizeDate(readFirst(item, HIST_EFFECTIVE_DATE_KEYS));
+    const mst = String(readFirst(item, HIST_MST_KEYS) || "");
+    const key = `${effective}|${mst}`;
+    if (!effective || !mst || seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      effectiveDate: effective,
+      promulgationDate: normalizeDate(readFirst(item, HIST_PROMULGATION_KEYS)),
+      mst,
+      promulgationNumber: stripHtml(readFirst(item, HIST_PROMULGATION_NUMBER_KEYS)),
+      revisionType: stripHtml(readFirst(item, HIST_REVISION_TYPE_KEYS)),
+      title: stripHtml(readFirst(item, HIST_TITLE_KEYS)),
+      raw: item
+    });
+  }
+  // Sort newest first so the latest revision sits at the top of the list.
+  results.sort((a, b) => (b.effectiveDate || "").localeCompare(a.effectiveDate || ""));
+  return results;
+}
+
 function collectKeyedText(value, keys) {
   const set = new Set(keys);
   const pieces = [];

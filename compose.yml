@@ -1,84 +1,6 @@
 name: myai
 
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NODE_IMAGE: "${NODE_IMAGE:-node:24-bookworm-slim}"
-    image: myai-app:latest
-    container_name: myai-app
-    restart: unless-stopped
-    depends_on:
-      qdrant:
-        condition: service_healthy
-      ollama:
-        condition: service_started
-    ports:
-      - "${MYAI_BIND_ADDR:-0.0.0.0}:${MYAI_PORT:-3000}:3000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      PORT: "3000"
-      HOST: "0.0.0.0"
-      OLLAMA_URL: "${MYAI_CONTAINER_OLLAMA_URL:-http://ollama:11434}"
-      OLLAMA_MODEL: "${OLLAMA_MODEL:-gemma4:e2b}"
-      EMBED_MODEL: "${EMBED_MODEL:-bge-m3}"
-      EMBED_DIM: "${EMBED_DIM:-1024}"
-      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
-      MAX_JSON_BYTES: "${MAX_JSON_BYTES:-80mb}"
-      MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-41943040}"
-      MAX_CONTEXT_CHARS: "${MAX_CONTEXT_CHARS:-24000}"
-      NOTEBOOK_QUERY_BUDGET: "${NOTEBOOK_QUERY_BUDGET:-12000}"
-      DOCUMENT_CACHE_TTL_MS: "${DOCUMENT_CACHE_TTL_MS:-21600000}"
-      DOCUMENT_CACHE_MAX_ENTRIES: "${DOCUMENT_CACHE_MAX_ENTRIES:-256}"
-      DEPARTMENT_VECTOR_BACKEND: "${DEPARTMENT_VECTOR_BACKEND:-qdrant}"
-      DEPARTMENT_LEXICAL_BACKEND: "${DEPARTMENT_LEXICAL_BACKEND:-sqlite}"
-      QDRANT_URL: "${MYAI_CONTAINER_QDRANT_URL:-http://qdrant:6333}"
-      QDRANT_API_KEY: "${QDRANT_API_KEY:-change-me}"
-      QDRANT_COLLECTION: "${QDRANT_COLLECTION:-myai_notebook_chunks}"
-      QDRANT_VECTOR_NAME: "${QDRANT_VECTOR_NAME:-dense_bge_m3}"
-      QDRANT_TIMEOUT_MS: "${QDRANT_TIMEOUT_MS:-2500}"
-      QDRANT_SEARCH_LIMIT: "${QDRANT_SEARCH_LIMIT:-48}"
-      QDRANT_UPSERT_BATCH_SIZE: "${QDRANT_UPSERT_BATCH_SIZE:-128}"
-      SQLITE_FTS_PATH: "${SQLITE_FTS_PATH:-data/indexes/department-rag.sqlite}"
-      SQLITE_FTS_SEARCH_LIMIT: "${SQLITE_FTS_SEARCH_LIMIT:-80}"
-      QUERY_EXPANSION_ENABLED: "${QUERY_EXPANSION_ENABLED:-true}"
-      QUERY_EXPANSION_VARIANTS: "${QUERY_EXPANSION_VARIANTS:-3}"
-      QUERY_EXPANSION_TIMEOUT_MS: "${QUERY_EXPANSION_TIMEOUT_MS:-6000}"
-      DOC_ANALYSIS_ENABLED: "${DOC_ANALYSIS_ENABLED:-true}"
-      DOC_ANALYSIS_MAX_INPUT_CHARS: "${DOC_ANALYSIS_MAX_INPUT_CHARS:-12000}"
-      DOC_ANALYSIS_TIMEOUT_MS: "${DOC_ANALYSIS_TIMEOUT_MS:-30000}"
-      MAP_REDUCE_BATCH_CHUNKS: "${MAP_REDUCE_BATCH_CHUNKS:-4}"
-      MAP_REDUCE_MAX_CHUNKS: "${MAP_REDUCE_MAX_CHUNKS:-80}"
-      MAP_REDUCE_PARALLELISM: "${MAP_REDUCE_PARALLELISM:-2}"
-      MAP_REDUCE_MAP_TIMEOUT_MS: "${MAP_REDUCE_MAP_TIMEOUT_MS:-45000}"
-      EMBED_QUEUE_CONCURRENCY: "${EMBED_QUEUE_CONCURRENCY:-2}"
-      EMBED_QUEUE_MAX_QUEUED: "${EMBED_QUEUE_MAX_QUEUED:-64}"
-      MAP_REDUCE_QUEUE_CONCURRENCY: "${MAP_REDUCE_QUEUE_CONCURRENCY:-2}"
-      MAP_REDUCE_QUEUE_MAX_QUEUED: "${MAP_REDUCE_QUEUE_MAX_QUEUED:-32}"
-      ANALYSIS_QUEUE_CONCURRENCY: "${ANALYSIS_QUEUE_CONCURRENCY:-2}"
-      ANALYSIS_QUEUE_MAX_QUEUED: "${ANALYSIS_QUEUE_MAX_QUEUED:-32}"
-      RATE_LIMIT_CHAT_PER_MINUTE: "${RATE_LIMIT_CHAT_PER_MINUTE:-20}"
-      RATE_LIMIT_VISUALIZE_PER_MINUTE: "${RATE_LIMIT_VISUALIZE_PER_MINUTE:-10}"
-      RATE_LIMIT_UPLOAD_PER_MINUTE: "${RATE_LIMIT_UPLOAD_PER_MINUTE:-8}"
-      RATE_LIMIT_LIGHTWEIGHT_PER_MINUTE: "${RATE_LIMIT_LIGHTWEIGHT_PER_MINUTE:-30}"
-      RATE_LIMIT_ADMIN_WRITE_PER_MINUTE: "${RATE_LIMIT_ADMIN_WRITE_PER_MINUTE:-10}"
-      TRUST_PROXY: "${TRUST_PROXY:-false}"
-      RATE_LIMIT_KEY_HEADER: "${RATE_LIMIT_KEY_HEADER:-}"
-      CHAT_QUEUE_ENABLED: "${CHAT_QUEUE_ENABLED:-false}"
-      CHAT_QUEUE_CONCURRENCY: "${CHAT_QUEUE_CONCURRENCY:-4}"
-      CHAT_QUEUE_MAX_QUEUED: "${CHAT_QUEUE_MAX_QUEUED:-32}"
-      RAG_RERANK_ENABLED: "${RAG_RERANK_ENABLED:-false}"
-      RERANK_MODEL: "${RERANK_MODEL:-bge-reranker-v2-m3}"
-      RERANK_TOP_K: "${RERANK_TOP_K:-40}"
-      RERANK_TIMEOUT_MS: "${RERANK_TIMEOUT_MS:-8000}"
-      RETRIEVAL_LOG_ENABLED: "${RETRIEVAL_LOG_ENABLED:-true}"
-    volumes:
-      - myai-data:/app/data
-      - myai-uploads:/app/uploads
-
   qdrant:
     image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-v1.13.6}
     container_name: myai-qdrant
@@ -99,24 +21,6 @@ services:
       retries: 5
       start_period: 15s
 
-  ollama:
-    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-latest}
-    container_name: myai-ollama
-    restart: unless-stopped
-    ports:
-      - "${OLLAMA_BIND_ADDR:-127.0.0.1}:${OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-
 volumes:
-  myai-data:
-  myai-uploads:
   qdrant-storage:
   qdrant-snapshots:
-  ollama-data:

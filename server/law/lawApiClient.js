@@ -1,6 +1,6 @@
 import { getLawConfig, maskLawSecrets } from "./lawConfig.js";
 import { getCachedLawResponse, setCachedLawResponse, buildLawCacheKey } from "./lawCache.js";
-import { normalizeArticleRef, normalizeLawName } from "./lawArticleRef.js";
+import { normalizeArticleRef, normalizeEffectiveDate, normalizeLawName } from "./lawArticleRef.js";
 import { LAW_ERROR_MARKERS, LawError, assertLawAvailable } from "./lawErrors.js";
 import { throwIfAborted } from "../abort.js";
 import {
@@ -15,6 +15,7 @@ import {
   normalizeAdminRulePayload,
   normalizeAdminRuleResults,
   normalizeArticlePayload,
+  normalizeHistoryResults,
   normalizeInterpretationPayload,
   normalizeInterpretationResults,
   normalizeOrdinancePayload,
@@ -25,6 +26,9 @@ import {
 } from "./lawApiParser.js";
 
 const LAW_TEXT_TTL_MS = 7 * 86_400_000;
+// Historical snapshots are immutable past their effective date, so cache aggressively.
+const LAW_HISTORICAL_TTL_MS = 30 * 86_400_000;
+const LAW_HISTORY_TTL_MS = 7 * 86_400_000;
 const LAW_SEARCH_TTL_MS = 86_400_000;
 const PRECEDENT_TTL_MS = 30 * 86_400_000;
 const INTERPRETATION_TTL_MS = 30 * 86_400_000;
@@ -77,8 +81,10 @@ export class LawApiClient {
     if (!articleRef.canonical || !articleRef.joCode) {
       throw new LawError("A valid article reference is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
     }
+    const effective = normalizeEffectiveDate(effectiveDate);
+    const isHistorical = Boolean(effective.compact);
 
-    let resolved = { lawName: normalizedLawName, lawId, mst, effectiveDate };
+    let resolved = { lawName: normalizedLawName, lawId, mst, effectiveDate: effective.iso };
     if (!resolved.lawId && !resolved.mst) {
       const search = await this.searchLaw({ query: normalizedLawName, display: 5 }, { signal });
       resolved = chooseLawSearchResult(search.results, normalizedLawName) || resolved;
@@ -96,8 +102,14 @@ export class LawApiClient {
       item: item || "",
       subitem: subitem || ""
     };
-    const cacheKey = buildLawCacheKey("article_detail", normalizedInput, effectiveDate || resolved.effectiveDate || "");
-    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_TEXT_TTL_MS, lastModified: resolved.lastModified || "" });
+    const cacheTool = isHistorical ? "article_at" : "article_detail";
+    const cacheTtl = isHistorical ? LAW_HISTORICAL_TTL_MS : LAW_TEXT_TTL_MS;
+    const cacheKey = buildLawCacheKey(cacheTool, normalizedInput, effective.iso || resolved.effectiveDate || "");
+    // Historical snapshots are immutable, so the lastModified gate is skipped.
+    const cacheLookupOpts = isHistorical
+      ? { ttlMs: cacheTtl }
+      : { ttlMs: cacheTtl, lastModified: resolved.lastModified || "" };
+    const cached = await getCachedLawResponse(cacheKey, cacheLookupOpts);
     if (cached) {
       const stripped = stripLawPrivateFields(cached);
       if (stripped.citation) {
@@ -106,11 +118,9 @@ export class LawApiClient {
       return { ...stripped, cacheHit: true };
     }
 
-    const params = {
-      target: "lawjosub",
-      type: "JSON",
-      JO: articleRef.joCode
-    };
+    const params = isHistorical
+      ? { target: "eflawjosub", type: "JSON", JO: articleRef.joCode, efYd: effective.compact }
+      : { target: "lawjosub", type: "JSON", JO: articleRef.joCode };
     if (resolved.lawId) params.ID = resolved.lawId;
     else params.MST = resolved.mst;
     if (paragraph?.code) params.HANG = paragraph.code;
@@ -124,7 +134,8 @@ export class LawApiClient {
       articleRef
     });
     if (!articleData.text) {
-      throw new LawError(`${normalizedInput.lawName} ${articleRef.canonical} was not found in official law data.`, {
+      const dateSuffix = isHistorical ? ` (시행일자 ${effective.iso} 기준)` : "";
+      throw new LawError(`${normalizedInput.lawName} ${articleRef.canonical} was not found in official law data${dateSuffix}.`, {
         marker: LAW_ERROR_MARKERS.NOT_FOUND,
         statusCode: 404
       });
@@ -132,9 +143,61 @@ export class LawApiClient {
     const response = {
       ok: true,
       citation: buildCitation(articleData, articleRef),
-      text: articleData.text
+      text: articleData.text,
+      effectiveDateRequested: effective.iso || ""
     };
-    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_TEXT_TTL_MS, lastModified: articleData.lastModified || "" });
+    const cacheWriteOpts = isHistorical
+      ? { ttlMs: cacheTtl }
+      : { ttlMs: cacheTtl, lastModified: articleData.lastModified || "" };
+    await setCachedLawResponse(cacheKey, response, cacheWriteOpts);
+    return { ...response, cacheHit: false };
+  }
+
+  async getLawHistory({ lawName, lawId, mst } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedLawName = normalizeLawName(lawName);
+    let resolved = { lawName: normalizedLawName, lawId, mst };
+    if (!resolved.lawId && !resolved.mst) {
+      if (!normalizedLawName) {
+        throw new LawError("lawName, lawId, or mst is required for history lookup.", {
+          marker: LAW_ERROR_MARKERS.NOT_FOUND,
+          statusCode: 400
+        });
+      }
+      const search = await this.searchLaw({ query: normalizedLawName, display: 5 }, { signal });
+      resolved = chooseLawSearchResult(search.results, normalizedLawName) || resolved;
+    }
+    if (!resolved.lawId && !resolved.mst) {
+      throw new LawError(`Law not found: ${normalizedLawName}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+
+    const normalizedInput = {
+      lawName: resolved.lawName || normalizedLawName,
+      lawId: resolved.lawId || "",
+      mst: resolved.mst || ""
+    };
+    const cacheKey = buildLawCacheKey("law_history", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_HISTORY_TTL_MS });
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+
+    const params = {
+      target: this.config.historyTarget || "lsHstInq",
+      type: "JSON"
+    };
+    if (resolved.lawId) params.ID = resolved.lawId;
+    if (resolved.mst) params.MST = resolved.mst;
+    if (normalizedLawName && !params.ID && !params.MST) params.LM = normalizedLawName;
+
+    const payload = await this.requestSearch(params, { signal });
+    const revisions = stripLawPrivateFields(normalizeHistoryResults(payload));
+    const response = {
+      ok: revisions.length > 0,
+      lawName: resolved.lawName || normalizedLawName,
+      lawId: resolved.lawId || "",
+      mst: resolved.mst || "",
+      revisions
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_HISTORY_TTL_MS });
     return { ...response, cacheHit: false };
   }
 

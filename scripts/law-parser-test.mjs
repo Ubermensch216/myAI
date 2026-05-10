@@ -27,7 +27,8 @@ const {
   buildAdminRuleCitation,
   normalizeOrdinanceResults,
   normalizeOrdinancePayload,
-  buildOrdinanceCitation
+  buildOrdinanceCitation,
+  normalizeHistoryResults
 } = await import("../server/law/lawApiParser.js");
 const { normalizeArticleRef } = await import("../server/law/lawArticleRef.js");
 
@@ -62,6 +63,7 @@ await run("ordinance search official region key", testOrdinanceOfficialRegion);
 await run("ordinance detail payload", testOrdinanceDetail);
 await run("ordinance detail official article body key", testOrdinanceOfficialBody);
 await run("citation builders for admin rule and ordinance", testAdminOrdinanceCitations);
+await run("law history results sorted newest-first", testLawHistoryResults);
 
 if (failureCount > 0) process.exitCode = 1;
 
@@ -466,6 +468,20 @@ function testOrdinanceOfficialBody() {
   assert.equal(data.ordinId, "2082681");
   assert.equal(data.region, "서울특별시 강남구");
   assert.match(data.text, /제1조\(목적\)/);
+}
+
+async function testLawHistoryResults() {
+  const payload = await loadFixture("search-law-history.json");
+  const results = normalizeHistoryResults(payload);
+  assert.equal(results.length, 3);
+  assert.equal(results[0].effectiveDate, "2023-01-04", "newest revision must be first");
+  assert.equal(results[0].mst, "001234");
+  assert.equal(results[0].promulgationDate, "2022-12-06");
+  assert.equal(results[0].promulgationNumber, "19069");
+  assert.equal(results[0].revisionType, "일부개정");
+  assert.equal(results[1].effectiveDate, "2012-03-04");
+  assert.equal(results[2].effectiveDate, "1958-02-22");
+  assert.equal(results[2].revisionType, "제정");
 }
 
 function testAdminOrdinanceCitations() {

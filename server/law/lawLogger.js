@@ -38,7 +38,7 @@ export async function logLawCall(entry = {}) {
 function sanitizeNormalizedQuery(value) {
   const source = value && typeof value === "object" ? value : { value };
   const allowed = {};
-  for (const key of ["query", "lawName", "article", "paragraph", "item", "canonical", "display"]) {
+  for (const key of ["query", "lawName", "article", "paragraph", "item", "canonical", "display", "effectiveDate", "fromDate", "toDate"]) {
     if (source[key] != null) allowed[key] = safeText(source[key], 240);
   }
   return allowed;

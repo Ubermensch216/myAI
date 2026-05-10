@@ -44,6 +44,9 @@ Implemented pieces:
 - `POST /api/law/ordinances/search`
 - `POST /api/law/ordinances/detail`
 - `POST /api/law/impact-map`
+- `POST /api/law/article/at`
+- `POST /api/law/article/diff`
+- `POST /api/law/history`
 - `legal_research` chat mode that combines statute, precedent, interpretation,
   admin-rule, and ordinance results based on intent flags
 - Chat integration through `server/ollama.js` and `lawContextBuilder.js`
@@ -67,7 +70,9 @@ Implemented pieces:
 
 Still incomplete or follow-up work:
 
-- Historical comparison/time-travel and action-plan mode.
+- Frontend time-travel/diff UI (backend endpoints landed in Phase 4; UI is a
+  follow-up).
+- `action_plan` mode (Phase 5).
 - Knowledge graph integration using the existing per-notebook `graph.sqlite`
   infrastructure.
 
@@ -92,6 +97,7 @@ LAW_CACHE_MAX_ENTRIES=1000
 LAW_AUTO_DETECT=false
 LAW_VERIFY_CITATIONS=true
 LAW_IMPACT_MAP_ENABLED=true
+LAW_HISTORY_TARGET=lsHstInq
 
 RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
 RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
@@ -124,13 +130,17 @@ server/law/lawCache.js
 server/law/lawCitationFormatter.js
 server/law/lawConfig.js
 server/law/lawContextBuilder.js
+server/law/lawDiff.js
 server/law/lawErrors.js
 server/law/lawIntent.js
 server/law/lawLogger.js
 server/law/tools/adminRules.js
+server/law/tools/articleAt.js
 server/law/tools/articleDetail.js
+server/law/tools/articleDiff.js
 server/law/tools/interpretations.js
 server/law/tools/impactMap.js
+server/law/tools/lawHistory.js
 server/law/tools/lawText.js
 server/law/tools/ordinances.js
 server/law/tools/precedents.js
@@ -299,6 +309,77 @@ Fetches the official statute article, then returns a deterministic structural
 impact map. It does not ask the model to infer legal duties. The response
 contains one official law citation plus graph-like `nodes`, `edges`, `groups`,
 and `warnings` under `impactMap`.
+
+### `POST /api/law/article/at`
+
+Request:
+
+```json
+{ "lawName": "민법", "article": "제750조", "effectiveDate": "2012-03-04" }
+```
+
+Returns the official article body as it stood on the requested 시행일자
+(historical snapshot). Internally switches the upstream call to
+`target=eflawjosub` and passes `efYd=YYYYMMDD`. Accepts `YYYY-MM-DD`,
+`YYYYMMDD`, `YYYY/MM/DD`, or `YYYY.MM.DD`; invalid dates return 400. Snapshots
+are immutable, so cache TTL is 30 days. Uses the `law_time_travel` rate-limit
+bucket. Response includes `effectiveDate` (the date requested) and
+`snapshotEffectiveDate` (the actual snapshot date law.go.kr returned).
+
+### `POST /api/law/article/diff`
+
+Request:
+
+```json
+{ "lawName": "개인정보 보호법", "article": "제15조", "fromDate": "2012-03-04", "toDate": "2023-09-15" }
+```
+
+Fetches the article at both effective dates via `getArticleAt`, then runs a
+deterministic LCS-based line diff in `server/law/lawDiff.js`. Adjacent
+removed+added line pairs with bigram-Jaccard similarity ≥ 0.5 are collapsed
+into a single `modified` hunk so the UI can show side-by-side rewrites instead
+of separate red/green lines.
+
+Response:
+
+```js
+{
+  ok: true,
+  query: { lawName, article, fromDate, toDate },
+  from: { citation, text, effectiveDate, snapshotEffectiveDate, cacheHit },
+  to:   { citation, text, effectiveDate, snapshotEffectiveDate, cacheHit },
+  diff: {
+    fromLineCount, toLineCount, identical,
+    hunks: [
+      { type: "unchanged", text },
+      { type: "added", text },
+      { type: "removed", text },
+      { type: "modified", oldText, newText, similarity }
+    ],
+    stats: { added, removed, modified, unchanged }
+  }
+}
+```
+
+`fromDate` and `toDate` must both validate and must differ. Uses
+`law_time_travel` rate-limit bucket. No model inference is involved; the diff
+is purely structural so two calls with the same inputs always produce the same
+hunks.
+
+### `POST /api/law/history`
+
+Request:
+
+```json
+{ "lawName": "민법" }
+```
+
+Lists 시행일별 개정 이력 for a given law (`lawName`, `lawId`, or `mst` accepted).
+Calls upstream with `target=lsHstInq` (overridable via `LAW_HISTORY_TARGET`)
+and returns a `revisions` array sorted newest-first. Each entry carries
+`{ effectiveDate, promulgationDate, mst, promulgationNumber, revisionType, title }`
+so callers can pick two dates to feed into `/api/law/article/diff`. Cached for
+7 days. Uses the `law_time_travel` rate-limit bucket.
 
 ## Chat Behavior
 
@@ -528,10 +609,15 @@ Phase 3:
 - ✅ `/api/law/impact-map`
 - ✅ Studio Law Explorer MVP
 
-Phase 4:
+Phase 4 (backend complete):
 
-- Historical law retrieval
-- Old/new comparison and legal diff UI
+- ✅ Historical article retrieval (`/api/law/article/at`, `target=eflawjosub` +
+  `efYd`)
+- ✅ Article diff (`/api/law/article/diff`, `server/law/lawDiff.js` LCS +
+  bigram modified-pair detection)
+- ✅ Law revision history list (`/api/law/history`, `target=lsHstInq`)
+- ✅ `law_time_travel` rate-limit bucket wired through all three endpoints
+- Frontend diff/timeline UI — pending (separate cycle)
 
 Phase 5:
 
@@ -552,9 +638,18 @@ Knowledge graph track:
 ## Limitations
 
 The current engine covers statute search/article retrieval/citation
-verification and Phase 2 official-source research for precedents, legal
-interpretations, admin rules, and ordinances. Impact maps, time-travel
-comparison, and legal action plans remain later phases.
+verification (Phase 1), Phase 2 official-source research for precedents, legal
+interpretations, admin rules, and ordinances, Phase 3 impact maps, and Phase 4
+time-travel/diff backend (`/article/at`, `/article/diff`, `/history`). Frontend
+diff/timeline UI and the Phase 5 `action_plan` mode remain later phases.
+
+The `LAW_HISTORY_TARGET` upstream parameter (`lsHstInq` by default) is the
+documented law.go.kr revision-history target. If law.go.kr renames or
+deprecates it, override via env without code change. Live verification of
+`/history` requires `MYAI_SMOKE_LAW_LIVE=1` against a real `LAW_OC` key — the
+parser is fixture-driven and accepts the common 시행일자/공포일자/제개정구분
+field shapes, but the upstream target itself was not exercised against the
+live API in the Phase 4 implementation cycle.
 
 The department notebook KG integration is also future work. When added, it
 should reuse the existing per-notebook `graph.sqlite` infrastructure rather than
