@@ -738,14 +738,10 @@ async function requestFollowupSuggestions(room) {
 }
 
 function buildLocalFollowupSuggestions(room) {
-  const messages = Array.isArray(room?.messages) ? room.messages : [];
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-  const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  const topic = createFollowupTopic(lastAssistant?.content || lastUser?.content || "");
   return [
-    `${topic}에서 놓친 부분이나 예외 케이스가 있을까?`,
-    `${topic}을 실제로 적용할 때 가장 먼저 해야 할 것은 뭐야?`,
-    `${topic}과 관련해서 더 깊이 알아야 할 개념이나 배경이 있어?`
+    "위와 관련하여 놓친 부분이나 예외 케이스가 있을까?",
+    "위 내용을 실제로 적용할 때 가장 먼저 해야 할 것은 뭐야?",
+    "위와 관련해서 더 깊이 알아야 할 개념이나 배경이 있어?"
   ];
 }
 
