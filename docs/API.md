@@ -586,20 +586,25 @@ enablement.
 
 ### `POST /api/admin/graph/:notebookId/rebuild`
 
-Starts an in-process background rebuild of one notebook knowledge graph and
-returns `202`:
+Starts a background rebuild of one notebook knowledge graph and returns `202`:
 
 ```js
 { model: "gemma4:e2b", concurrency: 1 }
 ```
 
 `model` is optional and falls back to `KG_EXTRACT_MODEL` or the graph
-extractor default. `concurrency` is clamped by the server.
+extractor default. `concurrency` is clamped by the server. Rebuilds are written
+to a temporary graph, validated, then swapped into place.
 
 ### `GET /api/admin/graph/:notebookId/rebuild/status`
 
-Returns the latest rebuild job snapshot for the notebook, or `job: null` when
-no rebuild has been started in the current server process.
+Returns the latest rebuild job snapshot for the notebook, including persisted
+history from `data/notebooks/<notebookId>/graph-jobs/`, or `job: null` when no
+rebuild has been recorded.
+
+### `GET /api/admin/graph/:notebookId/rebuild/jobs?limit=20`
+
+Returns recent persisted rebuild job snapshots for the notebook.
 
 ### `GET /api/notebooks`
 

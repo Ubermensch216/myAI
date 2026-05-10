@@ -185,14 +185,23 @@ Admins can also start the same class of rebuild from the API:
 ```text
 POST /api/admin/graph/:notebookId/rebuild
 GET  /api/admin/graph/:notebookId/rebuild/status
+GET  /api/admin/graph/:notebookId/rebuild/jobs
 ```
 
 The graph builder uses `server/rag/graph/extractor.js` to extract entities and
 relations, stores normalized nodes/edges/source references through
 `server/rag/graph/store.js`, and uses the base ontology in
 `server/rag/graph/ontology.js`. The API rebuild path is backed by
-`server/rag/graph/builder.js` and keeps only current-process job state; the
-finished graph itself is persisted in `graph.sqlite`.
+`server/rag/graph/builder.js`; rebuild job snapshots and JSONL events are
+persisted beside the notebook in:
+
+```text
+data/notebooks/<notebookId>/graph-jobs/
+```
+
+Rebuilds are written to a temporary SQLite file first, validated, then swapped
+into `graph.sqlite`. If extraction fails before any chunk succeeds, or the temp
+graph fails validation, the previous graph is kept.
 
 At query time, graph expansion is off by default and can be enabled with:
 

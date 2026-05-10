@@ -132,6 +132,12 @@ export function bindStudioGraphEvents() {
   window.addEventListener("myai:renderrooms", () => {
     if (kgState.panelVisible) syncWithActiveRoom({ force: false }).catch(reportError);
   });
+
+  window.addEventListener("myai:roomchange", () => {
+    if (kgState.panelVisible) {
+      syncWithActiveRoom({ force: false }).catch(reportError);
+    }
+  });
 }
 
 async function syncWithActiveRoom({ force = false } = {}) {

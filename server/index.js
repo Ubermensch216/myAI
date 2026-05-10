@@ -318,7 +318,7 @@ app.post("/api/chat", async (request, response) => {
   if (notebookId && await isAccessControlConfigured()) {
     const notebook = await getNotebook(notebookId);
     if (!notebook) {
-      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
+      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
       return;
     }
     const access = await requireNotebookAccess(request, response, notebook);
@@ -691,7 +691,7 @@ app.patch("/api/notebooks/:id/access", requireAdmin, async (request, response) =
   try {
     const updated = await updateNotebookAccess(request.params.id, normalizeNotebookAccessPolicy(request.body?.access || request.body || null));
     if (!updated) {
-      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
+      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
       return;
     }
     response.json({ notebook: updated });

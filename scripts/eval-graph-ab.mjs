@@ -69,6 +69,7 @@ const run = await runEvaluation({
   filter: {
     notebookId: filterNotebook || undefined,
     suiteId: filterSuite || undefined,
+    tag: filterTag || undefined,
     quick: quickMode
   },
   k: topK,
@@ -103,6 +104,17 @@ const sB = summary.baseline;
 const sG = summary.graph;
 if (sB && sG) {
   console.log(`  Δ recall=${delta(sB.recall, sG.recall)}  Δ mrr=${delta(sB.mrr, sG.mrr)}  Δ precision=${delta(sB.precision, sG.precision)}`);
+}
+
+if (Array.isArray(run.comparisons) && run.comparisons.length) {
+  console.log("\n=== Graph Expansion Diagnostics ===");
+  for (const c of run.comparisons) {
+    console.log(`  ${c.baseline} -> ${c.graph} (n=${c.n})`);
+    console.log(`     latency ${fmt(c.baselineAvgTotalMs)}ms -> ${fmt(c.graphAvgTotalMs)}ms, delta ${delta(c.baselineAvgTotalMs, c.graphAvgTotalMs)}ms`);
+    console.log(`     graph expansion avg ${fmt(c.avgGraphExpansionMs)}ms, hydration avg ${fmt(c.avgGraphHydrationMs)}ms`);
+    console.log(`     supplement hit ${typeof c.graphSupplementHitRate === "number" ? fmt(c.graphSupplementHitRate) : "n/a"}, used ${fmt(c.graphUsedRate)}, noise ${fmt(c.noiseCaseRate)}`);
+    console.log(`     worse: recall ${fmt(c.recallWorseRate)}, precision ${fmt(c.precisionWorseRate)}`);
+  }
 }
 
 console.log("\n=== Per-tag A/B ===");

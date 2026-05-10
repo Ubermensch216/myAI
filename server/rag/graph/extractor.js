@@ -14,6 +14,11 @@ const DEFAULT_MODEL = process.env.KG_EXTRACT_MODEL || "gemma4:e2b";
 const DEFAULT_TEMPERATURE = Number(process.env.KG_EXTRACT_TEMPERATURE || 0.1);
 const DEFAULT_TIMEOUT_MS = Number(process.env.KG_EXTRACT_TIMEOUT_MS || 180000);
 const MAX_CHUNK_TEXT = Number(process.env.KG_EXTRACT_MAX_CHARS || 4000);
+const CONFIDENCE_INSTRUCTION = [
+  "Return a confidence field for every entity and relation.",
+  "The confidence must be a number from 0.0 to 1.0.",
+  "Use lower confidence when the evidence is short, ambiguous, or indirectly implied."
+].join("\n");
 
 function buildSystemPrompt() {
   const entityList = ENTITY_TYPES.map((t) => `${t}=${ENTITY_TYPE_DESCRIPTIONS[t]}`).join("\n  ");
@@ -90,7 +95,10 @@ function validateExtraction(parsed) {
         ? e.aliases.map(String).map((s) => s.trim()).filter((s) => s && s.length <= 80).slice(0, 6)
         : [];
       const evidence = String(e.evidence || "").slice(0, 200);
-      const cleaned = { tempId, type, label, aliases, evidence };
+      const confidence = Number.isFinite(Number(e.confidence))
+        ? Math.max(0, Math.min(1, Number(e.confidence)))
+        : null;
+      const cleaned = { tempId, type, label, aliases, evidence, confidence };
       tempIdMap.set(tempId, cleaned);
       entities.push(cleaned);
     }
@@ -105,7 +113,10 @@ function validateExtraction(parsed) {
       if (!tempIdMap.has(src) || !tempIdMap.has(dst)) continue;
       if (src === dst) continue;
       const evidence = String(r.evidence || "").slice(0, 200);
-      relations.push({ src, dst, type, evidence });
+      const confidence = Number.isFinite(Number(r.confidence))
+        ? Math.max(0, Math.min(1, Number(r.confidence)))
+        : null;
+      relations.push({ src, dst, type, evidence, confidence });
     }
   }
   return { entities, relations };
@@ -127,7 +138,7 @@ export async function extractFromChunkText({
     stream: false,
     format: "json",
     messages: [
-      { role: "system", content: buildSystemPrompt() },
+      { role: "system", content: `${buildSystemPrompt()}\n\n${CONFIDENCE_INSTRUCTION}` },
       { role: "user", content: buildUserPrompt(trimmed) }
     ],
     options: { temperature, top_p: 0.8 }

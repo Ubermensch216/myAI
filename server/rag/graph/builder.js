@@ -4,14 +4,32 @@ import { fileURLToPath } from "node:url";
 import { extractFromChunkText } from "./extractor.js";
 import {
   openNotebookGraph,
+  openNotebookGraphAtPath,
+  closeGraphDatabase,
+  replaceNotebookGraphFile,
+  getNotebookGraphPath,
   upsertNode,
   upsertEdge,
   attachSourceRef,
   setMeta,
   getStats,
-  clearGraph
+  getManualOverrides,
+  applyManualOverrides,
+  validateGraphIntegrity
 } from "./store.js";
 import { loadNotebookDocumentRecords } from "../../notebooks.js";
+import {
+  createRebuildJobId,
+  persistRebuildJob,
+  appendRebuildJobEvent,
+  readLatestRebuildJob,
+  listRebuildJobs as listPersistedRebuildJobs
+} from "./jobStore.js";
+import {
+  makeEntitySupportKey,
+  scoreEntityConfidence,
+  scoreRelationConfidence
+} from "./confidence.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..", "..", "..");
@@ -27,8 +45,62 @@ function appendLog(notebookId, line) {
   } catch { /* ignore */ }
 }
 
+function getTempGraphPath(notebookId, jobId) {
+  return path.join(rootDir, "data", "notebooks", notebookId, `graph.${jobId}.sqlite.tmp`);
+}
+
+function persistJob(job, { force = false } = {}) {
+  const now = Date.now();
+  if (!force && job._lastPersistedMs && now - job._lastPersistedMs < 1000) return;
+  job.updatedAt = new Date().toISOString();
+  job._lastPersistedMs = now;
+  try {
+    persistRebuildJob(snapshotJob(job));
+  } catch {
+    // Rebuild should not fail because job telemetry could not be written.
+  }
+}
+
+function recordJobEvent(job, message, extra = {}) {
+  appendLog(job.notebookId, message);
+  appendRebuildJobEvent(job.notebookId, job.jobId, { message, ...extra });
+}
+
+function rememberFailure(job, failure) {
+  job.failureSamples ||= [];
+  if (job.failureSamples.length < 20) {
+    job.failureSamples.push({
+      at: new Date().toISOString(),
+      ...failure
+    });
+  }
+}
+
 export function getRebuildJob(notebookId) {
-  return jobs.get(notebookId) || null;
+  const active = jobs.get(notebookId);
+  if (active) return active;
+  const persisted = readLatestRebuildJob(notebookId);
+  if (!persisted) return null;
+  if (persisted.status === "running") {
+    const interrupted = {
+      ...persisted,
+      status: "failed",
+      finishedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      error: persisted.error || "Server stopped before the rebuild completed."
+    };
+    try {
+      persistRebuildJob(interrupted);
+      appendRebuildJobEvent(notebookId, interrupted.jobId, {
+        message: "[rebuild] marked failed after server restart",
+        level: "warn"
+      });
+    } catch {
+      // Best effort only.
+    }
+    return interrupted;
+  }
+  return persisted;
 }
 
 export function isRebuildInProgress(notebookId) {
@@ -41,21 +113,32 @@ export function snapshotJob(job) {
   const startedMs = Date.parse(job.startedAt);
   const endMs = job.finishedAt ? Date.parse(job.finishedAt) : Date.now();
   return {
+    jobId: job.jobId || null,
     notebookId: job.notebookId,
     status: job.status,
+    stage: job.stage || null,
     startedAt: job.startedAt,
+    updatedAt: job.updatedAt || null,
     finishedAt: job.finishedAt || null,
     elapsedMs: Math.max(0, endMs - startedMs),
     total: job.total || 0,
     processed: job.processed || 0,
+    attempted: job.attempted || 0,
     nodesCreated: job.nodesCreated || 0,
     edgesCreated: job.edgesCreated || 0,
     failures: job.failures || 0,
     skipped: job.skipped || 0,
     error: job.error || null,
     model: job.model || null,
-    finalStats: job.finalStats || null
+    finalStats: job.finalStats || null,
+    validation: job.validation || null,
+    manualOverrides: job.manualOverrides || null,
+    failureSamples: job.failureSamples || []
   };
+}
+
+export function listRebuildJobHistory(notebookId, limit = 20) {
+  return listPersistedRebuildJobs(notebookId, limit);
 }
 
 export async function startRebuild(notebookId, { model = "", concurrency = 1 } = {}) {
@@ -65,28 +148,41 @@ export async function startRebuild(notebookId, { model = "", concurrency = 1 } =
   }
   const resolvedModel = (model || process.env.KG_EXTRACT_MODEL || "").trim() || null;
   const job = {
+    jobId: createRebuildJobId(),
     notebookId,
     status: "running",
+    stage: "queued",
     startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     finishedAt: null,
     total: 0,
     processed: 0,
+    attempted: 0,
     nodesCreated: 0,
     edgesCreated: 0,
     failures: 0,
     skipped: 0,
     error: null,
     model: resolvedModel,
-    finalStats: null
+    finalStats: null,
+    validation: null,
+    manualOverrides: null,
+    failureSamples: [],
+    nodeSupport: new Map(),
+    edgeSupport: new Map()
   };
   jobs.set(notebookId, job);
-  appendLog(notebookId, `[rebuild] started model=${resolvedModel || "default"} concurrency=${concurrency}`);
+  persistJob(job, { force: true });
+  recordJobEvent(job, `[rebuild] started job=${job.jobId} model=${resolvedModel || "default"} concurrency=${concurrency}`);
 
   runRebuild(job, { model: resolvedModel || undefined, concurrency }).catch((error) => {
     job.status = "failed";
+    job.stage = "failed";
     job.error = error?.message || String(error);
     job.finishedAt = new Date().toISOString();
-    appendLog(notebookId, `[rebuild] crashed: ${job.error}`);
+    rememberFailure(job, { scope: "job", error: job.error });
+    persistJob(job, { force: true });
+    recordJobEvent(job, `[rebuild] crashed: ${job.error}`, { level: "error" });
   });
 
   return { ok: true, job: snapshotJob(job) };
@@ -94,6 +190,8 @@ export async function startRebuild(notebookId, { model = "", concurrency = 1 } =
 
 async function runRebuild(job, { model, concurrency }) {
   const { notebookId } = job;
+  job.stage = "loading";
+  persistJob(job, { force: true });
   const records = await loadNotebookDocumentRecords(notebookId);
   const allChunks = [];
   for (const doc of records) {
@@ -107,67 +205,144 @@ async function runRebuild(job, { model, concurrency }) {
     }
   }
   job.total = allChunks.length;
-  appendLog(notebookId, `[rebuild] docs=${records.length} chunks=${allChunks.length}`);
+  recordJobEvent(job, `[rebuild] docs=${records.length} chunks=${allChunks.length}`);
+  persistJob(job, { force: true });
 
-  const db = await openNotebookGraph(notebookId);
-  clearGraph(db);
-  appendLog(notebookId, "[rebuild] graph cleared");
+  const tempPath = getTempGraphPath(notebookId, job.jobId);
+  try { fs.rmSync(tempPath, { force: true }); } catch { /* ignore */ }
 
-  let cursor = 0;
-  const workerCount = Math.max(1, Math.min(8, Number(concurrency) || 1));
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (true) {
-      const idx = cursor++;
-      if (idx >= allChunks.length) return;
-      try {
-        await processChunk(db, job, allChunks[idx], model);
-      } catch (error) {
-        job.failures++;
-        appendLog(notebookId, `[rebuild] chunk ${idx} unexpected error: ${error?.message || error}`);
-      }
-    }
-  });
-  await Promise.all(workers);
+  let manualOverrides = { nodes: [], edges: [] };
+  if (fs.existsSync(getNotebookGraphPath(notebookId))) {
+    const existingDb = await openNotebookGraph(notebookId);
+    manualOverrides = getManualOverrides(existingDb);
+  }
 
-  setMeta(db, "last_built_at", new Date().toISOString());
-  setMeta(db, "extraction_model", job.model || "gemma4:e2b");
-
-  const stats = getStats(db);
-  job.finalStats = {
-    nodeCount: stats.nodeCount,
-    edgeCount: stats.edgeCount,
-    enabledNodes: stats.enabledNodes,
-    enabledEdges: stats.enabledEdges,
-    refCount: stats.refCount
+  job.manualOverrides = {
+    nodesFound: manualOverrides.nodes.length,
+    edgesFound: manualOverrides.edges.length,
+    nodesApplied: 0,
+    edgesApplied: 0
   };
-  job.status = "done";
-  job.finishedAt = new Date().toISOString();
-  appendLog(
-    notebookId,
-    `[rebuild] done processed=${job.processed} failed=${job.failures} ` +
-    `nodes=${stats.enabledNodes}/${stats.nodeCount} edges=${stats.enabledEdges}/${stats.edgeCount}`
-  );
+  job.stage = "building_temp";
+  recordJobEvent(job, `[rebuild] building temp graph ${path.basename(tempPath)}`);
+  persistJob(job, { force: true });
+
+  let db = await openNotebookGraphAtPath(notebookId, tempPath);
+  let swapped = false;
+  try {
+    job.stage = "extracting";
+    persistJob(job, { force: true });
+
+    let cursor = 0;
+    const workerCount = Math.max(1, Math.min(8, Number(concurrency) || 1));
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= allChunks.length) return;
+        try {
+          await processChunk(db, job, allChunks[idx], model, idx);
+        } catch (error) {
+          job.failures++;
+          job.attempted++;
+          rememberFailure(job, {
+            scope: "chunk",
+            chunk: `${allChunks[idx]?.documentId}:${allChunks[idx]?.chunkIndex}`,
+            error: error?.message || String(error)
+          });
+          recordJobEvent(job, `[rebuild] chunk ${idx} unexpected error: ${error?.message || error}`, { level: "error" });
+          persistJob(job);
+        }
+      }
+    });
+    await Promise.all(workers);
+
+    if (job.total > 0 && job.processed === 0 && job.failures > 0) {
+      throw new Error("all chunk extractions failed; keeping the existing graph");
+    }
+
+    job.stage = "finalizing";
+    const applied = applyManualOverrides(db, manualOverrides);
+    job.manualOverrides = {
+      ...job.manualOverrides,
+      nodesApplied: applied.nodesApplied,
+      edgesApplied: applied.edgesApplied
+    };
+    setMeta(db, "last_built_at", new Date().toISOString());
+    setMeta(db, "extraction_model", job.model || "gemma4:e2b");
+    setMeta(db, "rebuild_job_id", job.jobId);
+
+    const validation = validateGraphIntegrity(db);
+    job.validation = validation;
+    if (!validation.ok) {
+      throw new Error(`temp graph validation failed: ${validation.reason}`);
+    }
+
+    const stats = getStats(db);
+    job.finalStats = {
+      nodeCount: stats.nodeCount,
+      edgeCount: stats.edgeCount,
+      enabledNodes: stats.enabledNodes,
+      enabledEdges: stats.enabledEdges,
+      refCount: stats.refCount
+    };
+
+    closeGraphDatabase(db);
+    db = null;
+
+    job.stage = "swapping";
+    persistJob(job, { force: true });
+    replaceNotebookGraphFile(notebookId, tempPath);
+    swapped = true;
+
+    job.status = "done";
+    job.stage = "done";
+    job.finishedAt = new Date().toISOString();
+    persistJob(job, { force: true });
+    recordJobEvent(
+      job,
+      `[rebuild] done processed=${job.processed} failed=${job.failures} ` +
+      `nodes=${stats.enabledNodes}/${stats.nodeCount} edges=${stats.enabledEdges}/${stats.edgeCount}`
+    );
+  } finally {
+    if (db) closeGraphDatabase(db);
+    if (!swapped) {
+      try { fs.rmSync(tempPath, { force: true }); } catch { /* ignore */ }
+    }
+  }
 }
 
-async function processChunk(db, job, chunk, model) {
+async function processChunk(db, job, chunk, model, idx = 0) {
   const result = await extractFromChunkText({
     chunkText: chunk.text,
     model: model || undefined
   });
   if (!result.ok) {
     job.failures++;
+    job.attempted++;
+    rememberFailure(job, {
+      scope: "chunk",
+      chunk: `${chunk.documentId}:${chunk.chunkIndex}`,
+      reason: result.reason,
+      error: result.error || result.raw || null
+    });
+    recordJobEvent(job, `[rebuild] chunk ${idx} failed: ${result.reason}`, { level: "warn" });
+    persistJob(job);
     return;
   }
   const tempToId = new Map();
   for (const ent of result.entities) {
     try {
+      const supportKey = makeEntitySupportKey(ent);
+      const supportBefore = job.nodeSupport.get(supportKey) || 0;
+      const confidence = scoreEntityConfidence(ent, chunk.text, supportBefore);
       const nodeId = upsertNode(db, {
         type: ent.type,
         label: ent.label,
         aliases: ent.aliases,
-        confidence: 1.0,
+        confidence,
         model: result.model
       });
+      job.nodeSupport.set(supportKey, supportBefore + 1);
       tempToId.set(ent.tempId, nodeId);
       attachSourceRef(db, {
         kind: "node",
@@ -184,13 +359,17 @@ async function processChunk(db, job, chunk, model) {
     const dstId = tempToId.get(rel.dst);
     if (!srcId || !dstId) continue;
     try {
+      const supportKey = `${srcId}|${rel.type}|${dstId}`;
+      const supportBefore = job.edgeSupport.get(supportKey) || 0;
+      const confidence = scoreRelationConfidence(rel, chunk.text, supportBefore);
       const edgeId = upsertEdge(db, {
         srcId,
         dstId,
         type: rel.type,
-        confidence: 1.0,
+        confidence,
         model: result.model
       });
+      job.edgeSupport.set(supportKey, supportBefore + 1);
       if (edgeId) {
         attachSourceRef(db, {
           kind: "edge",
@@ -203,5 +382,7 @@ async function processChunk(db, job, chunk, model) {
       }
     } catch { /* skip individual edge errors */ }
   }
+  job.attempted++;
   job.processed++;
+  persistJob(job);
 }

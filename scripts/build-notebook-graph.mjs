@@ -19,15 +19,25 @@ import { fileURLToPath } from "node:url";
 import { extractFromChunkText } from "../server/rag/graph/extractor.js";
 import {
   openNotebookGraph,
+  openNotebookGraphAtPath,
+  closeGraphDatabase,
   closeNotebookGraph,
+  replaceNotebookGraphFile,
   upsertNode,
   upsertEdge,
   attachSourceRef,
   setMeta,
   getStats,
-  clearGraph,
-  getNotebookGraphPath
+  getNotebookGraphPath,
+  getManualOverrides,
+  applyManualOverrides,
+  validateGraphIntegrity
 } from "../server/rag/graph/store.js";
+import {
+  makeEntitySupportKey,
+  scoreEntityConfidence,
+  scoreRelationConfidence
+} from "../server/rag/graph/confidence.js";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -96,10 +106,20 @@ console.error(`[build] notebook=${notebookId}  docs=${docs.length}  chunks=${all
 console.error(`[build] graph path: ${getNotebookGraphPath(notebookId)}`);
 
 // ── open graph + optional rebuild ─────────────────────────────────────────
-const db = await openNotebookGraph(notebookId);
+let db;
+let tempGraphPath = "";
+let manualOverrides = { nodes: [], edges: [] };
 if (rebuild) {
-  console.error("[build] clearing existing graph...");
-  clearGraph(db);
+  if (fs.existsSync(getNotebookGraphPath(notebookId))) {
+    const existingDb = await openNotebookGraph(notebookId);
+    manualOverrides = getManualOverrides(existingDb);
+  }
+  tempGraphPath = path.join(nbDir, `graph.cli-${Date.now()}.sqlite.tmp`);
+  fs.rmSync(tempGraphPath, { force: true });
+  console.error(`[build] rebuilding into temp graph: ${tempGraphPath}`);
+  db = await openNotebookGraphAtPath(notebookId, tempGraphPath);
+} else {
+  db = await openNotebookGraph(notebookId);
 }
 
 // build resume set if requested
@@ -119,6 +139,8 @@ let nodesCreated = 0;
 let edgesCreated = 0;
 let failures = 0;
 let skipped = 0;
+const nodeSupport = new Map();
+const edgeSupport = new Map();
 
 async function processChunk(chunk, idx) {
   const key = `${chunk.documentId}:${chunk.chunkIndex}`;
@@ -149,13 +171,17 @@ async function processChunk(chunk, idx) {
   const tempToId = new Map();
   for (const ent of result.entities) {
     try {
+      const supportKey = makeEntitySupportKey(ent);
+      const supportBefore = nodeSupport.get(supportKey) || 0;
+      const confidence = scoreEntityConfidence(ent, chunk.text, supportBefore);
       const nodeId = upsertNode(db, {
         type: ent.type,
         label: ent.label,
         aliases: ent.aliases,
-        confidence: 1.0,
+        confidence,
         model: result.model
       });
+      nodeSupport.set(supportKey, supportBefore + 1);
       tempToId.set(ent.tempId, nodeId);
       attachSourceRef(db, {
         kind: "node",
@@ -174,13 +200,17 @@ async function processChunk(chunk, idx) {
     const dstId = tempToId.get(rel.dst);
     if (!srcId || !dstId) continue;
     try {
+      const supportKey = `${srcId}|${rel.type}|${dstId}`;
+      const supportBefore = edgeSupport.get(supportKey) || 0;
+      const confidence = scoreRelationConfidence(rel, chunk.text, supportBefore);
       const edgeId = upsertEdge(db, {
         srcId,
         dstId,
         type: rel.type,
-        confidence: 1.0,
+        confidence,
         model: result.model
       });
+      edgeSupport.set(supportKey, supportBefore + 1);
       if (edgeId) {
         attachSourceRef(db, {
           kind: "edge",
@@ -225,8 +255,35 @@ await runPool(targetChunks, processChunk, concurrency);
 const finishedAt = new Date().toISOString();
 const elapsedSec = Math.round((Date.now() - startedMs) / 1000);
 
+if (targetChunks.length > 0 && processed === 0 && failures > 0) {
+  console.error("[build] all chunk extractions failed; keeping the existing graph");
+  if (rebuild) {
+    closeGraphDatabase(db);
+    fs.rmSync(tempGraphPath, { force: true });
+  } else {
+    closeNotebookGraph(notebookId);
+  }
+  process.exit(1);
+}
+
 setMeta(db, "last_built_at", finishedAt);
 setMeta(db, "extraction_model", modelOverride || process.env.KG_EXTRACT_MODEL || "gemma4:e2b");
+if (rebuild) {
+  const applied = applyManualOverrides(db, manualOverrides);
+  console.error(`[build] manual overrides reapplied: nodes=${applied.nodesApplied}/${manualOverrides.nodes.length}, edges=${applied.edgesApplied}/${manualOverrides.edges.length}`);
+}
+
+const validation = validateGraphIntegrity(db);
+if (!validation.ok) {
+  console.error(`[build] graph validation failed: ${validation.reason}`);
+  if (rebuild) {
+    closeGraphDatabase(db);
+    fs.rmSync(tempGraphPath, { force: true });
+  } else {
+    closeNotebookGraph(notebookId);
+  }
+  process.exit(1);
+}
 
 const stats = getStats(db);
 const summary = {
@@ -250,5 +307,11 @@ console.error(`[build] relation types: ${stats.relationTypeCounts.map((r) => `${
 
 if (jsonOutput) log({ step: "summary", ...summary });
 
-closeNotebookGraph(notebookId);
+if (rebuild) {
+  closeGraphDatabase(db);
+  replaceNotebookGraphFile(notebookId, tempGraphPath);
+  console.error("[build] temp graph validated and swapped into place");
+} else {
+  closeNotebookGraph(notebookId);
+}
 process.exit(failures > 0 && processed === 0 ? 1 : 0);

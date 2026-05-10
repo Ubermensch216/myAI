@@ -181,10 +181,10 @@ selected department notebook
 
 Admin graph inspection, moderation, and rebuild jobs use `/api/admin/graph/*` with
 `ADMIN_TOKEN`. Admins can list/search nodes, inspect source references, and
-toggle or clear manual node/edge enablement overrides. They can also start an
-in-process rebuild for one notebook and poll the current process' rebuild job
-snapshot. Normal Studio graph reads honor group/level or Super notebook access
-tokens and expose only enabled nodes and edges.
+toggle or clear manual node/edge enablement overrides. They can also start a
+safe rebuild for one notebook, poll the latest job snapshot, and inspect
+persisted rebuild history. Normal Studio graph reads honor group/level or Super
+notebook access tokens and expose only enabled nodes and edges.
 
 Department notebook access control is inactive until an admin configures at
 least one enabled group level password or an enabled Super password. Normal

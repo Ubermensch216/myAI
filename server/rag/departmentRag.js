@@ -48,6 +48,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
   let queries = trimmedQuery ? [trimmedQuery] : [];
   let queryEmbeddings = [];
   let graphExpansionResult = null;
+  let graphHydratedAllChunks = false;
 
   const buildDiagnostics = () => ({
     fallbackLoadedAllChunks,
@@ -61,8 +62,12 @@ export async function searchNotebook(notebookId, query, options = {}) {
           ok: graphExpansionResult?.ok || false,
           reason: graphExpansionResult?.reason,
           stats: graphExpansionResult?.stats || null,
+          supplementKeys: Array.isArray(graphExpansionResult?.supplements)
+            ? graphExpansionResult.supplements.map((s) => `${s.documentId}:${s.chunkIndex}`)
+            : [],
           seedLabels: graphExpansionResult?.seedLabels || [],
-          neighborhoodLabels: graphExpansionResult?.neighborhoodLabels || []
+          neighborhoodLabels: graphExpansionResult?.neighborhoodLabels || [],
+          hydratedAllChunks: graphHydratedAllChunks
         }
       : { enabled: false },
     queryVariants: queries.length,
@@ -96,13 +101,21 @@ export async function searchNotebook(notebookId, query, options = {}) {
     };
   }
 
-  const loadAllChunksForFallback = async () => {
+  const hydrateAllChunks = async ({ markFallback = false } = {}) => {
     if (!allChunks) {
+      const tHydrate = Date.now();
       allChunks = await loadNotebookChunksForRetrieval(notebookId, manifest);
+      const elapsed = Date.now() - tHydrate;
+      timing.chunkHydrationMs = (timing.chunkHydrationMs || 0) + elapsed;
+      if (markFallback) timing.fallbackHydrationMs = (timing.fallbackHydrationMs || 0) + elapsed;
+    }
+    if (markFallback) {
       fallbackLoadedAllChunks = true;
     }
     return allChunks;
   };
+
+  const loadAllChunksForFallback = () => hydrateAllChunks({ markFallback: true });
 
   if (trimmedQuery) {
     const tExpand = Date.now();
@@ -185,7 +198,10 @@ export async function searchNotebook(notebookId, query, options = {}) {
         });
         timing.graphExpansionMs = Date.now() - tGraph;
         if (graphExpansionResult.ok && graphExpansionResult.supplements.length) {
-          const allChunksList = await loadAllChunksForFallback();
+          const tGraphHydrate = Date.now();
+          const allChunksList = await hydrateAllChunks();
+          graphHydratedAllChunks = true;
+          timing.graphHydrationMs = (timing.graphHydrationMs || 0) + (Date.now() - tGraphHydrate);
           const byKey = new Map(
             allChunksList.map((c) => [`${c.documentId}:${c.chunkIndex}`, c])
           );

@@ -21,23 +21,82 @@ export function getNotebookGraphPath(notebookId) {
   return path.join(rootDir, "data", "notebooks", notebookId, "graph.sqlite");
 }
 
-export async function openNotebookGraph(notebookId) {
-  if (!notebookId) throw new Error("notebookId required");
-  if (dbCache.has(notebookId)) return dbCache.get(notebookId);
-  const dbPath = getNotebookGraphPath(notebookId);
+async function openGraphDatabase(dbPath, notebookId = null) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const { DatabaseSync } = await loadSqlite();
   const db = new DatabaseSync(dbPath);
   ensureSchema(db);
-  setMeta(db, "notebook_id", notebookId);
-  setMeta(db, "ontology_version", ONTOLOGY_VERSION);
+  if (notebookId) {
+    setMeta(db, "notebook_id", notebookId);
+    setMeta(db, "ontology_version", ONTOLOGY_VERSION);
+  }
+  return db;
+}
+
+export async function openNotebookGraph(notebookId) {
+  if (!notebookId) throw new Error("notebookId required");
+  if (dbCache.has(notebookId)) return dbCache.get(notebookId);
+  const dbPath = getNotebookGraphPath(notebookId);
+  const db = await openGraphDatabase(dbPath, notebookId);
   dbCache.set(notebookId, db);
   return db;
+}
+
+export async function openNotebookGraphAtPath(notebookId, dbPath) {
+  if (!notebookId) throw new Error("notebookId required");
+  if (!dbPath) throw new Error("dbPath required");
+  return openGraphDatabase(dbPath, notebookId);
+}
+
+export function closeGraphDatabase(db) {
+  db?.close?.();
 }
 
 export function closeNotebookGraph(notebookId) {
   const db = dbCache.get(notebookId);
   if (db) { db.close?.(); dbCache.delete(notebookId); }
+}
+
+function removeSqliteSidecars(dbPath) {
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    try {
+      fs.rmSync(`${dbPath}${suffix}`, { force: true });
+    } catch {
+      // Ignore stale sidecar cleanup failures.
+    }
+  }
+}
+
+export function replaceNotebookGraphFile(notebookId, replacementPath) {
+  if (!notebookId) throw new Error("notebookId required");
+  if (!replacementPath) throw new Error("replacementPath required");
+  const targetPath = getNotebookGraphPath(notebookId);
+  const notebookDir = path.resolve(path.dirname(targetPath));
+  const resolvedReplacement = path.resolve(replacementPath);
+  if (!resolvedReplacement.startsWith(`${notebookDir}${path.sep}`)) {
+    throw new Error("replacement graph must be inside the notebook directory");
+  }
+
+  closeNotebookGraph(notebookId);
+  removeSqliteSidecars(targetPath);
+  removeSqliteSidecars(resolvedReplacement);
+
+  try {
+    fs.renameSync(resolvedReplacement, targetPath);
+  } catch (error) {
+    if (process.platform !== "win32" || !fs.existsSync(targetPath)) throw error;
+    const backupPath = `${targetPath}.swap-${Date.now()}.bak`;
+    fs.renameSync(targetPath, backupPath);
+    try {
+      fs.renameSync(resolvedReplacement, targetPath);
+      fs.rmSync(backupPath, { force: true });
+    } catch (inner) {
+      if (!fs.existsSync(targetPath) && fs.existsSync(backupPath)) {
+        fs.renameSync(backupPath, targetPath);
+      }
+      throw inner;
+    }
+  }
 }
 
 function ensureSchema(db) {
@@ -368,6 +427,82 @@ export function clearEdgeOverride(db, edgeId) {
     UPDATE kg_edges SET manual_override = 0, enabled = ? WHERE id = ?
   `).run(enabled, edgeId);
   return result.changes > 0;
+}
+
+export function getManualOverrides(db) {
+  return {
+    nodes: db.prepare(`
+      SELECT id, enabled, manual_override AS manualOverride
+      FROM kg_nodes
+      WHERE manual_override = 1
+    `).all(),
+    edges: db.prepare(`
+      SELECT id, enabled, manual_override AS manualOverride
+      FROM kg_edges
+      WHERE manual_override = 1
+    `).all()
+  };
+}
+
+export function applyManualOverrides(db, overrides = {}) {
+  const nodes = Array.isArray(overrides.nodes) ? overrides.nodes : [];
+  const edges = Array.isArray(overrides.edges) ? overrides.edges : [];
+  const updateNode = db.prepare(`
+    UPDATE kg_nodes
+    SET enabled = ?, manual_override = 1, updated_at = ?
+    WHERE id = ?
+  `);
+  const updateEdge = db.prepare(`
+    UPDATE kg_edges
+    SET enabled = ?, manual_override = 1
+    WHERE id = ?
+  `);
+  const now = new Date().toISOString();
+  let nodesApplied = 0;
+  let edgesApplied = 0;
+  for (const row of nodes) {
+    const result = updateNode.run(row.enabled ? 1 : 0, now, row.id);
+    nodesApplied += result.changes || 0;
+  }
+  for (const row of edges) {
+    const result = updateEdge.run(row.enabled ? 1 : 0, row.id);
+    edgesApplied += result.changes || 0;
+  }
+  return { nodesApplied, edgesApplied };
+}
+
+export function validateGraphIntegrity(db) {
+  const quick = db.prepare("PRAGMA quick_check").get();
+  const quickValue = quick ? Object.values(quick)[0] : "ok";
+  if (quickValue !== "ok") {
+    return { ok: false, reason: "quick_check_failed", detail: String(quickValue) };
+  }
+
+  const badEdges = db.prepare(`
+    SELECT COUNT(*) AS c
+    FROM kg_edges e
+    LEFT JOIN kg_nodes s ON s.id = e.src_id
+    LEFT JOIN kg_nodes d ON d.id = e.dst_id
+    WHERE s.id IS NULL OR d.id IS NULL
+  `).get().c;
+  if (badEdges > 0) {
+    return { ok: false, reason: "dangling_edges", count: badEdges };
+  }
+
+  const badRefs = db.prepare(`
+    SELECT COUNT(*) AS c
+    FROM kg_source_refs r
+    LEFT JOIN kg_nodes n ON r.ref_kind = 'node' AND n.id = r.ref_id
+    LEFT JOIN kg_edges e ON r.ref_kind = 'edge' AND e.id = r.ref_id
+    WHERE r.ref_kind NOT IN ('node', 'edge')
+       OR (r.ref_kind = 'node' AND n.id IS NULL)
+       OR (r.ref_kind = 'edge' AND e.id IS NULL)
+  `).get().c;
+  if (badRefs > 0) {
+    return { ok: false, reason: "dangling_source_refs", count: badRefs };
+  }
+
+  return { ok: true };
 }
 
 export function clearGraph(db) {

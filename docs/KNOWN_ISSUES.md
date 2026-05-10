@@ -18,7 +18,7 @@
 - Studio mind maps use a two-pass LLM pipeline: Pass 1 extracts concepts from evenly sampled chunks spanning the full document; Pass 2 builds node/edge relationships from the concept list. Chunk-boundary relationship loss is therefore reduced compared to a single-pass approach.
 - Image-only uploads and files without extracted text are skipped by the Studio mind map pipeline until a multimodal Pass 1 is added.
 - Department notebook knowledge graphs are optional per-notebook indexes. Graph expansion is disabled unless `KG_EXPANSION_ENABLED=1`, and graph quality depends on the extraction model plus admin review of low-confidence nodes/edges.
-- Graph files live beside notebook data as `data/notebooks/<notebookId>/graph.sqlite`; rebuild or back them up together with the notebook source records when graph-backed retrieval matters.
+- Graph files live beside notebook data as `data/notebooks/<notebookId>/graph.sqlite`; rebuild job history lives in `data/notebooks/<notebookId>/graph-jobs/`. Back up both with the notebook source records when graph-backed retrieval matters.
 
 ## Calendar
 

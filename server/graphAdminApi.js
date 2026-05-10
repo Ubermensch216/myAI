@@ -19,7 +19,7 @@ import {
 } from "./rag/graph/store.js";
 import { describeOntology } from "./rag/graph/ontology.js";
 import { notebookHasGraph } from "./rag/graph/expander.js";
-import { startRebuild, getRebuildJob, snapshotJob } from "./rag/graph/builder.js";
+import { startRebuild, getRebuildJob, snapshotJob, listRebuildJobHistory } from "./rag/graph/builder.js";
 import { getNotebook } from "./notebooks.js";
 
 export const graphAdminRouter = express.Router();
@@ -267,4 +267,11 @@ graphAdminRouter.get("/:notebookId/rebuild/status", requireAdmin, (req, res) => 
   if (!notebookId) { res.status(400).json({ error: "notebookId required" }); return; }
   const job = getRebuildJob(notebookId);
   res.json({ notebookId, job: snapshotJob(job) });
+});
+
+graphAdminRouter.get("/:notebookId/rebuild/jobs", requireAdmin, (req, res) => {
+  const { notebookId } = req.params;
+  if (!notebookId) { res.status(400).json({ error: "notebookId required" }); return; }
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  res.json({ notebookId, jobs: listRebuildJobHistory(notebookId, limit) });
 });

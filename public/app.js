@@ -84,6 +84,7 @@ function createNewRoom() {
   state.activeRoomId = room.id;
   scheduleSave();
   renderAll();
+  window.dispatchEvent(new CustomEvent("myai:roomchange", { detail: { roomId: room.id } }));
   elements.promptInput.focus();
 }
 
@@ -106,11 +107,15 @@ async function deleteRoom(roomId) {
       }).catch(() => {});
     }
   }
+  const wasActive = state.activeRoomId === roomId;
   state.rooms = state.rooms.filter((room) => room.id !== roomId);
   if (!state.rooms.length) state.rooms.push(createRoom());
-  if (state.activeRoomId === roomId) state.activeRoomId = state.rooms[0].id;
+  if (wasActive) state.activeRoomId = state.rooms[0].id;
   scheduleSave();
   renderAll();
+  if (wasActive) {
+    window.dispatchEvent(new CustomEvent("myai:roomchange", { detail: { roomId: state.activeRoomId } }));
+  }
 }
 
 // ===== Rendering =====
@@ -170,9 +175,11 @@ function renderRooms() {
     item.type = "button";
     item.className = `room-item${room.id === state.activeRoomId ? " active" : ""}`;
     item.addEventListener("click", () => {
+      if (state.activeRoomId === room.id) return;
       state.activeRoomId = room.id;
       scheduleSave();
       renderAll();
+      window.dispatchEvent(new CustomEvent("myai:roomchange", { detail: { roomId: room.id } }));
     });
 
     const title = document.createElement("span");

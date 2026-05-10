@@ -18,6 +18,14 @@ function relevantSet(tc) {
   return new Set(tc.relevantDocIds || []);
 }
 
+function isRelevantKey(key, tc) {
+  const relevant = relevantSet(tc);
+  if (Array.isArray(tc.relevantChunkKeys) && tc.relevantChunkKeys.length) {
+    return relevant.has(key);
+  }
+  return relevant.has(String(key || "").split(":")[0]);
+}
+
 /**
  * Compute per-case retrieval metrics over the top-K returned chunks.
  */
@@ -44,15 +52,61 @@ export function computeCaseMetrics(chunks, tc, k) {
   return { recall, rr, precision, hitCount, relevantCount: relevant.size, returned: top.length };
 }
 
+function computeGraphSupplementMetrics(diagnostics, tc) {
+  const keys = Array.isArray(diagnostics?.graphExpansion?.supplementKeys)
+    ? diagnostics.graphExpansion.supplementKeys
+    : [];
+  if (!keys.length) {
+    return { graphSupplementCount: 0, graphSupplementHits: 0, graphSupplementHitRate: null };
+  }
+  const hits = keys.filter((key) => isRelevantKey(key, tc)).length;
+  return {
+    graphSupplementCount: keys.length,
+    graphSupplementHits: hits,
+    graphSupplementHitRate: hits / keys.length
+  };
+}
+
+function averageTiming(rows) {
+  const sums = {};
+  const counts = {};
+  for (const row of rows) {
+    for (const [key, value] of Object.entries(row.diagnostics?.timing || {})) {
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      sums[key] = (sums[key] || 0) + value;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  }
+  return Object.fromEntries(Object.keys(sums).map((key) => [key, sums[key] / counts[key]]));
+}
+
 function aggregateVariantMetrics(perCase) {
   const valid = perCase.filter((r) => !r.error);
   if (!valid.length) {
-    return { n: 0, recall: 0, mrr: 0, precision: 0, noEvidenceRate: 0, fallbackRate: 0, rerankAppliedRate: 0, byTag: {} };
+    return {
+      n: 0,
+      recall: 0,
+      mrr: 0,
+      precision: 0,
+      noEvidenceRate: 0,
+      fallbackRate: 0,
+      rerankAppliedRate: 0,
+      graphExpansionOkRate: 0,
+      graphSupplementHitRate: null,
+      graphHydrationRate: 0,
+      avgTimingMs: {},
+      byTag: {}
+    };
   }
   const sumOver = (rows, key) => rows.reduce((s, r) => s + (r.metrics?.[key] ?? 0), 0);
   const noEvidence = valid.filter((r) => (r.returnedCount ?? 0) === 0).length;
   const fallback = valid.filter((r) => r.diagnostics?.fallbackLoadedAllChunks).length;
   const reranked = valid.filter((r) => r.diagnostics?.rerankApplied).length;
+  const graphEnabled = valid.filter((r) => r.diagnostics?.graphExpansion?.enabled);
+  const graphOk = graphEnabled.filter((r) => r.diagnostics?.graphExpansion?.ok).length;
+  const graphHydrated = graphEnabled.filter((r) => r.diagnostics?.graphExpansion?.hydratedAllChunks).length;
+  const graphSupplementCount = valid.reduce((s, r) => s + (r.metrics?.graphSupplementCount ?? 0), 0);
+  const graphSupplementHits = valid.reduce((s, r) => s + (r.metrics?.graphSupplementHits ?? 0), 0);
 
   const tagBuckets = new Map();
   for (const r of valid) {
@@ -82,6 +136,10 @@ function aggregateVariantMetrics(perCase) {
     noEvidenceRate: noEvidence / valid.length,
     fallbackRate: fallback / valid.length,
     rerankAppliedRate: reranked / valid.length,
+    graphExpansionOkRate: graphEnabled.length ? graphOk / graphEnabled.length : 0,
+    graphSupplementHitRate: graphSupplementCount ? graphSupplementHits / graphSupplementCount : null,
+    graphHydrationRate: graphEnabled.length ? graphHydrated / graphEnabled.length : 0,
+    avgTimingMs: averageTiming(valid),
     byTag
   };
 }
@@ -96,9 +154,76 @@ function applyFilters(suites, filter) {
     })
     .map((suite) => ({
       ...suite,
-      cases: filter.quick ? (suite.cases || []).filter((c) => c.quick === true) : (suite.cases || [])
+      cases: (suite.cases || []).filter((c) => {
+        if (filter.quick && c.quick !== true) return false;
+        if (filter.tag && !(Array.isArray(c.tags) && c.tags.includes(filter.tag))) return false;
+        return true;
+      })
     }))
     .filter((suite) => (suite.cases || []).length > 0);
+}
+
+function buildGraphComparisons(suiteResults, variants) {
+  const baseline = variants.find((v) => v.graphExpansion === false) || variants[0];
+  const graphVariants = variants.filter((v) => v.graphExpansion === true);
+  if (!baseline || !graphVariants.length) return [];
+
+  const cases = suiteResults.flatMap((suite) => suite.cases.map((tc) => ({ suite, tc })));
+  return graphVariants.map((graphVariant) => {
+    const rows = [];
+    for (const { suite, tc } of cases) {
+      const base = tc.variants?.[baseline.label];
+      const graph = tc.variants?.[graphVariant.label];
+      if (!base || !graph || base.error || graph.error) continue;
+      rows.push({ suite, tc, base, graph });
+    }
+
+    if (!rows.length) {
+      return {
+        id: `${baseline.label}->${graphVariant.label}`,
+        baseline: baseline.label,
+        graph: graphVariant.label,
+        n: 0
+      };
+    }
+
+    const sum = (fn) => rows.reduce((total, row) => total + fn(row), 0);
+    const graphSupplementCount = sum((row) => row.graph.metrics?.graphSupplementCount || 0);
+    const graphSupplementHits = sum((row) => row.graph.metrics?.graphSupplementHits || 0);
+    const graphReturnedCases = rows.filter((row) => (row.graph.metrics?.graphSupplementCount || 0) > 0).length;
+    const graphOkCases = rows.filter((row) => row.graph.diagnostics?.graphExpansion?.ok).length;
+    const graphHydratedCases = rows.filter((row) => row.graph.diagnostics?.graphExpansion?.hydratedAllChunks).length;
+    const recallWorseCases = rows.filter((row) => (row.graph.metrics?.recall ?? 0) < (row.base.metrics?.recall ?? 0)).length;
+    const precisionWorseCases = rows.filter((row) => (row.graph.metrics?.precision ?? 0) < (row.base.metrics?.precision ?? 0)).length;
+    const noiseCases = rows.filter((row) => (
+      (row.graph.metrics?.precision ?? 0) < (row.base.metrics?.precision ?? 0) &&
+      (row.graph.metrics?.recall ?? 0) <= (row.base.metrics?.recall ?? 0)
+    )).length;
+
+    return {
+      id: `${baseline.label}->${graphVariant.label}`,
+      baseline: baseline.label,
+      graph: graphVariant.label,
+      n: rows.length,
+      recallDelta: sum((row) => (row.graph.metrics?.recall ?? 0) - (row.base.metrics?.recall ?? 0)) / rows.length,
+      mrrDelta: sum((row) => (row.graph.metrics?.rr ?? 0) - (row.base.metrics?.rr ?? 0)) / rows.length,
+      precisionDelta: sum((row) => (row.graph.metrics?.precision ?? 0) - (row.base.metrics?.precision ?? 0)) / rows.length,
+      baselineAvgTotalMs: sum((row) => row.base.diagnostics?.timing?.totalMs || 0) / rows.length,
+      graphAvgTotalMs: sum((row) => row.graph.diagnostics?.timing?.totalMs || 0) / rows.length,
+      avgLatencyDeltaMs: sum((row) => (
+        (row.graph.diagnostics?.timing?.totalMs || 0) - (row.base.diagnostics?.timing?.totalMs || 0)
+      )) / rows.length,
+      avgGraphExpansionMs: sum((row) => row.graph.diagnostics?.timing?.graphExpansionMs || 0) / rows.length,
+      avgGraphHydrationMs: sum((row) => row.graph.diagnostics?.timing?.graphHydrationMs || 0) / rows.length,
+      graphExpansionOkRate: graphOkCases / rows.length,
+      graphUsedRate: graphReturnedCases / rows.length,
+      graphHydrationRate: graphHydratedCases / rows.length,
+      graphSupplementHitRate: graphSupplementCount ? graphSupplementHits / graphSupplementCount : null,
+      recallWorseRate: recallWorseCases / rows.length,
+      precisionWorseRate: precisionWorseCases / rows.length,
+      noiseCaseRate: noiseCases / rows.length
+    };
+  });
 }
 
 function newRunId() {
@@ -150,7 +275,14 @@ export async function runEvaluation({
 
     for (const tc of suite.cases) {
       totalQueries++;
-      const caseRecord = { id: tc.id, query: tc.query, relevantChunkKeys: tc.relevantChunkKeys || [], tags: tc.tags || [], variants: {} };
+      const caseRecord = {
+        id: tc.id,
+        query: tc.query,
+        relevantChunkKeys: tc.relevantChunkKeys || [],
+        relevantDocIds: tc.relevantDocIds || [],
+        tags: tc.tags || [],
+        variants: {}
+      };
 
       for (const variant of variants) {
         if (signal?.aborted) throw new Error("aborted");
@@ -174,7 +306,10 @@ export async function runEvaluation({
           caseRecord.variants[variant.label] = { error: result?.reason || "search_failed" };
           failedQueries++;
         } else {
-          const metrics = computeCaseMetrics(result.chunks, tc, k);
+          const metrics = {
+            ...computeCaseMetrics(result.chunks, tc, k),
+            ...computeGraphSupplementMetrics(result.diagnostics, tc)
+          };
           const topChunks = result.chunks.slice(0, k).map((c) => ({
             documentId: c.documentId,
             chunkIndex: c.chunkIndex,
@@ -224,6 +359,7 @@ export async function runEvaluation({
     }));
     summary[variant.label] = aggregateVariantMetrics(perCase);
   }
+  const comparisons = buildGraphComparisons(suiteResults, variants);
 
   const finishedAt = new Date().toISOString();
   return {
@@ -237,6 +373,7 @@ export async function runEvaluation({
     totalQueries,
     failedQueries,
     summary,
+    comparisons,
     suites: suiteResults,
     failureSamples
   };

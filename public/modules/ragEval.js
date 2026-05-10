@@ -10,6 +10,10 @@ const PRESETS = {
     { label: "no-qe", queryExpansion: false },
     { label: "qe", queryExpansion: true }
   ],
+  kg: [
+    { label: "baseline", graphExpansion: false },
+    { label: "graph", graphExpansion: true }
+  ],
   all: [
     { label: "base", rerank: false, queryExpansion: false },
     { label: "rerank-only", rerank: true, queryExpansion: false },
@@ -59,6 +63,16 @@ function fmtNum(value) {
 function fmtMs(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return `${Math.round(value)}ms`;
+}
+
+function fmtSignedNum(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "??";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(4)}`;
+}
+
+function fmtSignedMs(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "??";
+  return `${value >= 0 ? "+" : ""}${Math.round(value)}ms`;
 }
 
 // ===== Tabs =====
@@ -290,6 +304,7 @@ function renderVariantsPreview() {
       const flags = [];
       if (typeof v.rerank === "boolean") flags.push(`rerank:${v.rerank ? "on" : "off"}`);
       if (typeof v.queryExpansion === "boolean") flags.push(`qe:${v.queryExpansion ? "on" : "off"}`);
+      if (typeof v.graphExpansion === "boolean") flags.push(`kg:${v.graphExpansion ? "on" : "off"}`);
       return `<span class="rag-eval-variant-chip">${escapeHtml(v.label)}${flags.length ? ` <small>(${flags.join(", ")})</small>` : ""}</span>`;
     })
     .join("");
@@ -467,6 +482,35 @@ function renderRunPicker() {
   if (elements.ragEvalResultsDeleteButton) elements.ragEvalResultsDeleteButton.hidden = !ragEvalState.runs.length;
 }
 
+function renderComparisonBlock(comparisons) {
+  const rows = Array.isArray(comparisons) ? comparisons.filter((c) => c && c.n > 0) : [];
+  if (!rows.length) return "";
+  return `
+    <div class="rag-eval-summary-grid">
+      ${rows.map((c) => `
+        <div class="rag-eval-summary-card">
+          <header><strong>KG A/B</strong> <small>${escapeHtml(c.baseline)} -> ${escapeHtml(c.graph)} · n=${c.n}</small></header>
+          <dl>
+            <dt>Latency delta</dt><dd>${fmtSignedMs(c.avgLatencyDeltaMs)}</dd>
+            <dt>Baseline total</dt><dd>${fmtMs(c.baselineAvgTotalMs)}</dd>
+            <dt>Graph total</dt><dd>${fmtMs(c.graphAvgTotalMs)}</dd>
+            <dt>Recall delta</dt><dd>${fmtSignedNum(c.recallDelta)}</dd>
+            <dt>MRR delta</dt><dd>${fmtSignedNum(c.mrrDelta)}</dd>
+            <dt>Precision delta</dt><dd>${fmtSignedNum(c.precisionDelta)}</dd>
+            <dt>Graph sup hit</dt><dd>${typeof c.graphSupplementHitRate === "number" ? fmtPct(c.graphSupplementHitRate) : "n/a"}</dd>
+            <dt>Graph used</dt><dd>${fmtPct(c.graphUsedRate)}</dd>
+            <dt>Graph expansion</dt><dd>${fmtMs(c.avgGraphExpansionMs)}</dd>
+            <dt>Chunk hydration</dt><dd>${fmtMs(c.avgGraphHydrationMs)}</dd>
+            <dt>Noise cases</dt><dd>${fmtPct(c.noiseCaseRate)}</dd>
+            <dt>Recall worse</dt><dd>${fmtPct(c.recallWorseRate)}</dd>
+            <dt>Precision worse</dt><dd>${fmtPct(c.precisionWorseRate)}</dd>
+          </dl>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 async function renderRunDetail(runId) {
   if (!runId) return;
   ragEvalState.selectedRunId = runId;
@@ -486,6 +530,13 @@ async function renderRunDetail(runId) {
   const variants = Object.keys(summary);
   const summaryCards = variants.map((label) => {
     const m = summary[label] || {};
+    const timing = m.avgTimingMs || {};
+    const graphRows = [];
+    if (typeof timing.totalMs === "number") graphRows.push(`<dt>Total latency</dt><dd>${fmtMs(timing.totalMs)}</dd>`);
+    if (typeof timing.graphExpansionMs === "number") graphRows.push(`<dt>Graph expansion</dt><dd>${fmtMs(timing.graphExpansionMs)}</dd>`);
+    if (typeof timing.graphHydrationMs === "number") graphRows.push(`<dt>Graph hydration</dt><dd>${fmtMs(timing.graphHydrationMs)}</dd>`);
+    if (typeof m.graphSupplementHitRate === "number") graphRows.push(`<dt>Graph sup hit</dt><dd>${fmtPct(m.graphSupplementHitRate)}</dd>`);
+    if (typeof m.graphHydrationRate === "number" && m.graphHydrationRate > 0) graphRows.push(`<dt>Hydration cases</dt><dd>${fmtPct(m.graphHydrationRate)}</dd>`);
     return `<div class="rag-eval-summary-card">
       <header><strong>${escapeHtml(label)}</strong> <small>n=${m.n ?? 0}</small></header>
       <dl>
@@ -495,6 +546,7 @@ async function renderRunDetail(runId) {
         <dt>No-evidence</dt><dd>${fmtPct(m.noEvidenceRate)}</dd>
         <dt>Fallback</dt><dd>${fmtPct(m.fallbackRate)}</dd>
         <dt>Rerank applied</dt><dd>${fmtPct(m.rerankAppliedRate)}</dd>
+        ${graphRows.join("")}
       </dl>
     </div>`;
   }).join("");
@@ -509,6 +561,8 @@ async function renderRunDetail(runId) {
       const flags = [];
       if (diag.rerankApplied) flags.push("R");
       if (diag.fallbackLoadedAllChunks) flags.push("FB");
+      if (diag.graphExpansion?.enabled) flags.push(`KG${diag.graphExpansion?.stats?.returned ? `:${diag.graphExpansion.stats.returned}` : ""}`);
+      if (diag.graphExpansion?.hydratedAllChunks) flags.push("HYD");
       if ((v.returnedCount ?? 0) === 0) flags.push("∅");
       return `<td>R:${fmtNum(m.recall)}<br/>MRR:${fmtNum(m.rr)}${flags.length ? `<br/><small>${flags.join("·")}</small>` : ""}</td>`;
     }).join("");
@@ -544,6 +598,7 @@ async function renderRunDetail(runId) {
       <div><strong>k</strong> ${detail.k} · <strong>모드</strong> ${escapeHtml(detail.mode || "")} · <strong>케이스</strong> ${detail.totalQueries ?? "—"}${detail.failedQueries ? ` (${detail.failedQueries} 실패)` : ""}</div>
     </div>
     <div class="rag-eval-summary-grid">${summaryCards}</div>
+    ${renderComparisonBlock(detail.comparisons)}
     ${failureBlock}
     <div class="rag-eval-table-wrap">
       <table class="rag-eval-table">

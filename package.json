@@ -13,6 +13,7 @@
     "test": "npm run test:smoke",
     "test:smoke": "node scripts/smoke-test.mjs",
     "test:smoke:log": "node scripts/smoke-test.mjs > server/log/server-smoke.log 2> server/log/server-smoke.err.log",
+    "test:studio-graph": "node scripts/studio-graph-e2e.mjs",
     "test:xlsx": "node scripts/xlsx-visualization-test.mjs",
     "test:live": "node scripts/live-test.mjs",
     "test:ci": "npm run test:xlsx && npm run test:smoke",
@@ -41,5 +42,8 @@
     "multer": "^2.0.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.18.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
   }
 }
