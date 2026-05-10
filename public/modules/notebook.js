@@ -222,16 +222,7 @@ export function getActiveNotebookId() {
 }
 
 export function renderActiveNotebookUi() {
-  const id = getActiveNotebookId();
-  const notebook = findNotebookSummary(id);
-  if (!elements.notebookBadge) return;
-  if (notebook) {
-    elements.notebookBadge.hidden = false;
-    elements.notebookBadgeName.textContent = notebook.name;
-    elements.notebookBadge.title = `부서노트북: ${notebook.name}`;
-  } else {
-    elements.notebookBadge.hidden = true;
-  }
+  // Active notebook state is rendered in the composer material panel.
 }
 
 export async function openNotebookSelector() {

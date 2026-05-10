@@ -4114,55 +4114,6 @@ body.panel-resizing .panel-resizer::after {
 }
 
 /* ===== Department Notebook (RAG) ===== */
-.composer-leading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.notebook-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 0 4px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
-  border-radius: 15px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  color: var(--accent-dark);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
-  flex-shrink: 0;
-}
-
-.notebook-badge[hidden] {
-  display: none;
-}
-
-.notebook-badge:hover,
-.notebook-badge:focus-visible {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  border-color: var(--accent);
-  outline: none;
-}
-
-.notebook-badge-icon {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.notebook-badge-name {
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .deep-analysis-toggle {
   display: inline-grid;
   place-items: center;

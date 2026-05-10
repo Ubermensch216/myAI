@@ -593,9 +593,6 @@ function bindEvents() {
   if (elements.attachNotebookButton) {
     elements.attachNotebookButton.addEventListener("click", (event) => { event.stopPropagation(); openNotebookSelector(); });
   }
-  if (elements.notebookBadge) {
-    elements.notebookBadge.addEventListener("click", (event) => { event.preventDefault(); openNotebookSelector(); });
-  }
   if (elements.deepAnalysisToggle) {
     elements.deepAnalysisToggle.addEventListener("click", (event) => {
       event.preventDefault();

@@ -304,8 +304,6 @@ export const elements = {
   calendarCommandResultClose: document.querySelector("#calendarCommandResultClose"),
   reminderToastContainer: document.querySelector("#reminderToastContainer"),
   attachNotebookButton: document.querySelector("#attachNotebookButton"),
-  notebookBadge: document.querySelector("#notebookBadge"),
-  notebookBadgeName: document.querySelector("#notebookBadgeName"),
   deepAnalysisToggle: document.querySelector("#deepAnalysisToggle"),
   notebookSelectorDialog: document.querySelector("#notebookSelectorDialog"),
   closeNotebookSelectorButton: document.querySelector("#closeNotebookSelectorButton"),
