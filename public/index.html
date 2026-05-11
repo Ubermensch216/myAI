@@ -614,16 +614,9 @@
 
         <div class="settings-layout-container">
           <nav class="settings-sidebar" role="tablist" aria-label="설정 메뉴">
-            <button id="settingsTabProfile" class="settings-tab active" type="button" role="tab" aria-selected="true" data-tab-target="profile">
-              👤 프로필 및 시스템
+            <button id="settingsTabPersonal" class="settings-tab active" type="button" role="tab" aria-selected="true" data-tab-target="personal">
+              👤 개인 콘솔
             </button>
-            <button id="settingsTabAppearance" class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="appearance">
-              🎨 화면 및 테마
-            </button>
-            <button id="settingsTabDocs" class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="docs">
-              📝 문서 및 프롬프트
-            </button>
-            <div class="settings-tab-divider"></div>
             <button id="settingsTabAdmin" class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="admin">
               <span>🛡️ 관리자 콘솔</span>
               <span id="settingsAdminStatus" class="settings-admin-status" data-status="locked" aria-hidden="true"></span>
@@ -632,8 +625,25 @@
 
           <div class="settings-content">
             <form id="settingsForm" method="dialog">
+              <!-- PERSONAL SUBNAV (top tab bar) -->
+              <nav id="personalConsoleNav" class="personal-console-nav" aria-label="개인 설정 메뉴">
+                <button id="settingsSubTabProfile" class="admin-console-nav-item active" type="button" data-subtab="profile">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                  <span>프로필 및 시스템</span>
+                </button>
+                <button id="settingsSubTabAppearance" class="admin-console-nav-item" type="button" data-subtab="appearance">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                  <span>화면 및 테마</span>
+                </button>
+                <span class="admin-console-nav-divider" aria-hidden="true"></span>
+                <button id="settingsSubTabDocs" class="admin-console-nav-item" type="button" data-subtab="docs">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="8" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                  <span>문서 및 프롬프트</span>
+                </button>
+              </nav>
+
               <!-- PROFILE TAB -->
-              <section id="settingsPanelProfile" class="settings-tab-panel active" role="tabpanel" aria-labelledby="settingsTabProfile">
+              <section id="settingsPanelProfile" class="settings-tab-panel active" role="tabpanel" aria-labelledby="settingsSubTabProfile">
                 <fieldset class="field-section identity-section settings-system-section">
                   <legend class="field-section-title">시스템 정보</legend>
                   <div class="field">

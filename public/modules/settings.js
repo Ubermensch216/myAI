@@ -40,7 +40,8 @@ function openSettings() {
   renderSystemAvatarPreview();
   renderAvatarPreview();
   renderDocumentTemplatesSettings(document.getElementById("settingsDocumentTemplatesMount"));
-  switchSettingsTab("profile");
+  switchSettingsTab("personal");
+  switchSettingsSubTab("profile");
   elements.settingsDialog.showModal();
   elements.appBannerTrigger.focus();
 }
@@ -66,30 +67,15 @@ function switchSettingsTab(tabId) {
     tab.setAttribute("aria-selected", String(isTarget));
   });
 
-  // The form contains personal setting panels (profile/appearance/docs).
-  // The admin panel is a sibling to the form inside .settings-content.
   const form = document.getElementById("settingsForm");
   const adminPanel = document.getElementById("settingsPanelAdmin");
-  const footer = document.getElementById("settingsFormFooter");
 
   if (adminActive) {
-    // Hide form entirely, show admin panel
     if (form) form.hidden = true;
     if (adminPanel) adminPanel.hidden = false;
   } else {
-    // Show form, hide admin panel, then switch inner panel
     if (form) form.hidden = false;
     if (adminPanel) adminPanel.hidden = true;
-
-    // Activate the correct inner panel
-    const targetId = "settingsPanel" + tabId.charAt(0).toUpperCase() + tabId.slice(1);
-    const panels = form ? form.querySelectorAll(".settings-tab-panel") : [];
-    panels.forEach(panel => {
-      panel.hidden = panel.id !== targetId;
-    });
-
-    // Show footer for non-admin personal panels
-    if (footer) footer.hidden = false;
   }
 
   elements.settingsDialog.classList.toggle("admin-mode", adminActive);
@@ -97,6 +83,25 @@ function switchSettingsTab(tabId) {
     mountAdminConsole();
     window.dispatchEvent(new CustomEvent("myai:settingsadminopen"));
   }
+}
+
+function switchSettingsSubTab(subTabId) {
+  const form = document.getElementById("settingsForm");
+  if (!form) return;
+
+  // Update sub-tab buttons
+  const subTabs = form.querySelectorAll(".personal-console-nav .admin-console-nav-item");
+  subTabs.forEach(btn => {
+    const isActive = btn.dataset.subtab === subTabId;
+    btn.classList.toggle("active", isActive);
+  });
+
+  // Update panels inside the form
+  const panels = form.querySelectorAll(".settings-tab-panel");
+  const targetId = "settingsPanel" + subTabId.charAt(0).toUpperCase() + subTabId.slice(1);
+  panels.forEach(panel => {
+    panel.hidden = panel.id !== targetId;
+  });
 }
 
 function setTheme(theme) {
@@ -223,12 +228,24 @@ export function bindSettingsEvents() {
   elements.closeSettingsButton.addEventListener("click", closeSettings);
   elements.cancelSettingsButton.addEventListener("click", closeSettings);
   
+  // Top-level sidebar tabs
   document.querySelectorAll(".settings-sidebar .settings-tab").forEach(tab => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tabTarget;
       if (target) switchSettingsTab(target);
     });
   });
+
+  // Personal Console Sub-tabs
+  const subNav = document.getElementById("personalConsoleNav");
+  if (subNav) {
+    subNav.querySelectorAll(".admin-console-nav-item").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const subTabId = btn.dataset.subtab;
+        if (subTabId) switchSettingsSubTab(subTabId);
+      });
+    });
+  }
 
   window.addEventListener("myai:opensettingsadmin", () => {
     openSettings();
