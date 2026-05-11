@@ -124,7 +124,7 @@ LAW_CACHE_MAX_ENTRIES=1000
 LAW_AUTO_DETECT=false
 LAW_VERIFY_CITATIONS=true
 LAW_IMPACT_MAP_ENABLED=true
-LAW_HISTORY_TARGET=lsHstInq
+LAW_HISTORY_TARGET=eflaw
 
 RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
 RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
@@ -402,11 +402,17 @@ Request:
 ```
 
 Lists 시행일별 개정 이력 for a given law (`lawName`, `lawId`, or `mst` accepted).
-Calls upstream with `target=lsHstInq` (overridable via `LAW_HISTORY_TARGET`)
-and returns a `revisions` array sorted newest-first. Each entry carries
-`{ effectiveDate, promulgationDate, mst, promulgationNumber, revisionType, title }`
-so callers can pick two dates to feed into `/api/law/article/diff`. Cached for
-7 days. Uses the `law_time_travel` rate-limit bucket.
+Defaults to upstream `target=eflaw` (시행일자별 검색 — overridable via
+`LAW_HISTORY_TARGET`). For `eflaw` the client uses
+`?target=eflaw&query=<lawName>&display=100&type=JSON` and post-filters
+revisions whose `법령명한글` exactly matches the requested lawName (so
+sibling laws like "건축법 시행령" are excluded when the request was for
+"건축법"). Returns a `revisions` array sorted newest-first; each entry
+carries `{ effectiveDate, promulgationDate, mst, promulgationNumber,
+revisionType, title }` so callers can pick two dates to feed into
+`/api/law/article/diff`. Cached for 7 days (cache key includes the target,
+so changing `LAW_HISTORY_TARGET` does not serve stale rows). Uses the
+`law_time_travel` rate-limit bucket.
 
 ## Chat Behavior
 
@@ -711,7 +717,8 @@ Phase 4 (complete):
   `efYd`)
 - ✅ Article diff (`/api/law/article/diff`, `server/law/lawDiff.js` LCS +
   bigram modified-pair detection)
-- ✅ Law revision history list (`/api/law/history`, `target=lsHstInq`)
+- ✅ Law revision history list (`/api/law/history`, default `target=eflaw` —
+  see Limitations for the live-validation history of this target)
 - ✅ `law_time_travel` rate-limit bucket wired through all three endpoints
 - ✅ Studio Law Explorer "조문 이력" sub-tab (revision list + snapshot +
   diff viewer)
@@ -779,11 +786,17 @@ disclaimer, and Knowledge Graph integration (deterministic
 
 Known operational caveats:
 
-- `LAW_HISTORY_TARGET` (`lsHstInq` by default) is the documented law.go.kr
-  revision-history target. If law.go.kr renames or deprecates it, override
-  via env without code change. The parser is fixture-driven and accepts the
-  common 시행일자/공포일자/제개정구분 field shapes, but live verification
-  requires `MYAI_SMOKE_LAW_LIVE=1` against a real `LAW_OC` key.
+- `LAW_HISTORY_TARGET` defaults to `eflaw` (시행일자별 검색), the live
+  law.go.kr endpoint that returns every effective-date version of a law.
+  An earlier guess of `lsHstInq` shipped briefly but the upstream silently
+  returned empty 200 responses for that target, producing
+  "Law API returned invalid JSON" errors at the client. The current code
+  uses `?target=eflaw&query=<lawName>&display=100` and post-filters the
+  result list by exact `법령명한글` match. The cache key includes the
+  target so flipping `LAW_HISTORY_TARGET` does not serve stale rows from
+  the legacy attempt. If law.go.kr renames or deprecates `eflaw`, override
+  via env. The parser accepts the common 시행일자/공포일자/제개정구분
+  field shapes shared by `law`, `eflaw`, and any future history target.
 - The KG harvester is rule-based (`extractLawCitations`). Chunks that contain
   law references but no recognizable law-name suffix won't produce Statute or
   Article nodes. Update `lawArticleRef.js` patterns if new statute families

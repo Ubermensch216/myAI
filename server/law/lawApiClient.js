@@ -15,6 +15,7 @@ import {
   normalizeAdminRulePayload,
   normalizeAdminRuleResults,
   normalizeArticlePayload,
+  normalizeComparableLawName,
   normalizeHistoryResults,
   normalizeInterpretationPayload,
   normalizeInterpretationResults,
@@ -171,25 +172,44 @@ export class LawApiClient {
       throw new LawError(`Law not found: ${normalizedLawName}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
     }
 
+    const historyTarget = this.config.historyTarget || "eflaw";
     const normalizedInput = {
       lawName: resolved.lawName || normalizedLawName,
       lawId: resolved.lawId || "",
-      mst: resolved.mst || ""
+      mst: resolved.mst || "",
+      target: historyTarget
     };
     const cacheKey = buildLawCacheKey("law_history", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_HISTORY_TTL_MS });
     if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
-
     const params = {
-      target: this.config.historyTarget || "lsHstInq",
+      target: historyTarget,
       type: "JSON"
     };
-    if (resolved.lawId) params.ID = resolved.lawId;
-    if (resolved.mst) params.MST = resolved.mst;
-    if (normalizedLawName && !params.ID && !params.MST) params.LM = normalizedLawName;
+    // `eflaw` (시행일자별 검색) is the live law.go.kr endpoint that returns
+    // every effective-date version of a law. It is a search-style endpoint, so
+    // ID/MST do not filter — we must search by query and post-filter by exact
+    // lawName. Legacy `lsHstInq` (which never returned data in production) is
+    // kept here only for env-driven override compatibility; in that case fall
+    // back to the historical ID/MST/LM shape.
+    if (historyTarget === "eflaw") {
+      params.query = resolved.lawName || normalizedLawName;
+      params.display = 100;
+    } else {
+      if (resolved.lawId) params.ID = resolved.lawId;
+      if (resolved.mst) params.MST = resolved.mst;
+      if (normalizedLawName && !params.ID && !params.MST) params.LM = normalizedLawName;
+    }
 
     const payload = await this.requestSearch(params, { signal });
-    const revisions = stripLawPrivateFields(normalizeHistoryResults(payload));
+    let revisions = normalizeHistoryResults(payload);
+    if (historyTarget === "eflaw") {
+      const expectedKey = normalizeComparableLawName(resolved.lawName || normalizedLawName);
+      if (expectedKey) {
+        revisions = revisions.filter((rev) => normalizeComparableLawName(rev.title) === expectedKey);
+      }
+    }
+    revisions = stripLawPrivateFields(revisions);
     const response = {
       ok: revisions.length > 0,
       lawName: resolved.lawName || normalizedLawName,

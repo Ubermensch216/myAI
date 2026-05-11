@@ -236,7 +236,7 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `LAW_AUTO_DETECT` | `false` | keep legal auto-detection off except explicit legal prompts/article patterns |
 | `LAW_VERIFY_CITATIONS` | `true` | enable citation verification behavior |
 | `LAW_IMPACT_MAP_ENABLED` | `true` | enable the Korean Law Engine impact-map endpoint and Studio Law Explorer |
-| `LAW_HISTORY_TARGET` | `lsHstInq` | upstream target for `/api/law/history`; override if law.go.kr renames the revision-history endpoint |
+| `LAW_HISTORY_TARGET` | `eflaw` | upstream target for `/api/law/history` (시행일자별 검색); override if law.go.kr renames the revision-history endpoint |
 | `RATE_LIMIT_LAW_SEARCH_PER_MINUTE` | `15` | rate limit for `/api/law/search` |
 | `RATE_LIMIT_LAW_ARTICLE_PER_MINUTE` | `20` | rate limit for `/api/law/article` |
 | `RATE_LIMIT_LAW_VERIFY_PER_MINUTE` | `20` | rate limit for `/api/law/verify-citations` |

@@ -509,40 +509,63 @@ async function testLawHistoryOrchestration() {
 }
 
 async function testLawApiClientHistoryParams() {
-  const captureSearch = {};
-  const client = new LawApiClient({
-    enabled: true,
-    configured: true,
-    apiKey: "TEST",
-    apiProvider: "law.go.kr",
-    searchUrl: "https://law.test/search",
-    serviceUrl: "https://law.test/service",
-    userAgent: "test",
-    timeoutMs: 5000,
-    maxResults: 8,
-    contextBudget: 10000,
-    cache: { enabled: false, ttlMs: 0, maxEntries: 10, path: "" },
-    autoDetect: false,
-    verifyCitations: true,
-    impactMapEnabled: true,
-    historyTarget: "lsHstInq"
-  });
-  client.requestSearch = async (params) => {
-    captureSearch.params = { ...params };
-    return {
-      "LawSearch": {
-        "law": [
-          { "법령명한글": "민법", "법령일련번호": "001234", "시행일자": "20230104", "공포일자": "20221206", "제개정구분명": "일부개정" },
-          { "법령명한글": "민법", "법령일련번호": "987654", "시행일자": "20120304", "공포일자": "20111210", "제개정구분명": "일부개정" }
-        ]
-      }
+  const captureSearch = [];
+  function makeClient(historyTarget) {
+    const client = new LawApiClient({
+      enabled: true,
+      configured: true,
+      apiKey: "TEST",
+      apiProvider: "law.go.kr",
+      searchUrl: "https://law.test/search",
+      serviceUrl: "https://law.test/service",
+      userAgent: "test",
+      timeoutMs: 5000,
+      maxResults: 8,
+      contextBudget: 10000,
+      cache: { enabled: false, ttlMs: 0, maxEntries: 10, path: "" },
+      autoDetect: false,
+      verifyCitations: true,
+      impactMapEnabled: true,
+      historyTarget
+    });
+    client.requestSearch = async (params) => {
+      captureSearch.push({ historyTarget, params: { ...params } });
+      return {
+        "LawSearch": {
+          "law": [
+            // expected match
+            { "법령명한글": "민법", "법령일련번호": "001234", "시행일자": "20230104", "공포일자": "20221206", "제개정구분명": "일부개정" },
+            { "법령명한글": "민법", "법령일련번호": "987654", "시행일자": "20120304", "공포일자": "20111210", "제개정구분명": "일부개정" },
+            // foreign rows that must be filtered out under eflaw target
+            { "법령명한글": "민법 시행령", "법령일련번호": "555000", "시행일자": "20220101", "공포일자": "20211201", "제개정구분명": "일부개정" },
+            { "법령명한글": "민사소송법", "법령일련번호": "666000", "시행일자": "20220101", "공포일자": "20211201", "제개정구분명": "일부개정" }
+          ]
+        }
+      };
     };
-  };
-  const result = await client.getLawHistory({ lawName: "민법", lawId: "001110" });
-  assert.equal(captureSearch.params.target, "lsHstInq", "uses configured history target");
-  assert.equal(captureSearch.params.ID, "001110", "passes resolved law ID when available");
-  assert.equal(result.revisions.length, 2);
-  assert.equal(result.revisions[0].effectiveDate, "2023-01-04", "newest revision first");
+    return client;
+  }
+
+  // Default eflaw target: search by query + display=100, post-filter by exact lawName.
+  const eflawResult = await makeClient("eflaw").getLawHistory({ lawName: "민법", lawId: "001110" });
+  const eflawCall = captureSearch[captureSearch.length - 1];
+  assert.equal(eflawCall.params.target, "eflaw", "default target is eflaw (live law.go.kr endpoint)");
+  assert.equal(eflawCall.params.query, "민법", "eflaw filters by query, not ID");
+  assert.equal(eflawCall.params.display, 100);
+  assert.equal(eflawCall.params.ID, undefined, "ID/MST/LM must not be sent for eflaw");
+  assert.equal(eflawCall.params.LM, undefined);
+  assert.equal(eflawResult.revisions.length, 2, "eflaw filters out 민법 시행령 / 민사소송법 by exact lawName");
+  assert.equal(eflawResult.revisions[0].effectiveDate, "2023-01-04", "newest revision first");
+  assert.ok(eflawResult.revisions.every((r) => r.title === "민법"));
+
+  // Legacy historyTarget=lsHstInq still uses ID/MST/LM shape for env-driven override compat.
+  captureSearch.length = 0;
+  const legacyResult = await makeClient("lsHstInq").getLawHistory({ lawName: "민법", lawId: "001110" });
+  const legacyCall = captureSearch[captureSearch.length - 1];
+  assert.equal(legacyCall.params.target, "lsHstInq");
+  assert.equal(legacyCall.params.ID, "001110", "legacy mode passes resolved law ID");
+  assert.equal(legacyCall.params.query, undefined, "legacy mode does not use query/display");
+  assert.equal(legacyResult.revisions.length, 4, "legacy mode does not post-filter — caller-determined");
 }
 
 function testActionPlanIntent() {

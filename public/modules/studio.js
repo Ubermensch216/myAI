@@ -58,7 +58,30 @@ export function bindStudioEvents() {
     fetchLawHistory();
   });
   elements.lawHistoryResetButton?.addEventListener("click", resetLawHistory);
+  // Keep history-mode state in sync with live input edits so the selection-bar
+  // action button reflects the *current* lawName/article — not the snapshot
+  // taken at "이력 조회" time. Listen to multiple events so IME composition,
+  // paste, and Enter-commit are all covered: pure `input` can miss the final
+  // commit on some Korean IMEs, especially during composition.
+  for (const evt of ["input", "change", "compositionend", "blur"]) {
+    elements.lawHistoryLawName?.addEventListener(evt, () => syncLawHistoryInput("lawName"));
+    elements.lawHistoryArticle?.addEventListener(evt, () => syncLawHistoryInput("article"));
+  }
   bindStudioGraphEvents();
+}
+
+function syncLawHistoryInput(field) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!studio) return;
+  const history = ensureLawHistoryState(studio);
+  if (field === "lawName") history.input.lawName = elements.lawHistoryLawName?.value?.trim() || "";
+  if (field === "article") history.input.article = elements.lawHistoryArticle?.value?.trim() || "";
+  scheduleSave();
+  // Refresh just the selection bar so the action button enables/disables in
+  // real time. Do NOT call renderLawHistory() here — that would overwrite the
+  // input the user is actively editing.
+  renderLawHistorySelection(history);
 }
 
 function setActiveTool(tool) {
@@ -1110,10 +1133,18 @@ function renderLawHistory() {
   const room = getActiveRoom();
   const studio = ensureRoomStudio(room);
   const history = ensureLawHistoryState(studio);
-  if (elements.lawHistoryLawName && document.activeElement !== elements.lawHistoryLawName) {
+  // Only hydrate inputs from persisted state when they are empty — never
+  // clobber whatever the user is currently typing. The `input` event handlers
+  // keep state in sync with edits, so this branch only runs on tab-switch /
+  // page-reload restoration.
+  if (elements.lawHistoryLawName
+      && !elements.lawHistoryLawName.value
+      && document.activeElement !== elements.lawHistoryLawName) {
     elements.lawHistoryLawName.value = history?.input?.lawName || "";
   }
-  if (elements.lawHistoryArticle && document.activeElement !== elements.lawHistoryArticle) {
+  if (elements.lawHistoryArticle
+      && !elements.lawHistoryArticle.value
+      && document.activeElement !== elements.lawHistoryArticle) {
     elements.lawHistoryArticle.value = history?.input?.article || "";
   }
   renderLawHistoryList(history);
@@ -1198,28 +1229,49 @@ function renderLawHistorySelection(history) {
     target.append(chip);
   }
 
-  const article = history?.input?.article || "";
-  const lawName = history?.input?.lawName || "";
+  // Read live from the DOM as the source of truth — state is kept in sync via
+  // the input/change/compositionend handlers but the live read guards against
+  // any code path that re-renders the selection bar before state has caught up.
+  const article = elements.lawHistoryArticle?.value?.trim() || history?.input?.article || "";
+  const lawName = elements.lawHistoryLawName?.value?.trim() || history?.input?.lawName || "";
+  const missingArticle = !article;
+
+  // Inline hint that's impossible to miss when article is required but empty.
+  if (missingArticle) {
+    const hint = document.createElement("span");
+    hint.className = "law-history-selection-hint";
+    hint.textContent = "← 위쪽 \"조문\" 칸을 먼저 입력하세요";
+    target.append(hint);
+    elements.lawHistoryArticle?.classList.add("is-required-empty");
+  } else {
+    elements.lawHistoryArticle?.classList.remove("is-required-empty");
+  }
 
   if (selected.length === 1) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "send-button law-history-selection-action";
     button.textContent = "이 시점 조문 보기";
-    button.disabled = !article;
-    if (!article) button.title = "조문을 입력해야 시점 조회가 가능합니다.";
-    button.addEventListener("click", () => runLawSnapshot(lawName, article, selected[0]));
+    button.disabled = missingArticle;
+    if (missingArticle) button.title = "조문을 입력해야 시점 조회가 가능합니다.";
+    button.addEventListener("click", () => {
+      const liveArticle = elements.lawHistoryArticle?.value?.trim() || "";
+      const liveLawName = elements.lawHistoryLawName?.value?.trim() || lawName;
+      runLawSnapshot(liveLawName, liveArticle, selected[0]);
+    });
     target.append(button);
   } else if (selected.length === 2) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "send-button law-history-selection-action";
     button.textContent = "두 시점 비교";
-    button.disabled = !article;
-    if (!article) button.title = "조문을 입력해야 시점 비교가 가능합니다.";
+    button.disabled = missingArticle;
+    if (missingArticle) button.title = "조문을 입력해야 시점 비교가 가능합니다.";
     button.addEventListener("click", () => {
+      const liveArticle = elements.lawHistoryArticle?.value?.trim() || "";
+      const liveLawName = elements.lawHistoryLawName?.value?.trim() || lawName;
       const [a, b] = [...selected].sort();
-      runLawDiff(lawName, article, a, b);
+      runLawDiff(liveLawName, liveArticle, a, b);
     });
     target.append(button);
   }
@@ -1255,6 +1307,15 @@ function toggleLawHistorySelection(date) {
   room.updatedAt = new Date().toISOString();
   scheduleSave();
   renderLawHistory();
+  // If the action button is unlocked only by an article and the user hasn't
+  // typed one yet, jump focus to the article input so they can finish the
+  // requirement without hunting for it.
+  if (selected.length >= 1) {
+    const liveArticle = elements.lawHistoryArticle?.value?.trim() || "";
+    if (!liveArticle && elements.lawHistoryArticle && document.activeElement !== elements.lawHistoryArticle) {
+      elements.lawHistoryArticle.focus();
+    }
+  }
 }
 
 async function runLawSnapshot(lawName, article, effectiveDate) {

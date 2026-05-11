@@ -217,8 +217,13 @@ max-width: 680px; border-radius: 16px; padding: 0;
   │           └── #lawExplorerDetail        (border, radius:10px, surface)
   └── #lawHistorySection .law-mode-section  (조문 이력 모드 — 기본 hidden)
         ├── .law-explorer-toolbar           (법령명/조문 입력 + 이력 조회)
+        │     ├── #lawHistoryLawName        (input — 법령명 필수)
+        │     └── #lawHistoryArticle        (input — 조문 필수, 비어있고 시행일 선택되면 `.is-required-empty` 부여)
         ├── #lawHistoryStatus               (텍스트만)
         ├── #lawHistorySelection            (선택 1~2건 + 액션 버튼)
+        │     ├── .law-history-selection-chip       (선택된 시행일자)
+        │     ├── .law-history-selection-hint       (article 비어있을 때 빨간 안내)
+        │     └── .law-history-selection-action     ("이 시점 조문 보기" | "두 시점 비교")
         └── .law-history-body               (grid: 1fr 1.4fr)
               ├── #lawHistoryList           (시행일별 revision row)
               └── #lawHistoryViewer         (스냅샷 본문 또는 diff hunks)
@@ -227,6 +232,12 @@ max-width: 680px; border-radius: 16px; padding: 0;
 조문 이력 모드의 diff hunks (`.law-diff-hunk-{added,removed,modified,unchanged}`)는
 색상으로 변경 종류를 구분하며, `modified` 행은 line-through 처리한 oldText와
 강조 newText를 함께 보여준다. 유사도(%)는 별도 태그로 표시.
+
+**조문 입력 필수 가드 (Studio 조문 이력)**
+- `/api/law/article/at`, `/api/law/article/diff` 모두 lawName+article+date를 함께 요구하므로 조문 칸이 비어 있으면 액션 버튼은 disabled. disabled 시각은 `opacity 0.45 + grayscale(1) + surface-2` 배경 — 일반 보라색 send-button과 즉시 구별.
+- `#lawHistorySection` 이벤트 바인딩은 `input` 외에 `change` / `compositionend` / `blur`까지 잡아 한글 IME 합성·붙여넣기·Enter commit 모두에서 상태 동기화.
+- 시행일을 처음 선택했는데 조문 인풋이 비어 있으면 자동으로 인풋에 focus 이동 + `#lawHistoryArticle.is-required-empty` 클래스로 빨간 펄스 강조 + 선택바에 `← 위쪽 "조문" 칸을 먼저 입력하세요` inline hint.
+- 인풋 상태는 `room.studio.lawHistory.input.{lawName, article}`로 저장되며 `renderLawHistory()`는 인풋이 비어있을 때만 hydrate — 사용자가 타이핑 중인 값을 절대 clobber 하지 않는다.
 
 ### 6-6. JS 연동 — 새 도구 추가 시 수정 위치
 

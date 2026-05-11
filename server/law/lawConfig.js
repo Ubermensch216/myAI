@@ -43,7 +43,7 @@ export function getLawConfig() {
     autoDetect: boolEnv("LAW_AUTO_DETECT", false),
     verifyCitations: boolEnv("LAW_VERIFY_CITATIONS", true),
     impactMapEnabled: boolEnv("LAW_IMPACT_MAP_ENABLED", true),
-    historyTarget: String(process.env.LAW_HISTORY_TARGET || "lsHstInq").trim()
+    historyTarget: String(process.env.LAW_HISTORY_TARGET || "eflaw").trim()
   };
 }
 

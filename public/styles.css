@@ -7663,9 +7663,40 @@ body.panel-resizing .panel-resizer::after {
   margin-left: auto;
 }
 
-.law-history-selection-action:disabled {
-  opacity: 0.5;
+.law-history-selection-action:disabled,
+.law-history-selection-action[disabled] {
+  opacity: 0.45;
   cursor: not-allowed;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  box-shadow: none;
+  filter: grayscale(1);
+}
+
+.law-history-selection-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  animation: lawHistoryHintPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes lawHistoryHintPulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
+}
+
+#lawHistoryArticle.is-required-empty {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
+  animation: lawHistoryRequiredPulse 1.6s ease-in-out 2;
+}
+
+@keyframes lawHistoryRequiredPulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 28%, transparent); }
 }
 
 /* ── History list (revisions) ─────────────────────────────────── */
