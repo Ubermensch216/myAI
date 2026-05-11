@@ -7,6 +7,7 @@ import {
   getNotebookGraphPath,
   normalizeLabel
 } from "./store.js";
+import { extractLawCitations } from "../../law/lawArticleRef.js";
 
 const DEFAULT_TERM_LIMIT = Number(process.env.KG_EXPAND_TERMS || 8);
 const DEFAULT_NEIGHBOR_LIMIT = Number(process.env.KG_EXPAND_NEIGHBORS || 8);
@@ -146,17 +147,56 @@ export async function expandQueryWithGraph({
     .filter((c) => !excludeKeys.has(`${c.documentId}:${c.chunkIndex}`))
     .slice(0, maxSupplements);
 
+  const articleRefs = extractArticleRefsFromNeighborhood(neighborhood);
+
   return {
     ok: true,
     supplements: filtered,
+    articleRefs,
     stats: {
       seeds: seeds.length,
       neighborhood: neighborhood.length,
       candidates: candidates.length,
       returned: filtered.length,
+      articleRefs: articleRefs.length,
       elapsedMs: Date.now() - t0
     },
     seedLabels: seeds.map((s) => s.label),
     neighborhoodLabels: neighborhood.filter((n) => n.hop > 0).map((n) => n.label).slice(0, 10)
   };
+}
+
+/**
+ * Pull Article-typed nodes out of the seed+neighborhood set and re-parse their
+ * labels via `extractLawCitations` so each ref carries `{ lawName, article,
+ * canonical }`. Used by chat orchestration to fetch official article text via
+ * `LawApiClient` at answer time — never trust the graph as the source of body
+ * text.
+ */
+export function extractArticleRefsFromNeighborhood(neighborhood) {
+  const seen = new Set();
+  const refs = [];
+  for (const node of neighborhood) {
+    if (node?.type !== "Article") continue;
+    const label = String(node.label || "").trim();
+    if (!label) continue;
+    let parsed;
+    try {
+      parsed = extractLawCitations(label)[0];
+    } catch {
+      parsed = null;
+    }
+    if (!parsed?.lawName || !parsed?.article) continue;
+    if (seen.has(parsed.canonical)) continue;
+    seen.add(parsed.canonical);
+    refs.push({
+      lawName: parsed.lawName,
+      article: parsed.article,
+      canonical: parsed.canonical,
+      nodeId: node.id || "",
+      nodeConfidence: node.confidence ?? null,
+      hop: node.hop ?? 0
+    });
+  }
+  return refs;
 }

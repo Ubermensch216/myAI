@@ -1,9 +1,9 @@
 import {
-  ENTITY_TYPES,
   ENTITY_TYPE_DESCRIPTIONS,
-  RELATION_TYPES,
-  isValidEntityType,
-  isValidRelationType
+  LLM_EXTRACTED_ENTITY_TYPES,
+  LLM_EXTRACTED_RELATION_TYPES,
+  isLlmExtractableEntityType,
+  isLlmExtractableRelationType
 } from "./ontology.js";
 import { loadLocalEnv } from "../../env.js";
 
@@ -21,8 +21,8 @@ const CONFIDENCE_INSTRUCTION = [
 ].join("\n");
 
 function buildSystemPrompt() {
-  const entityList = ENTITY_TYPES.map((t) => `${t}=${ENTITY_TYPE_DESCRIPTIONS[t]}`).join("\n  ");
-  const relationList = RELATION_TYPES.map((r) => `${r.id}=${r.label}`).join(", ");
+  const entityList = LLM_EXTRACTED_ENTITY_TYPES.map((t) => `${t}=${ENTITY_TYPE_DESCRIPTIONS[t]}`).join("\n  ");
+  const relationList = LLM_EXTRACTED_RELATION_TYPES.map((r) => `${r.id}=${r.label}`).join(", ");
   return [
     "당신은 한국어 행정/법령 문서에서 지식그래프를 추출하는 전문가입니다.",
     "주어진 문서 조각에서 엔티티(개체)와 관계만 추출해 JSON으로 반환하세요.",
@@ -88,7 +88,7 @@ function validateExtraction(parsed) {
       if (!e || typeof e !== "object") continue;
       const type = String(e.type || "").trim();
       const label = String(e.label || "").trim();
-      if (!isValidEntityType(type)) continue;
+      if (!isLlmExtractableEntityType(type)) continue;
       if (!label || label.length > 80) continue;
       const tempId = String(e.tempId || `e${entities.length + 1}`);
       const aliases = Array.isArray(e.aliases)
@@ -107,7 +107,7 @@ function validateExtraction(parsed) {
     for (const r of parsed.relations) {
       if (!r || typeof r !== "object") continue;
       const type = String(r.type || "").trim();
-      if (!isValidRelationType(type)) continue;
+      if (!isLlmExtractableRelationType(type)) continue;
       const src = String(r.src || "").trim();
       const dst = String(r.dst || "").trim();
       if (!tempIdMap.has(src) || !tempIdMap.has(dst)) continue;

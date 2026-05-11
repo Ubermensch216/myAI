@@ -30,6 +30,12 @@ import {
   scoreEntityConfidence,
   scoreRelationConfidence
 } from "./confidence.js";
+import { extractLawCitations } from "../../law/lawArticleRef.js";
+
+// Deterministic regex-extracted citations carry near-certain confidence —
+// they are derived from law-name + article-pattern matches, not the LLM.
+const LAW_CITATION_NODE_CONFIDENCE = 0.95;
+const LAW_CITATION_EDGE_CONFIDENCE = 0.98;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..", "..", "..");
@@ -312,6 +318,12 @@ async function runRebuild(job, { model, concurrency }) {
 }
 
 async function processChunk(db, job, chunk, model, idx = 0) {
+  // Deterministic legal-citation harvest runs regardless of LLM success so
+  // statute/article nodes still land when extraction fails on prose-heavy
+  // chunks. The harvested IDs are surfaced to the LLM-relation pass so it
+  // can attach REFERS_TO_ARTICLE edges from extracted concepts.
+  const harvestedArticleIds = harvestLegalCitationsInChunk(db, chunk, job);
+
   const result = await extractFromChunkText({
     chunkText: chunk.text,
     model: model || undefined
@@ -382,7 +394,135 @@ async function processChunk(db, job, chunk, model, idx = 0) {
       }
     } catch { /* skip individual edge errors */ }
   }
+
+  // Cross-edges: each Concept-ish LLM entity in this chunk REFERS_TO_ARTICLE
+  // each harvested Article. Lets queries on subject matter ("동의", "손해배상")
+  // surface the relevant Article via 1-hop graph expansion.
+  if (harvestedArticleIds.length && tempToId.size) {
+    attachConceptRefersToArticleEdges(db, job, chunk, tempToId, result, harvestedArticleIds);
+  }
+
   job.attempted++;
   job.processed++;
   persistJob(job);
+}
+
+const CONCEPT_LIKE_TYPES = new Set(["Concept", "Rule", "Procedure", "Department", "Role", "Document"]);
+const MAX_CROSS_EDGES_PER_CHUNK = 12;
+
+function attachConceptRefersToArticleEdges(db, job, chunk, tempToId, result, articleIds) {
+  let added = 0;
+  for (const ent of result.entities || []) {
+    if (added >= MAX_CROSS_EDGES_PER_CHUNK) break;
+    if (!CONCEPT_LIKE_TYPES.has(ent.type)) continue;
+    const srcId = tempToId.get(ent.tempId);
+    if (!srcId) continue;
+    for (const dstId of articleIds) {
+      if (added >= MAX_CROSS_EDGES_PER_CHUNK) break;
+      try {
+        const edgeId = upsertEdge(db, {
+          srcId,
+          dstId,
+          type: "REFERS_TO_ARTICLE",
+          confidence: LAW_CITATION_EDGE_CONFIDENCE,
+          model: null
+        });
+        if (edgeId) {
+          attachSourceRef(db, {
+            kind: "edge",
+            refId: edgeId,
+            documentId: chunk.documentId,
+            chunkIndex: chunk.chunkIndex,
+            quote: ent.evidence || ""
+          });
+          job.edgesCreated++;
+          added++;
+        }
+      } catch { /* skip individual edge errors */ }
+    }
+  }
+}
+
+/**
+ * Deterministic legal-citation harvester. Runs `extractLawCitations` over the
+ * chunk text and upserts Statute + Article nodes (with PART_OF edges) into the
+ * graph. Confidence is high because matches are regex-anchored and gated by
+ * `isLawishName`. Returns the set of upserted Article node IDs so the caller
+ * can attach REFERS_TO_ARTICLE cross-edges from LLM-extracted concepts.
+ *
+ * Exported for unit testing without spinning up the LLM extractor.
+ */
+export function harvestLegalCitationsInChunk(db, chunk, job = null) {
+  if (!chunk?.text) return [];
+  let citations;
+  try {
+    citations = extractLawCitations(chunk.text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(citations) || !citations.length) return [];
+
+  const articleIds = [];
+  const seen = new Set();
+  for (const cit of citations) {
+    const articleCanonical = cit?.canonical || "";
+    const articleSurface = cit?.citation || (cit?.lawName && cit?.article ? `${cit.lawName} ${cit.article}` : "");
+    if (!cit?.lawName || !cit?.article || !articleSurface) continue;
+    const dedupeKey = `${cit.lawName}/${cit.article}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    try {
+      const statuteId = upsertNode(db, {
+        type: "Statute",
+        label: cit.lawName,
+        confidence: LAW_CITATION_NODE_CONFIDENCE,
+        model: null,
+        aliases: []
+      });
+      const articleId = upsertNode(db, {
+        type: "Article",
+        label: `${cit.lawName} ${cit.article}`,
+        confidence: LAW_CITATION_NODE_CONFIDENCE,
+        model: null,
+        aliases: [articleCanonical, articleSurface].filter(Boolean)
+      });
+      const edgeId = upsertEdge(db, {
+        srcId: articleId,
+        dstId: statuteId,
+        type: "PART_OF",
+        confidence: LAW_CITATION_EDGE_CONFIDENCE,
+        model: null
+      });
+      attachSourceRef(db, {
+        kind: "node",
+        refId: statuteId,
+        documentId: chunk.documentId,
+        chunkIndex: chunk.chunkIndex,
+        quote: articleSurface
+      });
+      attachSourceRef(db, {
+        kind: "node",
+        refId: articleId,
+        documentId: chunk.documentId,
+        chunkIndex: chunk.chunkIndex,
+        quote: articleSurface
+      });
+      if (edgeId) {
+        attachSourceRef(db, {
+          kind: "edge",
+          refId: edgeId,
+          documentId: chunk.documentId,
+          chunkIndex: chunk.chunkIndex,
+          quote: articleSurface
+        });
+      }
+      if (job) {
+        job.nodesCreated = (job.nodesCreated || 0) + 2;
+        if (edgeId) job.edgesCreated = (job.edgesCreated || 0) + 1;
+      }
+      articleIds.push(articleId);
+    } catch { /* skip individual citation errors */ }
+  }
+  return articleIds;
 }

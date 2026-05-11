@@ -97,6 +97,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
       notebook: summarizeNotebookManifest(manifest),
       chunks: [],
       documentSummaries: [],
+      articleRefs: [],
       diagnostics: buildDiagnostics()
     };
   }
@@ -277,6 +278,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
       notebook: summarizeNotebookManifest(manifest),
       chunks: [],
       documentSummaries: [],
+      articleRefs: [],
       diagnostics: buildDiagnostics()
     };
   }
@@ -329,6 +331,9 @@ export async function searchNotebook(notebookId, query, options = {}) {
     notebook: summarizeNotebookManifest(manifest),
     chunks: citations,
     documentSummaries,
+    articleRefs: Array.isArray(graphExpansionResult?.articleRefs)
+      ? graphExpansionResult.articleRefs
+      : [],
     diagnostics: buildDiagnostics()
   };
 }

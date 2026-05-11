@@ -10,6 +10,122 @@ import { searchAdminRules } from "./tools/adminRules.js";
 import { searchOrdinances } from "./tools/ordinances.js";
 import { getLawConfig } from "./lawConfig.js";
 
+const KG_ARTICLES_INTRO = [
+  "[지식그래프 연계 법령 근거]",
+  "These articles were surfaced by the department notebook knowledge graph for",
+  "this query. The bodies were re-fetched from law.go.kr at answer time, so",
+  "treat them as official law evidence and cite them as [L1], [L2], etc.",
+  "Do NOT invent additional article numbers or statute names that are not in",
+  "this list."
+].join("\n");
+
+/**
+ * Fetch official article text for a set of KG-derived article refs and shape
+ * the result so it can be merged into the chat law context. Never throws on
+ * individual fetch errors — failed articles are dropped silently so KG
+ * surfacing degrades to "no law evidence" rather than blocking the answer.
+ *
+ * @param {Array<{ lawName: string, article: string, canonical?: string }>} refs
+ */
+export async function buildLawContextFromArticleRefs(refs, { signal, client, limit = 4 } = {}) {
+  const list = Array.isArray(refs) ? refs.filter((r) => r?.lawName && r?.article) : [];
+  if (!list.length) return null;
+  const startedAt = Date.now();
+  const dedup = new Map();
+  for (const ref of list) {
+    const key = ref.canonical || `${ref.lawName}/${ref.article}`;
+    if (!dedup.has(key)) dedup.set(key, ref);
+    if (dedup.size >= limit) break;
+  }
+  const tasks = Array.from(dedup.values()).map((ref) =>
+    getArticleDetail({ lawName: ref.lawName, article: ref.article }, { signal, client })
+      .then((result) => ({ ok: true, ref, result }))
+      .catch((error) => ({ ok: false, ref, error: toLawError(error) }))
+  );
+  const settled = await Promise.all(tasks);
+
+  const citations = [];
+  const contextItems = [];
+  const errors = [];
+  for (const entry of settled) {
+    if (!entry.ok) {
+      errors.push({ canonical: entry.ref.canonical, marker: entry.error?.marker || LAW_ERROR_MARKERS.LAW_API_ERROR });
+      continue;
+    }
+    const text = String(entry.result?.text || "").trim();
+    if (!text) {
+      errors.push({ canonical: entry.ref.canonical, marker: LAW_ERROR_MARKERS.NOT_FOUND });
+      continue;
+    }
+    const citation = normalizeLawCitationForMeta(entry.result.citation, citations.length, text);
+    citation.kgDerived = true;
+    citations.push(citation);
+    contextItems.push({ citation, text });
+  }
+  if (!citations.length) {
+    return {
+      ok: false,
+      query: "",
+      mode: "kg_articles",
+      intent: { isLegalQuery: false, mode: "kg_articles", extracted: {}, confidence: 0 },
+      citations: [],
+      verification: { checked: false, failCount: 0, results: [] },
+      disclaimer: "short",
+      contextText: "",
+      error: errors.length ? LAW_ERROR_MARKERS.LAW_API_ERROR : "",
+      errorDetails: errors,
+      latencyMs: Date.now() - startedAt
+    };
+  }
+
+  const lawBlock = formatLawContext(contextItems);
+  return {
+    ok: true,
+    query: "",
+    mode: "kg_articles",
+    intent: { isLegalQuery: false, mode: "kg_articles", extracted: {}, confidence: 0 },
+    citations,
+    verification: { checked: false, failCount: 0, results: [] },
+    disclaimer: "short",
+    contextText: fitLawContext([KG_ARTICLES_INTRO, lawBlock].join("\n\n")),
+    error: "",
+    errorDetails: errors,
+    latencyMs: Date.now() - startedAt
+  };
+}
+
+/**
+ * Merge a KG-derived law context into an existing law context (the one built
+ * from explicit legal intent). De-duplicates citations by canonical and
+ * concatenates contextText blocks. Used by the chat orchestration so explicit
+ * intent always wins on disclaimer/mode while KG-discovered articles are
+ * still injected as additional [L] citations.
+ */
+export function mergeLawContexts(primary, kg) {
+  if (!kg || !kg.ok || !Array.isArray(kg.citations) || !kg.citations.length) return primary;
+  if (!primary || !primary.ok) return kg;
+
+  const knownCanonical = new Set(
+    (primary.citations || [])
+      .map((c) => c.canonical || `${c.lawName}/${c.article}`)
+      .filter(Boolean)
+  );
+  const additions = [];
+  for (const cite of kg.citations) {
+    const canon = cite.canonical || `${cite.lawName}/${cite.article}`;
+    if (canon && knownCanonical.has(canon)) continue;
+    additions.push({ ...cite, citationId: `L${(primary.citations?.length || 0) + additions.length + 1}` });
+  }
+  if (!additions.length) return primary;
+
+  return {
+    ...primary,
+    citations: [...(primary.citations || []), ...additions],
+    contextText: [primary.contextText, kg.contextText].filter(Boolean).join("\n\n"),
+    kgArticlesMerged: additions.length
+  };
+}
+
 export const ACTION_PLAN_TEMPLATE = [
   "[행동 계획 응답 템플릿]",
   "위 [공식 법령 근거]에서 직접 도출되는 의무·요건만 사용해 다음 5단계 구조로 답하세요. 각 항목은 1~2문장으로 간결하게.",

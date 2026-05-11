@@ -71,6 +71,17 @@ Implemented pieces:
   template (핵심 의무 / 단계별 조치 / 증빙·기록 / 후속 점검 / 한계와 권고)
   and forces a `mandatory` disclaimer that includes the non-legal-advice
   framing.
+- Knowledge graph integration — `Statute` and `Article` entity types plus
+  `REFERS_TO_ARTICLE` relation in `server/rag/graph/ontology.js` (hidden from
+  the LLM extractor so only the deterministic harvester creates them). The
+  builder runs `extractLawCitations` on every chunk and upserts
+  Statute/Article nodes + PART_OF + REFERS_TO_ARTICLE cross-edges. The
+  expander surfaces matched Article-node refs as `articleRefs`; chat
+  orchestration (`server/ollama.js`) re-fetches each article via
+  `LawApiClient` at answer time and either becomes the primary law context
+  (no explicit legal intent) or merges as additional `[L]` citations via
+  `mergeLawContexts`. KG-derived citations carry `kgDerived: true` and
+  surface in `X-Notebook-Meta.law.kgArticlesMerged`.
 - Per-record meta fields rendered for each citation kind (사건번호/선고법원/
   선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
   종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
@@ -79,10 +90,8 @@ Implemented pieces:
   normalization tests
 - Smoke coverage for `/api/law/status`; optional live law.go.kr smoke coverage
 
-Still incomplete or follow-up work:
-
-- Knowledge graph integration using the existing per-notebook `graph.sqlite`
-  infrastructure.
+All roadmap phases (Phase 1 baseline, Phase 2 research, Phase 3 impact map,
+Phase 4 time-travel, Phase 5 action_plan, Knowledge Graph track) have shipped.
 
 ## Configuration
 
@@ -402,6 +411,15 @@ Legal lookup runs when:
   ordinance research with a research verb such as find/search/show/explain.
 - The prompt explicitly asks whether an uploaded document or selected department
   notebook material complies with a law.
+- The prompt asks for an `action_plan` (단계별 대응/조치 절차/이행 계획/
+  컴플라이언스 체크리스트 등) AND carries statute grounding — citation or a
+  recognized law name + article. Bare "계획 짜줘" requests cannot trigger this
+  mode.
+- The selected department notebook's knowledge graph surfaces matched `Article`
+  nodes via `expandQueryWithGraph` → `articleRefs`. Even without an explicit
+  legal prompt, the chat orchestration re-fetches those articles via
+  `LawApiClient` and merges them as additional `[L]` citations. KG enrichment
+  is additive and silently degrades on per-article fetch failures.
 
 Naver Search remains ordinary web search. If a prompt has both legal and news
 intent, the law engine is authoritative for statute existence and original
@@ -409,19 +427,23 @@ article text. Naver results may be included as separate `[W]` web evidence, but
 must not be used to assert statute existence when law.go.kr lookup fails.
 
 When law context exists, `server/ollama.js` injects a separate official-law
-context block and model instructions:
+context block and model instructions. The block emitted by
+`formatLawContext` looks like:
 
 ```text
-[Official Korean Law Evidence]
-[L1] ...
+[공식 법령 근거]
+Use only this section for statute/article existence and original article
+text. Cite legal claims with [L1], [L2], etc. Do not invent law names,
+article numbers, paragraphs, items, precedents, or interpretations.
 
-Instructions:
-- Use only provided law context for statute/article claims.
-- Do not invent law names, article numbers, paragraphs, items, precedents, or
-  interpretations.
-- If legal context is insufficient, say so explicitly.
-- Keep [L], [N], and [W] citations separate.
+[L1] 민법 제750조 …
 ```
+
+`action_plan` prompts append the `[행동 계획 응답 템플릿]` block (5-step
+structured response template + non-legal-advice phrase). KG-derived articles
+append `[지식그래프 연계 법령 근거]` (re-fetched via `LawApiClient` at answer
+time). The base system prompt also instructs the model to keep `[L]`, `[N]`,
+and `[W]` citations separate.
 
 ## Response Metadata
 
@@ -431,7 +453,8 @@ Chat responses expose law metadata through `X-Notebook-Meta`:
 law: {
   ok: true,
   query: "...",
-  mode: "law_article",
+  mode: "law_article" | "law_search" | "verify_citations" | "legal_research"
+       | "department_legal_review" | "action_plan" | "kg_articles",
   citations: [
     {
       citationId: "L1",
@@ -445,7 +468,8 @@ law: {
       url: "...",
       excerpt: "...",
       excerptTruncated: false,
-      excerptLength: 240
+      excerptLength: 240,
+      kgDerived: false       // true when surfaced by notebook KG enrichment
     }
   ],
   verification: {
@@ -454,7 +478,9 @@ law: {
     results: []
   },
   disclaimer: "short" | "mandatory" | null,
-  error: ""
+  error: "",
+  errorMessage: "",
+  kgArticlesMerged: 0        // # KG-discovered articles merged into [L] citations
 }
 ```
 
@@ -473,8 +499,9 @@ or upstream request URLs.
 ## Article References
 
 `server/law/lawArticleRef.js` owns canonical article-reference normalization.
-It is shared by intent detection, cache keys, verification results, and future
-knowledge graph `Article` node IDs.
+It is shared by intent detection, cache keys, verification results, and the
+notebook knowledge graph harvester (which uses `extractLawCitations` to
+deterministically create `Statute` and `Article` nodes in `graph.sqlite`).
 
 Canonical citation IDs use slash-separated parts:
 
@@ -522,10 +549,13 @@ Disclaimers are metadata-driven, not generated by the model.
 | `legal_research` | short |
 | `department_legal_review` | short |
 | `action_plan` | mandatory |
+| `kg_articles` | short |
 
-Avoid attaching disclaimers to simple article lookups. Use short disclaimers for
-interpretation or compliance-style answers, and mandatory disclaimers for future
-action-plan guidance.
+Simple article lookups carry no disclaimer. `short` is used for interpretation,
+compliance-style, and KG-derived answers. `mandatory` is used for `action_plan`,
+which embeds the non-legal-advice phrase
+("본 답변은 일반 정보이며 법률 자문이 아닙니다") inside the response template
+itself rather than just in metadata.
 
 ## Privacy And Logging
 
@@ -550,17 +580,25 @@ npm.cmd run test:law
 npm.cmd run test:smoke
 ```
 
-`test:law` runs three suites:
+`test:law` runs four suites:
 
-- `scripts/law-unit-test.mjs` — intent, normalization, masking, cache.
+- `scripts/law-unit-test.mjs` — intent, normalization, masking, cache,
+  action_plan template, disclaimer policy.
 - `scripts/law-parser-test.mjs` — law.go.kr JSON parsing across fixture
   statutes plus precedent, interpretation, admin-rule, and ordinance fixtures
   (`scripts/fixtures/law/`). Run only this with `npm run test:law:parser`.
 - `scripts/law-intent-eval.mjs` — true-positive / false-positive evaluation
   for legal intent detection. Covers cases like "라면 끓이는 방법 알려줘",
   "Git 사용법 1조 5호", "야구 규칙 30조" (must NOT trigger) and "민법 제750조",
-  "헌법 제10조", "도로교통법 제44조", and research prompts for 판례/해석례/조례
-  (must trigger). Run only this with `npm run test:law:intent`.
+  "헌법 제10조", "도로교통법 제44조", research prompts for 판례/해석례/조례,
+  and action_plan TPs/FPs (must trigger / must not trigger). Run only this
+  with `npm run test:law:intent`.
+- `scripts/kg-law-test.mjs` — ontology guards (Statute/Article hidden from
+  LLM), `harvestLegalCitationsInChunk` (creates Statute+Article+PART_OF,
+  dedupes across chunks, ignores non-legal text), expander article-ref
+  surfacing, and `buildLawContextFromArticleRefs` + `mergeLawContexts`
+  (mock client; verifies KG-derived `[L]` citations and dedupe-by-canonical
+  merge). Run only this with `npm run test:law:kg`.
 
 `test:smoke` checks `/api/law/status` whether or not `LAW_OC` is configured and
 asserts the response does not expose the server cache path or API key.
@@ -599,6 +637,17 @@ The statute-grounding baseline is acceptable when:
 - Setup, limitations, and future work are documented here.
 
 ## Roadmap
+
+Phase 1 (complete) — baseline statute grounding:
+
+- ✅ `/api/law/status`, `/api/law/search`, `/api/law/article`,
+  `/api/law/verify-citations`
+- ✅ Canonical article-reference normalization (`server/law/lawArticleRef.js`)
+- ✅ Intent detection (`server/law/lawIntent.js`) for `law_article`,
+  `law_search`, `verify_citations`, `department_legal_review`
+- ✅ SQLite cache (`data/cache/law-cache.sqlite`)
+- ✅ API key + URL masking; private response field stripping
+- ✅ Frontend law citation rendering (`[L1]`) separate from `[N]` and `[W]`
 
 Phase 2 (complete):
 
@@ -650,32 +699,55 @@ Phase 5 (complete):
     system block carries `[공식 법령 근거]`, `[행동 계획 응답 템플릿]`, and
     "법률 자문이 아닙니다")
 
-Knowledge graph track:
+Knowledge graph track (complete):
 
-- Extend existing `server/rag/graph/ontology.js` with legal entity/relation
-  types.
-- Extend `server/rag/graph/extractor.js` to extract verified legal citations.
-- Reuse `data/notebooks/<notebookId>/graph.sqlite`; do not create a parallel
-  legal graph store.
-- Re-fetch official article text through `LawApiClient` at answer time when a
-  graph path retrieves an `Article` node.
+- ✅ `Statute` and `Article` entity types and `REFERS_TO_ARTICLE` relation
+  added to `server/rag/graph/ontology.js`. They are hidden from the LLM
+  extractor (`LLM_EXTRACTED_ENTITY_TYPES` / `LLM_EXTRACTED_RELATION_TYPES`)
+  so the model cannot hallucinate fake statutes — only the deterministic
+  harvester creates them.
+- ✅ `harvestLegalCitationsInChunk` in `server/rag/graph/builder.js` runs
+  `extractLawCitations` on every chunk. For each citation it upserts
+  `Statute` (label = lawName), `Article` (label = "lawName 제N조", aliases
+  include canonical "lawName/제N조"), and a PART_OF edge plus source refs.
+  After LLM relation processing, Concept/Rule/Procedure/Department/Role/
+  Document entities in the same chunk get `REFERS_TO_ARTICLE` cross-edges
+  to the harvested articles (capped at 12 per chunk) so subject-matter
+  queries can surface relevant articles via 1-hop expansion.
+- ✅ Reuses `data/notebooks/<notebookId>/graph.sqlite` with high-confidence
+  (0.95) Statute/Article nodes and 0.98 PART_OF / REFERS_TO_ARTICLE edges.
+- ✅ `extractArticleRefsFromNeighborhood` in `server/rag/graph/expander.js`
+  re-parses Article-node labels to canonical refs. `expandQueryWithGraph`
+  surfaces them in `articleRefs`; `searchNotebook` returns the same field.
+- ✅ Answer-time enrichment: `server/ollama.js` calls
+  `buildLawContextFromArticleRefs` on the surfaced refs (re-fetching official
+  article text via `LawApiClient`). Either becomes the primary law context
+  (no explicit legal intent) or merges with the existing context via
+  `mergeLawContexts` (deduplicates by canonical, renumbers `[L*]` ids).
+  Failed article fetches degrade silently — KG enrichment is additive and
+  never blocks the answer.
 
 ## Limitations
 
-The current engine covers statute search/article retrieval/citation
-verification (Phase 1), Phase 2 official-source research for precedents, legal
-interpretations, admin rules, and ordinances, Phase 3 impact maps, Phase 4
-time-travel/diff (backend + Studio Law Explorer "조문 이력" UI), and Phase 5
-`action_plan` mode with mandatory non-legal-advice disclaimer.
+The engine covers every roadmap phase: Phase 1 statute search / article
+retrieval / citation verification, Phase 2 official-source research
+(precedents, legal interpretations, admin rules, ordinances), Phase 3
+impact maps, Phase 4 time-travel / diff (backend + Studio Law Explorer
+"조문 이력" UI), Phase 5 `action_plan` mode with mandatory non-legal-advice
+disclaimer, and Knowledge Graph integration (deterministic
+`Statute`/`Article` harvest from notebook chunks with answer-time
+`LawApiClient` enrichment of KG-discovered articles).
 
-The `LAW_HISTORY_TARGET` upstream parameter (`lsHstInq` by default) is the
-documented law.go.kr revision-history target. If law.go.kr renames or
-deprecates it, override via env without code change. Live verification of
-`/history` requires `MYAI_SMOKE_LAW_LIVE=1` against a real `LAW_OC` key — the
-parser is fixture-driven and accepts the common 시행일자/공포일자/제개정구분
-field shapes, but the upstream target itself was not exercised against the
-live API in the Phase 4 implementation cycle.
+Known operational caveats:
 
-The department notebook KG integration is also future work. When added, it
-should reuse the existing per-notebook `graph.sqlite` infrastructure rather than
-creating a parallel legal graph store.
+- `LAW_HISTORY_TARGET` (`lsHstInq` by default) is the documented law.go.kr
+  revision-history target. If law.go.kr renames or deprecates it, override
+  via env without code change. The parser is fixture-driven and accepts the
+  common 시행일자/공포일자/제개정구분 field shapes, but live verification
+  requires `MYAI_SMOKE_LAW_LIVE=1` against a real `LAW_OC` key.
+- The KG harvester is rule-based (`extractLawCitations`). Chunks that contain
+  law references but no recognizable law-name suffix won't produce Statute or
+  Article nodes. Update `lawArticleRef.js` patterns if new statute families
+  need coverage.
+- KG-derived article fetches are capped (default 4 per query) and per-article
+  failures are silently dropped so KG enrichment never blocks the answer.

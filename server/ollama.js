@@ -11,7 +11,7 @@ import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import { buildNaverSearchContext, shouldUseNaverSearch } from "./naverSearch.js";
-import { buildLawContext } from "./law/lawContextBuilder.js";
+import { buildLawContext, buildLawContextFromArticleRefs, mergeLawContexts } from "./law/lawContextBuilder.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -65,7 +65,7 @@ export async function streamChat({
   const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
   const hasDocuments = Array.isArray(documents) && documents.length > 0;
   const forceWebSearch = shouldUseNaverSearch(latestUserQuery);
-  const [notebookContext, lawContext, webSearchContext] = await Promise.all([
+  const [notebookContext, explicitLawContext, webSearchContext] = await Promise.all([
     loadNotebookContext(notebookId, messages, { signal }),
     !forceWebSearch
       ? buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal })
@@ -86,6 +86,25 @@ export async function streamChat({
   ]);
   throwIfAborted(signal);
 
+  // KG-discovered article refs: re-fetch official text via LawApiClient at
+  // answer time, then either become the primary law context (when no explicit
+  // legal intent fired) or merge as additional [L] citations into the
+  // explicit context. Failures degrade silently — KG enrichment is additive.
+  let lawContext = explicitLawContext;
+  const kgArticleRefs = Array.isArray(notebookContext?.articleRefs) ? notebookContext.articleRefs : [];
+  if (kgArticleRefs.length && !forceWebSearch) {
+    try {
+      const kgLawContext = await buildLawContextFromArticleRefs(kgArticleRefs, { signal });
+      if (kgLawContext) {
+        lawContext = lawContext ? mergeLawContexts(lawContext, kgLawContext) : kgLawContext;
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      console.warn(`KG-derived law context load failed: ${error.message}`);
+    }
+  }
+  throwIfAborted(signal);
+
   if (typeof onMeta === "function") {
     onMeta({
       notebook: notebookContext?.notebook ?? null,
@@ -99,7 +118,8 @@ export async function streamChat({
             verification: lawContext.verification ?? { checked: false, failCount: 0, results: [] },
             disclaimer: lawContext.disclaimer || null,
             error: lawContext.error || "",
-            errorMessage: lawContext.errorMessage || ""
+            errorMessage: lawContext.errorMessage || "",
+            kgArticlesMerged: lawContext.kgArticlesMerged || 0
           }
         : null,
       webSearch: webSearchContext
