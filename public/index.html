@@ -638,7 +638,11 @@
                 <span class="admin-console-nav-divider" aria-hidden="true"></span>
                 <button id="settingsSubTabDocs" class="admin-console-nav-item" type="button" data-subtab="docs">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="8" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                  <span>문서 및 프롬프트</span>
+                  <span>문서 템플릿</span>
+                </button>
+                <button id="settingsSubTabPrompt" class="admin-console-nav-item" type="button" data-subtab="prompt">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                  <span>프롬프트</span>
                 </button>
               </nav>
 
@@ -804,13 +808,16 @@
                 </fieldset>
               </section>
 
-              <!-- DOCS & PROMPT TAB -->
-              <section id="settingsPanelDocs" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsTabDocs" hidden>
+              <!-- DOCS TEMPLATE TAB -->
+              <section id="settingsPanelDocs" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsSubTabDocs" hidden>
                 <fieldset class="field-section template-section settings-template-section">
                   <legend class="field-section-title">문서 템플릿</legend>
                   <div id="settingsDocumentTemplatesMount" class="settings-document-templates-mount"></div>
                 </fieldset>
+              </section>
 
+              <!-- PROMPT TAB -->
+              <section id="settingsPanelPrompt" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsSubTabPrompt" hidden>
                 <fieldset class="field-section prompt-section settings-prompt-section">
                   <legend class="field-section-title">프롬프트 설정</legend>
                   <div class="field">
