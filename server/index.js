@@ -1,4 +1,7 @@
 ﻿import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import express from "express";
 import multer from "multer";
@@ -74,6 +77,26 @@ const uploadDir = path.join(rootDir, "uploads");
 const publicDir = path.join(rootDir, "public");
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || undefined;
+const httpsKeyPath = process.env.HTTPS_KEY_PATH || "";
+const httpsCertPath = process.env.HTTPS_CERT_PATH || "";
+const httpsCaPath = process.env.HTTPS_CA_PATH || "";
+
+function loadHttpsOptions() {
+  if (!httpsKeyPath || !httpsCertPath) return null;
+  try {
+    const options = {
+      key: readFileSync(httpsKeyPath),
+      cert: readFileSync(httpsCertPath)
+    };
+    if (httpsCaPath) options.ca = readFileSync(httpsCaPath);
+    return options;
+  } catch (error) {
+    console.error(`[https] failed to load certificate (${error.code || error.name}): ${error.message}`);
+    console.error(`[https] HTTPS_KEY_PATH=${httpsKeyPath}`);
+    console.error(`[https] HTTPS_CERT_PATH=${httpsCertPath}`);
+    process.exit(1);
+  }
+}
 
 const app = express();
 const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
@@ -877,9 +900,16 @@ app.use((_request, response) => {
   response.sendFile(path.join(publicDir, "index.html"));
 });
 
-app.listen(port, host, () => {
+const httpsOptions = loadHttpsOptions();
+const server = httpsOptions ? https.createServer(httpsOptions, app) : http.createServer(app);
+const scheme = httpsOptions ? "https" : "http";
+
+server.listen(port, host, () => {
   const displayHost = host || "0.0.0.0";
-  console.log(`myAI listening on http://${displayHost}:${port}`);
+  console.log(`myAI listening on ${scheme}://${displayHost}:${port}`);
+  if (!httpsOptions) {
+    console.log("[https] disabled — set HTTPS_KEY_PATH and HTTPS_CERT_PATH to enable. Browsers block crypto.subtle on plain http://<lan-ip>, which breaks the UI from remote PCs.");
+  }
   recoverNotebookIngestJobs()
     .then(({ recovered, failed }) => {
       if (recovered.length || failed.length) {

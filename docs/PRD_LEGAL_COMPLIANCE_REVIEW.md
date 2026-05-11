@@ -1,5 +1,19 @@
 # PRD: Legal Compliance Review and Evidence Report
 
+> **Implementation status — MVP shipped.** All 12 acceptance-criteria items in
+> section 19 are met. The deferred items below are flagged in-place with
+> `Status:` callouts.
+>
+> | Track | Status |
+> |---|---|
+> | Backend module (`server/compliance/`) | ✅ `complianceTypes.js`, `complianceIntent.js`, `compliancePrompt.js` (the optional `complianceContextBuilder.js` / `complianceReport.js` / `complianceApi.js` files in §10.1 were folded into `lawContextBuilder.buildComplianceLawContext` and the existing export pipeline) |
+> | Intent / review-type classification | ✅ 7 types (privacy, civil_complaint, contract_outsourcing, audit, administrative_procedure, internal_rule, general) |
+> | Chat orchestration (`server/ollama.js`) | ✅ Guard rails for missing internal material / missing `LAW_OC`; parallel `compliance` envelope in `X-Notebook-Meta`; notebook RAG query override |
+> | Law context branch (`server/law/lawContextBuilder.js`) | ✅ `department_legal_review` mode carries `reviewType` / `outputStyle` / `focusLawNames`; tier 1–3 retrieval; detailed-report mode pulls precedents/해석례/admin-rules/ordinances |
+> | Frontend launcher + source panel | ✅ `#complianceReviewButton` in the material panel pre-fills a compliance prompt; source panel uses an "내부 자료" group when `compliance.mode === "department_legal_review"`; short disclaimer renders via `renderLawDisclaimer` |
+> | Tests | ✅ `scripts/compliance-unit-test.mjs` (npm `test:law:compliance` / `test:compliance`) — 6 cases: review-type classification, intent fields, prompt construction, query expansion, LAW_OC missing, metadata shape. ❌ Smoke + Playwright coverage for compliance scenarios still pending. |
+> | Future phases (Phase 2 modal, Phase 3 report exporter, Phase 4 impact review, Phase 6 checklist) | ❌ Not started — Phase 5 KG legal integration **was completed in a separate cycle** (see `docs/KOREAN_LAW_ENGINE.md`, Knowledge graph track) |
+
 ## 1. Purpose
 
 Build a public-sector focused kick function for myAI:
@@ -363,25 +377,19 @@ The model should not generate its own custom disclaimer.
 
 ### 10.1 New module
 
-Add a dedicated module:
-
-```text
-server/compliance/
-  complianceTypes.js
-  complianceIntent.js
-  complianceContextBuilder.js
-  compliancePrompt.js
-  complianceReport.js
-  complianceApi.js        optional later
-```
-
-MVP may implement only:
-
-```text
-server/compliance/complianceTypes.js
-server/compliance/complianceContextBuilder.js
-server/compliance/compliancePrompt.js
-```
+> **Status: ✅ shipped.** Three files present:
+>
+> ```text
+> server/compliance/complianceTypes.js   ✅ REVIEW_TYPES catalog + getReviewType + buildComplianceSearchQuery + COMPLIANCE_DISCLAIMER + COMPLIANCE_FINDING_LABELS
+> server/compliance/complianceIntent.js  ✅ classifyComplianceIntent + classifyReviewType + extractFocusLawNames
+> server/compliance/compliancePrompt.js  ✅ buildCompliancePromptBlock (summary + detailed_report) + buildComplianceUnavailableMessage
+> ```
+>
+> `complianceContextBuilder.js`, `complianceReport.js`, `complianceApi.js`
+> were not added as separate files; their responsibilities live inside
+> `server/law/lawContextBuilder.js#buildComplianceLawContext` and the existing
+> export pipeline. This keeps the orchestration in one place while still
+> isolating compliance-specific catalogs/prompts in `server/compliance/`.
 
 ### 10.2 Why separate from `server/law/`
 
@@ -750,6 +758,12 @@ Ensure source panel groups display:
 
 ## 14. Metadata Requirements
 
+> **Status: ✅ shipped.** The shape below matches what `server/ollama.js#buildComplianceMeta`
+> emits and what `public/modules/chat.js` consumes for source-panel grouping
+> and disclaimer rendering. The `compliance.error` field carries
+> `"NO_INTERNAL_MATERIAL"`, `"LAW_NOT_CONFIGURED"`, or `"NO_LEGAL_EVIDENCE"`
+> in the corresponding guard-rail paths.
+
 Extend `X-Notebook-Meta` with a compliance section.
 
 ```js
@@ -918,29 +932,40 @@ and cite both sides.
 
 ### 18.1 Unit tests
 
+> **Status: ✅ shipped.** Implemented in `scripts/compliance-unit-test.mjs`,
+> wired into `npm run test:compliance` and bundled into `npm run test:law`
+> (see `package.json` scripts). Six cases cover review-type classification,
+> intent compliance fields, prompt construction, query expansion, LAW_OC
+> missing handling, and the metadata shape.
+
 Add tests for:
 
 ```text
-review type classification
-compliance prompt construction
-metadata shape
-safe logging shape
-LAW_OC missing handling
+review type classification          ✅ testReviewTypeClassification
+compliance prompt construction      ✅ testCompliancePromptConstruction
+metadata shape                      ✅ testComplianceLawContextShape
+safe logging shape                  ⚠️  not directly asserted — re-uses existing API key masking tests
+LAW_OC missing handling             ✅ testLawOcMissing
 ```
 
 Suggested script:
 
 ```text
-scripts/compliance-unit-test.mjs
+scripts/compliance-unit-test.mjs    ✅ implemented
 ```
 
 Add npm script:
 
 ```json
-"test:compliance": "node scripts/compliance-unit-test.mjs"
+"test:compliance": "node scripts/compliance-unit-test.mjs"  ✅ wired
 ```
 
 ### 18.2 Smoke tests
+
+> **Status: ❌ not yet added.** `scripts/smoke-test.mjs` doesn't have a
+> compliance-specific path. `npm run test:law` covers the unavailable-message
+> contract via the unit test, but a true HTTP-layer assertion would be a
+> useful follow-up.
 
 Extend smoke test:
 
@@ -951,6 +976,8 @@ Extend smoke test:
 
 ### 18.3 Live tests, optional
 
+> **Status: ❌ not yet added.** Documented for future work.
+
 With `MYAI_SMOKE_LAW_LIVE=1` and LAW_OC configured:
 
 ```text
@@ -960,6 +987,8 @@ With `MYAI_SMOKE_LAW_LIVE=1` and LAW_OC configured:
 ```
 
 ### 18.4 Frontend tests
+
+> **Status: ❌ not yet added.** No Playwright coverage in this repo yet.
 
 When Playwright coverage is available:
 
@@ -974,40 +1003,43 @@ When Playwright coverage is available:
 
 ## 19. Acceptance Criteria
 
-MVP is complete when all are true:
+> **Status: ✅ MVP shipped — all 12 items met.**
 
-```text
-1. User can trigger compliance review from chat with an active notebook or uploaded document.
-2. System detects `department_legal_review` mode.
-3. System classifies review type at least for privacy, civil_complaint, contract_outsourcing, audit, administrative_procedure, internal_rule, or general.
-4. Internal evidence and legal evidence are retrieved separately.
-5. Answer follows the required compliance-review structure.
-6. Source panel separates [N] internal citations from [L]/[P]/[I]/[R]/[O] legal citations.
-7. The answer includes a short metadata-driven disclaimer.
-8. Missing LAW_OC produces a structured unavailable response, not hallucinated legal review.
-9. Missing internal material produces a clear “검토 대상 필요” message.
-10. Existing law_article, legal_research, and verify_citations modes still pass tests.
-11. Existing export actions can export the generated report-style answer.
-12. No API key, upstream OC parameter, full upstream URL, or cache path appears in browser metadata or logs.
-```
+| # | Criterion | Status | Where |
+|---|---|---|---|
+| 1 | User can trigger compliance review from chat with active notebook or uploaded document | ✅ | `#complianceReviewButton` launcher + `prefillComplianceReviewPrompt()` in `public/app.js`; chat prompt also works via `classifyComplianceIntent` |
+| 2 | System detects `department_legal_review` mode | ✅ | `server/law/lawIntent.js` branch wired to `classifyComplianceIntent` |
+| 3 | Classifies review type for privacy / civil_complaint / contract_outsourcing / audit / administrative_procedure / internal_rule / general | ✅ | `REVIEW_TYPES` in `server/compliance/complianceTypes.js` + `classifyReviewType` |
+| 4 | Internal and legal evidence retrieved separately | ✅ | `searchNotebook` for internal; `buildComplianceLawContext` for legal; never merged |
+| 5 | Answer follows required compliance-review structure | ✅ | `buildCompliancePromptBlock` injects `summary` or `detailed_report` template |
+| 6 | Source panel separates [N] internal from [L]/[P]/[I]/[R]/[O] legal | ✅ | `groupCitationsByType` in `public/modules/chat.js` w/ "내부 자료" label when compliance mode is active |
+| 7 | Short metadata-driven disclaimer | ✅ | `disclaimerForLawMode("department_legal_review")` → `"short"`; `renderLawDisclaimer` renders the standard text |
+| 8 | Missing LAW_OC → structured unavailable response | ✅ | `server/ollama.js` guard rail emits `buildComplianceUnavailableMessage("law_not_configured")` + `compliance.error: "LAW_NOT_CONFIGURED"` |
+| 9 | Missing internal material → "검토 대상 필요" | ✅ | `server/ollama.js` guard rail emits `buildComplianceUnavailableMessage("no_internal_material")` + `compliance.error: "NO_INTERNAL_MATERIAL"` |
+| 10 | Existing `law_article` / `legal_research` / `verify_citations` modes still pass | ✅ | `npm run test:law` green (intent eval + parser + unit + kg + compliance suites) |
+| 11 | Export actions can export the generated answer | ✅ | Uses the standard message-action export pipeline (MD/PDF/DOCX/HWPX/XLSX) — no compliance-specific code path needed for MVP |
+| 12 | No `LAW_OC` / upstream `OC=` / cache path leak | ✅ | `maskLawSecrets`, `stripLawPrivateFields`, smoke test for `/api/law/status` |
 
 ## 20. Implementation Sequence for AI Agent
+
+> **Status: ✅ all steps complete.** Retained below for historical record /
+> onboarding context.
 
 Follow this sequence.
 
 ```text
-1. Read docs/KOREAN_LAW_ENGINE.md and this PRD.
-2. Inspect current lawContextBuilder.js department_legal_review path.
-3. Inspect server/ollama.js prompt and X-Notebook-Meta assembly.
-4. Inspect frontend source panel and disclaimer rendering.
-5. Add server/compliance/complianceTypes.js with review types and query hints.
-6. Add compliance review-type classification to lawIntent.js or a new complianceIntent.js.
-7. Extend lawContextBuilder.js to carry reviewType/outputStyle/focusLawNames.
-8. Add compliance prompt block in server/ollama.js.
-9. Add compliance metadata to X-Notebook-Meta.
-10. Add minimal frontend launcher or generated prompt action.
-11. Add tests for classification and metadata shape.
-12. Run npm run test:law and npm run test:smoke.
+ 1. Read docs/KOREAN_LAW_ENGINE.md and this PRD.                                        ✅
+ 2. Inspect current lawContextBuilder.js department_legal_review path.                  ✅
+ 3. Inspect server/ollama.js prompt and X-Notebook-Meta assembly.                       ✅
+ 4. Inspect frontend source panel and disclaimer rendering.                             ✅
+ 5. Add server/compliance/complianceTypes.js with review types and query hints.         ✅
+ 6. Add compliance review-type classification to lawIntent.js or new complianceIntent.  ✅ classifyComplianceIntent → consumed by detectLawIntent
+ 7. Extend lawContextBuilder.js to carry reviewType/outputStyle/focusLawNames.          ✅ buildComplianceLawContext
+ 8. Add compliance prompt block in server/ollama.js.                                    ✅ buildCompliancePromptBlock injected via lawContextBuilder
+ 9. Add compliance metadata to X-Notebook-Meta.                                         ✅ buildComplianceMeta + compliance envelope alongside law
+10. Add minimal frontend launcher or generated prompt action.                           ✅ #complianceReviewButton in material panel
+11. Add tests for classification and metadata shape.                                    ✅ scripts/compliance-unit-test.mjs (6 cases)
+12. Run npm run test:law and npm run test:smoke.                                        ✅ both green
 ```
 
 Do not start with a large modal or dedicated report exporter. First make the chat-based compliance review reliable.
@@ -1016,30 +1048,57 @@ Do not start with a large modal or dedicated report exporter. First make the cha
 
 ### Phase 2: Dedicated compliance modal
 
+> **Status: ❌ not started.** Chat-based launcher in section 13.2 ships as MVP.
+
 Add full modal with review type, focus law, output style, and extra instruction fields.
 
 ### Phase 3: Dedicated report export template
+
+> **Status: ❌ not started.** Generic export (MD / PDF / DOCX / HWPX / XLSX)
+> already works against compliance answers; a compliance-specific layout
+> remains future work.
 
 Add report-specific DOCX/HWPX/PDF layout.
 
 ### Phase 4: Law change impact review
 
+> **Status: ❌ not started.** The building-block endpoints
+> (`/api/law/history`, `/api/law/article/at`, `/api/law/article/diff`) and
+> the Studio Law Explorer "조문 이력" UI are live (see `docs/KOREAN_LAW_ENGINE.md`),
+> but no compliance-side orchestration ties them to internal documents yet.
+
 Use existing `/api/law/history`, `/api/law/article/at`, and `/api/law/article/diff` to find internal documents affected by law changes.
 
 ### Phase 5: Notebook KG legal integration
 
+> **Status: ✅ shipped.** Implemented in the Knowledge Graph track of the
+> Korean Law Engine. See `docs/KOREAN_LAW_ENGINE.md` "Knowledge graph track"
+> for details on the deterministic `Statute`/`Article` harvester,
+> `REFERS_TO_ARTICLE` cross-edges, `expandQueryWithGraph` surfacing
+> `articleRefs`, and answer-time re-fetch via `buildLawContextFromArticleRefs`
+> + `mergeLawContexts`. The implemented relation set differs slightly from
+> the PRD sketch — `PART_OF` (Article → Statute) and `REFERS_TO_ARTICLE`
+> (Concept/Rule/Procedure/… → Article) replace the proposed `CITES` /
+> `BELONGS_TO` / `INTERPRETED_BY` / `APPLIED_IN` edge labels. The PRD
+> constraint "do not create a parallel legal graph store" is honored —
+> everything lives in `data/notebooks/<notebookId>/graph.sqlite`.
+
 Extend existing notebook KG with legal nodes and CITES edges.
 
 ```text
-Document chunk -> CITES -> Article
-Article -> BELONGS_TO -> Law
-Article -> INTERPRETED_BY -> Interpretation
-Article -> APPLIED_IN -> Precedent
+Document chunk -> CITES -> Article            ✅ (via REFERS_TO_ARTICLE from chunk-derived entities)
+Article -> BELONGS_TO -> Law                  ✅ (via PART_OF)
+Article -> INTERPRETED_BY -> Interpretation   ❌ (interpretation citations not yet KG-linked)
+Article -> APPLIED_IN -> Precedent            ❌ (precedent citations not yet KG-linked)
 ```
 
 Do not create a parallel legal graph store.
 
 ### Phase 6: Audit checklist generator
+
+> **Status: ❌ not started.** The `detailed_report` template already produces
+> a checklist section in-prompt; a dedicated structured-output generator
+> remains future work.
 
 Generate checklist items from compliance review findings and legal evidence.
 
