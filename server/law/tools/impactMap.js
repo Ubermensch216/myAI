@@ -1,14 +1,11 @@
-import { createLawApiClient } from "../lawApiClient.js";
 import { normalizeLawCitationForMeta } from "../lawCitationFormatter.js";
 import { LawError, LAW_ERROR_MARKERS } from "../lawErrors.js";
-import { logLawCall } from "../lawLogger.js";
 import { getArticleDetail } from "./articleDetail.js";
+import { runLoggedLawTool } from "./toolRunner.js";
 
 const MAX_TEXT_CHARS = 12000;
 
 export async function buildImpactMap(input = {}, options = {}) {
-  const startedAt = Date.now();
-  const client = options.client || createLawApiClient();
   const lawName = String(input.lawName || "").trim();
   const article = String(input.article || "").trim();
   if (!lawName || !article) {
@@ -18,41 +15,33 @@ export async function buildImpactMap(input = {}, options = {}) {
     });
   }
 
-  try {
-    const detail = await getArticleDetail({ lawName, article }, { client, signal: options.signal });
-    const citation = normalizeLawCitationForMeta(detail.citation, 0, detail.text);
-    const impactMap = createDeterministicImpactMap({
-      citation,
-      articleText: detail.text,
-      subject: input.subject,
-      materialText: input.materialText
-    });
-    await logLawCall({
-      tool: "impact_map",
-      normalizedQuery: { lawName, article, subject: normalizeSubject(input.subject) },
-      latencyMs: Date.now() - startedAt,
-      resultCount: impactMap.nodes.length,
-      cacheHit: Boolean(detail.cacheHit)
-    });
-    return {
-      ok: true,
-      query: { lawName, article, subject: normalizeSubject(input.subject) },
-      citation,
-      text: detail.text,
-      impactMap,
-      cacheHit: Boolean(detail.cacheHit)
-    };
-  } catch (error) {
-    await logLawCall({
-      tool: "impact_map",
-      normalizedQuery: { lawName, article, subject: normalizeSubject(input.subject) },
-      latencyMs: Date.now() - startedAt,
-      resultCount: 0,
-      cacheHit: false,
-      errorMarker: error.marker || LAW_ERROR_MARKERS.LAW_API_ERROR
-    });
-    throw error;
-  }
+  const normalizedQuery = { lawName, article, subject: normalizeSubject(input.subject) };
+  return runLoggedLawTool({
+    tool: "impact_map",
+    options,
+    normalizedQuery,
+    execute: async (client) => {
+      const detail = await getArticleDetail({ lawName, article }, { client, signal: options.signal });
+      const citation = normalizeLawCitationForMeta(detail.citation, 0, detail.text);
+      const impactMap = createDeterministicImpactMap({
+        citation,
+        articleText: detail.text,
+        subject: input.subject,
+        materialText: input.materialText
+      });
+      return {
+        ok: true,
+        query: normalizedQuery,
+        citation,
+        text: detail.text,
+        impactMap,
+        cacheHit: Boolean(detail.cacheHit)
+      };
+    },
+    resultCount: (result) => result.impactMap?.nodes?.length || 0,
+    cacheHit: (result) => Boolean(result.cacheHit),
+    errorMarker: (error) => error?.marker || LAW_ERROR_MARKERS.LAW_API_ERROR
+  });
 }
 
 export function createDeterministicImpactMap({ citation = {}, articleText = "", subject = "", materialText = "" } = {}) {

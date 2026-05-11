@@ -1,11 +1,8 @@
-import { createLawApiClient } from "../lawApiClient.js";
 import { normalizeEffectiveDate, parseArticleLocator } from "../lawArticleRef.js";
 import { LawError, LAW_ERROR_MARKERS } from "../lawErrors.js";
-import { logLawCall } from "../lawLogger.js";
+import { runLoggedLawTool } from "./toolRunner.js";
 
 export async function getArticleAt(input = {}, options = {}) {
-  const client = options.client || createLawApiClient();
-  const startedAt = Date.now();
   const effective = normalizeEffectiveDate(input.effectiveDate);
   if (!effective.iso) {
     throw new LawError("effectiveDate (YYYY-MM-DD) is required for time-travel article lookup.", {
@@ -36,25 +33,15 @@ export async function getArticleAt(input = {}, options = {}) {
     item: locator.item.canonical,
     effectiveDate: effective.iso
   };
-  try {
-    const result = await client.getLawArticle(normalizedInput, options);
-    await logLawCall({
-      tool: "article_at",
-      normalizedQuery: logQuery,
-      latencyMs: Date.now() - startedAt,
-      resultCount: result.ok ? 1 : 0,
-      cacheHit: result.cacheHit
-    });
-    return { ...result, effectiveDateRequested: effective.iso };
-  } catch (error) {
-    await logLawCall({
-      tool: "article_at",
-      normalizedQuery: logQuery,
-      latencyMs: Date.now() - startedAt,
-      resultCount: 0,
-      cacheHit: false,
-      errorMarker: error.marker || LAW_ERROR_MARKERS.LAW_API_ERROR
-    });
-    throw error;
-  }
+
+  return runLoggedLawTool({
+    tool: "article_at",
+    options,
+    normalizedQuery: logQuery,
+    execute: async (client) => {
+      const result = await client.getLawArticle(normalizedInput, options);
+      return { ...result, effectiveDateRequested: effective.iso };
+    },
+    errorMarker: (error) => error?.marker || LAW_ERROR_MARKERS.LAW_API_ERROR
+  });
 }
