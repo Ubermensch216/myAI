@@ -154,6 +154,9 @@ export const state = {
   studio: {
     selectedTool: "mindmap"
   },
+  documentTemplates: {
+    personal: []
+  },
   notebooks: [],
   access: {
     configured: false,
@@ -415,13 +418,29 @@ export const elements = {
   studioMindmapRailButton: document.querySelector("#studioMindmapRailButton"),
   studioGraphRailButton: document.querySelector("#studioGraphRailButton"),
   studioLawRailButton: document.querySelector("#studioLawRailButton"),
+  studioDocumentRailButton: document.querySelector("#studioDocumentRailButton"),
   studioContent: document.querySelector("#studioContent"),
   studioMindmapButton: document.querySelector("#studioMindmapButton"),
   studioGraphButton: document.querySelector("#studioGraphButton"),
   studioLawButton: document.querySelector("#studioLawButton"),
+  studioDocumentButton: document.querySelector("#studioDocumentButton"),
   studioMindmapPanel: document.querySelector("#studioMindmapPanel"),
   studioGraphPanel: document.querySelector("#studioGraphPanel"),
   studioLawPanel: document.querySelector("#studioLawPanel"),
+  studioDocumentPanel: document.querySelector("#studioDocumentPanel"),
+  studioDocumentEmpty: document.querySelector("#studioDocumentEmpty"),
+  studioDocumentEditor: document.querySelector("#studioDocumentEditor"),
+  studioDocumentTitle: document.querySelector("#studioDocumentTitle"),
+  studioDocumentTemplate: document.querySelector("#studioDocumentTemplate"),
+  studioDocumentRegenerateButton: document.querySelector("#studioDocumentRegenerateButton"),
+  studioDocumentDownloadButton: document.querySelector("#studioDocumentDownloadButton"),
+  studioDocumentDownloadMenu: document.querySelector("#studioDocumentDownloadMenu"),
+  studioDocumentDeleteButton: document.querySelector("#studioDocumentDeleteButton"),
+  studioDocumentStatus: document.querySelector("#studioDocumentStatus"),
+  studioDocumentIncludeCitations: document.querySelector("#studioDocumentIncludeCitations"),
+  studioDocumentWarnings: document.querySelector("#studioDocumentWarnings"),
+  studioDocumentToolbar: document.querySelector("#studioDocumentToolbar"),
+  studioDocumentMarkdown: document.querySelector("#studioDocumentMarkdown"),
   studioMindmapCanvas: document.querySelector("#studioMindmapCanvas"),
   studioMindmapSvg: document.querySelector("#studioMindmapSvg"),
   studioMindmapEmpty: document.querySelector("#studioMindmapEmpty"),
@@ -465,7 +484,17 @@ export function ensureRoomStudio(room = getActiveRoom()) {
       ? room.studio.mindmap.selectedNodeId
       : "";
   }
+  if (!Array.isArray(room.studio.documents)) room.studio.documents = [];
+  if (typeof room.studio.activeDocumentId !== "string") room.studio.activeDocumentId = "";
   return room.studio;
+}
+
+export function ensureDocumentTemplatesState() {
+  if (!state.documentTemplates || typeof state.documentTemplates !== "object") {
+    state.documentTemplates = { personal: [] };
+  }
+  if (!Array.isArray(state.documentTemplates.personal)) state.documentTemplates.personal = [];
+  return state.documentTemplates;
 }
 
 export function showConfirmDialog({ title = "확인", body = "", okText = "확인", cancelText = "취소", danger = false } = {}) {
@@ -530,7 +559,9 @@ export function createRoom() {
         signature: "",
         data: null,
         selectedNodeId: ""
-      }
+      },
+      documents: [],
+      activeDocumentId: ""
     },
     createdAt: now,
     updatedAt: now

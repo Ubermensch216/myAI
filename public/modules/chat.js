@@ -9,6 +9,7 @@ import {
   executeCalendarIntent, renderCalendar, renderEventCardList, findConflictingEvents,
   buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
 } from "./calendar.js";
+import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
 
 const MB = 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
@@ -1117,10 +1118,57 @@ export function createMessageActions(article, role, createdAt = "") {
   const actions = document.createElement("div");
   actions.className = "message-actions";
   actions.append(createCopyButton(article, role));
-  if (role === "assistant") actions.append(createDownloadButton(article));
+  if (role === "assistant") {
+    actions.append(createDownloadButton(article));
+    actions.append(createSendToStudioButton(article));
+  }
   if (role === "user") actions.append(createEditButton(article));
   if (role === "assistant" && createdAt) actions.append(createMessageTime(createdAt));
   return actions;
+}
+
+function createSendToStudioButton(article) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button send-to-studio-button";
+  button.title = "스튜디오>문서";
+  button.setAttribute("aria-label", "스튜디오>문서");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 3h8l4 4v14H7z"></path>
+      <path d="M15 3v4h4"></path>
+      <path d="M9 12h8M9 16h8M9 8h4"></path>
+    </svg>
+  `;
+  button.addEventListener("click", () => sendArticleToStudio(article));
+  return button;
+}
+
+function sendArticleToStudio(article) {
+  const text = article.dataset.copyText || article.querySelector(".message-body")?.innerText || "";
+  if (!text.trim()) {
+    window.alert("문서로 보낼 답변 내용이 없습니다.");
+    return;
+  }
+  const room = getActiveRoom();
+  const idx = Number(article.dataset.messageIndex);
+  const message = room && Number.isInteger(idx) ? room.messages[idx] : null;
+  const metadata = {};
+  if (message?.notebook) metadata.notebook = message.notebook;
+  if (message?.law) metadata.law = message.law;
+  if (message?.compliance) metadata.compliance = message.compliance;
+  if (message?.webSearch) metadata.webSearch = message.webSearch;
+  if (Array.isArray(message?.citations) && message.citations.length) metadata.citations = message.citations;
+  openDocumentStudioWithAnswer({
+    title: room?.title || "",
+    markdown: text,
+    messageId: message?.id || (Number.isInteger(idx) ? `msg_${idx}` : null),
+    metadata,
+    model: elements.modelInput?.value?.trim() || ""
+  }).catch((error) => {
+    console.error("send-to-studio failed", error);
+    window.alert(error?.message || "스튜디오로 전송에 실패했습니다.");
+  });
 }
 
 export function setAssistantAnswerTime(article, createdAt) {

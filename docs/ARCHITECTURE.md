@@ -84,6 +84,25 @@ assistant answer action menu
 
 Word export uses `.docx`; legacy binary `.doc` is intentionally not generated.
 
+### Studio Document Editor
+
+```text
+assistant answer action menu "스튜디오로 보내기"
+-> public/modules/chat.js captures answer markdown and citation metadata
+-> switches to Studio document tab
+-> user selects a template
+-> POST /api/studio/document/from-answer
+-> server/studioDocument/answerToDocument.js asks Ollama to structure the answer into JSON blocks
+-> browser renders block editor (paragraphs, tables, checklists)
+-> user edits draft
+-> browser saves draft to room state (IndexedDB)
+-> user selects export (HWPX, DOCX, PDF, MD)
+-> POST /api/studio/document/export
+-> browser receives a Blob and starts the download
+```
+
+This feature converts AI answers into structured, template-driven public-sector document drafts while preserving source citations.
+
 ### Studio Mind Map
 
 ```text
@@ -240,6 +259,11 @@ The LLM does not directly mutate calendar data.
 
 - `server/index.js` - Express setup, static serving, upload route, chat/visualize/followup/calendar/notebook endpoints.
 - `server/exportFiles.js` - answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
+- `server/studioDocument/studioDocumentApi.js` - endpoints for templates, from-answer conversion, and document export.
+- `server/studioDocument/documentModel.js` - validates and normalizes document models and blocks.
+- `server/studioDocument/answerToDocument.js` - converts answer markdown into template-structured JSON using Ollama.
+- `server/studioDocument/documentRenderer.js` - converts document models to markdown-like canonical text.
+- `server/studioDocument/documentExport.js` - exports structured documents to HWPX/DOCX/PDF/MD.
 - `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/graphStudioApi.js` - Studio knowledge-graph endpoints for notebooks the current reader can access.
 - `server/graphAdminApi.js` - Admin knowledge-graph inspection, source-reference, enable/disable override, and rebuild endpoints.
@@ -283,6 +307,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
+- `public/modules/documentStudio.js` - Studio Document Editor tab rendering, block editing, template selection, and export handling.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, and chat-triggered calendar intent helpers.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.

@@ -18,6 +18,7 @@
 - Korean Law Engine requires `LAW_OC`; with it unset, `/api/law/*` returns structured disabled/not-configured responses and non-legal chat continues normally.
 - KG-derived law citations (`kgDerived: true`, surfaced via `X-Notebook-Meta.law.kgArticlesMerged`) are capped at 4 per query by default and per-article fetch failures are silently dropped, so KG enrichment is additive and never blocks the answer.
 - Answer export supports MD, XLSX, PDF, HWPX, and DOCX. PDF export embeds a Korean-capable server font when available; HWPX generation is text-first and intentionally simpler than a full Hancom-authored document package.
+- Studio document editor provides block-level editing for AI answers but does not yet support full rich text, multi-user collaboration, or complex page layouts (e.g., images, multi-columns, headers/footers). Drafts and personal templates are currently stored only locally in the browser's IndexedDB.
 - Studio mind maps use a two-pass LLM pipeline: Pass 1 extracts concepts from evenly sampled chunks spanning the full document; Pass 2 builds node/edge relationships from the concept list. Chunk-boundary relationship loss is therefore reduced compared to a single-pass approach.
 - Image-only uploads and files without extracted text are skipped by the Studio mind map pipeline until a multimodal Pass 1 is added.
 - Department notebook knowledge graphs are optional per-notebook indexes. Graph expansion is disabled unless `KG_EXPANSION_ENABLED=1`, and graph quality depends on the extraction model plus admin review of low-confidence nodes/edges.

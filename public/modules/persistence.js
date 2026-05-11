@@ -3,7 +3,7 @@ import {
   DB_NAME, DB_VERSION, APP_STATE_KEY, KEY_ID,
   documentCacheHeaders, ensureDocumentCacheKey,
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
-  normalizeCustomColorTheme, normalizeLayout, ensureRoomStudio
+  normalizeCustomColorTheme, normalizeLayout, ensureRoomStudio, ensureDocumentTemplatesState
 } from "./state.js";
 
 let saveTimer = null;
@@ -139,6 +139,12 @@ export async function loadAppState() {
     userAvatarDataUrl: stored.settings?.userAvatarDataUrl || "",
     customPrompt: stored.settings?.customPrompt || ""
   };
+  state.documentTemplates = ensureDocumentTemplatesState();
+  if (Array.isArray(stored.documentTemplates?.personal)) {
+    state.documentTemplates.personal = stored.documentTemplates.personal.filter(
+      (tpl) => tpl && typeof tpl === "object" && tpl.id
+    );
+  }
 }
 
 export async function saveAppState() {
@@ -156,6 +162,7 @@ export async function saveAppState() {
       viewMode: state.calendar.viewMode
     },
     settings: state.settings,
+    documentTemplates: ensureDocumentTemplatesState(),
     savedAt: new Date().toISOString()
   });
 }

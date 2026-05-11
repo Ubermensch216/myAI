@@ -2799,10 +2799,11 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-tools-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 126px));
   gap: 8px;
   padding: 12px 12px 4px;
   flex: 0 0 auto;
+  justify-content: start;
 }
 
 .studio-tool-card.is-active {
@@ -2840,6 +2841,360 @@ body.panel-resizing .panel-resizer::after {
 .studio-graph-panel .kg-toolbar-row {
   gap: 6px;
 }
+
+.studio-document-panel {
+  gap: 10px;
+  padding: 10px 12px 12px;
+  overflow: hidden;
+  color: var(--ink);
+}
+
+.studio-document-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.studio-document-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.studio-document-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studio-document-title {
+  width: 100%;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.studio-document-header-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.studio-document-template {
+  flex: 1 1 140px;
+  min-width: 120px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.studio-document-download {
+  position: relative;
+}
+
+.studio-doc-template-picker {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.studio-doc-template-picker-card {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  width: min(440px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.studio-doc-template-picker-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.studio-doc-template-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+
+.studio-doc-template-picker-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-doc-template-picker-option:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.studio-doc-template-picker-option.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.studio-doc-template-picker-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.studio-doc-template-picker-desc {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.studio-doc-template-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.studio-doc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.studio-doc-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.studio-document-download .download-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  z-index: 1000;
+  isolation: isolate;
+  background: var(--surface, #ffffff) !important;
+  background-image: none !important;
+  background-clip: padding-box;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.studio-document-download .download-menu .download-menu-item {
+  background-color: var(--surface, #ffffff);
+}
+
+.studio-document-download .download-menu .download-menu-item:hover,
+.studio-document-download .download-menu .download-menu-item:focus-visible {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.studio-document-status {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  border-radius: 6px;
+}
+
+.studio-document-status.is-error {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.studio-document-status.is-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-dark);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 10%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 22%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 10%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: studio-doc-status-shimmer 1.6s ease-in-out infinite;
+}
+
+.studio-document-status-spinner {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.6px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: studio-doc-status-spin 0.85s linear infinite;
+}
+
+.studio-document-status-text {
+  white-space: nowrap;
+}
+
+.studio-document-status-dots {
+  display: inline-flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 12px;
+}
+
+.studio-document-status-dots i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: studio-doc-status-dot 1.1s ease-in-out infinite;
+}
+
+.studio-document-status-dots i:nth-child(2) { animation-delay: 0.18s; }
+.studio-document-status-dots i:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes studio-doc-status-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes studio-doc-status-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@keyframes studio-doc-status-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-document-status.is-loading,
+  .studio-document-status-spinner,
+  .studio-document-status-dots i {
+    animation: none;
+  }
+}
+
+.studio-document-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.studio-document-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.studio-document-warnings {
+  color: color-mix(in srgb, var(--danger) 70%, var(--accent-aux));
+  font-size: 11px;
+}
+
+.studio-document-warnings:empty {
+  display: none;
+}
+
+/* Single-editor markdown toolbar */
+.studio-document-edit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.studio-document-edit-toolbar button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.studio-document-edit-toolbar button:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.studio-document-edit-toolbar code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.studio-document-toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+.studio-document-markdown {
+  flex: 1 1 auto;
+  min-height: 320px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  resize: none;
+  outline: none;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.studio-document-markdown:focus,
+.studio-document-markdown.is-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
 
 .studio-graph-panel .kg-body {
   grid-template-columns: minmax(0, 1fr);

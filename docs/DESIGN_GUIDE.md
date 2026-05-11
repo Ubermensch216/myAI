@@ -171,7 +171,7 @@ max-width: 680px; border-radius: 16px; padding: 0;
 }
 ```
 
-> `.studio-mindmap-panel`, `.studio-graph-panel`, `.studio-law-panel` 모두 이 값을 따른다.
+> `.studio-mindmap-panel`, `.studio-graph-panel`, `.studio-law-panel`, `.studio-document-panel` 모두 이 값을 따른다.
 
 ### 6-4. 내부 박스 스타일
 
@@ -184,6 +184,19 @@ max-width: 680px; border-radius: 16px; padding: 0;
 | 상세·결과 영역 배경 | `var(--surface)` |
 
 ### 6-5. 기존 패널 구조 참고
+
+**문서편집기**
+```
+.studio-document-panel (padding 10/12/12, gap 10)
+  ├── .studio-document-empty          (flex:1, 중앙 정렬, 텍스트만)
+  └── .studio-document-editor         (flex:1, gap 8)
+        ├── .studio-document-header   (gap 6)
+        │     ├── .studio-document-title      (input)
+        │     └── .studio-document-header-row (flex row, gap 6, select, 버튼 등)
+        ├── .studio-document-status   (텍스트만)
+        ├── .studio-document-toolbar  (border, radius:6px, surface-2)
+        └── .studio-document-markdown (flex:1, textarea, radius:8px)
+```
 
 **마인드맵**
 ```

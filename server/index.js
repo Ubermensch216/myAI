@@ -48,6 +48,7 @@ import { isAdminConfigured, isAdminRequest, requireAdmin } from "./auth.js";
 import { ragEvalRouter } from "./ragEvalApi.js";
 import { graphAdminRouter } from "./graphAdminApi.js";
 import { graphStudioRouter } from "./graphStudioApi.js";
+import { studioDocumentRouter } from "./studioDocument/studioDocumentApi.js";
 import {
   canAccessNotebook,
   getAccessConfiguration,
@@ -164,6 +165,7 @@ app.use("/api/visualize", createRateLimiter({ name: "visualize", keyPrefix: "vis
 app.use("/api/upload", createRateLimiter({ name: "upload", keyPrefix: "upload:", ...rateLimitDefaults.upload }));
 app.use("/api/export", createRateLimiter({ name: "export", keyPrefix: "export:", ...rateLimitDefaults.lightweight }));
 app.use("/api/studio/mindmap", createRateLimiter({ name: "studio_mindmap", keyPrefix: "studio_mindmap:", ...rateLimitDefaults.chat }));
+app.use("/api/studio/document", createRateLimiter({ name: "studio_document", keyPrefix: "studio_document:", ...rateLimitDefaults.chat }));
 app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
 app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
 app.use(
@@ -831,6 +833,7 @@ app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
 app.use("/api/admin/rag-eval", ragEvalRouter);
 app.use("/api/admin/graph", graphAdminRouter);
 app.use("/api/studio/graph", graphStudioRouter);
+app.use("/api/studio/document", studioDocumentRouter);
 app.use("/api/law", lawApiRouter);
 
 app.get("/api/notebooks/:id/ingest-jobs", requireAdmin, async (request, response) => {

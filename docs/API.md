@@ -397,6 +397,41 @@ PDF export embeds a Korean-capable server font when one is available.
 
 ## Studio
 
+### `GET /api/studio/document/templates`
+
+Returns the list of built-in document templates.
+
+### `POST /api/studio/document/from-answer`
+
+Body:
+
+```js
+{
+  title: "...",
+  answerMarkdown: "...",
+  templateId: "review_report",
+  template: {},
+  metadata: {},
+  model: "gemma4:e2b"
+}
+```
+
+Converts an AI answer into a template-structured JSON document draft using Ollama.
+
+### `POST /api/studio/document/export`
+
+Body:
+
+```js
+{
+  format: "docx",
+  document: { title: "...", blocks: [], citations: {} },
+  options: { includeCitations: true }
+}
+```
+
+Exports the edited Studio document model as a binary file (HWPX, DOCX, PDF, or MD).
+
 ### `POST /api/studio/mindmap`
 
 Body:
