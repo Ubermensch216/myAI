@@ -293,14 +293,34 @@ function populateTemplateSelect(activeId) {
   placeholder.hidden = true;
   select.append(placeholder);
   const templates = Array.isArray(_templates) ? _templates : [];
+  
+  const personalTemplates = (state.documentTemplates && Array.isArray(state.documentTemplates.personal)) ? state.documentTemplates.personal : [];
+  
+  if (personalTemplates.length > 0) {
+    const groupPersonal = document.createElement("optgroup");
+    groupPersonal.label = "내 템플릿";
+    for (const tpl of personalTemplates) {
+      const option = document.createElement("option");
+      option.value = tpl.id;
+      option.textContent = tpl.name;
+      groupPersonal.append(option);
+    }
+    select.append(groupPersonal);
+  }
+  
+  const groupBuiltin = document.createElement("optgroup");
+  groupBuiltin.label = "기본 템플릿";
   for (const tpl of templates) {
     const option = document.createElement("option");
     option.value = tpl.id;
     option.textContent = tpl.name;
-    select.append(option);
+    groupBuiltin.append(option);
   }
+  select.append(groupBuiltin);
   const desired = activeId || previous || "";
-  if (desired && !templates.some((t) => t.id === desired)) {
+  const inBuiltin = templates.some((t) => t.id === desired);
+  const inPersonal = personalTemplates.some((t) => t.id === desired);
+  if (desired && !inBuiltin && !inPersonal) {
     const fallback = document.createElement("option");
     fallback.value = desired;
     fallback.textContent = desired;
@@ -407,18 +427,27 @@ async function convertDraft(draft) {
   _activeAbort = controller;
   setStatus("AI 변환 중", false, true);
   try {
-    const response = await fetch("/api/studio/document/from-answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: controller.signal,
-      body: JSON.stringify({
+    const personalTemplates = (state.documentTemplates && Array.isArray(state.documentTemplates.personal)) ? state.documentTemplates.personal : [];
+    const personalTemplate = personalTemplates.find(t => t.id === draft.templateId);
+    
+    const bodyPayload = {
         title: draft.title,
         answerMarkdown: draft.answerMarkdown,
         templateId: draft.templateId,
         metadata: draft.metadata || {},
         source: draft.source,
         model: draft.model
-      })
+    };
+    
+    if (personalTemplate) {
+      bodyPayload.template = personalTemplate;
+    }
+
+    const response = await fetch("/api/studio/document/from-answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify(bodyPayload)
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || !body.ok) {

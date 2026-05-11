@@ -337,7 +337,8 @@ export function renderAdminEntry() {
 }
 
 export function isAdminDialogOpen() {
-  return Boolean(elements.settingsDialog?.open && elements.settingsAdminPanel && !elements.settingsAdminPanel.hidden);
+  const adminPanel = document.getElementById("settingsPanelAdmin");
+  return Boolean(elements.settingsDialog?.open && adminPanel && !adminPanel.hidden);
 }
 
 export function resetAdminFileInput() {

@@ -3,6 +3,7 @@ import {
   DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF
 } from "./state.js";
 import { scheduleSave } from "./persistence.js";
+import { renderDocumentTemplatesSettings } from "./documentTemplates.js";
 
 let activeSettingsTab = "personal";
 let adminConsoleMounted = false;
@@ -38,7 +39,8 @@ function openSettings() {
   renderBannerPreview();
   renderSystemAvatarPreview();
   renderAvatarPreview();
-  switchSettingsTab("personal");
+  renderDocumentTemplatesSettings(document.getElementById("settingsDocumentTemplatesMount"));
+  switchSettingsTab("profile");
   elements.settingsDialog.showModal();
   elements.appBannerTrigger.focus();
 }
@@ -52,15 +54,44 @@ function mountAdminConsole() {
   adminConsoleMounted = true;
 }
 
-function switchSettingsTab(tab) {
-  activeSettingsTab = tab === "admin" ? "admin" : "personal";
-  const adminActive = activeSettingsTab === "admin";
-  elements.settingsPersonalPanel.hidden = adminActive;
-  elements.settingsAdminPanel.hidden = !adminActive;
-  elements.settingsPersonalTab.classList.toggle("active", !adminActive);
-  elements.settingsAdminTab.classList.toggle("active", adminActive);
-  elements.settingsPersonalTab.setAttribute("aria-selected", String(!adminActive));
-  elements.settingsAdminTab.setAttribute("aria-selected", String(adminActive));
+function switchSettingsTab(tabId) {
+  activeSettingsTab = tabId;
+  const adminActive = tabId === "admin";
+
+  // Update sidebar tab active states
+  const tabs = document.querySelectorAll(".settings-sidebar .settings-tab");
+  tabs.forEach(tab => {
+    const isTarget = tab.dataset.tabTarget === tabId;
+    tab.classList.toggle("active", isTarget);
+    tab.setAttribute("aria-selected", String(isTarget));
+  });
+
+  // The form contains personal setting panels (profile/appearance/docs).
+  // The admin panel is a sibling to the form inside .settings-content.
+  const form = document.getElementById("settingsForm");
+  const adminPanel = document.getElementById("settingsPanelAdmin");
+  const footer = document.getElementById("settingsFormFooter");
+
+  if (adminActive) {
+    // Hide form entirely, show admin panel
+    if (form) form.hidden = true;
+    if (adminPanel) adminPanel.hidden = false;
+  } else {
+    // Show form, hide admin panel, then switch inner panel
+    if (form) form.hidden = false;
+    if (adminPanel) adminPanel.hidden = true;
+
+    // Activate the correct inner panel
+    const targetId = "settingsPanel" + tabId.charAt(0).toUpperCase() + tabId.slice(1);
+    const panels = form ? form.querySelectorAll(".settings-tab-panel") : [];
+    panels.forEach(panel => {
+      panel.hidden = panel.id !== targetId;
+    });
+
+    // Show footer for non-admin personal panels
+    if (footer) footer.hidden = false;
+  }
+
   elements.settingsDialog.classList.toggle("admin-mode", adminActive);
   if (adminActive) {
     mountAdminConsole();
@@ -191,8 +222,14 @@ export function bindSettingsEvents() {
   elements.settingsButton.addEventListener("click", openSettings);
   elements.closeSettingsButton.addEventListener("click", closeSettings);
   elements.cancelSettingsButton.addEventListener("click", closeSettings);
-  elements.settingsPersonalTab.addEventListener("click", () => switchSettingsTab("personal"));
-  elements.settingsAdminTab.addEventListener("click", () => switchSettingsTab("admin"));
+  
+  document.querySelectorAll(".settings-sidebar .settings-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.tabTarget;
+      if (target) switchSettingsTab(target);
+    });
+  });
+
   window.addEventListener("myai:opensettingsadmin", () => {
     openSettings();
     switchSettingsTab("admin");

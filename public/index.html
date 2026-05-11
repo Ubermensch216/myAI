@@ -612,198 +612,229 @@
           <button id="closeSettingsButton" class="icon-button" type="button" aria-label="닫기">×</button>
         </div>
 
-        <div class="settings-tabs" role="tablist" aria-label="설정 메뉴">
-          <button id="settingsPersonalTab" class="settings-tab active" type="button" role="tab" aria-selected="true" aria-controls="settingsPersonalPanel">개인별 설정</button>
-          <button id="settingsAdminTab" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsAdminPanel">
-            <span>관리자 콘솔</span>
-            <span id="settingsAdminStatus" class="settings-admin-status" data-status="locked" aria-hidden="true"></span>
-          </button>
-        </div>
+        <div class="settings-layout-container">
+          <nav class="settings-sidebar" role="tablist" aria-label="설정 메뉴">
+            <button id="settingsTabProfile" class="settings-tab active" type="button" role="tab" aria-selected="true" data-tab-target="profile">
+              👤 프로필 및 시스템
+            </button>
+            <button id="settingsTabAppearance" class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="appearance">
+              🎨 화면 및 테마
+            </button>
+            <button id="settingsTabDocs" class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="docs">
+              📝 문서 및 프롬프트
+            </button>
+            <div class="settings-tab-divider"></div>
+            <button id="settingsTabAdmin" class="settings-tab" type="button" role="tab" aria-selected="false" data-tab-target="admin">
+              <span>🛡️ 관리자 콘솔</span>
+              <span id="settingsAdminStatus" class="settings-admin-status" data-status="locked" aria-hidden="true"></span>
+            </button>
+          </nav>
 
-        <section id="settingsPersonalPanel" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsPersonalTab">
-          <form id="settingsForm" method="dialog">
-        <fieldset class="field-section identity-section settings-system-section">
-          <legend class="field-section-title">시스템 정보</legend>
-          <div class="field">
-            <span class="field-label">시스템 배너</span>
-            <div id="appBannerPicker" class="banner-picker" data-state="default">
-              <button id="appBannerTrigger" type="button" class="banner-slot" aria-label="시스템 배너 선택">
-                <img id="appBannerPreview" class="banner-preview-img" src="/default-banner.png" alt="" />
-              </button>
-              <p class="banner-helper">권장 비율 4.5:1. 다른 비율의 이미지는 잘리지 않고 여백을 두고 표시됩니다.</p>
-              <div class="banner-actions">
-                <button id="changeBannerButton" type="button" class="logo-action-btn" aria-label="시스템 배너 변경" title="변경">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
-                    <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
-                  </svg>
-                </button>
-                <button id="removeBannerButton" type="button" class="logo-action-btn banner-reset" aria-label="기본 배너로 복원" title="기본값">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 12a8 8 0 0 1 13.66-5.66"></path>
-                    <path d="M18 4v5h-5"></path>
-                    <path d="M20 12a8 8 0 0 1-13.66 5.66"></path>
-                    <path d="M6 20v-5h5"></path>
-                  </svg>
-                </button>
-              </div>
-              <input id="appBannerInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
-            </div>
-          </div>
-          <div class="field-row">
-            <div class="field">
-              <label class="field-label" for="appNameInput">시스템 명칭</label>
-              <input id="appNameInput" class="text-input" placeholder="예: 수비서 AI" />
-            </div>
-            <div class="field">
-              <span class="field-label">시스템 아바타</span>
-              <div id="systemAvatarPicker" class="logo-picker" data-state="empty">
-                <button id="systemAvatarTrigger" type="button" class="logo-slot" aria-label="시스템 아바타 선택">
-                  <img id="systemAvatarPreview" class="logo-preview-img" alt="" hidden />
-                  <svg class="logo-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>
-                  </svg>
-                </button>
-                <div class="logo-actions">
-                  <button id="changeSystemAvatarButton" type="button" class="logo-action-btn" aria-label="시스템 아바타 변경" title="변경">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
-                      <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
-                    </svg>
-                  </button>
-                  <button id="removeSystemAvatarButton" type="button" class="logo-action-btn" aria-label="시스템 아바타 삭제" title="삭제">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-                    </svg>
-                  </button>
+          <div class="settings-content">
+            <form id="settingsForm" method="dialog">
+              <!-- PROFILE TAB -->
+              <section id="settingsPanelProfile" class="settings-tab-panel active" role="tabpanel" aria-labelledby="settingsTabProfile">
+                <fieldset class="field-section identity-section settings-system-section">
+                  <legend class="field-section-title">시스템 정보</legend>
+                  <div class="field">
+                    <span class="field-label">시스템 배너</span>
+                    <div id="appBannerPicker" class="banner-picker" data-state="default">
+                      <button id="appBannerTrigger" type="button" class="banner-slot" aria-label="시스템 배너 선택">
+                        <img id="appBannerPreview" class="banner-preview-img" src="/default-banner.png" alt="" />
+                      </button>
+                      <p class="banner-helper">권장 비율 4.5:1. 다른 비율의 이미지는 잘리지 않고 여백을 두고 표시됩니다.</p>
+                      <div class="banner-actions">
+                        <button id="changeBannerButton" type="button" class="logo-action-btn" aria-label="시스템 배너 변경" title="변경">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                            <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
+                          </svg>
+                        </button>
+                        <button id="removeBannerButton" type="button" class="logo-action-btn banner-reset" aria-label="기본 배너로 복원" title="기본값">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 12a8 8 0 0 1 13.66-5.66"></path>
+                            <path d="M18 4v5h-5"></path>
+                            <path d="M20 12a8 8 0 0 1-13.66 5.66"></path>
+                            <path d="M6 20v-5h5"></path>
+                          </svg>
+                        </button>
+                      </div>
+                      <input id="appBannerInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
+                    </div>
+                  </div>
+                  <div class="field-row">
+                    <div class="field">
+                      <label class="field-label" for="appNameInput">시스템 명칭</label>
+                      <input id="appNameInput" class="text-input" placeholder="예: 수비서 AI" />
+                    </div>
+                    <div class="field">
+                      <span class="field-label">시스템 아바타</span>
+                      <div id="systemAvatarPicker" class="logo-picker" data-state="empty">
+                        <button id="systemAvatarTrigger" type="button" class="logo-slot" aria-label="시스템 아바타 선택">
+                          <img id="systemAvatarPreview" class="logo-preview-img" alt="" hidden />
+                          <svg class="logo-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>
+                          </svg>
+                        </button>
+                        <div class="logo-actions">
+                          <button id="changeSystemAvatarButton" type="button" class="logo-action-btn" aria-label="시스템 아바타 변경" title="변경">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                              <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
+                            </svg>
+                          </button>
+                          <button id="removeSystemAvatarButton" type="button" class="logo-action-btn" aria-label="시스템 아바타 삭제" title="삭제">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+                            </svg>
+                          </button>
+                        </div>
+                        <input id="systemAvatarInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+
+                <fieldset class="field-section identity-section settings-user-section">
+                  <legend class="field-section-title">사용자 정보</legend>
+                  <div class="field-row">
+                    <div class="field">
+                      <label class="field-label" for="userTitleInput">별명</label>
+                      <input id="userTitleInput" class="text-input" placeholder="예: 선생님, 지훈님" />
+                    </div>
+                    <div class="field">
+                      <span class="field-label">아바타</span>
+                      <div id="userAvatarPicker" class="logo-picker" data-state="empty">
+                        <button id="userAvatarTrigger" type="button" class="logo-slot" aria-label="아바타 선택">
+                          <img id="userAvatarPreview" class="logo-preview-img" alt="" hidden />
+                          <svg class="logo-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>
+                          </svg>
+                        </button>
+                        <div class="logo-actions">
+                          <button id="changeAvatarButton" type="button" class="logo-action-btn" aria-label="아바타 변경" title="변경">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
+                              <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
+                            </svg>
+                          </button>
+                          <button id="removeAvatarButton" type="button" class="logo-action-btn" aria-label="아바타 삭제" title="삭제">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+                            </svg>
+                          </button>
+                        </div>
+                        <input id="userAvatarInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+              </section>
+
+              <!-- APPEARANCE TAB -->
+              <section id="settingsPanelAppearance" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsTabAppearance" hidden>
+                <fieldset class="field-section theme-section settings-theme-section">
+                  <legend class="field-section-title">테마</legend>
+                  <div class="field-row">
+                    <div class="field">
+                      <span class="field-label" id="themeLabel">밝기</span>
+                      <div id="themeToggle" class="theme-toggle" role="group" aria-labelledby="themeLabel">
+                        <button class="theme-option" type="button" data-theme-value="light" aria-label="라이트 테마" title="라이트 테마">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2"></path>
+                            <path d="M12 20v2"></path>
+                            <path d="m4.93 4.93 1.41 1.41"></path>
+                            <path d="m17.66 17.66 1.41 1.41"></path>
+                            <path d="M2 12h2"></path>
+                            <path d="M20 12h2"></path>
+                            <path d="m6.34 17.66-1.41 1.41"></path>
+                            <path d="m19.07 4.93-1.41 1.41"></path>
+                          </svg>
+                        </button>
+                        <button class="theme-option" type="button" data-theme-value="dark" aria-label="다크 테마" title="다크 테마">
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="field">
+                      <span class="field-label" id="colorThemeLabel">색상</span>
+                      <div id="colorThemeToggle" class="color-theme-toggle" role="group" aria-labelledby="colorThemeLabel">
+                        <button class="color-theme-option" type="button" data-color-theme-value="busan" aria-label="부산 CI 색상" title="부산 CI">
+                          <span class="color-theme-thumb color-theme-thumb-busan" aria-hidden="true"></span>
+                          <span class="color-theme-name">부산 CI</span>
+                        </button>
+                        <button class="color-theme-option" type="button" data-color-theme-value="water" aria-label="부산 상수도 CI 색상" title="부산 상수도 CI">
+                          <span class="color-theme-thumb color-theme-thumb-water" aria-hidden="true"></span>
+                          <span class="color-theme-name">부산 상수도</span>
+                        </button>
+                        <button class="color-theme-option" type="button" data-color-theme-value="custom" aria-label="사용자 지정 색상" title="사용자 지정">
+                          <span id="customColorThemeThumb" class="color-theme-thumb color-theme-thumb-custom" aria-hidden="true"></span>
+                          <span class="color-theme-name">사용자 지정</span>
+                        </button>
+                      </div>
+                      <div id="customColorPanel" class="custom-color-panel" hidden>
+                        <label class="custom-color-field">
+                          <span>대표</span>
+                          <input class="custom-color-input" type="color" data-custom-color-key="accent" aria-label="대표 색상" value="#e6007e" />
+                        </label>
+                        <label class="custom-color-field">
+                          <span>강조</span>
+                          <input class="custom-color-input" type="color" data-custom-color-key="accentDark" aria-label="강조 색상" value="#b00062" />
+                        </label>
+                        <label class="custom-color-field">
+                          <span>보조</span>
+                          <input class="custom-color-input" type="color" data-custom-color-key="accentAux" aria-label="보조 색상" value="#00a3e0" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+              </section>
+
+              <!-- DOCS & PROMPT TAB -->
+              <section id="settingsPanelDocs" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsTabDocs" hidden>
+                <fieldset class="field-section template-section settings-template-section">
+                  <legend class="field-section-title">문서 템플릿</legend>
+                  <div id="settingsDocumentTemplatesMount" class="settings-document-templates-mount"></div>
+                </fieldset>
+
+                <fieldset class="field-section prompt-section settings-prompt-section">
+                  <legend class="field-section-title">프롬프트 설정</legend>
+                  <div class="field">
+                    <label class="field-label" for="customPromptInput">사용자 정의 시스템 프롬프트</label>
+                    <textarea
+                      id="customPromptInput"
+                      class="text-input custom-prompt-input"
+                      rows="6"
+                      placeholder="예: 친절하고 간결하게 답해줘. 표가 필요하면 표로 정리해줘. 확실하지 않은 내용은 추정이라고 말해줘."
+                    ></textarea>
+                  </div>
+                </fieldset>
+              </section>
+
+              <div id="settingsFormFooter" class="settings-form-footer">
+                <p class="hint settings-storage-hint">
+                  ※대화 내용과 설정은 PC 내부에만 암호화되어 저장됨<br />
+                  ※파일은 해당 대화방에 저장됨
+                </p>
+
+                <div class="dialog-actions settings-form-actions">
+                  <span class="dialog-actions-spacer"></span>
+                  <button class="ghost-button" type="button" id="cancelSettingsButton">취소</button>
+                  <button class="send-button" type="submit">저장</button>
                 </div>
-                <input id="systemAvatarInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
               </div>
-            </div>
-          </div>
-        </fieldset>
+            </form>
 
-        <fieldset class="field-section identity-section settings-user-section">
-          <legend class="field-section-title">사용자 정보</legend>
-          <div class="field-row">
-            <div class="field">
-              <label class="field-label" for="userTitleInput">별명</label>
-              <input id="userTitleInput" class="text-input" placeholder="예: 선생님, 지훈님" />
-            </div>
-            <div class="field">
-              <span class="field-label">아바타</span>
-              <div id="userAvatarPicker" class="logo-picker" data-state="empty">
-                <button id="userAvatarTrigger" type="button" class="logo-slot" aria-label="아바타 선택">
-                  <img id="userAvatarPreview" class="logo-preview-img" alt="" hidden />
-                  <svg class="logo-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"></path>
-                  </svg>
-                </button>
-                <div class="logo-actions">
-                  <button id="changeAvatarButton" type="button" class="logo-action-btn" aria-label="아바타 변경" title="변경">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"></path>
-                      <path d="m14 6 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"></path>
-                    </svg>
-                  </button>
-                  <button id="removeAvatarButton" type="button" class="logo-action-btn" aria-label="아바타 삭제" title="삭제">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-                    </svg>
-                  </button>
-                </div>
-                <input id="userAvatarInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden />
-              </div>
-            </div>
+            <!-- ADMIN CONSOLE -->
+            <section id="settingsPanelAdmin" class="settings-tab-panel settings-admin-panel" role="tabpanel" aria-labelledby="settingsTabAdmin" hidden>
+              <div id="settingsAdminMount" class="settings-admin-mount"></div>
+            </section>
           </div>
-        </fieldset>
-
-        <fieldset class="field-section theme-section settings-theme-section">
-          <legend class="field-section-title">테마</legend>
-          <div class="field-row">
-            <div class="field">
-              <span class="field-label" id="themeLabel">밝기</span>
-              <div id="themeToggle" class="theme-toggle" role="group" aria-labelledby="themeLabel">
-                <button class="theme-option" type="button" data-theme-value="light" aria-label="라이트 테마" title="라이트 테마">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="4"></circle>
-                    <path d="M12 2v2"></path>
-                    <path d="M12 20v2"></path>
-                    <path d="m4.93 4.93 1.41 1.41"></path>
-                    <path d="m17.66 17.66 1.41 1.41"></path>
-                    <path d="M2 12h2"></path>
-                    <path d="M20 12h2"></path>
-                    <path d="m6.34 17.66-1.41 1.41"></path>
-                    <path d="m19.07 4.93-1.41 1.41"></path>
-                  </svg>
-                </button>
-                <button class="theme-option" type="button" data-theme-value="dark" aria-label="다크 테마" title="다크 테마">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M20.5 14.4A8.5 8.5 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="field">
-              <span class="field-label" id="colorThemeLabel">색상</span>
-              <div id="colorThemeToggle" class="color-theme-toggle" role="group" aria-labelledby="colorThemeLabel">
-                <button class="color-theme-option" type="button" data-color-theme-value="busan" aria-label="부산 CI 색상" title="부산 CI">
-                  <span class="color-theme-thumb color-theme-thumb-busan" aria-hidden="true"></span>
-                  <span class="color-theme-name">부산 CI</span>
-                </button>
-                <button class="color-theme-option" type="button" data-color-theme-value="water" aria-label="부산 상수도 CI 색상" title="부산 상수도 CI">
-                  <span class="color-theme-thumb color-theme-thumb-water" aria-hidden="true"></span>
-                  <span class="color-theme-name">부산 상수도</span>
-                </button>
-                <button class="color-theme-option" type="button" data-color-theme-value="custom" aria-label="사용자 지정 색상" title="사용자 지정">
-                  <span id="customColorThemeThumb" class="color-theme-thumb color-theme-thumb-custom" aria-hidden="true"></span>
-                  <span class="color-theme-name">사용자 지정</span>
-                </button>
-              </div>
-              <div id="customColorPanel" class="custom-color-panel" hidden>
-                <label class="custom-color-field">
-                  <span>대표</span>
-                  <input class="custom-color-input" type="color" data-custom-color-key="accent" aria-label="대표 색상" value="#e6007e" />
-                </label>
-                <label class="custom-color-field">
-                  <span>강조</span>
-                  <input class="custom-color-input" type="color" data-custom-color-key="accentDark" aria-label="강조 색상" value="#b00062" />
-                </label>
-                <label class="custom-color-field">
-                  <span>보조</span>
-                  <input class="custom-color-input" type="color" data-custom-color-key="accentAux" aria-label="보조 색상" value="#00a3e0" />
-                </label>
-              </div>
-            </div>
-          </div>
-        </fieldset>
-
-        <div class="field settings-prompt-section">
-          <label class="field-label" for="customPromptInput">사용자 정의 프롬프트</label>
-          <textarea
-            id="customPromptInput"
-            class="text-input custom-prompt-input"
-            rows="6"
-            placeholder="예: 친절하고 간결하게 답해줘. 표가 필요하면 표로 정리해줘. 확실하지 않은 내용은 추정이라고 말해줘."
-          ></textarea>
         </div>
-
-        <p class="hint settings-storage-hint">
-          ※대화 내용과 설정은 PC 내부에만 암호화되어 저장됨<br />
-          ※파일은 해당 대화방에 저장됨
-        </p>
-
-        <div class="dialog-actions settings-form-actions">
-          <span class="dialog-actions-spacer"></span>
-          <button class="ghost-button" type="button" id="cancelSettingsButton">취소</button>
-          <button class="send-button" type="submit">저장</button>
-        </div>
-          </form>
-        </section>
-
-        <section id="settingsAdminPanel" class="settings-tab-panel settings-admin-panel" role="tabpanel" aria-labelledby="settingsAdminTab" hidden>
-          <div id="settingsAdminMount" class="settings-admin-mount"></div>
-        </section>
       </div>
     </dialog>
 

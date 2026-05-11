@@ -105,6 +105,8 @@ Docs:
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
 - `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
 - `docs/KNOWN_ISSUES.md` - constraints and next improvements.
+- `docs/DESIGN.md` - project design policies and UI styling rules.
+- `docs/KOREAN_LAW_ENGINE.md` - native Korean law engine, statute verification, and compliance tools.
 
 ## Deployment Topology
 

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: light;
   --bg: #f5f7fb;
   --surface: #ffffff;
@@ -2186,17 +2186,110 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .settings-dialog #settingsForm {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-  grid-template-areas:
-    "system prompt"
-    "user theme"
-    "hint actions";
-  align-content: start;
-  gap: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   min-height: 100%;
   padding: 18px;
+}
+
+.settings-layout-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 200px;
+  padding: 0 16px 16px 16px;
+  border-right: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.settings-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow-y: auto;
+  position: relative;
+}
+
+.settings-tab-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 0;
+}
+
+.settings-sidebar .settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95em;
+  text-align: left;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.settings-sidebar .settings-tab:hover {
+  background: var(--surface-hover);
+}
+
+.settings-sidebar .settings-tab.active {
+  background: var(--surface-active);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.settings-form-footer {
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+/* Sidebar group label */
+.settings-sidebar-group-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 12px 12px 4px;
+}
+
+/* Two-column layout for template/prompt tab */
+.settings-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Override panel display to flex-column, hidden when [hidden] */
+.settings-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 18px 18px 0 18px;
+}
+
+.settings-tab-panel[hidden] {
+  display: none !important;
+}
+
+.settings-admin-panel {
+  padding: 0;
+  overflow: hidden;
 }
 
 .settings-system-section {
@@ -2799,7 +2892,7 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-tools-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(95px, 126px));
+  grid-template-columns: repeat(auto-fit, minmax(86px, 113px));
   gap: 8px;
   padding: 12px 12px 4px;
   flex: 0 0 auto;
@@ -3319,7 +3412,7 @@ body.panel-resizing .panel-resizer::after {
   display: none;
 }
 
-/* ── Tree map ── */
+/* ?�?� Tree map ?�?� */
 
 .studio-mindmap-canvas.is-panning,
 .studio-mindmap-canvas.is-panning .studio-mindmap-svg {
@@ -4328,7 +4421,7 @@ body.panel-resizing .panel-resizer::after {
   }
 }
 
-/* Small: 560px – 820px */
+/* Small: 560px ??820px */
 @container calendar (min-width: 560px) and (max-width: 820px) {
   .calendar-grid {
     gap: 4px;
@@ -4512,7 +4605,7 @@ body.panel-resizing .panel-resizer::after {
   white-space: nowrap;
 }
 
-/* Notebook selector dialog — compact, list-focused */
+/* Notebook selector dialog ??compact, list-focused */
 .notebook-selector-dialog {
   width: min(420px, 90vw);
   max-height: 80vh;
@@ -4909,14 +5002,14 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .law-excerpt-summary::before {
-  content: "▸ ";
+  content: "??";
   display: inline-block;
   margin-right: 2px;
   transition: transform 120ms ease;
 }
 
 .law-excerpt[open] > .law-excerpt-summary::before {
-  content: "▾ ";
+  content: "??";
 }
 
 .law-excerpt-body {
@@ -6716,18 +6809,36 @@ body.panel-resizing .panel-resizer::after {
 
   .settings-tabs {
     overflow-x: auto;
+  }  .settings-layout-container {
+    flex-direction: column;
+  }
+  
+  .settings-sidebar {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 0 16px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 16px;
+  }
+  
+  .settings-sidebar .settings-tab {
+    width: auto;
+    white-space: nowrap;
+  }
+  
+  .settings-tab-divider {
+    width: 1px;
+    height: 20px;
+    margin: 0 8px;
+  }
+
+  .settings-content {
+    padding: 0;
   }
 
   .settings-dialog #settingsForm {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
-    grid-template-areas:
-      "system"
-      "user"
-      "theme"
-      "prompt"
-      "hint"
-      "actions";
     min-height: 0;
   }
 
@@ -7558,7 +7669,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 /* ==== Studio Law Explorer ==== */
-/* ── Law Explorer Panel ─────────────────────────────────────── */
+/* ?�?� Law Explorer Panel ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .studio-law-panel {
   display: flex;
@@ -7569,7 +7680,7 @@ body.panel-resizing .panel-resizer::after {
   overflow: hidden;
 }
 
-/* ── Toolbar ─────────────────────────────────────────────────── */
+/* ?�?� Toolbar ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-explorer-toolbar {
   display: flex;
@@ -7604,7 +7715,7 @@ body.panel-resizing .panel-resizer::after {
   box-sizing: border-box;
 }
 
-/* 영향맵 버튼 — input 높이(38px)에 맞춤 */
+/* ?�향�?버튼 ??input ?�이(38px)??맞춤 */
 #lawExplorerRunButton {
   height: 38px;
   padding: 0 14px;
@@ -7635,7 +7746,7 @@ body.panel-resizing .panel-resizer::after {
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
-/* ── Status bar ──────────────────────────────────────────────── */
+/* ?�?� Status bar ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-explorer-status {
   flex-shrink: 0;
@@ -7652,7 +7763,7 @@ body.panel-resizing .panel-resizer::after {
 .law-explorer-status[data-mode="error"] { color: var(--danger); }
 .law-explorer-status[data-mode="running"] { color: var(--accent-dark); }
 
-/* ── Summary card ────────────────────────────────────────────── */
+/* ?�?� Summary card ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-explorer-summary {
   flex-shrink: 0;
@@ -7757,7 +7868,7 @@ body.panel-resizing .panel-resizer::after {
   word-break: keep-all;
 }
 
-/* ── Results body ────────────────────────────────────────────── */
+/* ?�?� Results body ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-explorer-body {
   display: grid;
@@ -7778,7 +7889,7 @@ body.panel-resizing .panel-resizer::after {
   padding: 14px;
 }
 
-/* ── Map — section groups ────────────────────────────────────── */
+/* ?�?� Map ??section groups ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-impact-section {
   margin-bottom: 16px;
@@ -7848,7 +7959,7 @@ body.panel-resizing .panel-resizer::after {
   font-style: italic;
 }
 
-/* ── Detail panel ────────────────────────────────────────────── */
+/* ?�?� Detail panel ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-explorer-detail-header {
   margin-bottom: 10px;
@@ -7935,7 +8046,7 @@ body.panel-resizing .panel-resizer::after {
   }
 }
 
-/* ── Law mode tabs (영향맵 / 조문 이력) ─────────────────────────── */
+/* ?�?� Law mode tabs (?�향�?/ 조문 ?�력) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-mode-tabs {
   display: flex;
@@ -7983,7 +8094,7 @@ body.panel-resizing .panel-resizer::after {
   display: none;
 }
 
-/* ── History selection bar ─────────────────────────────────────── */
+/* ?�?� History selection bar ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-history-selection {
   display: flex;
@@ -8054,7 +8165,7 @@ body.panel-resizing .panel-resizer::after {
   50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 28%, transparent); }
 }
 
-/* ── History list (revisions) ─────────────────────────────────── */
+/* ?�?� History list (revisions) ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-history-body {
   display: grid;
@@ -8135,7 +8246,7 @@ body.panel-resizing .panel-resizer::after {
   background: var(--surface);
 }
 
-/* ── Snapshot viewer ──────────────────────────────────────────── */
+/* ?�?� Snapshot viewer ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */
 
 .law-snapshot-header {
   display: flex;
@@ -8187,7 +8298,7 @@ body.panel-resizing .panel-resizer::after {
   word-break: keep-all;
 }
 
-/* ── Diff viewer (added / removed / modified / unchanged) ──────── */
+/* ?�?� Diff viewer (added / removed / modified / unchanged) ?�?�?�?�?�?�?�?� */
 
 .law-diff-header {
   display: flex;
