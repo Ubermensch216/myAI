@@ -324,27 +324,55 @@
           </div>
 
           <div id="studioLawPanel" class="studio-tool-panel studio-law-panel" data-tool-panel="law" hidden>
-            <div class="law-explorer-toolbar">
-              <div class="law-explorer-toolbar-row1">
-                <input id="lawExplorerLawName" class="text-input" type="text" placeholder="법령명" />
-                <input id="lawExplorerArticle" class="text-input" type="text" placeholder="조문 예: 제15조" />
-                <button id="lawExplorerRunButton" class="send-button" type="button">영향맵</button>
-                <button id="lawExplorerResetButton" class="law-explorer-reset-btn" type="button" title="새로고침 (결과 초기화)" aria-label="새로고침">↺</button>
-              </div>
-              <div class="law-explorer-toolbar-row2">
-                <textarea id="lawExplorerSubject" class="text-input law-explorer-subject" placeholder="검토 대상 입력 (예: 회원가입 양식, 개인정보처리방침 등)" rows="2"></textarea>
-              </div>
+            <div class="law-mode-tabs" role="tablist">
+              <button id="lawModeImpactButton" class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-mode="impact">영향맵</button>
+              <button id="lawModeHistoryButton" class="law-mode-tab" type="button" role="tab" aria-selected="false" data-mode="history">조문 이력</button>
             </div>
-            <div id="lawExplorerStatus" class="law-explorer-status"></div>
-            <div id="lawExplorerSummary" class="law-explorer-summary" hidden></div>
-            <div class="law-explorer-body">
-              <div id="lawExplorerMap" class="law-explorer-map">
-                <div class="law-explorer-empty">법령명과 조문을 입력하면 공식 조문 기반 영향맵을 보여줍니다.</div>
+
+            <section id="lawImpactSection" class="law-mode-section" data-mode="impact">
+              <div class="law-explorer-toolbar">
+                <div class="law-explorer-toolbar-row1">
+                  <input id="lawExplorerLawName" class="text-input" type="text" placeholder="법령명" />
+                  <input id="lawExplorerArticle" class="text-input" type="text" placeholder="조문 예: 제15조" />
+                  <button id="lawExplorerRunButton" class="send-button" type="button">영향맵</button>
+                  <button id="lawExplorerResetButton" class="law-explorer-reset-btn" type="button" title="새로고침 (결과 초기화)" aria-label="새로고침">↺</button>
+                </div>
+                <div class="law-explorer-toolbar-row2">
+                  <textarea id="lawExplorerSubject" class="text-input law-explorer-subject" placeholder="검토 대상 입력 (예: 회원가입 양식, 개인정보처리방침 등)" rows="2"></textarea>
+                </div>
               </div>
-              <aside id="lawExplorerDetail" class="law-explorer-detail">
-                <p class="law-explorer-empty">분석 항목을 클릭하면 상세 내용이 표시됩니다.</p>
-              </aside>
-            </div>
+              <div id="lawExplorerStatus" class="law-explorer-status"></div>
+              <div id="lawExplorerSummary" class="law-explorer-summary" hidden></div>
+              <div class="law-explorer-body">
+                <div id="lawExplorerMap" class="law-explorer-map">
+                  <div class="law-explorer-empty">법령명과 조문을 입력하면 공식 조문 기반 영향맵을 보여줍니다.</div>
+                </div>
+                <aside id="lawExplorerDetail" class="law-explorer-detail">
+                  <p class="law-explorer-empty">분석 항목을 클릭하면 상세 내용이 표시됩니다.</p>
+                </aside>
+              </div>
+            </section>
+
+            <section id="lawHistorySection" class="law-mode-section" data-mode="history" hidden>
+              <div class="law-explorer-toolbar">
+                <div class="law-explorer-toolbar-row1">
+                  <input id="lawHistoryLawName" class="text-input" type="text" placeholder="법령명" />
+                  <input id="lawHistoryArticle" class="text-input" type="text" placeholder="조문 예: 제15조 (시점 비교 시 필수)" />
+                  <button id="lawHistoryFetchButton" class="send-button" type="button">이력 조회</button>
+                  <button id="lawHistoryResetButton" class="law-explorer-reset-btn" type="button" title="결과 초기화" aria-label="결과 초기화">↺</button>
+                </div>
+              </div>
+              <div id="lawHistoryStatus" class="law-explorer-status"></div>
+              <div id="lawHistorySelection" class="law-history-selection" hidden></div>
+              <div class="law-explorer-body law-history-body">
+                <div id="lawHistoryList" class="law-history-list">
+                  <div class="law-explorer-empty">법령명을 입력하고 "이력 조회"를 누르면 시행일별 개정 이력이 표시됩니다.</div>
+                </div>
+                <aside id="lawHistoryViewer" class="law-history-viewer">
+                  <p class="law-explorer-empty">시행일을 1개 선택하면 그 시점의 조문, 2개 선택하면 두 시점 차이를 보여줍니다.</p>
+                </aside>
+              </div>
+            </section>
           </div>
         </div>
       </aside>

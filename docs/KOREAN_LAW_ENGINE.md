@@ -60,6 +60,17 @@ Implemented pieces:
 - Studio Law Explorer MVP that calls the impact-map endpoint and renders
   official-article, subject, obligation, condition, risk, and material-signal
   groups
+- Studio Law Explorer "조문 이력" sub-tab that calls `/api/law/history`,
+  `/api/law/article/at`, and `/api/law/article/diff`. Users pick 1 or 2
+  시행일 entries from the revision list to either view the snapshot text or
+  render a structural diff (added/removed/modified/unchanged hunks with
+  bigram-similarity badges) — no model inference is involved on the client.
+- `action_plan` chat mode (Phase 5) — intent detection requires a statute
+  citation or `LEGAL_KEYWORDS` + article reference, so generic "계획 짜줘"
+  prompts cannot trigger it. The mode injects a structured 5-step response
+  template (핵심 의무 / 단계별 조치 / 증빙·기록 / 후속 점검 / 한계와 권고)
+  and forces a `mandatory` disclaimer that includes the non-legal-advice
+  framing.
 - Per-record meta fields rendered for each citation kind (사건번호/선고법원/
   선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
   종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
@@ -70,9 +81,6 @@ Implemented pieces:
 
 Still incomplete or follow-up work:
 
-- Frontend time-travel/diff UI (backend endpoints landed in Phase 4; UI is a
-  follow-up).
-- `action_plan` mode (Phase 5).
 - Knowledge graph integration using the existing per-notebook `graph.sqlite`
   infrastructure.
 
@@ -609,7 +617,7 @@ Phase 3:
 - ✅ `/api/law/impact-map`
 - ✅ Studio Law Explorer MVP
 
-Phase 4 (backend complete):
+Phase 4 (complete):
 
 - ✅ Historical article retrieval (`/api/law/article/at`, `target=eflawjosub` +
   `efYd`)
@@ -617,13 +625,30 @@ Phase 4 (backend complete):
   bigram modified-pair detection)
 - ✅ Law revision history list (`/api/law/history`, `target=lsHstInq`)
 - ✅ `law_time_travel` rate-limit bucket wired through all three endpoints
-- Frontend diff/timeline UI — pending (separate cycle)
+- ✅ Studio Law Explorer "조문 이력" sub-tab (revision list + snapshot +
+  diff viewer)
 
-Phase 5:
+Phase 5 (complete):
 
-- `action_plan` mode with mandatory disclaimer
-- Structured-step response template
-- Non-legal-advice framing tests
+- ✅ `action_plan` intent detection (`server/law/lawIntent.js`,
+  `ACTION_PLAN_PATTERN`) — gated on statute citation or law-name + article
+  reference so generic "계획 짜줘" prompts cannot trigger it
+- ✅ `action_plan` chat orchestration in `server/law/lawContextBuilder.js`
+  (article fetch + structured-step template injection)
+- ✅ Structured 5-step response template (`ACTION_PLAN_TEMPLATE`):
+  핵심 의무 / 단계별 조치 / 증빙·기록 / 후속 점검 / 한계와 권고
+- ✅ Mandatory disclaimer policy (`disclaimerForLawMode("action_plan")`
+  → `"mandatory"`) with the non-legal-advice phrase
+  ("본 답변은 일반 정보이며 법률 자문이 아닙니다") embedded in the template
+- ✅ Tests:
+  - `law-intent-eval.mjs` — TPs ("개인정보 보호법 제15조 위반 시 단계별 대응",
+    "근로기준법 제53조 이행 계획", "민법 제750조 손해배상 조치 절차",
+    "도로교통법 제44조 ... 컴플라이언스 체크리스트") and FPs (프로젝트 단계별
+    실행 계획, 주말 여행 대응 방안, 다이어트 단계별 실행 계획)
+  - `law-unit-test.mjs` — `testActionPlanIntent`, `testDisclaimerPolicy`,
+    `testActionPlanContext` (mocks `getLawArticle` and asserts the rendered
+    system block carries `[공식 법령 근거]`, `[행동 계획 응답 템플릿]`, and
+    "법률 자문이 아닙니다")
 
 Knowledge graph track:
 
@@ -639,9 +664,9 @@ Knowledge graph track:
 
 The current engine covers statute search/article retrieval/citation
 verification (Phase 1), Phase 2 official-source research for precedents, legal
-interpretations, admin rules, and ordinances, Phase 3 impact maps, and Phase 4
-time-travel/diff backend (`/article/at`, `/article/diff`, `/history`). Frontend
-diff/timeline UI and the Phase 5 `action_plan` mode remain later phases.
+interpretations, admin rules, and ordinances, Phase 3 impact maps, Phase 4
+time-travel/diff (backend + Studio Law Explorer "조문 이력" UI), and Phase 5
+`action_plan` mode with mandatory non-legal-advice disclaimer.
 
 The `LAW_HISTORY_TARGET` upstream parameter (`lsHstInq` by default) is the
 documented law.go.kr revision-history target. If law.go.kr renames or

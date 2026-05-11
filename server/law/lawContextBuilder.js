@@ -10,14 +10,29 @@ import { searchAdminRules } from "./tools/adminRules.js";
 import { searchOrdinances } from "./tools/ordinances.js";
 import { getLawConfig } from "./lawConfig.js";
 
-export async function buildLawContext(prompt, { hasNotebook = false, hasDocuments = false, signal } = {}) {
+export const ACTION_PLAN_TEMPLATE = [
+  "[행동 계획 응답 템플릿]",
+  "위 [공식 법령 근거]에서 직접 도출되는 의무·요건만 사용해 다음 5단계 구조로 답하세요. 각 항목은 1~2문장으로 간결하게.",
+  "1) 핵심 의무: 조문이 부과하는 의무·금지·요건을 [L] 인용과 함께 정리.",
+  "2) 단계별 조치: 1단계, 2단계 식으로 시간 순서로 구체적 행동을 적되 각 단계 끝에 [L] 근거 표시.",
+  "3) 증빙·기록: 각 단계에서 보존할 자료·통지·기록을 명시.",
+  "4) 후속 점검: 조치 후 모니터링·재점검 항목과 주기.",
+  "5) 한계와 권고: 본 답변은 일반 정보 제공이며 법률 자문이 아님을 명시. 사실관계·관할·예외 가능성을 짚고 변호사·노무사·세무사 등 자격 있는 전문가 상담을 권고.",
+  "",
+  "규칙:",
+  "- 위 [공식 법령 근거] 밖의 조문·판례·해석례를 인용하거나 만들지 말 것.",
+  "- 근거가 없으면 \"추가 자료가 필요합니다\"라고 명시하고 임의 추정으로 단계를 채우지 말 것.",
+  "- \"본 답변은 일반 정보이며 법률 자문이 아닙니다\" 문구를 5)번에 반드시 포함."
+].join("\n");
+
+export async function buildLawContext(prompt, { hasNotebook = false, hasDocuments = false, signal, client } = {}) {
   const intent = detectLawIntent(prompt, { hasNotebook, hasDocuments });
   if (!intent.isLegalQuery) return null;
 
   const startedAt = Date.now();
   try {
     if (intent.mode === "verify_citations") {
-      const verification = await verifyLawCitations({ text: prompt }, { signal });
+      const verification = await verifyLawCitations({ text: prompt }, { signal, client });
       return {
         ok: true,
         query: prompt,
@@ -33,7 +48,7 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
     }
 
     if (intent.mode === "law_article" || intent.mode === "department_legal_review") {
-      const article = await getArticleDetail(intent.extracted, { signal });
+      const article = await getArticleDetail(intent.extracted, { signal, client });
       const citation = normalizeLawCitationForMeta(article.citation, 0, article.text);
       const contextItems = [{ citation, text: article.text }];
       return {
@@ -50,8 +65,27 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
       };
     }
 
+    if (intent.mode === "action_plan") {
+      const article = await getArticleDetail(intent.extracted, { signal, client });
+      const citation = normalizeLawCitationForMeta(article.citation, 0, article.text);
+      const contextItems = [{ citation, text: article.text }];
+      const lawBlock = formatLawContext(contextItems);
+      return {
+        ok: true,
+        query: prompt,
+        mode: intent.mode,
+        intent,
+        citations: [citation],
+        verification: { checked: false, failCount: 0, results: [] },
+        disclaimer: disclaimerForLawMode(intent.mode),
+        contextText: fitLawContext([lawBlock, ACTION_PLAN_TEMPLATE].filter(Boolean).join("\n\n")),
+        error: "",
+        latencyMs: Date.now() - startedAt
+      };
+    }
+
     if (intent.mode === "law_search") {
-      const result = await searchLaw({ query: intent.extracted.query }, { signal });
+      const result = await searchLaw({ query: intent.extracted.query }, { signal, client });
       const contextText = formatSearchContext(result);
       return {
         ok: result.ok,
@@ -68,7 +102,7 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
     }
 
     if (intent.mode === "legal_research") {
-      return await buildResearchContext(prompt, intent, { signal, startedAt });
+      return await buildResearchContext(prompt, intent, { signal, startedAt, client });
     }
 
     return null;
@@ -91,7 +125,7 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
   }
 }
 
-async function buildResearchContext(prompt, intent, { signal, startedAt }) {
+async function buildResearchContext(prompt, intent, { signal, startedAt, client }) {
   const extracted = intent.extracted || {};
   const baseQuery = extracted.query || prompt;
   const lawName = extracted.lawName || "";
@@ -107,19 +141,19 @@ async function buildResearchContext(prompt, intent, { signal, startedAt }) {
 
   const tasks = [];
   tasks.push(wantArticle
-    ? getArticleDetail({ lawName, article }, { signal }).catch((error) => ({ error: toLawError(error) }))
+    ? getArticleDetail({ lawName, article }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantPrecedents
-    ? searchPrecedents({ query: searchQuery, display: 5 }, { signal }).catch((error) => ({ error: toLawError(error) }))
+    ? searchPrecedents({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantInterpretations
-    ? searchInterpretations({ query: searchQuery, display: 5 }, { signal }).catch((error) => ({ error: toLawError(error) }))
+    ? searchInterpretations({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantAdminRules
-    ? searchAdminRules({ query: searchQuery, display: 5 }, { signal }).catch((error) => ({ error: toLawError(error) }))
+    ? searchAdminRules({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantOrdinances
-    ? searchOrdinances({ query: searchQuery, display: 5 }, { signal }).catch((error) => ({ error: toLawError(error) }))
+    ? searchOrdinances({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
 
   const [articleResult, precResult, expcResult, admResult, ordResult] = await Promise.all(tasks);

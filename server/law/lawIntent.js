@@ -26,6 +26,10 @@ const ADMIN_RULE_INTENT_PATTERN = /(행정규칙|고시|예규|훈령|행정\s*�
 const ORDINANCE_INTENT_PATTERN = /(자치법규|조례|지방자치단체\s*규칙)/u;
 const RESEARCH_VERB_PATTERN = /(찾아|검색|조회|알려|보여|살펴|어떤\s*것|있어\??)/u;
 
+// action_plan: 법령에 근거한 단계별 조치/이행/대응 계획을 요구하는 의도.
+// 단순 일정·여행·프로젝트 "계획"은 LEGAL_KEYWORDS 또는 article 근거가 없어 통과되지 않는다.
+const ACTION_PLAN_PATTERN = /(단계별\s*(?:대응|조치|이행|실행|준수)|조치\s*(?:방안|계획|절차|매뉴얼|체크리스트|로드맵)|이행\s*(?:계획|방안|로드맵|절차)|대응\s*(?:방안|계획|매뉴얼|체크리스트|로드맵|절차)|실행\s*(?:계획|방안|로드맵)|컴플라이언스\s*(?:체크리스트|이행|대응|로드맵)|준수\s*(?:체크리스트|로드맵|매뉴얼|절차|계획))/u;
+
 export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = false } = {}) {
   const text = String(prompt || "").trim();
   if (!text) return none();
@@ -49,6 +53,22 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
       mode: "verify_citations",
       extracted: { query: text, citations },
       confidence: explicit || citations.length ? 0.95 : 0.8,
+      mayUseWebSearch: NEWS_KEYWORDS.test(text)
+    };
+  }
+
+  // action_plan must be checked before legal_review because prompts like "위반 시
+  // 단계별 대응 방안" hit both review verb and action-plan verb. Action plan is
+  // more specific (it asks for structured steps grounded in a statute article).
+  const actionPlanArticle = articlePattern || null;
+  const actionPlan = ACTION_PLAN_PATTERN.test(text)
+    && (citations.length > 0 || (LEGAL_KEYWORDS.test(text) && actionPlanArticle));
+  if (actionPlan) {
+    return {
+      isLegalQuery: true,
+      mode: "action_plan",
+      extracted: buildExtracted(text, actionPlanArticle),
+      confidence: citations.length ? 0.9 : 0.8,
       mayUseWebSearch: NEWS_KEYWORDS.test(text)
     };
   }

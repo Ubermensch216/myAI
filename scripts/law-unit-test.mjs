@@ -17,7 +17,8 @@ const {
 const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
 const { LawApiClient, stripLawPrivateFields } = await import("../server/law/lawApiClient.js");
-const { normalizeLawCitationForMeta } = await import("../server/law/lawCitationFormatter.js");
+const { normalizeLawCitationForMeta, disclaimerForLawMode } = await import("../server/law/lawCitationFormatter.js");
+const { buildLawContext, ACTION_PLAN_TEMPLATE } = await import("../server/law/lawContextBuilder.js");
 const { buildImpactMap, createDeterministicImpactMap } = await import("../server/law/tools/impactMap.js");
 const { getArticleAt } = await import("../server/law/tools/articleAt.js");
 const { getArticleDiff } = await import("../server/law/tools/articleDiff.js");
@@ -53,6 +54,9 @@ await run("getArticleDiff orchestrates two getArticleAt calls", testArticleDiffO
 await run("getLawHistory rejects empty input", testLawHistoryRejectsEmptyInput);
 await run("getLawHistory returns sorted revision list", testLawHistoryOrchestration);
 await run("LawApiClient.getLawHistory uses configured target + ID/MST", testLawApiClientHistoryParams);
+await run("action_plan intent detection requires statute grounding", testActionPlanIntent);
+await run("disclaimerForLawMode maps modes to disclaimer policy", testDisclaimerPolicy);
+await run("buildLawContext action_plan injects non-legal-advice template", testActionPlanContext);
 
 await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 if (failureCount > 0) process.exitCode = 1;
@@ -539,6 +543,94 @@ async function testLawApiClientHistoryParams() {
   assert.equal(captureSearch.params.ID, "001110", "passes resolved law ID when available");
   assert.equal(result.revisions.length, 2);
   assert.equal(result.revisions[0].effectiveDate, "2023-01-04", "newest revision first");
+}
+
+function testActionPlanIntent() {
+  // True positives: action-plan verbs + statute grounding (citation or law name + article)
+  const tp1 = detectLawIntent("개인정보 보호법 제15조 위반 시 단계별 대응 방안 알려줘");
+  assert.equal(tp1.isLegalQuery, true, "PIPA + article + 단계별 대응 방안 must trigger");
+  assert.equal(tp1.mode, "action_plan");
+  assert.equal(tp1.extracted.lawName, "개인정보 보호법");
+  assert.equal(tp1.extracted.article, "제15조");
+
+  const tp2 = detectLawIntent("근로기준법 제53조 이행 계획을 단계별로 정리해줘");
+  assert.equal(tp2.isLegalQuery, true);
+  assert.equal(tp2.mode, "action_plan");
+
+  const tp3 = detectLawIntent("민법 제750조 손해배상 조치 절차");
+  assert.equal(tp3.isLegalQuery, true);
+  assert.equal(tp3.mode, "action_plan");
+
+  // False positives: must NOT trigger as action_plan (no statute grounding)
+  const fpGeneric = detectLawIntent("이번 분기 프로젝트 단계별 실행 계획 짜줘");
+  assert.equal(fpGeneric.isLegalQuery, false, "no statute → not action_plan");
+
+  const fpTravel = detectLawIntent("주말 여행 대응 방안 알려줘");
+  assert.equal(fpTravel.isLegalQuery, false, "travel context → not action_plan");
+
+  // Boundary: review verb without action-plan verb falls back to legalReview/article path
+  const boundary = detectLawIntent("개인정보 보호법 제15조 위반인지 검토해줘", { hasDocuments: true });
+  assert.notEqual(boundary.mode, "action_plan",
+    "review verb without action-plan verb must not be action_plan");
+}
+
+function testDisclaimerPolicy() {
+  assert.equal(disclaimerForLawMode("action_plan"), "mandatory");
+  assert.equal(disclaimerForLawMode("legal_research"), "short");
+  assert.equal(disclaimerForLawMode("department_legal_review"), "short");
+  assert.equal(disclaimerForLawMode("law_article"), null);
+  assert.equal(disclaimerForLawMode("law_search"), null);
+  assert.equal(disclaimerForLawMode("verify_citations"), null);
+  assert.equal(disclaimerForLawMode("none"), null);
+}
+
+async function testActionPlanContext() {
+  // Sanity: the template itself carries the non-legal-advice framing.
+  assert.match(ACTION_PLAN_TEMPLATE, /행동 계획 응답 템플릿/);
+  assert.match(ACTION_PLAN_TEMPLATE, /법률 자문이 아닙니다/);
+  assert.match(ACTION_PLAN_TEMPLATE, /단계별 조치/);
+  assert.match(ACTION_PLAN_TEMPLATE, /증빙·기록/);
+  assert.match(ACTION_PLAN_TEMPLATE, /후속 점검/);
+
+  // End-to-end: buildLawContext routes action_plan prompts through the
+  // structured template, attaches the article citation, and tags disclaimer
+  // as mandatory. Mock client so we don't hit law.go.kr.
+  const fakeClient = {
+    async getLawArticle(input) {
+      assert.equal(input.lawName, "개인정보 보호법");
+      assert.equal(input.article, "제15조");
+      return {
+        ok: true,
+        cacheHit: false,
+        text: "개인정보처리자는 정보주체의 동의를 받은 경우 개인정보를 수집할 수 있다.",
+        citation: {
+          citationId: "L1",
+          sourceType: "law",
+          lawName: "개인정보 보호법",
+          article: "제15조",
+          canonical: "개인정보 보호법/제15조",
+          title: "개인정보의 수집ㆍ이용",
+          locator: "개인정보 보호법 제15조",
+          effectiveDate: "2023-09-15",
+          url: "https://www.law.go.kr/법령/개인정보보호법/제15조"
+        }
+      };
+    }
+  };
+  const ctx = await buildLawContext(
+    "개인정보 보호법 제15조 위반 시 단계별 대응 방안 알려줘",
+    { client: fakeClient }
+  );
+  assert.ok(ctx, "buildLawContext returns context");
+  assert.equal(ctx.mode, "action_plan");
+  assert.equal(ctx.disclaimer, "mandatory", "action_plan must carry mandatory disclaimer");
+  assert.equal(ctx.citations.length, 1);
+  assert.equal(ctx.citations[0].citationId, "L1");
+  assert.match(ctx.contextText, /\[공식 법령 근거\]/);
+  assert.match(ctx.contextText, /\[행동 계획 응답 템플릿\]/);
+  assert.match(ctx.contextText, /법률 자문이 아닙니다/,
+    "rendered system block must include the non-legal-advice phrase");
+  assert.match(ctx.contextText, /단계별 조치/);
 }
 
 async function testLawCache() {

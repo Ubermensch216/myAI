@@ -433,7 +433,19 @@ export const elements = {
   lawExplorerStatus: document.querySelector("#lawExplorerStatus"),
   lawExplorerSummary: document.querySelector("#lawExplorerSummary"),
   lawExplorerMap: document.querySelector("#lawExplorerMap"),
-  lawExplorerDetail: document.querySelector("#lawExplorerDetail")
+  lawExplorerDetail: document.querySelector("#lawExplorerDetail"),
+  lawModeImpactButton: document.querySelector("#lawModeImpactButton"),
+  lawModeHistoryButton: document.querySelector("#lawModeHistoryButton"),
+  lawImpactSection: document.querySelector("#lawImpactSection"),
+  lawHistorySection: document.querySelector("#lawHistorySection"),
+  lawHistoryLawName: document.querySelector("#lawHistoryLawName"),
+  lawHistoryArticle: document.querySelector("#lawHistoryArticle"),
+  lawHistoryFetchButton: document.querySelector("#lawHistoryFetchButton"),
+  lawHistoryResetButton: document.querySelector("#lawHistoryResetButton"),
+  lawHistoryStatus: document.querySelector("#lawHistoryStatus"),
+  lawHistorySelection: document.querySelector("#lawHistorySelection"),
+  lawHistoryList: document.querySelector("#lawHistoryList"),
+  lawHistoryViewer: document.querySelector("#lawHistoryViewer")
 };
 
 export function ensureRoomStudio(room = getActiveRoom()) {

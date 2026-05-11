@@ -20,6 +20,9 @@ let _evBound = false;
 let _activeTool = "mindmap";
 let _mindmapAbortController = null;
 let _lawExplorerAbortController = null;
+let _lawHistoryAbortController = null;
+let _lawSnapshotAbortController = null;
+let _lawDiffAbortController = null;
 
 // ── Public API ────────────────────────────────────────────────────
 
@@ -45,6 +48,16 @@ export function bindStudioEvents() {
     generateLawImpactMap();
   });
   elements.lawExplorerResetButton?.addEventListener("click", resetLawExplorer);
+  elements.lawModeImpactButton?.addEventListener("click", () => setLawSubMode("impact"));
+  elements.lawModeHistoryButton?.addEventListener("click", () => setLawSubMode("history"));
+  elements.lawHistoryFetchButton?.addEventListener("click", () => {
+    if (_lawHistoryAbortController) {
+      _lawHistoryAbortController.abort();
+      return;
+    }
+    fetchLawHistory();
+  });
+  elements.lawHistoryResetButton?.addEventListener("click", resetLawHistory);
   bindStudioGraphEvents();
 }
 
@@ -1000,4 +1013,459 @@ function wrapLabel(value, size) {
   }
   if (current) lines.push(current);
   return lines.length ? lines : [text.slice(0, size)];
+}
+
+// ── Law history / time-travel ──────────────────────────────────────
+
+function ensureLawHistoryState(studio) {
+  if (!studio) return null;
+  if (!studio.lawHistory || typeof studio.lawHistory !== "object") {
+    studio.lawHistory = {
+      input: { lawName: "", article: "" },
+      revisions: null,
+      selectedDates: [],
+      view: null
+    };
+  }
+  studio.lawHistory.input = studio.lawHistory.input || { lawName: "", article: "" };
+  studio.lawHistory.selectedDates = Array.isArray(studio.lawHistory.selectedDates)
+    ? studio.lawHistory.selectedDates
+    : [];
+  return studio.lawHistory;
+}
+
+function setLawSubMode(mode) {
+  if (mode !== "impact" && mode !== "history") return;
+  if (elements.lawModeImpactButton) {
+    const active = mode === "impact";
+    elements.lawModeImpactButton.classList.toggle("is-active", active);
+    elements.lawModeImpactButton.setAttribute("aria-selected", active ? "true" : "false");
+  }
+  if (elements.lawModeHistoryButton) {
+    const active = mode === "history";
+    elements.lawModeHistoryButton.classList.toggle("is-active", active);
+    elements.lawModeHistoryButton.setAttribute("aria-selected", active ? "true" : "false");
+  }
+  if (elements.lawImpactSection) elements.lawImpactSection.hidden = mode !== "impact";
+  if (elements.lawHistorySection) elements.lawHistorySection.hidden = mode !== "history";
+  if (mode === "history") renderLawHistory();
+}
+
+async function fetchLawHistory() {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!room || !studio) return;
+  const history = ensureLawHistoryState(studio);
+  const lawName = elements.lawHistoryLawName?.value?.trim() || "";
+  const article = elements.lawHistoryArticle?.value?.trim() || "";
+  if (!lawName) {
+    setLawHistoryStatus("법령명을 입력하세요.", "error");
+    return;
+  }
+  history.input = { lawName, article };
+  try {
+    _lawHistoryAbortController = new AbortController();
+    setLawHistoryBusy(true);
+    setLawHistoryStatus("개정 이력을 조회하는 중입니다.", "running");
+    const response = await fetch("/api/law/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: _lawHistoryAbortController.signal,
+      body: JSON.stringify({ lawName })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "이력 조회에 실패했습니다.");
+    history.revisions = Array.isArray(payload.revisions) ? payload.revisions : [];
+    history.selectedDates = [];
+    history.view = null;
+    room.updatedAt = new Date().toISOString();
+    scheduleSave();
+    if (!history.revisions.length) {
+      setLawHistoryStatus("이력이 없습니다.", "idle");
+    } else {
+      setLawHistoryStatus(`${history.revisions.length}건의 시행일별 이력을 불러왔습니다.`, "idle");
+    }
+    renderLawHistory();
+  } catch (error) {
+    if (error?.name === "AbortError") setLawHistoryStatus("이력 조회를 중지했습니다.", "idle");
+    else setLawHistoryStatus(error.message || "이력 조회에 실패했습니다.", "error");
+  } finally {
+    _lawHistoryAbortController = null;
+    setLawHistoryBusy(false);
+  }
+}
+
+function resetLawHistory() {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!studio) return;
+  delete studio.lawHistory;
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  setLawHistoryStatus("", "idle");
+  renderLawHistory();
+}
+
+function renderLawHistory() {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  const history = ensureLawHistoryState(studio);
+  if (elements.lawHistoryLawName && document.activeElement !== elements.lawHistoryLawName) {
+    elements.lawHistoryLawName.value = history?.input?.lawName || "";
+  }
+  if (elements.lawHistoryArticle && document.activeElement !== elements.lawHistoryArticle) {
+    elements.lawHistoryArticle.value = history?.input?.article || "";
+  }
+  renderLawHistoryList(history);
+  renderLawHistorySelection(history);
+  renderLawHistoryViewer(history);
+}
+
+function renderLawHistoryList(history) {
+  const target = elements.lawHistoryList;
+  if (!target) return;
+  target.innerHTML = "";
+  if (!history || !Array.isArray(history.revisions)) {
+    target.innerHTML = `<div class="law-explorer-empty">법령명을 입력하고 "이력 조회"를 누르면 시행일별 개정 이력이 표시됩니다.</div>`;
+    return;
+  }
+  if (!history.revisions.length) {
+    target.innerHTML = `<div class="law-explorer-empty">이력 데이터가 없습니다.</div>`;
+    return;
+  }
+  const selected = new Set(history.selectedDates || []);
+  for (const rev of history.revisions) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "law-history-row";
+    if (selected.has(rev.effectiveDate)) row.classList.add("is-selected");
+    row.dataset.effectiveDate = rev.effectiveDate || "";
+    row.addEventListener("click", () => toggleLawHistorySelection(rev.effectiveDate));
+
+    const dateBox = document.createElement("div");
+    dateBox.className = "law-history-row-date";
+    const eff = document.createElement("span");
+    eff.className = "law-history-row-effective";
+    eff.textContent = rev.effectiveDate ? `시행 ${rev.effectiveDate}` : "시행일 미상";
+    dateBox.append(eff);
+    if (rev.promulgationDate) {
+      const promu = document.createElement("span");
+      promu.className = "law-history-row-promu";
+      promu.textContent = `공포 ${rev.promulgationDate}`;
+      dateBox.append(promu);
+    }
+    row.append(dateBox);
+
+    const metaBox = document.createElement("div");
+    metaBox.className = "law-history-row-meta";
+    const type = document.createElement("span");
+    type.className = "law-history-row-type";
+    type.textContent = rev.revisionType || "개정";
+    metaBox.append(type);
+    if (rev.promulgationNumber) {
+      const num = document.createElement("span");
+      num.className = "law-history-row-num";
+      num.textContent = `${rev.promulgationNumber}호`;
+      metaBox.append(num);
+    }
+    row.append(metaBox);
+
+    target.append(row);
+  }
+}
+
+function renderLawHistorySelection(history) {
+  const target = elements.lawHistorySelection;
+  if (!target) return;
+  const selected = Array.isArray(history?.selectedDates) ? history.selectedDates : [];
+  if (!selected.length) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  target.hidden = false;
+  target.innerHTML = "";
+
+  const label = document.createElement("span");
+  label.className = "law-history-selection-label";
+  label.textContent = selected.length === 1 ? "선택 1건" : "선택 2건";
+  target.append(label);
+
+  for (const date of selected) {
+    const chip = document.createElement("span");
+    chip.className = "law-history-selection-chip";
+    chip.textContent = date;
+    target.append(chip);
+  }
+
+  const article = history?.input?.article || "";
+  const lawName = history?.input?.lawName || "";
+
+  if (selected.length === 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "send-button law-history-selection-action";
+    button.textContent = "이 시점 조문 보기";
+    button.disabled = !article;
+    if (!article) button.title = "조문을 입력해야 시점 조회가 가능합니다.";
+    button.addEventListener("click", () => runLawSnapshot(lawName, article, selected[0]));
+    target.append(button);
+  } else if (selected.length === 2) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "send-button law-history-selection-action";
+    button.textContent = "두 시점 비교";
+    button.disabled = !article;
+    if (!article) button.title = "조문을 입력해야 시점 비교가 가능합니다.";
+    button.addEventListener("click", () => {
+      const [a, b] = [...selected].sort();
+      runLawDiff(lawName, article, a, b);
+    });
+    target.append(button);
+  }
+}
+
+function renderLawHistoryViewer(history) {
+  const target = elements.lawHistoryViewer;
+  if (!target) return;
+  target.innerHTML = "";
+  const view = history?.view;
+  if (!view) {
+    target.innerHTML = `<p class="law-explorer-empty">시행일을 1개 선택하면 그 시점의 조문, 2개 선택하면 두 시점 차이를 보여줍니다.</p>`;
+    return;
+  }
+  if (view.kind === "snapshot") renderLawSnapshotView(target, view.data);
+  else if (view.kind === "diff") renderLawDiffView(target, view.data);
+}
+
+function toggleLawHistorySelection(date) {
+  if (!date) return;
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  const history = ensureLawHistoryState(studio);
+  const selected = Array.isArray(history.selectedDates) ? [...history.selectedDates] : [];
+  const idx = selected.indexOf(date);
+  if (idx >= 0) {
+    selected.splice(idx, 1);
+  } else {
+    if (selected.length >= 2) selected.shift();
+    selected.push(date);
+  }
+  history.selectedDates = selected;
+  room.updatedAt = new Date().toISOString();
+  scheduleSave();
+  renderLawHistory();
+}
+
+async function runLawSnapshot(lawName, article, effectiveDate) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!room || !studio) return;
+  const history = ensureLawHistoryState(studio);
+  if (!lawName || !article || !effectiveDate) {
+    setLawHistoryStatus("법령명, 조문, 시행일이 모두 필요합니다.", "error");
+    return;
+  }
+  try {
+    if (_lawSnapshotAbortController) _lawSnapshotAbortController.abort();
+    _lawSnapshotAbortController = new AbortController();
+    setLawHistoryStatus(`${effectiveDate} 시점 조문을 가져오는 중입니다.`, "running");
+    const response = await fetch("/api/law/article/at", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: _lawSnapshotAbortController.signal,
+      body: JSON.stringify({ lawName, article, effectiveDate })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "시점 조회에 실패했습니다.");
+    history.view = { kind: "snapshot", data: payload };
+    room.updatedAt = new Date().toISOString();
+    scheduleSave();
+    setLawHistoryStatus("", "idle");
+    renderLawHistoryViewer(history);
+  } catch (error) {
+    if (error?.name === "AbortError") setLawHistoryStatus("시점 조회를 중지했습니다.", "idle");
+    else setLawHistoryStatus(error.message || "시점 조회에 실패했습니다.", "error");
+  } finally {
+    _lawSnapshotAbortController = null;
+  }
+}
+
+async function runLawDiff(lawName, article, fromDate, toDate) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!room || !studio) return;
+  const history = ensureLawHistoryState(studio);
+  if (!lawName || !article || !fromDate || !toDate) {
+    setLawHistoryStatus("법령명, 조문, 두 시행일이 모두 필요합니다.", "error");
+    return;
+  }
+  if (fromDate === toDate) {
+    setLawHistoryStatus("두 시점이 같습니다.", "error");
+    return;
+  }
+  try {
+    if (_lawDiffAbortController) _lawDiffAbortController.abort();
+    _lawDiffAbortController = new AbortController();
+    setLawHistoryStatus(`${fromDate} → ${toDate} 변경 사항을 비교하는 중입니다.`, "running");
+    const response = await fetch("/api/law/article/diff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: _lawDiffAbortController.signal,
+      body: JSON.stringify({ lawName, article, fromDate, toDate })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "시점 비교에 실패했습니다.");
+    history.view = { kind: "diff", data: payload };
+    room.updatedAt = new Date().toISOString();
+    scheduleSave();
+    setLawHistoryStatus("", "idle");
+    renderLawHistoryViewer(history);
+  } catch (error) {
+    if (error?.name === "AbortError") setLawHistoryStatus("시점 비교를 중지했습니다.", "idle");
+    else setLawHistoryStatus(error.message || "시점 비교에 실패했습니다.", "error");
+  } finally {
+    _lawDiffAbortController = null;
+  }
+}
+
+function renderLawSnapshotView(target, data) {
+  if (!data) {
+    target.innerHTML = `<p class="law-explorer-empty">시점 조회 결과가 없습니다.</p>`;
+    return;
+  }
+  const header = document.createElement("div");
+  header.className = "law-snapshot-header";
+  const badge = document.createElement("span");
+  badge.className = "law-snapshot-badge";
+  badge.textContent = "시점 조회";
+  const eff = document.createElement("span");
+  eff.className = "law-snapshot-effective";
+  eff.textContent = `요청 ${data.effectiveDate || "-"}`;
+  header.append(badge, eff);
+  if (data.snapshotEffectiveDate && data.snapshotEffectiveDate !== data.effectiveDate) {
+    const snap = document.createElement("span");
+    snap.className = "law-snapshot-effective is-muted";
+    snap.textContent = `실제 스냅샷 ${data.snapshotEffectiveDate}`;
+    header.append(snap);
+  }
+  target.append(header);
+
+  const citation = data.citation || {};
+  if (citation.locator || citation.title) {
+    const meta = document.createElement("div");
+    meta.className = "law-snapshot-meta";
+    meta.textContent = [citation.locator, citation.title].filter(Boolean).join(" · ");
+    target.append(meta);
+  }
+
+  const body = document.createElement("pre");
+  body.className = "law-snapshot-body";
+  body.textContent = data.text || "(조문 본문이 비어 있습니다)";
+  target.append(body);
+
+  if (citation.url) {
+    const link = document.createElement("a");
+    link.className = "law-explorer-link";
+    link.href = citation.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = `${citation.citationId || "L1"} law.go.kr 원문 ↗`;
+    target.append(link);
+  }
+}
+
+function renderLawDiffView(target, data) {
+  if (!data || !data.diff) {
+    target.innerHTML = `<p class="law-explorer-empty">시점 비교 결과가 없습니다.</p>`;
+    return;
+  }
+  const { from, to, diff } = data;
+  const header = document.createElement("div");
+  header.className = "law-diff-header";
+
+  const fromBadge = document.createElement("span");
+  fromBadge.className = "law-diff-badge is-from";
+  fromBadge.textContent = `이전 ${from?.effectiveDate || "-"}`;
+  const arrow = document.createElement("span");
+  arrow.className = "law-diff-arrow";
+  arrow.textContent = "→";
+  const toBadge = document.createElement("span");
+  toBadge.className = "law-diff-badge is-to";
+  toBadge.textContent = `이후 ${to?.effectiveDate || "-"}`;
+  header.append(fromBadge, arrow, toBadge);
+  target.append(header);
+
+  const stats = document.createElement("div");
+  stats.className = "law-diff-stats";
+  const s = diff.stats || {};
+  if (diff.identical) {
+    stats.textContent = "두 시점 사이에 문구 변경이 없습니다.";
+  } else {
+    const parts = [];
+    if (s.added) parts.push(`추가 ${s.added}`);
+    if (s.removed) parts.push(`삭제 ${s.removed}`);
+    if (s.modified) parts.push(`수정 ${s.modified}`);
+    if (s.unchanged) parts.push(`유지 ${s.unchanged}`);
+    stats.textContent = parts.join(" · ");
+  }
+  target.append(stats);
+
+  const hunkList = document.createElement("div");
+  hunkList.className = "law-diff-hunks";
+  for (const hunk of diff.hunks || []) {
+    const row = document.createElement("div");
+    row.className = `law-diff-hunk law-diff-hunk-${hunk.type}`;
+    if (hunk.type === "modified") {
+      const oldLine = document.createElement("div");
+      oldLine.className = "law-diff-line law-diff-line-old";
+      oldLine.textContent = `− ${hunk.oldText}`;
+      const newLine = document.createElement("div");
+      newLine.className = "law-diff-line law-diff-line-new";
+      newLine.textContent = `+ ${hunk.newText}`;
+      const tag = document.createElement("span");
+      tag.className = "law-diff-tag";
+      tag.textContent = `수정 ${hunk.similarity != null ? `· 유사도 ${Math.round(hunk.similarity * 100)}%` : ""}`.trim();
+      row.append(tag, oldLine, newLine);
+    } else {
+      const line = document.createElement("div");
+      line.className = "law-diff-line";
+      const prefix = hunk.type === "added" ? "+ " : hunk.type === "removed" ? "− " : "  ";
+      line.textContent = `${prefix}${hunk.text || ""}`;
+      const tag = document.createElement("span");
+      tag.className = "law-diff-tag";
+      tag.textContent = hunk.type === "added" ? "추가" : hunk.type === "removed" ? "삭제" : "유지";
+      row.append(tag, line);
+    }
+    hunkList.append(row);
+  }
+  target.append(hunkList);
+
+  const links = document.createElement("div");
+  links.className = "law-diff-links";
+  for (const side of [from, to]) {
+    const cite = side?.citation;
+    if (!cite?.url) continue;
+    const link = document.createElement("a");
+    link.className = "law-explorer-link";
+    link.href = cite.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = `${side === from ? "이전" : "이후"} ${cite.citationId || "L"} 원문 ↗`;
+    links.append(link);
+  }
+  if (links.childNodes.length) target.append(links);
+}
+
+function setLawHistoryBusy(isBusy) {
+  const button = elements.lawHistoryFetchButton;
+  if (!button) return;
+  button.textContent = isBusy ? "중지" : "이력 조회";
+  button.setAttribute("aria-busy", isBusy ? "true" : "false");
+}
+
+function setLawHistoryStatus(message, mode = "idle") {
+  if (!elements.lawHistoryStatus) return;
+  elements.lawHistoryStatus.textContent = message || "";
+  elements.lawHistoryStatus.dataset.mode = mode;
 }

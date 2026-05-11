@@ -7555,6 +7555,369 @@ body.panel-resizing .panel-resizer::after {
   }
 }
 
+/* ── Law mode tabs (영향맵 / 조문 이력) ─────────────────────────── */
+
+.law-mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  align-self: flex-start;
+}
+
+.law-mode-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.law-mode-tab:hover {
+  color: var(--ink);
+}
+
+.law-mode-tab.is-active {
+  background: var(--surface);
+  color: var(--accent-dark);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.law-mode-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+}
+
+.law-mode-section[hidden] {
+  display: none;
+}
+
+/* ── History selection bar ─────────────────────────────────────── */
+
+.law-history-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.law-history-selection-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+}
+
+.law-history-selection-chip {
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.law-history-selection-action {
+  margin-left: auto;
+}
+
+.law-history-selection-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── History list (revisions) ─────────────────────────────────── */
+
+.law-history-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 10px;
+}
+
+.law-history-list,
+.law-history-viewer {
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 10px;
+}
+
+.law-history-row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.law-history-row:last-child { margin-bottom: 0; }
+
+.law-history-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.law-history-row.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.law-history-row-date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.law-history-row-effective {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent-dark);
+}
+
+.law-history-row-promu {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.law-history-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.law-history-row-type {
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+/* ── Snapshot viewer ──────────────────────────────────────────── */
+
+.law-snapshot-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.law-snapshot-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.law-snapshot-effective {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.law-snapshot-effective.is-muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.law-snapshot-meta {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.law-snapshot-body {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: keep-all;
+}
+
+/* ── Diff viewer (added / removed / modified / unchanged) ──────── */
+
+.law-diff-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.law-diff-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.law-diff-badge.is-from {
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+}
+
+.law-diff-badge.is-to {
+  background: color-mix(in srgb, #44bb88 14%, var(--surface));
+  color: #2a8a5e;
+  border: 1px solid color-mix(in srgb, #44bb88 35%, var(--line));
+}
+
+.law-diff-arrow {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.law-diff-stats {
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.law-diff-hunks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.law-diff-hunk {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px 6px 56px;
+  background: var(--surface-2);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.law-diff-tag {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.law-diff-line {
+  white-space: pre-wrap;
+  word-break: keep-all;
+  font-family: inherit;
+}
+
+.law-diff-hunk-added {
+  background: color-mix(in srgb, #44bb88 10%, var(--surface));
+  border-color: color-mix(in srgb, #44bb88 35%, var(--line));
+}
+
+.law-diff-hunk-added .law-diff-tag {
+  background: #44bb88;
+  color: #fff;
+}
+
+.law-diff-hunk-removed {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+}
+
+.law-diff-hunk-removed .law-diff-tag {
+  background: var(--danger);
+  color: #fff;
+}
+
+.law-diff-hunk-removed .law-diff-line {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.law-diff-hunk-modified {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.law-diff-hunk-modified .law-diff-tag {
+  background: var(--accent);
+  color: #fff;
+}
+
+.law-diff-line-old {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: color-mix(in srgb, var(--ink) 75%, var(--muted));
+}
+
+.law-diff-line-new {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.law-diff-hunk-unchanged {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.law-diff-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .law-history-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 900px) {
   .kg-body {
     grid-template-columns: 1fr;
