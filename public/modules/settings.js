@@ -8,7 +8,7 @@ let activeSettingsTab = "personal";
 let adminConsoleMounted = false;
 
 export function renderBrand() {
-  const appName = state.settings.appName || "Ollama Chatter";
+  const appName = state.settings.appName || "myAI";
   const banner = state.settings.appBannerDataUrl || DEFAULT_BANNER_SRC;
   state.settings.aiName = appName;
   document.title = appName;
@@ -31,7 +31,7 @@ export function closeSettings() {
 
 function openSettings() {
   elements.userTitleInput.value = state.settings.userTitle;
-  elements.appNameInput.value = state.settings.appName || "Ollama Chatter";
+  elements.appNameInput.value = state.settings.appName || "myAI";
   renderThemeToggle();
   renderColorThemeToggle();
   elements.customPromptInput.value = state.settings.customPrompt || "";
@@ -251,8 +251,8 @@ export function bindSettingsEvents() {
   elements.settingsForm.addEventListener("submit", (event) => {
     event.preventDefault();
     state.settings.userTitle = elements.userTitleInput.value.trim() || "사용자님";
-    state.settings.appName = elements.appNameInput.value.trim() || "Ollama Chatter";
-    state.settings.aiName = state.settings.appName || "Ollama Chatter";
+    state.settings.appName = elements.appNameInput.value.trim() || "myAI";
+    state.settings.aiName = state.settings.appName || "myAI";
     state.settings.customPrompt = elements.customPromptInput.value.trim();
     scheduleSave();
     closeSettings();

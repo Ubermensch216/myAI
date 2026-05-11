@@ -132,8 +132,8 @@ export const state = {
   },
   settings: {
     userTitle: "사용자님",
-    aiName: "Ollama Chatter",
-    appName: "Ollama Chatter",
+    aiName: "myAI",
+    appName: "myAI",
     theme: "light",
     colorTheme: "busan",
     customColorTheme: { ...DEFAULT_CUSTOM_COLOR_THEME },

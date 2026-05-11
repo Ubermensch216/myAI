@@ -117,7 +117,7 @@ export function estimateAllRoomsStorageBytes() {
 }
 
 export function getPersonalizationSettings() {
-  const appName = state.settings.appName || "Ollama Chatter";
+  const appName = state.settings.appName || "myAI";
   return {
     userTitle: state.settings.userTitle || "사용자님",
     aiName: appName,

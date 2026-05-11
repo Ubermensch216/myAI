@@ -125,7 +125,7 @@ export async function loadAppState() {
   state.calendar.events = storedEvents.map(normalizeCalendarEvent).filter((e) => e && e.id && e.start);
   state.calendar.cursorISO = stored.calendar?.cursorISO || new Date().toISOString().slice(0, 10);
   state.calendar.viewMode = normalizeCalendarViewMode(stored.calendar?.viewMode);
-  const appName = stored.settings?.appName || stored.settings?.aiName || "Ollama Chatter";
+  const appName = stored.settings?.appName || stored.settings?.aiName || "myAI";
   state.settings = {
     userTitle: stored.settings?.userTitle || "사용자님",
     aiName: appName,
