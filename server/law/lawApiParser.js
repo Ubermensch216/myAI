@@ -62,11 +62,25 @@ export function chooseLawSearchResult(results, lawName) {
   const target = normalizeComparableLawName(lawName);
   const items = Array.isArray(results) ? results : [];
   if (!target) return items[0] || null;
-  return items.find((item) => normalizeComparableLawName(item.lawName) === target)
-    || items.find((item) => normalizeComparableLawName(item.lawName).includes(target))
-    || items.find((item) => target.includes(normalizeComparableLawName(item.lawName)))
-    || items[0]
-    || null;
+  const exact = items.find((item) => normalizeComparableLawName(item.lawName) === target);
+  if (exact) return exact;
+  // Korean law names typically end with the canonical short name (e.g.
+  // "대한민국헌법" ends with "헌법"). Prefer suffix matches first so that
+  // short queries like "헌법" do not get hijacked by long names that merely
+  // contain the term as a substring ("…헌법재판소 규칙").
+  const ranked = items
+    .map((item) => {
+      const name = normalizeComparableLawName(item.lawName);
+      if (!name.includes(target) && !target.includes(name)) return null;
+      let tier = 4;
+      if (name.endsWith(target)) tier = 1;
+      else if (name.startsWith(target)) tier = 2;
+      else if (name.includes(target)) tier = 3;
+      return { item, tier, length: name.length };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.tier - b.tier || a.length - b.length);
+  return ranked[0]?.item || items[0] || null;
 }
 
 export function normalizeArticlePayload(payload, { lawName, lawId, mst, articleRef }) {
