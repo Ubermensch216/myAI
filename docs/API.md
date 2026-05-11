@@ -112,11 +112,21 @@ chat payload or when `notebookId` is selected. Those paths must stay grounded in
 the uploaded file context or department notebook RAG context.
 
 When `LAW_API_ENABLED=true` and `LAW_OC` is configured, explicit legal prompts
-such as `법령에서 민법 제750조 찾아줘` or `조문 검증해줘: 민법 제750조` may add
-official law.go.kr context. Law citations use `[L1]`, `[L2]`, etc. and stay
-separate from notebook `[N]` and web `[W]` citations. If official law lookup
-fails, chat metadata carries a law error marker and the assistant must not
-invent statute text.
+add official law.go.kr context across these modes: `law_article`,
+`law_search`, `verify_citations`, `legal_research` (precedents / 해석례 /
+admin rules / ordinances), `department_legal_review`, and `action_plan`
+(structured 5-step response template with mandatory non-legal-advice
+disclaimer; gated on statute citation or law-name + article). Law citations
+use `[L1]`, `[L2]`, etc. and stay separate from notebook `[N]` and web `[W]`
+citations. If official law lookup fails, chat metadata carries a law error
+marker and the assistant must not invent statute text.
+
+When a department notebook is selected and its knowledge graph surfaces
+matched `Article` nodes, the chat orchestration re-fetches each article via
+`LawApiClient` and merges them as additional `[L]` citations (mode
+`kg_articles` when no explicit legal intent fired; otherwise merged into the
+explicit context via `mergeLawContexts`). KG-derived citations carry
+`kgDerived: true` and surface in `X-Notebook-Meta.law.kgArticlesMerged`.
 
 If notebook, web-search, or analysis metadata exists, the response includes
 `X-Notebook-Meta` as base64 JSON:
@@ -138,14 +148,31 @@ If notebook, web-search, or analysis metadata exists, the response includes
   law: {
     ok,
     query,
-    mode,
+    mode,                  // law_article | law_search | verify_citations |
+                           // legal_research | department_legal_review |
+                           // action_plan | kg_articles
     error,
-    disclaimer,
+    errorMessage,
+    disclaimer,            // null | "short" | "mandatory"
     citations: [
-      { citationId, sourceType, lawName, article, canonical, title, locator, effectiveDate, url }
+      { citationId, sourceType, lawName, article, canonical, title, locator,
+        effectiveDate, url, excerpt?, kgDerived? }
     ],
-    verification: { checked, failCount, results }
+    verification: { checked, failCount, results },
+    kgArticlesMerged       // count of KG-discovered articles merged as [L]
   },
+  compliance: {            // present only when intent === department_legal_review
+    ok,
+    mode: "department_legal_review",
+    reviewType,            // see docs/PRD_LEGAL_COMPLIANCE_REVIEW.md
+    outputStyle,           // "summary" | "detailed_report"
+    title,
+    disclaimer: "short",
+    evidenceFamilies,      // subset of ["notebook","uploaded_document","law",
+                           //            "precedent","interpretation",
+                           //            "admin_rule","ordinance"]
+    error                  // "" | "NO_INTERNAL_MATERIAL" | "LAW_NOT_CONFIGURED"
+  } | null,
   analysisMode: "map_reduce" // or null
 }
 ```
@@ -293,6 +320,53 @@ Body:
 Fetches the official statute article and returns a deterministic impact-map
 graph with law citation metadata, nodes, edges, groups, and warnings. This is
 the backend used by Studio Law Explorer.
+
+### `POST /api/law/article/at`
+
+Body:
+
+```js
+{ lawName: "민법", article: "제750조", effectiveDate: "2012-03-04" }
+```
+
+Returns the official article body as it stood on the requested 시행일자.
+Internally switches the upstream call to `target=eflawjosub` + `efYd=YYYYMMDD`.
+Accepts `YYYY-MM-DD`, `YYYYMMDD`, `YYYY/MM/DD`, or `YYYY.MM.DD`; invalid dates
+return 400. Snapshots are immutable (30-day cache TTL). Uses the
+`law_time_travel` rate-limit bucket. Response carries `effectiveDate` (the
+requested date) and `snapshotEffectiveDate` (the actual snapshot date
+law.go.kr returned).
+
+### `POST /api/law/article/diff`
+
+Body:
+
+```js
+{ lawName: "개인정보 보호법", article: "제15조", fromDate: "2012-03-04", toDate: "2023-09-15" }
+```
+
+Fetches the article at both effective dates and returns a deterministic
+LCS-based line diff. Adjacent removed+added pairs with bigram-Jaccard
+similarity ≥ 0.5 collapse into a single `modified` hunk. Response includes
+`from`/`to` blocks (citation + text + snapshotEffectiveDate + cacheHit) and a
+`diff` object with `hunks` (`unchanged`/`added`/`removed`/`modified`) plus
+`stats`. Both dates must validate and must differ. Uses `law_time_travel`
+bucket. Pure structural diff — no model inference.
+
+### `POST /api/law/history`
+
+Body:
+
+```js
+{ lawName: "민법" }
+```
+
+Lists 시행일별 개정 이력 (`lawName`, `lawId`, or `mst` accepted). Calls
+upstream with `target=lsHstInq` (override via `LAW_HISTORY_TARGET`) and
+returns a `revisions` array sorted newest-first. Each entry: `{ effectiveDate,
+promulgationDate, mst, promulgationNumber, revisionType, title }`. Two
+revision dates from this response feed `/api/law/article/diff`. Cached 7 days.
+Uses `law_time_travel` bucket.
 
 All `/api/law/*` public responses must omit upstream `raw` payloads, upstream
 service URLs, and `OC=` query values.

@@ -12,6 +12,10 @@ import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.j
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import { buildNaverSearchContext, shouldUseNaverSearch } from "./naverSearch.js";
 import { buildLawContext, buildLawContextFromArticleRefs, mergeLawContexts } from "./law/lawContextBuilder.js";
+import { detectLawIntent } from "./law/lawIntent.js";
+import { LAW_ERROR_MARKERS } from "./law/lawErrors.js";
+import { buildComplianceUnavailableMessage } from "./compliance/compliancePrompt.js";
+import { buildComplianceSearchQuery, getReviewType } from "./compliance/complianceTypes.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -65,8 +69,23 @@ export async function streamChat({
   const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
   const hasDocuments = Array.isArray(documents) && documents.length > 0;
   const forceWebSearch = shouldUseNaverSearch(latestUserQuery);
+  const lawIntent = detectLawIntent(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments });
+  const isComplianceReview = lawIntent.mode === "department_legal_review";
+  if (isComplianceReview && !notebookId && !hasDocuments) {
+    const compliance = buildComplianceMeta(lawIntent, { error: "NO_INTERNAL_MATERIAL", evidenceFamilies: [] });
+    if (typeof onMeta === "function") onMeta({ compliance, law: null, citations: [] });
+    onChunk(buildComplianceUnavailableMessage("no_internal_material"));
+    return;
+  }
+  const notebookQueryOverride = isComplianceReview
+    ? buildComplianceSearchQuery({
+        userQuestion: latestUserQuery,
+        reviewType: lawIntent.reviewType,
+        focusLawNames: lawIntent.focusLawNames
+      })
+    : "";
   const [notebookContext, explicitLawContext, webSearchContext] = await Promise.all([
-    loadNotebookContext(notebookId, messages, { signal }),
+    loadNotebookContext(notebookId, messages, { signal, queryOverride: notebookQueryOverride }),
     !forceWebSearch
       ? buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal })
       : Promise.resolve(null),
@@ -105,10 +124,45 @@ export async function streamChat({
   }
   throwIfAborted(signal);
 
+  if (isComplianceReview && lawContext?.error === LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED) {
+    const compliance = buildComplianceMeta(lawIntent, { error: LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED, evidenceFamilies: [] });
+    if (typeof onMeta === "function") {
+      onMeta({
+        notebook: notebookContext?.notebook ?? null,
+        citations: [
+          ...(notebookContext?.chunks ?? []),
+          ...buildUploadedDocumentCitations(documents, notebookContext?.chunks?.length || 0)
+        ],
+        law: {
+          ok: false,
+          query: latestUserQuery,
+          mode: "department_legal_review",
+          citations: [],
+          verification: { checked: false, failCount: 0, results: [] },
+          disclaimer: "short",
+          error: LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED,
+          errorMessage: lawContext.errorMessage || ""
+        },
+        compliance
+      });
+    }
+    onChunk(buildComplianceUnavailableMessage("law_not_configured"));
+    return;
+  }
+
   if (typeof onMeta === "function") {
+    const compliance = isComplianceReview
+      ? buildComplianceMeta(lawIntent, {
+          error: lawContext?.compliance?.error || "",
+          evidenceFamilies: buildComplianceEvidenceFamilies(notebookContext, documents, lawContext)
+        })
+      : null;
     onMeta({
       notebook: notebookContext?.notebook ?? null,
-      citations: notebookContext?.chunks ?? [],
+      citations: [
+        ...(notebookContext?.chunks ?? []),
+        ...(isComplianceReview ? buildUploadedDocumentCitations(documents, notebookContext?.chunks?.length || 0) : [])
+      ],
       law: lawContext
         ? {
             ok: Boolean(lawContext.ok),
@@ -122,6 +176,7 @@ export async function streamChat({
             kgArticlesMerged: lawContext.kgArticlesMerged || 0
           }
         : null,
+      compliance,
       webSearch: webSearchContext
         ? {
             ok: webSearchContext.ok,
@@ -147,6 +202,53 @@ export async function streamChat({
 function shouldAllowWebSearch({ notebookId, documents }) {
   if (notebookId) return false;
   return !Array.isArray(documents) || documents.length === 0;
+}
+
+function buildComplianceMeta(intent, { error = "", evidenceFamilies = [] } = {}) {
+  const reviewType = intent?.reviewType || intent?.extracted?.reviewType || "general";
+  const outputStyle = intent?.outputStyle || intent?.extracted?.outputStyle || "summary";
+  const type = getReviewType(reviewType);
+  return {
+    ok: !error,
+    mode: "department_legal_review",
+    reviewType,
+    outputStyle,
+    title: type.title,
+    disclaimer: "short",
+    evidenceFamilies,
+    error
+  };
+}
+
+function buildComplianceEvidenceFamilies(notebookContext, documents, lawContext) {
+  const families = new Set();
+  if (Array.isArray(notebookContext?.chunks) && notebookContext.chunks.length) families.add("notebook");
+  if (Array.isArray(documents) && documents.some((doc) => doc?.kind === "document")) families.add("uploaded_document");
+  for (const item of lawContext?.citations || []) {
+    const type = item.recordType || item.sourceType;
+    if (type === "precedent" || type === "law_precedent") families.add("precedent");
+    else if (type === "interpretation" || type === "law_interpretation") families.add("interpretation");
+    else if (type === "admin_rule" || type === "law_admin_rule") families.add("admin_rule");
+    else if (type === "ordinance" || type === "law_ordinance") families.add("ordinance");
+    else families.add("law");
+  }
+  return Array.from(families);
+}
+
+function buildUploadedDocumentCitations(documents, offset = 0) {
+  const citations = [];
+  const chunks = collectChunks(Array.isArray(documents) ? documents : []);
+  for (const chunk of chunks.slice(0, 12)) {
+    citations.push({
+      citationId: `N${offset + citations.length + 1}`,
+      sourceType: "notebook",
+      documentId: chunk.documentId || "",
+      documentName: chunk.fileName,
+      documentType: "uploaded_document",
+      locator: chunk.locator || chunk.page || ""
+    });
+  }
+  return citations;
 }
 
 async function runChatStreamWithOptionalQueue({ model, ollamaMessages, onChunk, signal }) {
@@ -734,7 +836,12 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const imageDocuments = documents.filter((documentItem) => documentItem.kind === "image");
   const latestUserIndex = findLatestUserMessageIndex(messages);
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-  const context = await buildContext(documents, latestUserQuery, { signal });
+  const complianceCitationOffset = lawContext?.mode === "department_legal_review" ? notebookChunks.length : 0;
+  const context = await buildContext(documents, latestUserQuery, {
+    signal,
+    citationPrefix: lawContext?.mode === "department_legal_review" ? "N" : "",
+    citationOffset: complianceCitationOffset
+  });
 
   const mapped = messages.map((message, index) => {
     const mappedMessage = {
@@ -794,11 +901,11 @@ async function buildMessages(messages, documents, personalization, notebookConte
   return mapped;
 }
 
-async function loadNotebookContext(notebookId, messages, { signal } = {}) {
+async function loadNotebookContext(notebookId, messages, { signal, queryOverride = "" } = {}) {
   if (!notebookId || typeof notebookId !== "string") return null;
   try {
     const latestUserIndex = findLatestUserMessageIndex(messages);
-    const query = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
+    const query = queryOverride || (latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "");
     const result = await searchNotebook(notebookId, query, { signal });
     if (!result.ok) return null;
     return result;
@@ -809,7 +916,7 @@ async function loadNotebookContext(notebookId, messages, { signal } = {}) {
   }
 }
 
-async function buildContext(documents, query = "", { signal } = {}) {
+async function buildContext(documents, query = "", { signal, citationPrefix = "", citationOffset = 0 } = {}) {
   throwIfAborted(signal);
   const chunks = collectChunks(documents);
 
@@ -882,7 +989,12 @@ async function buildContext(documents, query = "", { signal } = {}) {
     fallback: fallbackReason
   });
 
-  let body = selected.map((chunk) => chunk.text).join("\n\n");
+  let body = selected.map((chunk, index) => {
+    if (!citationPrefix) return chunk.text;
+    const citationId = `${citationPrefix}${citationOffset + index + 1}`;
+    const locator = chunk.locator ? ` / ${chunk.locator}` : "";
+    return `[${citationId}] (출처: ${chunk.fileName || "uploaded document"}${locator})\n${chunk.text}`;
+  }).join("\n\n");
 
   if (selected.length < chunks.length) {
     body += `\n\n[알림] 문서가 길어 컨텍스트 한도(${MAX_CONTEXT_CHARS}자) 안에서 사용자 질문과 가장 관련 있는 ${selected.length}/${chunks.length}개 단락만 포함했습니다.`;
@@ -939,6 +1051,7 @@ function collectChunks(documents) {
         text,
         fileName: documentItem.fileName,
         page: chunk.page,
+        locator: [chunk.page, chunk.label].filter(Boolean).join(" / "),
         label: chunk.label,
         part: chunk.part,
         partTotal: chunk.partTotal,

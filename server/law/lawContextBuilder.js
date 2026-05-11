@@ -9,6 +9,8 @@ import { searchInterpretations } from "./tools/interpretations.js";
 import { searchAdminRules } from "./tools/adminRules.js";
 import { searchOrdinances } from "./tools/ordinances.js";
 import { getLawConfig } from "./lawConfig.js";
+import { buildCompliancePromptBlock } from "../compliance/compliancePrompt.js";
+import { buildComplianceSearchQuery, getReviewType } from "../compliance/complianceTypes.js";
 
 const KG_ARTICLES_INTRO = [
   "[지식그래프 연계 법령 근거]",
@@ -163,7 +165,11 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
       };
     }
 
-    if (intent.mode === "law_article" || intent.mode === "department_legal_review") {
+    if (intent.mode === "department_legal_review") {
+      return await buildComplianceLawContext(prompt, intent, { signal, startedAt, client });
+    }
+
+    if (intent.mode === "law_article") {
       const article = await getArticleDetail(intent.extracted, { signal, client });
       const citation = normalizeLawCitationForMeta(article.citation, 0, article.text);
       const contextItems = [{ citation, text: article.text }];
@@ -331,6 +337,178 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
     errorDetails: errors,
     latencyMs: Date.now() - startedAt
   };
+}
+
+async function buildComplianceLawContext(prompt, intent, { signal, startedAt, client }) {
+  const extracted = intent.extracted || {};
+  const reviewType = extracted.reviewType || intent.reviewType || "general";
+  const outputStyle = extracted.outputStyle || intent.outputStyle || "summary";
+  const focusLawNames = Array.isArray(extracted.focusLawNames) ? extracted.focusLawNames : [];
+  const type = getReviewType(reviewType);
+  const explicitLawName = extracted.lawName || "";
+  const explicitArticle = extracted.article || "";
+  const hasExplicitArticle = Boolean(explicitLawName && explicitArticle);
+  const lawNames = uniqueStrings([
+    ...focusLawNames,
+    ...type.suggestedLawNames,
+    explicitLawName
+  ]).slice(0, 4);
+  const searchQuery = buildComplianceSearchQuery({
+    userQuestion: prompt,
+    reviewType,
+    focusLawNames: lawNames
+  });
+
+  const sections = [
+    [
+      "[법령 적합성 검토 법령 검색 조건]",
+      `Review type: ${type.label} (${reviewType})`,
+      `Output style: ${outputStyle}`,
+      `Focus laws: ${lawNames.join(", ") || "(none)"}`,
+      "Use official legal evidence only when it appears in the evidence blocks below."
+    ].join("\n")
+  ];
+  const citations = [];
+  const errors = [];
+  let officialEvidenceBlocks = 0;
+
+  if (hasExplicitArticle) {
+    const articleResult = await getArticleDetail(extracted, { signal, client }).catch((error) => ({ error: toLawError(error) }));
+    if (articleResult && !articleResult.error) {
+      const citation = normalizeLawCitationForMeta(articleResult.citation, citations.length, articleResult.text);
+      citations.push(citation);
+      sections.push(formatLawContext([{ citation, text: articleResult.text }]));
+      officialEvidenceBlocks += 1;
+    } else if (articleResult?.error) {
+      errors.push({ source: "article", marker: articleResult.error.marker });
+    }
+  }
+
+  if (!citations.length && lawNames.length) {
+    const searchBlocks = [];
+    for (const lawName of lawNames) {
+      const result = await searchLaw({ query: lawName, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) }));
+      if (result && !result.error) {
+        const block = formatSearchContext(result);
+        if (block) {
+          searchBlocks.push(block);
+          officialEvidenceBlocks += 1;
+        }
+      } else if (result?.error) {
+        errors.push({ source: "search_law", marker: result.error.marker });
+      }
+    }
+    if (searchBlocks.length) sections.push(...searchBlocks);
+  }
+
+  if (outputStyle === "detailed_report") {
+    const researchQuery = lawNames.length ? `${lawNames.join(" ")} ${type.queryHints.join(" ")}` : searchQuery;
+    const [precResult, expcResult, admResult, ordResult] = await Promise.all([
+      searchPrecedents({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) })),
+      searchInterpretations({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) })),
+      searchAdminRules({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) })),
+      searchOrdinances({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
+    ]);
+
+    const blocks = [
+      { result: precResult, source: "precedents", formatter: formatPrecedentResultsBlock },
+      { result: expcResult, source: "interpretations", formatter: formatInterpretationResultsBlock },
+      { result: admResult, source: "admin_rules", formatter: formatAdminRuleResultsBlock },
+      { result: ordResult, source: "ordinances", formatter: formatOrdinanceResultsBlock }
+    ];
+    for (const entry of blocks) {
+      if (entry.result && !entry.result.error) {
+        const block = entry.formatter(entry.result.results, citations.length);
+        if (block.text) {
+          sections.push(block.text);
+          officialEvidenceBlocks += 1;
+        }
+        citations.push(...block.citations);
+      } else if (entry.result?.error) {
+        errors.push({ source: entry.source, marker: entry.result.error.marker });
+      }
+    }
+  }
+
+  const hasLegalEvidence = citations.length > 0;
+  if (!officialEvidenceBlocks && errors.some((item) => item.marker === LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED)) {
+    return {
+      ok: false,
+      query: searchQuery || prompt,
+      mode: "department_legal_review",
+      intent,
+      citations: [],
+      verification: { checked: false, failCount: 0, results: [] },
+      disclaimer: disclaimerForLawMode("department_legal_review"),
+      contextText: "",
+      error: LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED,
+      errorDetails: errors,
+      compliance: {
+        ok: false,
+        mode: "department_legal_review",
+        reviewType,
+        outputStyle,
+        title: type.title,
+        disclaimer: "short",
+        evidenceFamilies: [],
+        error: LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED
+      },
+      latencyMs: Date.now() - startedAt
+    };
+  }
+  sections.push(buildCompliancePromptBlock({ reviewType, outputStyle, hasLegalEvidence }));
+  if (!hasLegalEvidence) {
+    sections.push("[공식 조문 근거 부족]\n공식 조문 전문 또는 공식 법령 근거가 충분히 확인되지 않았습니다. 법령 적합성 판단은 보류하고, 내부 자료 요약과 추가 확인 필요 사항만 제시하세요.");
+  }
+
+  return {
+    ok: sections.length > 1,
+    query: searchQuery || prompt,
+    mode: "department_legal_review",
+    intent,
+    citations,
+    verification: { checked: false, failCount: 0, results: [] },
+    disclaimer: disclaimerForLawMode("department_legal_review"),
+    contextText: fitLawContext(sections.filter(Boolean).join("\n\n")),
+    error: errors.length && !sections.length ? LAW_ERROR_MARKERS.LAW_API_ERROR : "",
+    errorDetails: errors,
+    compliance: {
+      ok: true,
+      mode: "department_legal_review",
+      reviewType,
+      outputStyle,
+      title: type.title,
+      disclaimer: "short",
+      evidenceFamilies: buildEvidenceFamilies(citations),
+      error: hasLegalEvidence ? "" : "NO_LEGAL_EVIDENCE"
+    },
+    latencyMs: Date.now() - startedAt
+  };
+}
+
+function uniqueStrings(values) {
+  const output = [];
+  const seen = new Set();
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    output.push(text);
+  }
+  return output;
+}
+
+function buildEvidenceFamilies(citations) {
+  const families = new Set();
+  for (const item of citations || []) {
+    const type = item.recordType || item.sourceType;
+    if (type === "precedent" || type === "law_precedent") families.add("precedent");
+    else if (type === "interpretation" || type === "law_interpretation") families.add("interpretation");
+    else if (type === "admin_rule" || type === "law_admin_rule") families.add("admin_rule");
+    else if (type === "ordinance" || type === "law_ordinance") families.add("ordinance");
+    else families.add("law");
+  }
+  return Array.from(families);
 }
 
 function formatPrecedentResultsBlock(items = [], startIndex = 0) {

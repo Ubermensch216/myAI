@@ -236,6 +236,13 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `LAW_AUTO_DETECT` | `false` | keep legal auto-detection off except explicit legal prompts/article patterns |
 | `LAW_VERIFY_CITATIONS` | `true` | enable citation verification behavior |
 | `LAW_IMPACT_MAP_ENABLED` | `true` | enable the Korean Law Engine impact-map endpoint and Studio Law Explorer |
+| `LAW_HISTORY_TARGET` | `lsHstInq` | upstream target for `/api/law/history`; override if law.go.kr renames the revision-history endpoint |
+| `RATE_LIMIT_LAW_SEARCH_PER_MINUTE` | `15` | rate limit for `/api/law/search` |
+| `RATE_LIMIT_LAW_ARTICLE_PER_MINUTE` | `20` | rate limit for `/api/law/article` |
+| `RATE_LIMIT_LAW_VERIFY_PER_MINUTE` | `20` | rate limit for `/api/law/verify-citations` |
+| `RATE_LIMIT_LAW_RESEARCH_PER_MINUTE` | `8` | rate limit for precedent / interpretation / admin-rule / ordinance research |
+| `RATE_LIMIT_LAW_IMPACT_PER_MINUTE` | `4` | rate limit for `/api/law/impact-map` |
+| `RATE_LIMIT_LAW_TIME_TRAVEL_PER_MINUTE` | `4` | rate limit shared by `/api/law/article/at`, `/article/diff`, `/history` |
 
 Naver Search only runs for explicit web-search prompts in normal chat. It is
 skipped when uploaded files are present or a department notebook is selected, so
@@ -243,7 +250,11 @@ file-grounded and RAG-grounded answers stay within their provided evidence.
 Korean Law Engine is separate from Naver Search: explicit legal prompts may use
 official law.go.kr context alongside uploaded documents or department notebooks,
 and law citations render as `[L1]` separately from notebook `[N]` and web `[W]`
-citations.
+citations. The engine covers article retrieval, citation verification,
+precedent / 해석례 / admin-rule / ordinance research, impact maps, time-travel
+diff (`/article/at`, `/article/diff`, `/history`), `action_plan` mode with a
+mandatory non-legal-advice disclaimer, and notebook KG enrichment that
+auto-fetches articles surfaced by `graph.sqlite`.
 When no relevant evidence is found, the UI suppresses source panels and
 follow-up suggestions for that no-evidence answer.
 
@@ -267,7 +278,8 @@ server/
   mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
-  law/                 Korean Law Engine config, law.go.kr client, citation verification, API routes
+  law/                 Korean Law Engine config, law.go.kr client, citation verification, time-travel/diff/history, impact map, action_plan template, API routes
+  compliance/          department legal-review intent classifier, review-type catalog, compliance prompt builder (drives `department_legal_review` mode)
   embeddings.js        Ollama /api/embed helpers
   queryExpansion.js    LLM query expansion
   documentAnalysis.js  document summary/topic extraction

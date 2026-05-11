@@ -205,13 +205,28 @@ max-width: 680px; border-radius: 16px; padding: 0;
 **법령탐색**
 ```
 .studio-law-panel (padding 10/12/12, gap 10)
-  ├── .law-explorer-toolbar  (border, radius:10px, surface-2)
-  ├── .law-explorer-status   (텍스트만, flex-shrink:0)
-  ├── .law-explorer-summary  (border, radius:10px, 결과 후 표시)
-  └── .law-explorer-body     (grid: 1fr 272px)
-        ├── .law-explorer-map    (border, radius:10px, surface)
-        └── .law-explorer-detail (border, radius:10px, surface)
+  ├── .law-mode-tabs                  (segmented radius:10px, surface-2)
+  │     ├── #lawModeImpactButton      (영향맵 — 기본 활성)
+  │     └── #lawModeHistoryButton     (조문 이력)
+  ├── #lawImpactSection .law-mode-section   (영향맵 모드)
+  │     ├── .law-explorer-toolbar           (border, radius:10px, surface-2)
+  │     ├── #lawExplorerStatus              (텍스트만, flex-shrink:0)
+  │     ├── #lawExplorerSummary             (border, radius:10px, 결과 후 표시)
+  │     └── .law-explorer-body              (grid: 1fr 1fr)
+  │           ├── #lawExplorerMap          (border, radius:10px, surface)
+  │           └── #lawExplorerDetail        (border, radius:10px, surface)
+  └── #lawHistorySection .law-mode-section  (조문 이력 모드 — 기본 hidden)
+        ├── .law-explorer-toolbar           (법령명/조문 입력 + 이력 조회)
+        ├── #lawHistoryStatus               (텍스트만)
+        ├── #lawHistorySelection            (선택 1~2건 + 액션 버튼)
+        └── .law-history-body               (grid: 1fr 1.4fr)
+              ├── #lawHistoryList           (시행일별 revision row)
+              └── #lawHistoryViewer         (스냅샷 본문 또는 diff hunks)
 ```
+
+조문 이력 모드의 diff hunks (`.law-diff-hunk-{added,removed,modified,unchanged}`)는
+색상으로 변경 종류를 구분하며, `modified` 행은 line-through 처리한 oldText와
+강조 newText를 함께 보여준다. 유사도(%)는 별도 태그로 표시.
 
 ### 6-6. JS 연동 — 새 도구 추가 시 수정 위치
 

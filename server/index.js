@@ -1,4 +1,4 @@
-import fs from "node:fs/promises";
+﻿import fs from "node:fs/promises";
 import path from "node:path";
 import express from "express";
 import multer from "multer";
@@ -251,7 +251,7 @@ app.post("/api/studio/mindmap", async (request, response) => {
 app.get("/api/documents/:id", (request, response) => {
   const document = getDocument(request.params.id, { ownerKey: extractDocumentOwnerKey(request) });
   if (!document) {
-    response.status(404).json({ error: "문서를 찾을 수 없습니다." });
+    response.status(404).json({ error: "臾몄꽌瑜?李얠쓣 ???놁뒿?덈떎." });
     return;
   }
   response.json({ document: serializeClientDocument(document) });
@@ -259,7 +259,7 @@ app.get("/api/documents/:id", (request, response) => {
 
 app.post("/api/upload", upload.single("file"), async (request, response) => {
   if (!request.file) {
-    response.status(400).json({ error: "업로드된 파일이 없습니다." });
+    response.status(400).json({ error: "?낅줈?쒕맂 ?뚯씪???놁뒿?덈떎." });
     return;
   }
 
@@ -320,14 +320,14 @@ app.post("/api/chat", async (request, response) => {
   const mode = request.body.mode === "map_reduce" ? "map_reduce" : "chat";
 
   if (!messages.length) {
-    response.status(400).json({ error: "messages가 비어 있습니다." });
+    response.status(400).json({ error: "messages媛 鍮꾩뼱 ?덉뒿?덈떎." });
     return;
   }
 
   if (notebookId && await isAccessControlConfigured()) {
     const notebook = await getNotebook(notebookId);
     if (!notebook) {
-      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
       return;
     }
     const access = await requireNotebookAccess(request, response, notebook);
@@ -368,6 +368,7 @@ app.post("/api/chat", async (request, response) => {
           (meta.webSearch?.citations && meta.webSearch.citations.length) ||
           meta.webSearch?.error ||
           meta.law ||
+          meta.compliance ||
           meta.analysisMode
         )) {
           pendingMeta = {
@@ -435,6 +436,20 @@ app.post("/api/chat", async (request, response) => {
                   })),
                   verification: meta.law.verification || { checked: false, failCount: 0, results: [] }
                 }
+              : null,
+            compliance: meta.compliance
+              ? {
+                  ok: Boolean(meta.compliance.ok),
+                  mode: meta.compliance.mode || "department_legal_review",
+                  reviewType: meta.compliance.reviewType || "general",
+                  outputStyle: meta.compliance.outputStyle || "summary",
+                  title: meta.compliance.title || "Compliance Review",
+                  disclaimer: meta.compliance.disclaimer || "short",
+                  evidenceFamilies: Array.isArray(meta.compliance.evidenceFamilies)
+                    ? meta.compliance.evidenceFamilies.map((item) => String(item || "").slice(0, 40)).filter(Boolean)
+                    : [],
+                  error: meta.compliance.error || ""
+                }
               : null
           };
         }
@@ -451,7 +466,7 @@ app.post("/api/chat", async (request, response) => {
   } catch (error) {
     if (signal.aborted || response.destroyed) return;
     writeHeadOnce();
-    response.write(`\n\n[오류] ${error.message}`);
+    response.write(`\n\n[?ㅻ쪟] ${error.message}`);
     response.end();
   } finally {
     chatAbort.cleanup();
@@ -490,7 +505,7 @@ app.post("/api/followups", async (request, response) => {
   const personalization = extractPersonalization(request.body);
 
   if (!messages.length) {
-    response.status(400).json({ error: "messages가 비어 있습니다." });
+    response.status(400).json({ error: "messages媛 鍮꾩뼱 ?덉뒿?덈떎." });
     return;
   }
 
@@ -696,7 +711,7 @@ app.get("/api/notebooks/:id", async (request, response) => {
   try {
     const notebook = await getNotebook(request.params.id);
     if (!notebook) {
-      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
       return;
     }
     const includeAccess = isAdminRequest(request);
@@ -729,7 +744,7 @@ app.patch("/api/notebooks/:id", requireAdmin, async (request, response) => {
       description: request.body?.description
     });
     if (!updated) {
-      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
       return;
     }
     response.json({ notebook: updated });
@@ -742,7 +757,7 @@ app.patch("/api/notebooks/:id/access", requireAdmin, async (request, response) =
   try {
     const updated = await updateNotebookAccess(request.params.id, normalizeNotebookAccessPolicy(request.body?.access || request.body || null));
     if (!updated) {
-      response.status(404).json({ error: "노트북을 찾을 수 없습니다." });
+      response.status(404).json({ error: "?명듃遺곸쓣 李얠쓣 ???놁뒿?덈떎." });
       return;
     }
     response.json({ notebook: updated });
@@ -762,7 +777,7 @@ app.delete("/api/notebooks/:id", requireAdmin, async (request, response) => {
 
 app.post("/api/notebooks/:id/documents", requireAdmin, upload.single("file"), async (request, response) => {
   if (!request.file) {
-    response.status(400).json({ error: "업로드된 파일이 없습니다." });
+    response.status(400).json({ error: "?낅줈?쒕맂 ?뚯씪???놁뒿?덈떎." });
     return;
   }
   try {
@@ -819,7 +834,7 @@ app.get("/api/notebooks/:id/ingest-jobs/:jobId", requireAdmin, async (request, r
 
 app.post("/api/notebooks/:id/ingest-jobs", requireAdmin, upload.single("file"), async (request, response) => {
   if (!request.file) {
-    response.status(400).json({ error: "업로드된 파일이 없습니다." });
+    response.status(400).json({ error: "?낅줈?쒕맂 ?뚯씪???놁뒿?덈떎." });
     return;
   }
   try {
@@ -849,7 +864,7 @@ app.delete("/api/notebooks/:id/documents/:documentId", requireAdmin, async (requ
   try {
     const removed = await removeNotebookDocument(request.params.id, request.params.documentId);
     if (!removed) {
-      response.status(404).json({ error: "문서를 찾을 수 없습니다." });
+      response.status(404).json({ error: "臾몄꽌瑜?李얠쓣 ???놁뒿?덈떎." });
       return;
     }
     response.json({ removed: true });

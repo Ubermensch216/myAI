@@ -1756,7 +1756,7 @@ body.panel-resizing .panel-resizer::after {
 
 .material-panel {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 8px;
   align-items: start;
 }
@@ -1773,6 +1773,31 @@ body.panel-resizing .panel-resizer::after {
   border-radius: 8px;
   padding: 7px 8px 8px;
   background: var(--surface);
+}
+
+.compliance-review-button {
+  min-height: 34px;
+  align-self: stretch;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.compliance-review-button:hover,
+.compliance-review-button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  outline: none;
+}
+
+.compliance-review-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .material-panel-head {

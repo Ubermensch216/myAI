@@ -82,6 +82,16 @@ Implemented pieces:
   (no explicit legal intent) or merges as additional `[L]` citations via
   `mergeLawContexts`. KG-derived citations carry `kgDerived: true` and
   surface in `X-Notebook-Meta.law.kgArticlesMerged`.
+- `department_legal_review` mode delegates to `server/compliance/`
+  (`classifyComplianceIntent`, `buildCompliancePromptBlock`,
+  `buildComplianceSearchQuery`) when the prompt matches compliance triggers
+  (법령 적합성, 컴플라이언스, 위반 가능성, 상위 법령 충돌, …). Intent carries
+  `reviewType`, `outputStyle`, `focusLawNames`, `requiresInternalMaterial`;
+  the compliance branch in `buildLawContext` (see `buildComplianceLawContext`)
+  fetches the explicit article when present, otherwise searches the focus
+  laws, and for `outputStyle: "detailed_report"` additionally pulls
+  precedent / 해석례 / admin-rule / ordinance evidence. See
+  `docs/PRD_LEGAL_COMPLIANCE_REVIEW.md` for the canonical product spec.
 - Per-record meta fields rendered for each citation kind (사건번호/선고법원/
   선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
   종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
@@ -170,8 +180,8 @@ payloads, precedent/interpretation/admin-rule/ordinance payloads, CDATA/HTML
 stripping, upstream error detection). It is exercised by
 `scripts/law-parser-test.mjs` against fixtures in `scripts/fixtures/law/` that
 cover several statute families, branched articles, paragraphs, items, CDATA
-wrappers, HTML-encoded revision markers, and each Phase 2 non-statute source
-family.
+wrappers, HTML-encoded revision markers, and the precedent / 해석례 /
+admin-rule / ordinance non-statute source families.
 
 Do not add MCP protocol dependencies. Tool handlers should remain plain async
 functions that can be called from Express routes and chat orchestration.
@@ -426,6 +436,15 @@ intent, the law engine is authoritative for statute existence and original
 article text. Naver results may be included as separate `[W]` web evidence, but
 must not be used to assert statute existence when law.go.kr lookup fails.
 
+When intent is `department_legal_review`, `server/ollama.js` enforces two
+guard rails before fetching law context: (1) if neither a department notebook
+nor an uploaded document is attached, the chat short-circuits with
+`compliance.error: "NO_INTERNAL_MATERIAL"` and a fixed unavailability message;
+(2) if law.go.kr is not configured, the chat short-circuits with
+`compliance.error: "LAW_NOT_CONFIGURED"`. The notebook RAG query is also
+overridden with `buildComplianceSearchQuery(...)` so retrieval focuses on the
+review type's suggested terms.
+
 When law context exists, `server/ollama.js` injects a separate official-law
 context block and model instructions. The block emitted by
 `formatLawContext` looks like:
@@ -495,6 +514,26 @@ Phase 2 research citations may also use:
 
 The browser stores and renders this metadata, but it must never receive API keys
 or upstream request URLs.
+
+For `department_legal_review` intent, the response also includes a parallel
+`compliance` envelope under `X-Notebook-Meta`:
+
+```js
+compliance: {
+  ok: true,
+  mode: "department_legal_review",
+  reviewType: "general" | "regulation_audit" | ...,
+  outputStyle: "summary" | "detailed_report",
+  title: "...",
+  disclaimer: "short",
+  evidenceFamilies: ["notebook", "uploaded_document", "law", "precedent",
+                     "interpretation", "admin_rule", "ordinance"],
+  error: "" | "NO_INTERNAL_MATERIAL" | "LAW_NOT_CONFIGURED"
+}
+```
+
+See `docs/PRD_LEGAL_COMPLIANCE_REVIEW.md` for the full set of review types
+and the evidence-citation contract.
 
 ## Article References
 
@@ -634,7 +673,7 @@ The statute-grounding baseline is acceptable when:
 - API keys and upstream `OC=` values never appear in frontend responses, logs, or
   errors.
 - Tests pass with live law tests skipped unless explicitly enabled.
-- Setup, limitations, and future work are documented here.
+- Setup, configuration, and operational limitations are documented here.
 
 ## Roadmap
 
@@ -660,7 +699,7 @@ Phase 2 (complete):
 - ✅ Frontend rendering for precedent/interpretation/admin/ordinance citations
   with per-source-type badges and meta fields
 
-Phase 3:
+Phase 3 (complete):
 
 - ✅ Impact map tool
 - ✅ `/api/law/impact-map`

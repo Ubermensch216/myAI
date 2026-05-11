@@ -218,6 +218,7 @@ export const elements = {
   materialSummaryLabel: document.querySelector("#materialSummaryLabel"),
   materialList: document.querySelector("#materialList"),
   materialClearButton: document.querySelector("#materialClearButton"),
+  complianceReviewButton: document.querySelector("#complianceReviewButton"),
   settingsButton: document.querySelector("#settingsButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   settingsForm: document.querySelector("#settingsForm"),

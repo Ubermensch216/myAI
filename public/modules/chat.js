@@ -435,9 +435,10 @@ export async function requestTextAssistantResponse(room) {
       if (notebookMeta?.webSearch) assistantMessage.webSearch = notebookMeta.webSearch;
     }
     if (notebookMeta?.law && !noEvidenceAnswer) assistantMessage.law = notebookMeta.law;
+    if (notebookMeta?.compliance && !noEvidenceAnswer) assistantMessage.compliance = notebookMeta.compliance;
     if (!noEvidenceAnswer) {
       renderLawNoticePanel(assistant, notebookMeta?.law);
-      renderCitationsPanel(assistant, allCitations, notebookMeta?.law);
+      renderCitationsPanel(assistant, allCitations, notebookMeta?.law, notebookMeta?.compliance);
       if (!allCitations.length) renderLawDisclaimer(assistant, notebookMeta?.law);
     }
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
@@ -813,7 +814,7 @@ export function appendMessage(role, text, options = {}) {
   if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
   if (role === "assistant" && Array.isArray(options.citations) && options.citations.length && !isNoEvidenceAnswer(text)) {
     renderLawNoticePanel(article, options.law);
-    renderCitationsPanel(article, options.citations, options.law);
+    renderCitationsPanel(article, options.citations, options.law, options.compliance);
   } else if (role === "assistant" && options.law && !isNoEvidenceAnswer(text)) {
     renderLawNoticePanel(article, options.law);
     renderLawDisclaimer(article, options.law);
@@ -868,7 +869,7 @@ export function renderFollowupSuggestions(article, suggestions = [], options = {
   maybeScrollToBottom(stickToBottom);
 }
 
-export function renderCitationsPanel(article, citations, law = null) {
+export function renderCitationsPanel(article, citations, law = null, compliance = null) {
   if (!article) return;
   article.querySelector(".message-citations")?.remove();
   if (!Array.isArray(citations) || !citations.length) return;
@@ -880,7 +881,7 @@ export function renderCitationsPanel(article, citations, law = null) {
   wrapper.append(title);
   const list = document.createElement("ol");
   list.className = "message-citations-list";
-  for (const citation of groupCitationsByType(citations)) {
+  for (const citation of groupCitationsByType(citations, compliance)) {
     const item = document.createElement("li");
     if (citation.groupLabel) {
       item.className = "message-citation-group";
@@ -1083,7 +1084,8 @@ function isLegalCitation(item) {
   return Boolean(classifyLawCitation(item));
 }
 
-function groupCitationsByType(citations) {
+function groupCitationsByType(citations, compliance = null) {
+  const internalLabel = compliance?.mode === "department_legal_review" ? "내부 자료" : null;
   const groups = [
     ["부서노트북", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
     ["법령", (item) => classifyLawCitation(item) === "statute"],
@@ -1093,6 +1095,7 @@ function groupCitationsByType(citations) {
     ["자치법규", (item) => classifyLawCitation(item) === "ordinance"],
     ["웹", (item) => !isLegalCitation(item) && (item.sourceType === "naver" || item.sourceType === "web" || /^W/.test(String(item.citationId || "")))]
   ];
+  if (internalLabel) groups[0][0] = internalLabel;
   const output = [];
   for (const [label, predicate] of groups) {
     const items = citations.filter(predicate);
@@ -1524,6 +1527,7 @@ function shouldShowLawProcessing(prompt) {
   const text = String(prompt || "");
   if (!text.trim()) return false;
   if (wantsExplicitWebSearch(text)) return false;
+  if (/법령\s*적합성|컴플라이언스|법적\s*리스크|법령\s*리스크|근거\s*보고서|상위\s*법령|준수\s*여부|위반\s*가능성|개인정보\s*보호법|민원|계약|용역|행정절차|조문|판례|법령|법률/u.test(text)) return true;
   return /법령|법률|조문|조항|법에서|법령에서|근거\s*법|인용\s*검증|조문\s*검증|위법|적법|컴플라이언스|준수|판례|해석례|시행령|시행규칙|고시|예규|헌법|민법|형법|상법|개인정보\s*보호법|근로기준법|도로교통법|국가공무원법|제\s*\d+\s*조/u.test(text);
 }
 

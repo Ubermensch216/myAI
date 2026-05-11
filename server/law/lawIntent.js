@@ -1,5 +1,6 @@
 import { extractLawCitations, isLawishName, normalizeArticleRef, normalizeLawName } from "./lawArticleRef.js";
 import { getLawConfig } from "./lawConfig.js";
+import { classifyComplianceIntent } from "../compliance/complianceIntent.js";
 
 const EXPLICIT_LEGAL_PATTERNS = [
   /법령에서.{0,30}찾아/u,
@@ -41,9 +42,10 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
   // words. "이 회의록이 사내규정에 맞는지" alone must NOT trigger.
   const reviewVerb = /(맞는지|준수|위반|적법|검토|리스크|보완\s*권고|컴플라이언스)/u.test(text);
   const hasGroundingContext = hasNotebook || hasDocuments;
+  const compliance = classifyComplianceIntent(text, { hasNotebook, hasDocuments });
   const legalReview = reviewVerb
-    && hasGroundingContext
-    && (citations.length > 0 || LEGAL_KEYWORDS.test(text) || ARTICLE_TOKEN_PATTERN.test(text));
+    && (hasGroundingContext || compliance)
+    && (citations.length > 0 || LEGAL_KEYWORDS.test(text) || ARTICLE_TOKEN_PATTERN.test(text) || compliance);
   const verify = /(조문|인용).{0,12}(검증|확인|맞는지|실제)/u.test(text);
   const articlePattern = citations[0] || (explicit || legalReview ? extractLooseArticle(text) : null);
 
@@ -73,11 +75,21 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
     };
   }
 
-  if (legalReview) {
+  if (legalReview || compliance) {
     return {
       isLegalQuery: true,
       mode: "department_legal_review",
-      extracted: buildExtracted(text, articlePattern),
+      extracted: {
+        ...buildExtracted(text, articlePattern),
+        reviewType: compliance?.reviewType || "general",
+        outputStyle: compliance?.outputStyle || "summary",
+        focusLawNames: compliance?.focusLawNames || [],
+        requiresInternalMaterial: true
+      },
+      reviewType: compliance?.reviewType || "general",
+      outputStyle: compliance?.outputStyle || "summary",
+      focusLawNames: compliance?.focusLawNames || [],
+      requiresInternalMaterial: true,
       confidence: 0.9,
       mayUseWebSearch: NEWS_KEYWORDS.test(text)
     };
