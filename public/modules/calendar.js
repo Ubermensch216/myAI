@@ -1105,13 +1105,9 @@ export function renderEventCardList(events) {
       const targetId = event.masterEventId || event.id;
       const exists = state.calendar.events.some((item) => item.id === targetId);
       if (!exists) return;
-      // Navigate to calendar view - imported dynamically to avoid circular dep
-      state.activeView = "calendar";
       state.calendar.cursorISO = String(event.start).slice(0, 10);
-      renderCalendar();
-      openEventDialogForEdit(targetId);
-      // Trigger nav update via custom event
       window.dispatchEvent(new CustomEvent("myai:setview", { detail: "calendar" }));
+      openEventDialogForEdit(targetId);
     });
     const title = document.createElement("div");
     title.className = "message-event-title";
