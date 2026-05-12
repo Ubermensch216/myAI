@@ -763,6 +763,8 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
   const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
+  const responseStyle = sanitizeResponseStyle(personalization.responseStyle);
+  const customInstruction = sanitizeCustomInstruction(personalization.customInstruction);
   const notebook = notebookContext?.notebook ?? null;
   const notebookChunks = notebookContext?.chunks ?? [];
   const notebookDocumentSummaries = notebookContext?.documentSummaries ?? [];
@@ -823,6 +825,18 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Avoid long unbroken paragraphs. Keep each paragraph to one idea, then use bullets for details.",
     "Do not use Markdown heading marks (#) or bold markers (**). Use plain label lines instead."
   );
+
+  const styleDirective = buildResponseStyleDirective(responseStyle);
+  if (styleDirective) {
+    systemParts.push(styleDirective);
+  }
+
+  if (customInstruction) {
+    systemParts.push(
+      "다음은 사용자가 'AI 개인화 > 맞춤형 지침'에 입력한 지시문이다. 안전 정책과 위 기본 규칙을 해치지 않는 범위에서 따른다.",
+      customInstruction
+    );
+  }
 
   if (customPrompt) {
     systemParts.push(
@@ -1080,6 +1094,40 @@ function sanitizeName(value, fallback) {
 
 function sanitizeCustomPrompt(value) {
   return String(value ?? "").trim().slice(0, 4000);
+}
+
+function sanitizeCustomInstruction(value) {
+  return String(value ?? "").trim().slice(0, 2000);
+}
+
+const VALID_RESPONSE_STYLES = ["default", "professional", "friendly", "candid", "quirky", "efficient", "cynical"];
+
+function sanitizeResponseStyle(value) {
+  const clean = String(value ?? "").trim();
+  return VALID_RESPONSE_STYLES.includes(clean) ? clean : "default";
+}
+
+function buildResponseStyleDirective(style) {
+  switch (style) {
+    case "professional":
+      return "응답 스타일: 정제되고 정확한 톤을 유지해라. 격식 있는 어휘를 쓰고 모호한 표현을 피해라.";
+    case "friendly":
+      return "응답 스타일: 따뜻하고 수다스러운 톤으로 답해라. 친근한 존댓말을 쓰고 대화하듯 자연스럽게 풀어 설명해라.";
+    case "candid":
+      return "응답 스타일: 직설적이면서도 격려하는 톤을 유지해라. 핵심을 명확히 짚되 사용자가 더 잘할 수 있도록 응원하는 한마디를 곁들여라.";
+    case "quirky":
+      return "응답 스타일: 유쾌하고 상상력이 풍부한 톤으로 답해라. 신선한 비유나 가벼운 위트를 적절히 사용해도 좋다. 단, 정확성을 유머에 양보하지 마라.";
+    case "efficient":
+      return "응답 스타일: 간결하고 꾸밈없는 톤을 유지해라. 군더더기·인사말·부연 설명을 생략하고 핵심만 전달해라.";
+    case "cynical":
+      return [
+        "응답 스타일: 비꼬면서 비판적인 톤을 유지해라. 표면적 주장이나 안일한 낙관에 의문을 제기하고 약점을 날카롭게 지적해라.",
+        "단, 사용자 본인을 모욕하거나 인신공격하지 마라. 비꼼은 주제·주장·외부 대상에 한정한다."
+      ].join("\n");
+    case "default":
+    default:
+      return "";
+  }
 }
 
 function findLatestUserMessageIndex(messages) {

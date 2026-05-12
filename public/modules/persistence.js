@@ -3,7 +3,8 @@ import {
   DB_NAME, DB_VERSION, APP_STATE_KEY, KEY_ID,
   documentCacheHeaders, ensureDocumentCacheKey,
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
-  normalizeCustomColorTheme, normalizeLayout, ensureRoomStudio, ensureDocumentTemplatesState
+  normalizeCustomColorTheme, normalizeLayout, normalizeResponseStyle,
+  ensureRoomStudio, ensureDocumentTemplatesState
 } from "./state.js";
 
 let saveTimer = null;
@@ -137,7 +138,9 @@ export async function loadAppState() {
     appLogoDataUrl: stored.settings?.appLogoDataUrl || "",
     systemAvatarDataUrl: stored.settings?.systemAvatarDataUrl || "",
     userAvatarDataUrl: stored.settings?.userAvatarDataUrl || "",
-    customPrompt: stored.settings?.customPrompt || ""
+    customPrompt: stored.settings?.customPrompt || "",
+    responseStyle: normalizeResponseStyle(stored.settings?.responseStyle),
+    customInstruction: stored.settings?.customInstruction || ""
   };
   state.documentTemplates = ensureDocumentTemplatesState();
   if (Array.isArray(stored.documentTemplates?.personal)) {

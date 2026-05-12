@@ -311,12 +311,15 @@ function populateTemplateSelect(activeId) {
   const groupBuiltin = document.createElement("optgroup");
   groupBuiltin.label = "기본 템플릿";
   for (const tpl of templates) {
+    if (personalTemplates.some(p => p.id === tpl.id)) continue;
     const option = document.createElement("option");
     option.value = tpl.id;
     option.textContent = tpl.name;
     groupBuiltin.append(option);
   }
-  select.append(groupBuiltin);
+  if (groupBuiltin.children.length > 0) {
+    select.append(groupBuiltin);
+  }
   const desired = activeId || previous || "";
   const inBuiltin = templates.some((t) => t.id === desired);
   const inPersonal = personalTemplates.some((t) => t.id === desired);

@@ -1,6 +1,6 @@
 import {
   state, elements, normalizeColorTheme, normalizeCustomColorTheme,
-  DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF
+  normalizeResponseStyle, DEFAULT_BANNER_SRC, DEFAULT_FAVICON_HREF
 } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { renderDocumentTemplatesSettings } from "./documentTemplates.js";
@@ -35,13 +35,21 @@ function openSettings() {
   elements.appNameInput.value = state.settings.appName || "myAI";
   renderThemeToggle();
   renderColorThemeToggle();
-  elements.customPromptInput.value = state.settings.customPrompt || "";
+  if (elements.customPromptInput) {
+    elements.customPromptInput.value = state.settings.customPrompt || "";
+  }
+  if (elements.responseStyleSelect) {
+    elements.responseStyleSelect.value = normalizeResponseStyle(state.settings.responseStyle);
+  }
+  if (elements.customInstructionInput) {
+    elements.customInstructionInput.value = state.settings.customInstruction || "";
+  }
   renderBannerPreview();
   renderSystemAvatarPreview();
   renderAvatarPreview();
   renderDocumentTemplatesSettings(document.getElementById("settingsDocumentTemplatesMount"));
   switchSettingsTab("personal");
-  switchSettingsSubTab("profile");
+  switchSettingsSubTab("profileTheme");
   elements.settingsDialog.showModal();
   elements.appBannerTrigger.focus();
 }
@@ -69,13 +77,16 @@ function switchSettingsTab(tabId) {
 
   const form = document.getElementById("settingsForm");
   const adminPanel = document.getElementById("settingsPanelAdmin");
+  const formFooter = document.getElementById("settingsFormFooter");
 
   if (adminActive) {
     if (form) form.hidden = true;
     if (adminPanel) adminPanel.hidden = false;
+    if (formFooter) formFooter.hidden = true;
   } else {
     if (form) form.hidden = false;
     if (adminPanel) adminPanel.hidden = true;
+    if (formFooter) formFooter.hidden = false;
   }
 
   elements.settingsDialog.classList.toggle("admin-mode", adminActive);
@@ -307,7 +318,15 @@ export function bindSettingsEvents() {
     state.settings.userTitle = elements.userTitleInput.value.trim() || "사용자님";
     state.settings.appName = elements.appNameInput.value.trim() || "myAI";
     state.settings.aiName = state.settings.appName || "myAI";
-    state.settings.customPrompt = elements.customPromptInput.value.trim();
+    if (elements.customPromptInput) {
+      state.settings.customPrompt = elements.customPromptInput.value.trim();
+    }
+    if (elements.responseStyleSelect) {
+      state.settings.responseStyle = normalizeResponseStyle(elements.responseStyleSelect.value);
+    }
+    if (elements.customInstructionInput) {
+      state.settings.customInstruction = elements.customInstructionInput.value.trim();
+    }
     scheduleSave();
     closeSettings();
     window.dispatchEvent(new CustomEvent("myai:renderall"));
@@ -323,4 +342,16 @@ export function bindSettingsEvents() {
     input.addEventListener("input", () => updateCustomColor(input.dataset.customColorKey, input.value));
     input.addEventListener("change", () => updateCustomColor(input.dataset.customColorKey, input.value));
   }
+
+  // 예시 프롬프트 버튼 클릭 이벤트
+  document.querySelectorAll(".prompt-example-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const promptText = btn.dataset.prompt;
+      if (promptText && elements.customPromptInput) {
+        elements.customPromptInput.value = promptText;
+        elements.customPromptInput.focus();
+        elements.customPromptInput.setSelectionRange(promptText.length, promptText.length);
+      }
+    });
+  });
 }

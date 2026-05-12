@@ -29,6 +29,12 @@ export function normalizeColorTheme(value) {
   return value === "water" || value === "custom" ? value : "busan";
 }
 
+export const RESPONSE_STYLES = ["default", "professional", "friendly", "candid", "quirky", "efficient", "cynical"];
+
+export function normalizeResponseStyle(value) {
+  return RESPONSE_STYLES.includes(value) ? value : "default";
+}
+
 export const DEFAULT_CUSTOM_COLOR_THEME = {
   accent: "#e6007e",
   accentDark: "#b00062",
@@ -141,7 +147,9 @@ export const state = {
     appLogoDataUrl: "",
     systemAvatarDataUrl: "",
     userAvatarDataUrl: "",
-    customPrompt: ""
+    customPrompt: "",
+    responseStyle: "default",
+    customInstruction: ""
   },
   busy: false,
   abortController: null,
@@ -237,6 +245,8 @@ export const elements = {
   customColorInputs: Array.from(document.querySelectorAll(".custom-color-input")),
   customColorThemeThumb: document.querySelector("#customColorThemeThumb"),
   customPromptInput: document.querySelector("#customPromptInput"),
+  responseStyleSelect: document.querySelector("#responseStyleSelect"),
+  customInstructionInput: document.querySelector("#customInstructionInput"),
   appBannerInput: document.querySelector("#appBannerInput"),
   appBannerPreview: document.querySelector("#appBannerPreview"),
   appBannerPicker: document.querySelector("#appBannerPicker"),

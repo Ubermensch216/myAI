@@ -2188,9 +2188,11 @@ body.panel-resizing .panel-resizer::after {
 .settings-dialog #settingsForm {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  min-height: 100%;
-  padding: 18px;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px 8px;
 }
 
 .settings-layout-container {
@@ -2215,8 +2217,9 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   padding: 0;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
+  min-height: 0;
 }
 
 .settings-tab-divider {
@@ -2252,8 +2255,18 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .settings-form-footer {
-  margin-top: auto;
-  padding-top: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.settings-form-footer[hidden] {
+  display: none;
 }
 
 /* Sidebar group label */
@@ -2279,12 +2292,31 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
-  padding: 18px 18px 0 18px;
+  padding: 0;
 }
 
 .settings-tab-panel[hidden] {
   display: none !important;
+}
+
+.settings-profile-theme-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.settings-profile-theme-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .settings-profile-theme-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .settings-admin-panel {
@@ -2333,14 +2365,147 @@ body.panel-resizing .panel-resizer::after {
   margin-bottom: 0;
 }
 
+/* === Prompt settings panel === */
+.prompt-panel {
+  gap: 14px;
+}
+
+.prompt-panel-helper {
+  margin: 4px 0 2px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.prompt-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prompt-examples-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.prompt-examples-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .prompt-examples-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.prompt-example-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+}
+
+.prompt-example-btn:hover,
+.prompt-example-btn:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.prompt-example-btn:active {
+  transform: translateY(1px);
+}
+
+.prompt-example-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  color: var(--accent-dark);
+  flex: 0 0 auto;
+}
+
+.prompt-example-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.prompt-example-btn:hover .prompt-example-icon,
+.prompt-example-btn:focus-visible .prompt-example-icon {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+}
+
+.prompt-example-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-input-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prompt-input-label {
+  margin-bottom: 0;
+}
+
+.prompt-input-textarea {
+  min-height: 160px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.prompt-input-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* === AI personalization box internal divider === */
+.ai-personalization-divider {
+  height: 1px;
+  margin: 6px 0 14px;
+  background: color-mix(in srgb, var(--line) 80%, transparent);
+}
+
 .settings-storage-hint {
-  grid-area: hint;
-  align-self: center;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-form-actions {
-  grid-area: actions;
-  align-self: center;
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  margin-top: 0;
 }
 
 #settingsForm .settings-system-section .field-row {
@@ -2366,8 +2531,14 @@ body.panel-resizing .panel-resizer::after {
   height: 76px;
 }
 
-#settingsForm .settings-system-section > .field {
+#settingsForm .settings-system-section > .field,
+#settingsForm .settings-system-section > .field-row {
   margin-bottom: 12px;
+}
+
+#settingsForm .settings-system-section > .field:last-of-type,
+#settingsForm .settings-system-section > .field-row:last-of-type {
+  margin-bottom: 0;
 }
 
 #settingsForm .banner-picker {
@@ -6310,8 +6481,8 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-access-groups-workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  gap: 14px;
   min-height: 0;
 }
 
@@ -6468,6 +6639,8 @@ body.panel-resizing .panel-resizer::after {
   flex-direction: column;
   gap: 14px;
   padding: 14px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .admin-access-group-detail.is-empty {
@@ -6501,7 +6674,7 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-access-detail-info {
   display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1.2fr) auto;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(140px, 1.2fr) auto;
   gap: 10px;
   align-items: end;
 }
@@ -6521,13 +6694,14 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-access-level-detail-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1fr) 78px minmax(140px, 1fr) auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto minmax(110px, 1fr) auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+  min-width: 0;
 }
 
 .admin-access-level-detail-row.level-1 {
@@ -6610,6 +6784,54 @@ body.panel-resizing .panel-resizer::after {
 
 .admin-access-super-row .text-input:disabled {
   opacity: 0.72;
+}
+
+@media (min-width: 721px) and (max-width: 960px) {
+  .admin-access-groups-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-access-level-detail-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "name name status"
+      "input input input"
+      "set set clear";
+    row-gap: 8px;
+  }
+
+  .admin-access-level-detail-row > .admin-access-level-name {
+    grid-area: name;
+    min-width: 0;
+  }
+
+  .admin-access-level-detail-row > .admin-access-password-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .admin-access-level-detail-row > .text-input {
+    grid-area: input;
+  }
+
+  .admin-access-level-detail-row > button:nth-of-type(1) {
+    grid-area: set;
+    justify-self: start;
+  }
+
+  .admin-access-level-detail-row > button:nth-of-type(2) {
+    grid-area: clear;
+    justify-self: end;
+  }
+
+  .admin-access-detail-info {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .admin-access-detail-info > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 }
 
 .admin-policy-block {
@@ -7715,7 +7937,7 @@ body.panel-resizing .panel-resizer::after {
   box-sizing: border-box;
 }
 
-/* ??Çâ??¹öÆ° ??input ??ÀÌ(38px)??¸ÂÃã */
+/* ??ï¿½ï¿½??ï¿½ï¿½Æ° ??input ??ï¿½ï¿½(38px)??ï¿½ï¿½ï¿½ï¿½ */
 #lawExplorerRunButton {
   height: 38px;
   padding: 0 14px;
@@ -8046,7 +8268,7 @@ body.panel-resizing .panel-resizer::after {
   }
 }
 
-/* ???? Law mode tabs (??Çâ??/ Á¶¹® ??·Â) ?????????????????????????????????????????????????????? */
+/* ???? Law mode tabs (??ï¿½ï¿½??/ ï¿½ï¿½ï¿½ï¿½ ??ï¿½ï¿½) ?????????????????????????????????????????????????????? */
 
 .law-mode-tabs {
   display: flex;
@@ -8457,9 +8679,13 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 18px 12px;
+  padding: 0 0 10px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 0;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
 }
 
 .settings-sidebar-group-label {

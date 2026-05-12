@@ -123,7 +123,9 @@ export function getPersonalizationSettings() {
     userTitle: state.settings.userTitle || "사용자님",
     aiName: appName,
     appName,
-    customPrompt: state.settings.customPrompt || ""
+    customPrompt: state.settings.customPrompt || "",
+    responseStyle: state.settings.responseStyle || "default",
+    customInstruction: state.settings.customInstruction || ""
   };
 }
 
