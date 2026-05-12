@@ -13,10 +13,15 @@ export function initDocTool() {
   const executeBtn = document.getElementById("doctoolExecuteBtn");
   const modeMergeBtn = document.getElementById("docToolModeMergeBtn");
   const modeSplitBtn = document.getElementById("docToolModeSplitBtn");
+  const dropZoneMsg = document.getElementById("doctoolDropZoneMsg");
   const statusMsg = document.getElementById("doctoolStatusMsg");
   const downloadList = document.getElementById("doctoolDownloadList");
+  const downloadStep = document.getElementById("doctoolDownloadStep");
 
   if (!dropZone) return;
+
+  // Initialize drop zone message
+  updateDropZoneMsg();
 
   // Dropzone events
   dropZone.addEventListener("click", () => fileInput.click());
@@ -53,6 +58,7 @@ export function initDocTool() {
     modeSplitBtn.setAttribute('aria-selected', 'false');
     document.getElementById("doctoolMergeOptions").style.display = "block";
     document.getElementById("doctoolSplitOptions").style.display = "none";
+    updateDropZoneMsg();
     updateUI();
   });
   modeSplitBtn.addEventListener("click", () => {
@@ -63,8 +69,18 @@ export function initDocTool() {
     modeMergeBtn.setAttribute('aria-selected', 'false');
     document.getElementById("doctoolMergeOptions").style.display = "none";
     document.getElementById("doctoolSplitOptions").style.display = "block";
+    updateDropZoneMsg();
     updateUI();
   });
+
+  function updateDropZoneMsg() {
+    if (!dropZoneMsg) return;
+    if (currentMode === 'merge') {
+      dropZoneMsg.textContent = "동일한 형식의 파일 2개 이상을 선택하세요.";
+    } else {
+      dropZoneMsg.textContent = "페이지 2쪽 이상의 파일 1개를 선택하세요.";
+    }
+  }
 
   // Type change listeners for splitting
   document.getElementById("doctoolPdfSplitType")?.addEventListener("change", (e) => {
@@ -266,6 +282,7 @@ export function initDocTool() {
     executeBtn.disabled = true;
     showStatus("처리 중...", "info");
     downloadList.innerHTML = "";
+    if (downloadStep) downloadStep.hidden = true;
 
     try {
       if (currentMode === 'merge') {
@@ -444,6 +461,7 @@ export function initDocTool() {
   }
 
   function addDownload(content, filename, mimeType) {
+    if (downloadStep) downloadStep.hidden = false;
     const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

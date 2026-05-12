@@ -238,7 +238,7 @@
               <path d="M18 7l-3 6a3 3 0 0 0 6 0z"></path>
             </svg>
           </button>
-          <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="사무용품" aria-label="사무용품">
+          <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="파일도구" aria-label="파일도구">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="6" cy="6" r="3"></circle>
               <circle cx="6" cy="18" r="3"></circle>
@@ -287,7 +287,7 @@
               </svg>
               <span class="studio-tool-label">&#xBC95;&#xB839;&#xD0D0;&#xC0C9;</span>
             </button>
-            <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="사무용품">
+            <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="파일도구">
               <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="6" cy="6" r="3"></circle>
                 <circle cx="6" cy="18" r="3"></circle>
@@ -295,7 +295,7 @@
                 <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
                 <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
               </svg>
-              <span class="studio-tool-label">사무용품</span>
+              <span class="studio-tool-label">파일도구</span>
             </button>
             <button id="studioMindmapButton" class="studio-tool-card" type="button" data-tool="mindmap" aria-label="마인드맵 생성">
               <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -324,82 +324,108 @@
               <button id="docToolModeMergeBtn" class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-mode="merge">병합</button>
               <button id="docToolModeSplitBtn" class="law-mode-tab" type="button" role="tab" aria-selected="false" data-mode="split">분할</button>
             </div>
-            
-            <div class="doctool-layout">
-              <div class="doctool-section">
-                <h3 class="doctool-section-title">파일 선택</h3>
-                <div id="doctoolDropZone" class="admin-drop-zone" tabindex="0" role="button" aria-label="파일 추가">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                  <p class="admin-drop-title">파일을 끌어다 놓거나 클릭해서 선택</p>
-                  <p class="admin-drop-hint">PDF · XLSX · TXT — 순서 변경 가능</p>
-                  <input type="file" id="doctoolFileInput" multiple accept=".pdf,.xlsx,.txt" hidden />
+
+            <div class="doctool-flow">
+
+              <!-- ① 파일 선택 -->
+              <div class="doctool-step" data-step="1">
+                <div class="doctool-step-header">
+                  <span class="doctool-step-badge">①</span>
+                  <h3 class="doctool-section-title">파일 선택</h3>
                 </div>
-                <div id="doctoolFileHint" class="admin-docs-empty" hidden>순서를 변경하려면 항목을 드래그하세요.</div>
-                <div id="doctoolFileList" class="doctool-file-list"></div>
-                <button id="doctoolClearBtn" class="ghost-button admin-danger-button" type="button" style="display:none; width:100%; margin-top:12px;">모든 파일 제거</button>
-              </div>
-
-              <div class="doctool-section">
-                <h3 class="doctool-section-title">옵션 설정</h3>
-                
-                <div id="doctoolMergeOptions">
-                  <div class="field">
-                    <label class="field-label" for="doctoolMergeFilename">출력 파일명 (선택)</label>
-                    <input type="text" id="doctoolMergeFilename" class="text-input" placeholder="자동 생성됨" />
+                <div class="doctool-step-body">
+                  <div id="doctoolDropZone" class="admin-drop-zone" tabindex="0" role="button" aria-label="파일 추가">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" style="width:42px;height:42px;margin-top:4px;"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    <div id="doctoolDropZoneMsg" class="doctool-drop-zone-msg"></div>
+                    <div class="doctool-support-icons">
+                      <span class="doctool-type-tag" data-type="pdf">PDF</span>
+                      <span class="doctool-type-tag" data-type="xlsx">XLSX</span>
+                      <span class="doctool-type-tag" data-type="txt">TXT</span>
+                    </div>
+                    <input type="file" id="doctoolFileInput" multiple accept=".pdf,.xlsx,.txt" hidden />
                   </div>
-                  <div id="doctoolExcelMergeOptions" class="field" style="display:none; margin-top:16px;">
-                    <label class="field-label">Excel 병합 방식</label>
-                    <select id="doctoolExcelMergeType" class="text-input">
-                      <option value="separate">시트 분리 (각 파일 시트 유지)</option>
-                      <option value="combine">시트 통합 (하나의 시트로 통합)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div id="doctoolSplitOptions" style="display:none;">
-                  <div id="doctoolSplitEmpty" class="admin-docs-empty" style="margin-top:16px;">
-                    파일을 1개 선택해야 분할 옵션이 표시됩니다.
-                  </div>
-
-                  <div id="doctoolPdfSplitOptions" class="field" style="display:none;">
-                    <label class="field-label">PDF 분할 방식</label>
-                    <select id="doctoolPdfSplitType" class="text-input">
-                      <option value="range">특정 범위 분할</option>
-                      <option value="chunk">페이지 단위 분할</option>
-                    </select>
-                    <input type="text" id="doctoolPdfSplitRange" class="text-input" placeholder="예: 1-3, 5, 7-10" style="margin-top:8px;" />
-                    <input type="number" id="doctoolPdfSplitChunk" class="text-input" placeholder="분할 페이지 분량 (예: 3)" min="1" value="3" style="display:none; margin-top:8px;" />
-                  </div>
-                  
-                  <div id="doctoolExcelSplitOptions" class="field" style="display:none;">
-                    <label class="field-label">Excel 분할 방식</label>
-                    <select id="doctoolExcelSplitType" class="text-input">
-                      <option value="sheet">시트 단위 분할</option>
-                      <option value="row">행 단위 분할</option>
-                    </select>
-                    <input type="number" id="doctoolExcelSplitRow" class="text-input" placeholder="분할 행 수 (예: 50)" min="1" value="50" style="display:none; margin-top:8px;" />
-                  </div>
-
-                  <div id="doctoolTxtSplitOptions" class="field" style="display:none;">
-                    <label class="field-label">TXT 분할 방식</label>
-                    <select id="doctoolTxtSplitType" class="text-input">
-                      <option value="range">특정 범위 분할</option>
-                      <option value="chunk">라인 단위 분할</option>
-                    </select>
-                    <input type="text" id="doctoolTxtSplitRange" class="text-input" placeholder="예: 1-3, 5, 7-10" style="margin-top:8px;" />
-                    <input type="number" id="doctoolTxtSplitChunk" class="text-input" placeholder="분할 라인 분량 (예: 100)" min="1" value="100" style="display:none; margin-top:8px;" />
-                  </div>
+                  <div id="doctoolFileHint" class="admin-docs-empty" hidden>순서를 변경하려면 항목을 드래그하세요.</div>
+                  <div id="doctoolFileList" class="doctool-file-list"></div>
+                  <button id="doctoolClearBtn" class="ghost-button admin-danger-button" type="button" style="display:none;width:100%;margin-top:4px;">모든 파일 제거</button>
                 </div>
               </div>
 
-              <div class="doctool-section">
-                <h3 class="doctool-section-title">실행</h3>
-                <div class="doctool-exec-row">
-                  <button id="doctoolExecuteBtn" class="send-button" type="button" disabled style="width:100%; padding:14px; font-size:16px;">실행하기</button>
+              <!-- ② 옵션 설정 -->
+              <div class="doctool-step" data-step="2">
+                <div class="doctool-step-header">
+                  <span class="doctool-step-badge">②</span>
+                  <h3 class="doctool-section-title">옵션 설정 <span class="doctool-step-optional">(선택)</span></h3>
                 </div>
-                <div id="doctoolStatusMsg" class="law-explorer-status" style="margin-top:16px;"></div>
-                <div id="doctoolDownloadList" class="doctool-download-list"></div>
+                <div class="doctool-step-body">
+                  <div id="doctoolMergeOptions">
+                    <div class="field">
+                      <label class="field-label" for="doctoolMergeFilename">출력 파일명 (선택)</label>
+                      <input type="text" id="doctoolMergeFilename" class="text-input" placeholder="자동 생성됨" />
+                    </div>
+                    <div id="doctoolExcelMergeOptions" class="field" style="display:none;margin-top:16px;">
+                      <label class="field-label">Excel 병합 방식</label>
+                      <select id="doctoolExcelMergeType" class="text-input">
+                        <option value="separate">시트 분리 (각 파일 시트 유지)</option>
+                        <option value="combine">시트 통합 (하나의 시트로 통합)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div id="doctoolSplitOptions" style="display:none;">
+                    <div id="doctoolSplitEmpty" class="admin-docs-empty">
+                      파일을 1개 선택해야 분할 옵션이 표시됩니다.
+                    </div>
+                    <div id="doctoolPdfSplitOptions" class="field" style="display:none;">
+                      <label class="field-label">PDF 분할 방식</label>
+                      <select id="doctoolPdfSplitType" class="text-input">
+                        <option value="range">나눌 페이지 지정</option>
+                        <option value="chunk">파일 당 페이지 수</option>
+                      </select>
+                      <input type="text" id="doctoolPdfSplitRange" class="text-input" placeholder="예: 1-3, 5, 7-10" style="margin-top:8px;" />
+                      <input type="number" id="doctoolPdfSplitChunk" class="text-input" placeholder="분할 페이지 분량 (예: 3)" min="1" value="3" style="display:none;margin-top:8px;" />
+                    </div>
+                    <div id="doctoolExcelSplitOptions" class="field" style="display:none;">
+                      <label class="field-label">Excel 분할 방식</label>
+                      <select id="doctoolExcelSplitType" class="text-input">
+                        <option value="sheet">시트 단위 분할</option>
+                        <option value="row">행 단위 분할</option>
+                      </select>
+                      <input type="number" id="doctoolExcelSplitRow" class="text-input" placeholder="분할 행 수 (예: 50)" min="1" value="50" style="display:none;margin-top:8px;" />
+                    </div>
+                    <div id="doctoolTxtSplitOptions" class="field" style="display:none;">
+                      <label class="field-label">TXT 분할 방식</label>
+                      <select id="doctoolTxtSplitType" class="text-input">
+                        <option value="range">나눌 라인 지정</option>
+                        <option value="chunk">파일 당 라인 수</option>
+                      </select>                      <input type="text" id="doctoolTxtSplitRange" class="text-input" placeholder="예: 1-3, 5, 7-10" style="margin-top:8px;" />
+                      <input type="number" id="doctoolTxtSplitChunk" class="text-input" placeholder="분할 라인 분량 (예: 100)" min="1" value="100" style="display:none;margin-top:8px;" />
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              <!-- ③ 실행하기 -->
+              <div class="doctool-step" data-step="3">
+                <div class="doctool-step-header">
+                  <span class="doctool-step-badge">③</span>
+                  <h3 class="doctool-section-title">실행하기</h3>
+                </div>
+                <div class="doctool-step-body">
+                  <button id="doctoolExecuteBtn" class="send-button" type="button" disabled style="width:100%;padding:14px;font-size:16px;">실행하기</button>
+                  <div id="doctoolStatusMsg" class="law-explorer-status" style="margin-top:4px;"></div>
+                </div>
+              </div>
+
+              <!-- ④ 다운로드 — 결과 생성 전까지 hidden -->
+              <div id="doctoolDownloadStep" class="doctool-step" data-step="4" hidden>
+                <div class="doctool-step-header">
+                  <span class="doctool-step-badge doctool-step-badge--success">④</span>
+                  <h3 class="doctool-section-title">다운로드</h3>
+                </div>
+                <div class="doctool-step-body">
+                  <div id="doctoolDownloadList" class="doctool-download-list"></div>
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -1319,3 +1345,4 @@
     <script type="module" src="/app.js"></script>
   </body>
 </html>
+>
