@@ -13,6 +13,7 @@ export function initDocTool() {
   const executeBtn = document.getElementById("doctoolExecuteBtn");
   const modeMergeBtn = document.getElementById("docToolModeMergeBtn");
   const modeSplitBtn = document.getElementById("docToolModeSplitBtn");
+  const resetBtn = document.getElementById("docToolResetBtn");
   const dropZoneMsg = document.getElementById("doctoolDropZoneMsg");
   const statusMsg = document.getElementById("doctoolStatusMsg");
   const downloadList = document.getElementById("doctoolDownloadList");
@@ -97,6 +98,40 @@ export function initDocTool() {
 
   // Execute
   executeBtn.addEventListener("click", executeOperation);
+
+  // Reset button
+  resetBtn?.addEventListener("click", () => {
+    selectedFiles = [];
+    if (fileInput) fileInput.value = "";
+    statusMsg.textContent = "";
+    downloadList.innerHTML = "";
+    if (downloadStep) downloadStep.hidden = true;
+    
+    // Clear inputs
+    const inputs = [
+      "doctoolMergeFilename",
+      "doctoolPdfSplitRange",
+      "doctoolTxtSplitRange"
+    ];
+    inputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+
+    // Reset numeric inputs to defaults
+    const chunkInputs = [
+      { id: "doctoolPdfSplitChunk", val: "3" },
+      { id: "doctoolExcelSplitRow", val: "50" },
+      { id: "doctoolTxtSplitChunk", val: "100" }
+    ];
+    chunkInputs.forEach(item => {
+      const el = document.getElementById(item.id);
+      if (el) el.value = item.val;
+    });
+
+    updateFileList();
+    updateUI();
+  });
 
   function handleFiles(files) {
     const validFiles = files.filter(f => {

@@ -129,6 +129,22 @@ and end of a document contributes to concept extraction, not just the leading
 sections. Pass 2 works from the compact concept list, so related concepts
 discovered in different parts of the document can be connected by edges.
 
+### File Tools
+
+```text
+right Studio panel — 파일도구 card button
+-> user selects "병합" (Merge) or "분할" (Split) tab
+-> user drags/adds PDF, XLSX, or TXT files
+-> 병합 (Merge):
+     combines multiple files of the same type into one
+     (PDF uses pdf-lib, XLSX uses sheetjs)
+-> 분할 (Split):
+     splits a single file into multiple parts by page range or chunk size
+-> browser generates a Blob and starts the download
+```
+
+This tool is entirely client-side to ensure maximum privacy for sensitive documents. No file content is sent to the server for merging or splitting operations.
+
 ### Naver Search
 
 ```text
@@ -312,6 +328,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, and chat-triggered calendar intent helpers.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
+- `public/modules/docTool.js` - Studio File Tool: client-side PDF/XLSX/TXT merging and splitting, drag-and-drop file queue, and reset handling.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.

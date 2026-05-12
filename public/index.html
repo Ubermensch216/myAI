@@ -323,6 +323,8 @@
             <div class="law-mode-tabs" role="tablist">
               <button id="docToolModeMergeBtn" class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-mode="merge">병합</button>
               <button id="docToolModeSplitBtn" class="law-mode-tab" type="button" role="tab" aria-selected="false" data-mode="split">분할</button>
+              <div class="doctool-tab-sep"></div>
+              <button id="docToolResetBtn" class="law-mode-tab doctool-reset-tab-btn" type="button" title="초기화" aria-label="초기화">↺</button>
             </div>
 
             <div class="doctool-flow">
@@ -330,7 +332,9 @@
               <!-- ① 파일 선택 -->
               <div class="doctool-step" data-step="1">
                 <div class="doctool-step-header">
-                  <span class="doctool-step-badge">①</span>
+                  <span class="doctool-step-badge">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;"><path d="M4 2h5l3 3v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M9 2v3h3"/></svg>
+                  </span>
                   <h3 class="doctool-section-title">파일 선택</h3>
                 </div>
                 <div class="doctool-step-body">
@@ -353,7 +357,9 @@
               <!-- ② 옵션 설정 -->
               <div class="doctool-step" data-step="2">
                 <div class="doctool-step-header">
-                  <span class="doctool-step-badge">②</span>
+                  <span class="doctool-step-badge">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" style="width:13px;height:13px;"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="6" cy="4" r="1.5" fill="currentColor" stroke="none"/><circle cx="10" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+                  </span>
                   <h3 class="doctool-section-title">옵션 설정 <span class="doctool-step-optional">(선택)</span></h3>
                 </div>
                 <div class="doctool-step-body">
@@ -377,8 +383,8 @@
                     <div id="doctoolPdfSplitOptions" class="field" style="display:none;">
                       <label class="field-label">PDF 분할 방식</label>
                       <select id="doctoolPdfSplitType" class="text-input">
-                        <option value="range">나눌 페이지 지정</option>
-                        <option value="chunk">파일 당 페이지 수</option>
+                        <option value="range">분할할 페이지(범위) 지정</option>
+                        <option value="chunk">(분할)파일의 페이지 수</option>
                       </select>
                       <input type="text" id="doctoolPdfSplitRange" class="text-input" placeholder="예: 1-3, 5, 7-10" style="margin-top:8px;" />
                       <input type="number" id="doctoolPdfSplitChunk" class="text-input" placeholder="분할 페이지 분량 (예: 3)" min="1" value="3" style="display:none;margin-top:8px;" />
@@ -394,8 +400,8 @@
                     <div id="doctoolTxtSplitOptions" class="field" style="display:none;">
                       <label class="field-label">TXT 분할 방식</label>
                       <select id="doctoolTxtSplitType" class="text-input">
-                        <option value="range">나눌 라인 지정</option>
-                        <option value="chunk">파일 당 라인 수</option>
+                        <option value="range">분할할 라인(범위) 지정</option>
+                        <option value="chunk">(분할)파일의 라인 수</option>
                       </select>                      <input type="text" id="doctoolTxtSplitRange" class="text-input" placeholder="예: 1-3, 5, 7-10" style="margin-top:8px;" />
                       <input type="number" id="doctoolTxtSplitChunk" class="text-input" placeholder="분할 라인 분량 (예: 100)" min="1" value="100" style="display:none;margin-top:8px;" />
                     </div>
@@ -406,7 +412,9 @@
               <!-- ③ 실행하기 -->
               <div class="doctool-step" data-step="3">
                 <div class="doctool-step-header">
-                  <span class="doctool-step-badge">③</span>
+                  <span class="doctool-step-badge">
+                    <svg viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true" style="width:12px;height:12px;"><path d="M5 3l8 5-8 5V3z"/></svg>
+                  </span>
                   <h3 class="doctool-section-title">실행하기</h3>
                 </div>
                 <div class="doctool-step-body">
@@ -418,7 +426,9 @@
               <!-- ④ 다운로드 — 결과 생성 전까지 hidden -->
               <div id="doctoolDownloadStep" class="doctool-step" data-step="4" hidden>
                 <div class="doctool-step-header">
-                  <span class="doctool-step-badge doctool-step-badge--success">④</span>
+                  <span class="doctool-step-badge doctool-step-badge--success">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 13h10"/></svg>
+                  </span>
                   <h3 class="doctool-section-title">다운로드</h3>
                 </div>
                 <div class="doctool-step-body">
@@ -833,6 +843,15 @@
                     </div>
                   </div>
                   <div class="ai-personalization-divider" aria-hidden="true"></div>
+                  <div class="field">
+                    <label class="field-label" for="customPromptInput">사용자 정의 프롬프트</label>
+                    <textarea
+                      id="customPromptInput"
+                      class="text-input"
+                      rows="4"
+                      placeholder="예: 모든 답변은 한국어로 하고 마지막에 3줄 요약을 포함해줘."
+                    ></textarea>
+                  </div>
                   <div class="field">
                     <label class="field-label" for="responseStyleSelect">기본 스타일 및 말투</label>
                     <select id="responseStyleSelect" class="text-input">
@@ -1345,4 +1364,3 @@
     <script type="module" src="/app.js"></script>
   </body>
 </html>
->

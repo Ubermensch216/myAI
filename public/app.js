@@ -324,7 +324,7 @@ function buildMaterialTreeGroup({ key, title, count, collapsed, children }) {
 
   const caret = document.createElement("span");
   caret.className = "material-tree-caret";
-  caret.textContent = collapsed ? ">" : "v";
+  caret.innerHTML = `<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:10px;height:10px;transition:transform 0.15s;${collapsed ? "" : "transform:rotate(90deg);"}"><path d="M4 2l4 4-4 4"/></svg>`;
   const label = document.createElement("span");
   label.className = "material-tree-label";
   label.textContent = `${title}(${count})`;

@@ -8826,6 +8826,28 @@ body.panel-resizing .panel-resizer::after {
 
 /* ---- DocTool: 단일 흐름 캔버스 ---- */
 
+.doctool-tab-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  margin: 0 4px;
+  align-self: center;
+}
+
+.doctool-reset-tab-btn {
+  font-size: 16px !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.doctool-reset-tab-btn:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)) !important;
+  color: var(--accent-dark) !important;
+}
+
 .doctool-flow {
   display: flex;
   flex-direction: column;
@@ -8868,10 +8890,7 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
   color: var(--muted);
-  line-height: 1;
 }
 
 .doctool-step-badge--success {

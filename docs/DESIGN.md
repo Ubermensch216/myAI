@@ -242,6 +242,26 @@ max-width: 680px; border-radius: 16px; padding: 0;
               └── #lawHistoryViewer         (스냅샷 본문 또는 diff hunks)
 ```
 
+**파일도구**
+```
+.studio-doctool-panel (padding 10/12/12, gap 10)
+  ├── .law-mode-tabs                  (병합/분할 선택 탭 + 초기화 버튼 통합 바)
+  │     ├── #docToolModeMergeBtn      (병합 탭)
+  │     ├── #docToolModeSplitBtn      (분할 탭)
+  │     ├── .doctool-tab-sep          (구분선)
+  │     └── #docToolResetBtn          (초기화 버튼 ↺)
+  └── .doctool-flow                   (도구 실행 영역)
+        ├── .doctool-step [data-step="1"] (파일 선택)
+        │     ├── #doctoolDropZone    (드롭존 + 가이드 메시지)
+        │     └── #doctoolFileList    (파일 목록 + 드래그 정렬)
+        ├── .doctool-step [data-step="2"] (옵션 설정)
+        │     ├── #doctoolMergeOptions (병합 옵션)
+        │     └── #doctoolSplitOptions (분할 옵션 - 파일 타입별 동적 표시)
+        └── .doctool-step [data-step="3"] (실행 및 다운로드)
+              ├── #doctoolExecuteBtn  (실행 버튼)
+              └── #doctoolDownloadStep (결과 다운로드 링크 목록)
+```
+
 조문 이력 모드의 diff hunks (`.law-diff-hunk-{added,removed,modified,unchanged}`)는
 색상으로 변경 종류를 구분하며, `modified` 행은 line-through 처리한 oldText와
 강조 newText를 함께 보여준다. 유사도(%)는 별도 태그로 표시.

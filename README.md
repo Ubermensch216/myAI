@@ -29,7 +29,8 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit blocks and export as HWPX, DOCX, PDF, or MD.
-- Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, and a structured document editor.
+- Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, structured document editor, and file tools (merging/splitting PDF, XLSX, TXT).
+- File Tools for merging multiple files into one or splitting a large file into smaller parts (PDF, XLSX, TXT supported; entirely client-side for privacy).
 - Whole-document or whole-notebook **Precision Analysis** ("정밀 분석") through the Map-Reduce mode. The control is available only when the active room has uploaded documents or a selected department notebook.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
