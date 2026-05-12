@@ -19,6 +19,7 @@ Browser clients
 | Notebook reads | Public until Department Notebook Access Control is configured; then requires group/level or Super access token | Existing local installs keep working, while shared deployments can restrict notebook visibility and RAG by policy. |
 | Notebook writes/admin actions | Protected by `ADMIN_TOKEN` | Use a long random token. Admin manages groups/passwords/policies but is not itself a notebook-read identity for chat. |
 | Personal rooms, uploads, calendar, settings | Encrypted in each browser IndexedDB | Isolation is by browser key, not by server-side accounts. Clearing browser storage deletes the data. |
+| File Tools (Merge/Split) | Entirely client-side (browser) | No file content or metadata is sent to the server. Maximum privacy for sensitive documents. |
 | Upload temp files | Written under `uploads/`, then removed after parse | The server sees personal files during parsing. Keep the host and temp directory private. |
 | Runtime upload cache | In-memory, scoped by `X-MyAI-Document-Key`, TTL/LRU bounded | Convenience hydration cache only; not listable and not durable. |
 | Korean Law Engine | Server-side calls to law.go.kr when explicit legal prompts or `/api/law/*` routes are used | `LAW_OC` stays server-side; only normalized law names/article refs are sent upstream, not full prompts. |

@@ -37,7 +37,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
 - Unified Settings dialog with Personal Settings and an Admin Console tab.
 - Personalized app name, avatars, banner, theme, and built-in or custom 3-color accent palette.
-- Admin Console for department notebooks, access groups/levels, RAG status, and RAG quality (golden-set evaluation).
+- Admin Console for department notebooks, access groups/levels, RAG status, RAG quality (golden-set evaluation), and a usage statistics dashboard.
 
 ## Requirements
 
@@ -282,6 +282,8 @@ server/
   naverSearch.js       Naver Search API integration for explicit search prompts
   law/                 Korean Law Engine config, law.go.kr client, citation verification, time-travel/diff/history, impact map, action_plan template, API routes
   compliance/          department legal-review intent classifier, review-type catalog, compliance prompt builder (drives `department_legal_review` mode)
+  studioDocument/      Studio Document Editor: templates, answer-to-document conversion, document model validation, HWPX/DOCX/PDF/MD export
+  stats/               usage telemetry logger, log reader/aggregator, and Admin Console statistics API
   embeddings.js        Ollama /api/embed helpers
   queryExpansion.js    LLM query expansion
   documentAnalysis.js  document summary/topic extraction
@@ -331,7 +333,10 @@ public/
     notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD
     graphStudio.js     Studio knowledge-graph viewer for selected department notebooks
     ragEval.js         Admin RAG Evaluation panel
+    adminStats.js      Admin Console usage statistics panel (KPI / groups / notebooks / sessions)
     studio.js          Studio panel UI and mind-map SVG renderer
+    documentStudio.js  Studio Document Editor tab: template selection, block editing, export
+    docTool.js         Studio File Tools: client-side PDF/XLSX/TXT merge and split
     settings.js        Personal Settings tab, Admin Console mounting, brand/theme/avatar/banner
   answerRenderer.js
   visualizationRenderer.js
@@ -346,8 +351,9 @@ docs/
   API.md
   RAG.md
   CALENDAR.md
+  KOREAN_LAW_ENGINE.md
+  DESIGN.md
   SECURITY.md
-  KNOWN_ISSUES.md
 ```
 
 ## More Documentation
@@ -359,6 +365,7 @@ docs/
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
+- [Design Guide](docs/DESIGN.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
 
 ## Deployment Model
@@ -376,7 +383,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 The gear button in the main header opens one Settings dialog with two tabs:
 
 - **Personal Settings**: AI name, banner, avatars, theme, and built-in/custom color palette. These settings remain local to the browser's encrypted IndexedDB.
-- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups items by purpose with a thin vertical divider — *operations* (**Department Notebook Management**, **Access Management**) on the left, *RAG visibility* (**RAG Status** / `RAG 현황`, **RAG Quality** / `RAG 품질`) on the right. **RAG Quality** is split into a left-to-right workflow (`골든셋 › 실행 › 결과`) plus a separate `운영 지표` tab.
+- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups items by purpose with a thin vertical divider — *operations* (**Department Notebook Management**, **Access Management**) on the left, *visibility* (**RAG Status** / `RAG 현황`, **RAG Quality** / `RAG 품질`, **통계**) on the right. **RAG Quality** is split into a left-to-right workflow (`골든셋 › 실행 › 결과`) plus a separate `운영 지표` tab. **통계** is a usage dashboard backed by `/api/admin/stats/*` (KPI summary, per-group activity, per-notebook activity, and recent sessions).
 - **Studio graph**: when the selected department notebook has a built graph, the Studio panel can show searchable nodes, relationships, source references, and notebook graph statistics. Normal notebook read-access rules still apply.
 
 The chat composer keeps the main input row focused on four controls: add (`+`),
@@ -427,4 +434,3 @@ to Level 1, 2, or 3 in the same group.
 ## License
 
 Private project. Not yet released under an open-source license.
-pen-source license.

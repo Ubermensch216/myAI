@@ -75,6 +75,13 @@ Server:
 - `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, retrieval-log summaries.
 - `server/parsers.js` - PDF/DOCX/XLSX/CSV/PPTX/HWPX/image parsing and chunking.
 - `server/auth.js` - `ADMIN_TOKEN` middleware.
+- `server/stats/statsLogger.js` - privacy-safe usage telemetry writer (chat/session events).
+- `server/stats/statsLogReader.js` - aggregator for KPI summary, per-group, per-notebook, and recent-session views.
+- `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
+- `server/studioDocument/studioDocumentApi.js` - Studio Document Editor templates / answer-to-document / export routes.
+- `server/studioDocument/answerToDocument.js` - converts assistant answer markdown into template-structured JSON blocks via Ollama.
+- `server/studioDocument/documentModel.js` - document model validation and normalization.
+- `server/studioDocument/documentExport.js` - HWPX/DOCX/PDF/MD exporter for structured Studio documents.
 
 Frontend:
 
@@ -87,8 +94,11 @@ Frontend:
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
 - `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
+- `public/modules/documentStudio.js` - Studio Document Editor tab: template selection, block editing, export.
+- `public/modules/docTool.js` - Studio File Tools: client-side PDF/XLSX/TXT merge and split.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for selected department notebooks.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation UI.
+- `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI / groups / notebooks / sessions).
 - `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color-theme/avatar/banner.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
@@ -104,7 +114,6 @@ Docs:
 - `docs/RAG.md` - dual-profile RAG (personal vs. department), ingest flows, reranker, Map-Reduce.
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
 - `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
-- `docs/KNOWN_ISSUES.md` - constraints and next improvements.
 - `docs/DESIGN.md` - project design policies and UI styling rules.
 - `docs/KOREAN_LAW_ENGINE.md` - native Korean law engine, statute verification, and compliance tools.
 

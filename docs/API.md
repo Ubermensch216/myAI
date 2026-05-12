@@ -793,6 +793,44 @@ Aborts an active run when possible and removes the persisted run record.
 Summarizes privacy-safe retrieval telemetry for the Admin Console RAG
 Evaluation panel.
 
+## Admin Statistics
+
+All endpoints under `/api/admin/stats` require
+`Authorization: Bearer <ADMIN_TOKEN>` and read from privacy-safe usage logs
+under `data/logs/usage-YYYY-MM-DD.jsonl` written by `server/stats/statsLogger.js`.
+The `range` query parameter accepts a `<N>d` form (default `7d`, clamped to
+1–365 days).
+
+### `GET /api/admin/stats/summary?range=7d`
+
+Returns KPI-style aggregates for the requested window:
+
+```js
+{
+  ok: true,
+  range: "7d",
+  kpi: {
+    totalSessions, totalQueries, activeGroups, avgLatencyMs,
+    lawQueries, complianceRuns, studioOpens, studioExports, errorCount
+  }
+}
+```
+
+### `GET /api/admin/stats/groups?range=7d`
+
+Returns per-group activity ranking (group id, query count, session count,
+avg latency).
+
+### `GET /api/admin/stats/notebooks?range=7d`
+
+Returns per-notebook activity ranking (notebook id, query count, citation
+count, last activity).
+
+### `GET /api/admin/stats/sessions?range=7d&page=1&pageSize=50`
+
+Returns a paginated list of recent sessions with query count, total
+latency, and first/last timestamps. `pageSize` is clamped to 1–200.
+
 ## Admin Knowledge Graph
 
 All endpoints under `/api/admin/graph` require

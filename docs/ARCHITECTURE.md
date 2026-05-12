@@ -284,6 +284,9 @@ The LLM does not directly mutate calendar data.
 - `server/graphStudioApi.js` - Studio knowledge-graph endpoints for notebooks the current reader can access.
 - `server/graphAdminApi.js` - Admin knowledge-graph inspection, source-reference, enable/disable override, and rebuild endpoints.
 - `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, and retrieval-log summaries.
+- `server/stats/statsLogger.js` - privacy-safe usage telemetry writer (chat/session events) under `data/logs/usage-YYYY-MM-DD.jsonl`.
+- `server/stats/statsLogReader.js` - aggregates KPI summary, per-group, per-notebook, and recent-session views from usage logs.
+- `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
@@ -330,6 +333,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
 - `public/modules/docTool.js` - Studio File Tool: client-side PDF/XLSX/TXT merging and splitting, drag-and-drop file queue, and reset handling.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.
+- `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI cards, per-group/per-notebook activity, recent sessions).
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.
 
