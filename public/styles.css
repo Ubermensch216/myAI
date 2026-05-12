@@ -8743,6 +8743,7 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
 .doctool-section-title {
