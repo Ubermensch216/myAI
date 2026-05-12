@@ -18,7 +18,7 @@ const REQUEST_MAX_BYTES = 8 * 1024 * 1024;
 // Module-level interactive map state (preserved across redraws)
 let _map = null;
 let _evBound = false;
-let _activeTool = "mindmap";
+let _activeTool = "document";
 let _mindmapAbortController = null;
 let _lawExplorerAbortController = null;
 let _lawHistoryAbortController = null;
@@ -43,6 +43,8 @@ export function bindStudioEvents() {
   elements.studioLawRailButton?.addEventListener("click", () => setActiveTool("law"));
   elements.studioDocumentButton?.addEventListener("click", () => setActiveTool("document"));
   elements.studioDocumentRailButton?.addEventListener("click", () => setActiveTool("document"));
+  document.getElementById("studioDocToolButton")?.addEventListener("click", () => setActiveTool("doctool"));
+  document.getElementById("studioDocToolRailButton")?.addEventListener("click", () => setActiveTool("doctool"));
   elements.lawExplorerRunButton?.addEventListener("click", () => {
     if (_lawExplorerAbortController) {
       _lawExplorerAbortController.abort();
@@ -90,23 +92,29 @@ function syncLawHistoryInput(field) {
 }
 
 function setActiveTool(tool) {
-  if (tool !== "mindmap" && tool !== "graph" && tool !== "law" && tool !== "document") return;
+  if (tool !== "mindmap" && tool !== "graph" && tool !== "law" && tool !== "document" && tool !== "doctool") return;
   _activeTool = tool;
   if (elements.studioContent) elements.studioContent.dataset.activeTool = tool;
   elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
   elements.studioGraphButton?.classList.toggle("is-active", tool === "graph");
   elements.studioLawButton?.classList.toggle("is-active", tool === "law");
   elements.studioDocumentButton?.classList.toggle("is-active", tool === "document");
+  document.getElementById("studioDocToolButton")?.classList.toggle("is-active", tool === "doctool");
+  
   if (elements.studioMindmapPanel) elements.studioMindmapPanel.hidden = tool !== "mindmap";
   if (elements.studioGraphPanel) elements.studioGraphPanel.hidden = tool !== "graph";
   if (elements.studioLawPanel) elements.studioLawPanel.hidden = tool !== "law";
   if (elements.studioDocumentPanel) elements.studioDocumentPanel.hidden = tool !== "document";
+  const docToolPanel = document.getElementById("studioDocToolPanel");
+  if (docToolPanel) docToolPanel.hidden = tool !== "doctool";
+
   if (tool === "graph") {
     showStudioGraphPanel().catch(() => { /* errors logged inside module */ });
   } else {
     hideStudioGraphPanel();
     if (tool === "law") renderLawExplorer();
     else if (tool === "document") renderDocumentStudio();
+    else if (tool === "doctool") { /* initialized via app.js, nothing to render */ }
     else renderStudio();
   }
 }

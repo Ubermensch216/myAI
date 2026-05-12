@@ -160,7 +160,7 @@ export const state = {
   },
   layout: { ...DEFAULT_LAYOUT },
   studio: {
-    selectedTool: "mindmap"
+    selectedTool: "document"
   },
   documentTemplates: {
     personal: []
@@ -212,6 +212,7 @@ export const elements = {
   attachMenu: document.querySelector("#attachMenu"),
   attachFromDeviceButton: document.querySelector("#attachFromDeviceButton"),
   dropOverlay: document.querySelector("#dropOverlay"),
+  chatArea: document.querySelector(".chat-area"),
   faviconLink: document.querySelector("#faviconLink"),
   appNameText: document.querySelector("#appNameText"),
   appBannerImg: document.querySelector("#appBannerImg"),

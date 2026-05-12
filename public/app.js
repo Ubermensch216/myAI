@@ -24,6 +24,7 @@ import {
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
 import { bindStudioEvents, renderStudio } from "./modules/studio.js";
+import { initDocTool } from "./modules/docTool.js";
 
 let titleTimer = null;
 let dragDepth = 0;
@@ -633,6 +634,7 @@ function bindEvents() {
   bindSettingsEvents();
   bindLayoutEvents();
   bindStudioEvents();
+  initDocTool();
 
   // File input / attach menu
   elements.fileInput.addEventListener("change", async (event) => {
@@ -699,36 +701,45 @@ function bindEvents() {
     closeCalendarSettingsMenu();
   });
 
-  // Drag & drop
-  window.addEventListener("dragenter", (event) => {
-    if (!hasDraggedFiles(event)) return;
-    if (isAdminDialogOpen()) return;
-    event.preventDefault();
-    dragDepth += 1;
-    showDropOverlay();
-  });
+  // Drag & drop — scoped to the chat area only
+  const dropZone = elements.chatArea;
+  if (dropZone) {
+    dropZone.addEventListener("dragenter", (event) => {
+      if (!hasDraggedFiles(event)) return;
+      if (isAdminDialogOpen()) return;
+      event.preventDefault();
+      dragDepth += 1;
+      showDropOverlay();
+    });
+    dropZone.addEventListener("dragover", (event) => {
+      if (!hasDraggedFiles(event)) return;
+      if (isAdminDialogOpen()) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    });
+    dropZone.addEventListener("dragleave", (event) => {
+      if (!hasDraggedFiles(event)) return;
+      if (isAdminDialogOpen()) { dragDepth = 0; hideDropOverlay(); return; }
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) hideDropOverlay();
+    });
+    dropZone.addEventListener("drop", async (event) => {
+      if (!hasDraggedFiles(event)) return;
+      if (isAdminDialogOpen()) { event.preventDefault(); dragDepth = 0; hideDropOverlay(); return; }
+      event.preventDefault();
+      dragDepth = 0;
+      hideDropOverlay();
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      await uploadFiles(files);
+    });
+  }
+
+  // Prevent the browser from navigating to a file dropped outside the chat area
   window.addEventListener("dragover", (event) => {
-    if (!hasDraggedFiles(event)) return;
-    if (isAdminDialogOpen()) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    showDropOverlay();
+    if (hasDraggedFiles(event)) event.preventDefault();
   });
-  window.addEventListener("dragleave", (event) => {
-    if (!hasDraggedFiles(event)) return;
-    if (isAdminDialogOpen()) { dragDepth = 0; hideDropOverlay(); return; }
-    event.preventDefault();
-    dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0) hideDropOverlay();
-  });
-  window.addEventListener("drop", async (event) => {
-    if (!hasDraggedFiles(event)) return;
-    if (isAdminDialogOpen()) { event.preventDefault(); dragDepth = 0; hideDropOverlay(); return; }
-    event.preventDefault();
-    dragDepth = 0;
-    hideDropOverlay();
-    const files = Array.from(event.dataTransfer?.files ?? []);
-    await uploadFiles(files);
+  window.addEventListener("drop", (event) => {
+    if (hasDraggedFiles(event)) event.preventDefault();
   });
 
   // Paste images
