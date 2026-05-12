@@ -136,6 +136,7 @@ export function initDocTool() {
       fileInfo.errorMessage = "파일 로드 실패";
     }
     updateFileList();
+    updateUI();
   }
 
   function updateFileList() {
@@ -337,36 +338,44 @@ export function initDocTool() {
     const baseName = fileInfo.name.substring(0, fileInfo.name.lastIndexOf('.'));
     
     if (fileInfo.type === 'pdf') {
+      if (typeof window.PDFLib === 'undefined') throw new Error("PDF 라이브러리가 로드되지 않았습니다.");
       const type = document.getElementById("doctoolPdfSplitType").value;
+      
       if (type === 'chunk') {
-         const chunk = parseInt(document.getElementById("doctoolPdfSplitChunk").value) || 3;
+         const chunkVal = document.getElementById("doctoolPdfSplitChunk").value;
+         const chunk = Math.max(1, parseInt(chunkVal) || 1);
          const totalChunks = Math.ceil(fileInfo.pageCount / chunk);
+         
          for (let i = 0; i < totalChunks; i++) {
-            const start = i * chunk + 1;
+            const start = i * chunk;
             const end = Math.min((i + 1) * chunk, fileInfo.pageCount);
             const newPdf = await window.PDFLib.PDFDocument.create();
-            const indices = Array.from({length: end - start + 1}, (_, k) => start - 1 + k);
+            
+            // Generate zero-based indices
+            const indices = [];
+            for (let k = start; k < end; k++) indices.push(k);
+            
             const pages = await newPdf.copyPages(fileInfo.pdfDoc, indices);
             pages.forEach(p => newPdf.addPage(p));
             const bytes = await newPdf.save();
-            addDownload(bytes, `${baseName}_part${i+1}.pdf`, "application/pdf");
+            addDownload(bytes, `${baseName}_part${i+1}_p${start+1}-${end}.pdf`, "application/pdf");
          }
       } else {
          const rangeStr = document.getElementById("doctoolPdfSplitRange").value;
          if (!rangeStr) throw new Error("분할 범위를 입력하세요.");
          const ranges = parseRange(rangeStr, fileInfo.pageCount);
          const newPdf = await window.PDFLib.PDFDocument.create();
-         for (const p of ranges) {
-           if (p > 0 && p <= fileInfo.pageCount) {
-             const [page] = await newPdf.copyPages(fileInfo.pdfDoc, [p - 1]);
-             newPdf.addPage(page);
-           }
-         }
+         const indices = ranges.filter(p => p > 0 && p <= fileInfo.pageCount).map(p => p - 1);
+         if (indices.length === 0) throw new Error("유효한 페이지 범위가 없습니다.");
+         
+         const pages = await newPdf.copyPages(fileInfo.pdfDoc, indices);
+         pages.forEach(p => newPdf.addPage(p));
          const bytes = await newPdf.save();
          addDownload(bytes, `${baseName}_split.pdf`, "application/pdf");
       }
       showStatus("PDF 분할 완료", "success");
     } else if (fileInfo.type === 'xlsx') {
+      if (typeof window.XLSX === 'undefined') throw new Error("Excel 라이브러리가 로드되지 않았습니다.");
       const type = document.getElementById("doctoolExcelSplitType").value;
       if (type === 'sheet') {
          fileInfo.workbook.SheetNames.forEach((name, i) => {
@@ -376,7 +385,8 @@ export function initDocTool() {
            addDownload(new Uint8Array(wbout), `${baseName}_${name}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
          });
       } else {
-         const chunk = parseInt(document.getElementById("doctoolExcelSplitRow").value) || 50;
+         const chunkVal = document.getElementById("doctoolExcelSplitRow").value;
+         const chunk = Math.max(1, parseInt(chunkVal) || 50);
          const sheet = fileInfo.workbook.Sheets[fileInfo.workbook.SheetNames[0]];
          const json = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
          if (json.length <= 1) throw new Error("데이터가 부족합니다.");
@@ -393,12 +403,23 @@ export function initDocTool() {
       }
       showStatus("Excel 분할 완료", "success");
     } else if (fileInfo.type === 'txt') {
+      const type = document.getElementById("doctoolTxtSplitType").value;
       const lines = fileInfo.content.split('\n');
-      const chunk = parseInt(document.getElementById("doctoolTxtSplitChunk").value) || 100;
-      const chunks = Math.ceil(lines.length / chunk);
-      for (let i=0; i<chunks; i++) {
-         const part = lines.slice(i*chunk, (i+1)*chunk).join('\n');
-         addDownload(part, `${baseName}_part${i+1}.txt`, "text/plain");
+      
+      if (type === 'chunk') {
+         const chunkVal = document.getElementById("doctoolTxtSplitChunk").value;
+         const chunk = Math.max(1, parseInt(chunkVal) || 100);
+         const chunks = Math.ceil(lines.length / chunk);
+         for (let i=0; i<chunks; i++) {
+            const part = lines.slice(i*chunk, (i+1)*chunk).join('\n');
+            addDownload(part, `${baseName}_part${i+1}.txt`, "text/plain");
+         }
+      } else {
+         const rangeStr = document.getElementById("doctoolTxtSplitRange").value;
+         if (!rangeStr) throw new Error("분할 범위를 입력하세요.");
+         const ranges = parseRange(rangeStr, lines.length);
+         const part = ranges.filter(p => p > 0 && p <= lines.length).map(p => lines[p-1]).join('\n');
+         addDownload(part, `${baseName}_split.txt`, "text/plain");
       }
       showStatus("텍스트 분할 완료", "success");
     }
