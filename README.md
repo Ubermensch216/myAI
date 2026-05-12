@@ -35,7 +35,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
 - Unified Settings dialog with Personal Settings and an Admin Console tab.
-- Personalized app name, avatars, banner, theme, built-in or custom 3-color accent palette, and custom prompt.
+- Personalized app name, avatars, banner, theme, and built-in or custom 3-color accent palette.
 - Admin Console for department notebooks, access groups/levels, RAG status, and RAG quality (golden-set evaluation).
 
 ## Requirements
@@ -359,7 +359,6 @@ docs/
 - [Calendar](docs/CALENDAR.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
-- [Known Issues](docs/KNOWN_ISSUES.md)
 
 ## Deployment Model
 
@@ -375,7 +374,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 
 The gear button in the main header opens one Settings dialog with two tabs:
 
-- **Personal Settings**: app name, banner, system/user avatars, theme, built-in/custom color palette, and custom prompt. These settings remain local to the browser's encrypted IndexedDB.
+- **Personal Settings**: AI name, banner, avatars, theme, and built-in/custom color palette. These settings remain local to the browser's encrypted IndexedDB.
 - **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups items by purpose with a thin vertical divider — *operations* (**Department Notebook Management**, **Access Management**) on the left, *RAG visibility* (**RAG Status** / `RAG 현황`, **RAG Quality** / `RAG 품질`) on the right. **RAG Quality** is split into a left-to-right workflow (`골든셋 › 실행 › 결과`) plus a separate `운영 지표` tab.
 - **Studio graph**: when the selected department notebook has a built graph, the Studio panel can show searchable nodes, relationships, source references, and notebook graph statistics. Normal notebook read-access rules still apply.
 
@@ -427,3 +426,4 @@ to Level 1, 2, or 3 in the same group.
 ## License
 
 Private project. Not yet released under an open-source license.
+pen-source license.
