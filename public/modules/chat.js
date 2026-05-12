@@ -1557,7 +1557,7 @@ function buildProcessingSteps(options = {}) {
   const images = getActiveDocuments().filter((f) => f.kind === "image");
   if (documents.length) steps.push(`문서 컨텍스트 구성: ${documents.map(fmt).join(", ")}`);
   if (images.length) steps.push(`이미지 입력 포함: ${images.map(fmt).join(", ")}`);
-  steps.push("Ollama 스트리밍 응답 수신");
+  steps.push("LLM 스트리밍 응답 수신");
   steps.push("근거 중심 답변 표시");
   if (options.naverSearch) {
     steps.splice(Math.max(2, steps.length - 2), 0, "네이버 검색으로 최신 정보 조회", "검색 결과 정리 및 근거 구성");
