@@ -103,7 +103,7 @@ const exportDoc = {
     { type: "table", columns: ["항목","내용","근거"], rows: [["위탁","보완 필요","[N1]"]] },
     { type: "checklist", items: [{ text: "재위탁 승인", checked: false }] }
   ],
-  citations: { notebook: [{ marker: "[N1]", label: "노트북 문서" }] }
+  citations: { notebook: [{ marker: "[N1]", label: "프로젝트 문서" }] }
 };
 
 for (const format of ["md", "docx", "hwpx", "pdf"]) {

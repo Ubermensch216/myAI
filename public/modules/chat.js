@@ -59,8 +59,8 @@ export function renderDeepAnalysisToggle() {
     elements.deepAnalysisToggle.setAttribute("aria-pressed", state.deepAnalysisEnabled ? "true" : "false");
     elements.deepAnalysisToggle.setAttribute("aria-label", available ? "정밀 분석" : "정밀 분석 사용 불가");
     elements.deepAnalysisToggle.title = available
-      ? "첨부 파일 또는 부서노트북 전체를 정밀 분석합니다 (시간이 오래 걸림)"
-      : "첨부 파일을 추가하거나 부서노트북을 선택하면 정밀 분석을 사용할 수 있습니다";
+      ? "첨부 파일 또는 프로젝트 전체를 정밀 분석합니다 (시간이 오래 걸림)"
+      : "첨부 파일을 추가하거나 프로젝트을 선택하면 정밀 분석을 사용할 수 있습니다";
   }
 }
 
@@ -1090,7 +1090,7 @@ function isLegalCitation(item) {
 function groupCitationsByType(citations, compliance = null) {
   const internalLabel = compliance?.mode === "department_legal_review" ? "내부 자료" : null;
   const groups = [
-    ["부서노트북", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
+    ["프로젝트", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
     ["법령", (item) => classifyLawCitation(item) === "statute"],
     ["판례", (item) => classifyLawCitation(item) === "precedent"],
     ["법령해석례", (item) => classifyLawCitation(item) === "interpretation"],

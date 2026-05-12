@@ -333,7 +333,7 @@ async function runMapReduceChat({ messages, documents, model, personalization, n
   }
 
   if (!chunks.length) {
-    onChunk(`${userTitle}, 분석할 자료를 먼저 업로드하거나 부서노트북을 선택해 주세요.`);
+    onChunk(`${userTitle}, 분석할 자료를 먼저 업로드하거나 프로젝트을 선택해 주세요.`);
     return;
   }
 
@@ -344,7 +344,7 @@ async function runMapReduceChat({ messages, documents, model, personalization, n
     progressLineActive = true;
   };
 
-  emitProgress(`총 ${chunks.length}청크. ${notebookSummary ? `노트북 "${notebookSummary.name}"` : "첨부 파일"} 전체를 Map-Reduce로 분석합니다.`);
+  emitProgress(`총 ${chunks.length}청크. ${notebookSummary ? `프로젝트 "${notebookSummary.name}"` : "첨부 파일"} 전체를 Map-Reduce로 분석합니다.`);
 
   let reduceStarted = false;
   const directive = [
@@ -791,12 +791,12 @@ async function buildMessages(messages, documents, personalization, notebookConte
 
   if (notebook) {
     systemParts.push(
-      `이 대화는 부서노트북 "${notebook.name}"을(를) 지식 기반으로 사용한다. (RAG 모드)`,
-      "노트북 컨텍스트와 사용자 첨부 파일이 유일한 답변 자료다. 이 두 자료 외부의 일반 지식이나 추측은 절대 사용하지 마라.",
-      "자료에서 답을 찾을 수 없거나 자료가 부족하면 정확히 다음과 같이만 답해라: \"해당 노트북에서 관련 정보를 찾을 수 없습니다.\"",
+      `이 대화는 프로젝트 "${notebook.name}"을(를) 지식 기반으로 사용한다. (RAG 모드)`,
+      "프로젝트 컨텍스트와 사용자 첨부 파일이 유일한 답변 자료다. 이 두 자료 외부의 일반 지식이나 추측은 절대 사용하지 마라.",
+      "자료에서 답을 찾을 수 없거나 자료가 부족하면 정확히 다음과 같이만 답해라: \"해당 프로젝트에서 관련 정보를 찾을 수 없습니다.\"",
       "자료에서 부분적으로만 답할 수 있으면 알 수 있는 범위만 답하고, 모르는 부분은 모른다고 명시하라.",
-      "답변 본문에 [1], [2]처럼 노트북 컨텍스트 블록의 출처 번호를 인라인으로 인용하라. 동일 출처를 여러 번 인용해도 좋다.",
-      "출처 번호는 아래 [노트북 컨텍스트] 블록에 있는 번호만 사용하라. 새 번호를 만들지 마라.",
+      "답변 본문에 [1], [2]처럼 프로젝트 컨텍스트 블록의 출처 번호를 인라인으로 인용하라. 동일 출처를 여러 번 인용해도 좋다.",
+      "출처 번호는 아래 [프로젝트 컨텍스트] 블록에 있는 번호만 사용하라. 새 번호를 만들지 마라.",
       "사용자의 첨부 파일에서 인용할 때는 별도 번호 대신 파일명과 페이지/시트를 자연스럽게 적어라."
     );
   }
@@ -881,11 +881,11 @@ async function buildMessages(messages, documents, personalization, notebookConte
         return `[${chunk.citationId}] (출처: ${chunk.documentName}${locator})\n${chunk.text}`;
       })
       .join("\n\n");
-    const header = `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 사용자 질문과 가장 관련 있는 ${notebookChunks.length}개 청크입니다. 답변에 [N] 형식으로 인용하세요.`;
+    const header = `[프로젝트 컨텍스트] 프로젝트 "${notebook.name}"에서 사용자 질문과 가장 관련 있는 ${notebookChunks.length}개 청크입니다. 답변에 [N] 형식으로 인용하세요.`;
     systemSegments.push([header, summaryBlock, notebookBlock].filter(Boolean).join("\n\n"));
   } else if (notebook) {
     systemSegments.push(
-      `[노트북 컨텍스트] 부서노트북 "${notebook.name}"에서 이 질문과 관련된 자료를 찾지 못했습니다. "해당 노트북에서 관련 정보를 찾을 수 없습니다."라고만 답하세요.`
+      `[프로젝트 컨텍스트] 프로젝트 "${notebook.name}"에서 이 질문과 관련된 자료를 찾지 못했습니다. "해당 프로젝트에서 관련 정보를 찾을 수 없습니다."라고만 답하세요.`
     );
   }
 

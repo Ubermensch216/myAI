@@ -318,7 +318,7 @@ material tree:
 
 ```text
 자료(n개)
-|- 부서노트북(0/1)
+|- 프로젝트(0/1)
 |  |- selected notebook name
 |- 첨부(n)
 |  |- uploaded file name

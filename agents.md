@@ -220,7 +220,7 @@ unchanged.
 - `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
 - Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only cache; empty after server restart.
 - `/api/chat` receives active documents in the JSON body. The browser warns on large uploads, shows room/material status, and preflights chat payload size before sending.
-- The composer material panel is the single detailed UI for active materials. It shows a collapsible tree where `자료(n개)` contains separate `부서노트북(0/1)` and `첨부(n)` groups, and each group lists only item names below it. The room list should show only compact state icons for attachment/notebook presence, not duplicate file lists.
+- The composer material panel is the single detailed UI for active materials. It shows a collapsible tree where `자료(n개)` contains separate `프로젝트(0/1)` and `첨부(n)` groups, and each group lists only item names below it. The room list should show only compact state icons for attachment/notebook presence, not duplicate file lists.
 - Studio mind maps also use active room uploaded document payloads. They do not use Naver Search or department notebook RAG.
 - Department notebook knowledge graphs are optional server-side notebook indexes. They are distinct from uploaded-document Studio mind maps and live as `data/notebooks/<notebookId>/graph.sqlite`.
 - Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects Admin Console management actions only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.

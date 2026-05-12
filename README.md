@@ -386,7 +386,7 @@ and can expand a tree-style panel:
 
 ```text
 자료(3개)
-|- 부서노트북(1)
+|- 프로젝트(1)
 |  |- 공공AI 서비스 지원사업 제안요청서
 |- 첨부(2)
 |  |- 검토 보고.hwpx

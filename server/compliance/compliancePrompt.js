@@ -36,7 +36,7 @@ export function buildComplianceUnavailableMessage(reason) {
     return "공식 법령 조회 설정이 없어 법령 적합성 검토를 완료할 수 없습니다. LAW_OC 설정 후 다시 실행하세요.";
   }
   if (reason === "no_internal_material") {
-    return "검토할 내부 자료가 필요합니다. 부서노트북을 선택하거나 문서를 업로드한 뒤 다시 실행하세요.";
+    return "검토할 내부 자료가 필요합니다. 프로젝트을 선택하거나 문서를 업로드한 뒤 다시 실행하세요.";
   }
   return "법령 적합성 검토를 진행할 수 없습니다. 필요한 내부 자료와 공식 법령 조회 설정을 확인하세요.";
 }

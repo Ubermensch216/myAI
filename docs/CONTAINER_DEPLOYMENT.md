@@ -28,7 +28,7 @@ myAI 컨테이너 스택을 Linux 서버로 옮기는 방법은 크게 두 가�
 | 앱 코드 | Git 저장소 또는 프로젝트 폴더 | 필요 |
 | 앱 이미지 | `myai-app:latest` | 이미지 tar 방식일 때 필요 |
 | Qdrant 벡터 인덱스 | `qdrant-storage`, `qdrant-snapshots` Docker volume | 선택. 없어도 notebook 원본에서 재빌드 가능 |
-| 부서 노트북 원본, SQLite FTS | `myai-data` Docker volume의 `/app/data` | 운영 데이터가 있으면 백업/복원 필요 |
+| 프로젝트 원본, SQLite FTS | `myai-data` Docker volume의 `/app/data` | 운영 데이터가 있으면 백업/복원 필요 |
 | Ollama 모델 | `ollama-data` Docker volume | 보통 서버에서 다시 `ollama pull` |
 | 개인 채팅방, 업로드, 캘린더, 설정 | 각 사용자 브라우저 IndexedDB | 서버로 옮기지 않음 |
 
@@ -38,7 +38,7 @@ myAI 컨테이너 스택을 Linux 서버로 옮기는 방법은 크게 두 가�
 docker compose exec app npm run rag:backup
 ```
 
-백업 파일은 app 컨테이너 안의 `/app/data` 아래에 생기므로, 필요하면 `docker cp`로 호스트에 꺼낸 뒤 서버로 옮깁니다. Qdrant 볼륨 자체를 옮기지 않는 경우에도 `myai-data` 안의 부서 노트북 원본만 있으면 인덱스는 재생성할 수 있습니다.
+백업 파일은 app 컨테이너 안의 `/app/data` 아래에 생기므로, 필요하면 `docker cp`로 호스트에 꺼낸 뒤 서버로 옮깁니다. Qdrant 볼륨 자체를 옮기지 않는 경우에도 `myai-data` 안의 프로젝트 원본만 있으면 인덱스는 재생성할 수 있습니다.
 
 ## Linux 서버 준비
 
@@ -365,9 +365,9 @@ curl -s http://127.0.0.1:3000/api/status
 
 ## 운영 데이터 이전
 
-처음 배포가 아니라 기존 부서 노트북과 인덱스를 옮겨야 한다면, app 데이터와 Qdrant 데이터를 구분해서 생각합니다.
+처음 배포가 아니라 기존 프로젝트과 인덱스를 옮겨야 한다면, app 데이터와 Qdrant 데이터를 구분해서 생각합니다.
 
-### 권장: 부서 노트북 원본을 옮기고 인덱스 재빌드
+### 권장: 프로젝트 원본을 옮기고 인덱스 재빌드
 
 이 방식은 가장 안전합니다. Qdrant 내부 파일 형식이나 버전에 덜 민감합니다.
 
@@ -441,8 +441,8 @@ docker compose exec app npm run rag:check
 - `http://<linux-server-ip>:3000` 접속
 - 일반 채팅 응답
 - 파일 업로드 후 요약/질의
-- 부서 노트북 목록 조회
-- 부서 노트북 검색과 citation 표시
+- 프로젝트 목록 조회
+- 프로젝트 검색과 citation 표시
 - Admin Console 진입
 
 문제가 생길 때 가장 먼저 볼 곳:
@@ -460,7 +460,7 @@ docker compose logs -f qdrant
 | 브라우저에서 접속 불가 | `MYAI_BIND_ADDR=0.0.0.0`, 방화벽 `3000/tcp`, 서버 보안그룹 |
 | `/api/status`에서 Ollama 실패 | `docker compose ps`, `docker compose exec ollama ollama list`, 모델 pull 여부 |
 | Qdrant 인증 실패 | `.env`의 `QDRANT_API_KEY`와 compose 환경값 일치 여부 |
-| 노트북 검색 결과 없음 | `rag:rebuild`, `rag:check`, notebook 원본 복원 여부 |
+| 프로젝트 검색 결과 없음 | `rag:rebuild`, `rag:check`, notebook 원본 복원 여부 |
 | GPU를 못 씀 | NVIDIA driver, NVIDIA Container Toolkit, `deploy/docker-compose.gpu.yml` 사용 여부 |
 
 ## First Run

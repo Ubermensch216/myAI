@@ -215,8 +215,8 @@ export async function getNotebook(notebookId) {
 
 export async function createNotebook({ name, description }) {
   const cleanName = String(name ?? "").trim();
-  if (!cleanName) throw new Error("노트북 이름이 필요합니다.");
-  if (cleanName.length > 80) throw new Error("노트북 이름은 80자 이내여야 합니다.");
+  if (!cleanName) throw new Error("프로젝트 이름이 필요합니다.");
+  if (cleanName.length > 80) throw new Error("프로젝트 이름은 80자 이내여야 합니다.");
 
   const cleanDescription = String(description ?? "").trim().slice(0, 400);
   const now = new Date().toISOString();
@@ -242,8 +242,8 @@ export async function updateNotebook(notebookId, { name, description }) {
 
   if (typeof name === "string") {
     const cleanName = name.trim();
-    if (!cleanName) throw new Error("노트북 이름이 필요합니다.");
-    if (cleanName.length > 80) throw new Error("노트북 이름은 80자 이내여야 합니다.");
+    if (!cleanName) throw new Error("프로젝트 이름이 필요합니다.");
+    if (cleanName.length > 80) throw new Error("프로젝트 이름은 80자 이내여야 합니다.");
     manifest.name = cleanName;
   }
   if (typeof description === "string") {
@@ -319,9 +319,9 @@ async function ingestEmbeddingsBatched(chunks, expectedDim, onBatchDone = null) 
 
 export async function addNotebookDocument(notebookId, parsedDocument, onProgress = null) {
   const manifest = await readManifest(notebookId);
-  if (!manifest) throw new Error("노트북을 찾을 수 없습니다.");
+  if (!manifest) throw new Error("프로젝트를 찾을 수 없습니다.");
   if (!parsedDocument || parsedDocument.kind !== "document") {
-    throw new Error("이미지가 아닌 문서 파일만 노트북에 추가할 수 있습니다.");
+    throw new Error("이미지가 아닌 문서 파일만 프로젝트에 추가할 수 있습니다.");
   }
 
   const id = generateId("doc");
@@ -341,7 +341,7 @@ export async function addNotebookDocument(notebookId, parsedDocument, onProgress
     manifest.embedding.dim !== ingestResult.dim
   ) {
     throw new Error(
-      `임베딩 차원 불일치: 노트북=${manifest.embedding.dim}, 새 문서=${ingestResult.dim}. 동일한 임베딩 모델을 사용하세요.`
+      `임베딩 차원 불일치: 프로젝트=${manifest.embedding.dim}, 새 문서=${ingestResult.dim}. 동일한 임베딩 모델을 사용하세요.`
     );
   }
 

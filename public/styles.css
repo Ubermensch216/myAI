@@ -5623,7 +5623,8 @@ body.panel-resizing .panel-resizer::after {
 .admin-workspace[data-panel="status"],
 .admin-workspace[data-panel="access"],
 .admin-workspace[data-panel="ragEval"],
-.admin-workspace[data-panel="graph"] {
+.admin-workspace[data-panel="graph"],
+.admin-workspace[data-panel="stats"] {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -8919,4 +8920,236 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* ===== Admin Stats Panel ===== */
+
+.admin-stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  flex: 1;
+  padding: 0;
+}
+
+.admin-stats-panel .admin-status-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-status-panel-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.stats-range-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stats-range-select {
+  width: auto;
+  min-width: 100px;
+}
+
+.stats-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stats-loading,
+.stats-error {
+  padding: 20px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.stats-error {
+  color: var(--danger, #dc2626);
+}
+
+.stats-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.stats-kpi-card {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.stats-kpi-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.stats-kpi-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stats-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.stats-strategic-kpis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stats-strategic-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+
+.stats-strategic-label {
+  width: 148px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.stats-strategic-bar-track {
+  flex: 1;
+  height: 10px;
+  background: var(--surface-2);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.stats-strategic-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.stats-strategic-value {
+  width: 52px;
+  text-align: right;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.stats-feature-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.stats-feature-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+
+.stats-feature-label {
+  width: 148px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.stats-feature-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stats-feature-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.stats-feature-count {
+  width: 44px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.stats-chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.stats-chart-wrap svg {
+  min-width: 320px;
+}
+
+.stats-table-wrap {
+  overflow-x: auto;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 7px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.stats-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.stats-session-id {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.stats-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stats-pager-info {
+  font-size: 0.82rem;
+  color: var(--muted);
 }

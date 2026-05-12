@@ -49,6 +49,8 @@ import { ragEvalRouter } from "./ragEvalApi.js";
 import { graphAdminRouter } from "./graphAdminApi.js";
 import { graphStudioRouter } from "./graphStudioApi.js";
 import { studioDocumentRouter } from "./studioDocument/studioDocumentApi.js";
+import { statsApiRouter } from "./stats/statsApi.js";
+import { logUsageEvent } from "./stats/statsLogger.js";
 import {
   canAccessNotebook,
   getAccessConfiguration,
@@ -361,7 +363,9 @@ app.post("/api/chat", async (request, response) => {
 
   const chatAbort = createRequestAbortController(request, response);
   const signal = chatAbort.signal;
+  const chatStart = Date.now();
   let pendingMeta = null;
+  let chatErrored = false;
   const writeHeadOnce = () => {
     if (response.headersSent) return;
     const headers = {
@@ -489,11 +493,31 @@ app.post("/api/chat", async (request, response) => {
     writeHeadOnce();
     response.end();
   } catch (error) {
+    chatErrored = true;
     if (signal.aborted || response.destroyed) return;
     writeHeadOnce();
     response.write(`\n\n[?ㅻ쪟] ${error.message}`);
     response.end();
   } finally {
+    if (!signal.aborted) {
+      logUsageEvent({
+        rawToken: String(request.headers?.authorization || "").replace(/^Bearer\s+/i, "").trim() || null,
+        eventType: "chat_query",
+        endpoint: "/api/chat",
+        notebookId: notebookId || null,
+        features: {
+          rag: Boolean(notebookId),
+          law: Boolean(pendingMeta?.law?.ok),
+          compliance: Boolean(pendingMeta?.compliance?.ok),
+          kg: false,
+          calendar: false,
+          documentStudio: false
+        },
+        model,
+        latencyMs: Date.now() - chatStart,
+        success: !chatErrored
+      });
+    }
     chatAbort.cleanup();
   }
 });
@@ -601,6 +625,13 @@ app.post("/api/access/login", async (request, response) => {
       return;
     }
     response.json({ ok: true, ...result });
+    logUsageEvent({
+      groupId: result.access?.groupId || "anon",
+      level: result.access?.level != null ? `L${result.access.level}` : "anon",
+      eventType: "login",
+      endpoint: "/api/access/login",
+      success: true
+    });
   } catch (error) {
     response.status(400).json({ ok: false, error: error.message });
   }
@@ -608,6 +639,7 @@ app.post("/api/access/login", async (request, response) => {
 
 app.post("/api/access/logout", (_request, response) => {
   response.json({ ok: true });
+  logUsageEvent({ eventType: "logout", endpoint: "/api/access/logout", success: true });
 });
 
 app.get("/api/admin/access/groups", requireAdmin, async (_request, response) => {
@@ -832,6 +864,7 @@ app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
 
 app.use("/api/admin/rag-eval", ragEvalRouter);
 app.use("/api/admin/graph", graphAdminRouter);
+app.use("/api/admin/stats", requireAdmin, statsApiRouter);
 app.use("/api/studio/graph", graphStudioRouter);
 app.use("/api/studio/document", studioDocumentRouter);
 app.use("/api/law", lawApiRouter);

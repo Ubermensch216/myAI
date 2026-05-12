@@ -203,9 +203,9 @@ function renderRooms() {
 
     const notebookIndicator = document.createElement("span");
     notebookIndicator.className = "room-status-indicator room-notebook-indicator";
-    notebookIndicator.title = "부서노트북 있음";
+    notebookIndicator.title = "프로젝트 있음";
     notebookIndicator.setAttribute("role", "img");
-    notebookIndicator.setAttribute("aria-label", "부서노트북 있음");
+    notebookIndicator.setAttribute("aria-label", "프로젝트 있음");
     if (room.selectedNotebookId) {
       notebookIndicator.innerHTML = ROOM_FILE_SVG.notebook;
       indicators.append(notebookIndicator);
@@ -282,7 +282,7 @@ function renderMaterialList({ room, documents, notebook, hasNotebook }) {
   if (hasNotebook) {
     elements.materialList.append(buildMaterialTreeGroup({
       key: "notebook",
-      title: "부서노트북",
+      title: "프로젝트",
       count: 1,
       collapsed: groups.notebook,
       children: [buildNotebookMaterialItem(notebook)]
@@ -343,14 +343,14 @@ function buildNotebookMaterialItem(notebook) {
   const item = document.createElement("button");
   item.type = "button";
   item.className = "material-tree-item material-tree-item-action";
-  item.title = "부서노트북 변경";
+  item.title = "프로젝트 변경";
   item.addEventListener("click", () => openNotebookSelector());
   const icon = document.createElement("span");
   icon.className = "material-tree-icon";
   icon.innerHTML = ROOM_FILE_SVG.notebook;
   const name = document.createElement("span");
   name.className = "material-tree-name";
-  name.textContent = notebook?.name || "부서노트북";
+  name.textContent = notebook?.name || "프로젝트";
   item.append(icon, name);
   return item;
 }

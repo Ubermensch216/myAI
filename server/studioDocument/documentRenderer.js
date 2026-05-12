@@ -3,7 +3,7 @@
 // the DOCX/HWPX/PDF code in exportFiles.js already parses those.
 
 const CITATION_GROUPS = [
-  { key: "notebook", label: "내부 문서/부서노트북" },
+  { key: "notebook", label: "내부 문서/프로젝트" },
   { key: "law", label: "법령" },
   { key: "precedent", label: "판례" },
   { key: "interpretation", label: "해석례" },

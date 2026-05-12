@@ -1,6 +1,7 @@
 import { state, elements, accessAuthHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { bindRagEvalEvents, showAdminRagEvalPanel as activateRagEvalPanel } from "./ragEval.js";
+import { bindStatsEvents, showAdminStatsPanel as activateStatsPanel, hideAdminStatsPanel } from "./adminStats.js";
 
 const ADMIN_TOKEN_SESSION_KEY = "myai_admin_token";
 const ACCESS_TOKEN_SESSION_KEY = "myai_access_token";
@@ -38,7 +39,7 @@ export async function loadNotebooks() {
     renderActiveNotebookUi();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   } catch (error) {
-    console.warn("노트북 목록을 불러오지 못했습니다:", error.message);
+    console.warn("프로젝트 목록을 불러오지 못했습니다:", error.message);
   }
 }
 
@@ -256,7 +257,7 @@ function renderNotebookSelectorList() {
   if (state.notebooks.length === 0) {
     const empty = document.createElement("div");
     empty.className = "notebook-list-empty";
-    empty.textContent = "등록된 부서노트북이 없습니다.";
+    empty.textContent = "등록된 프로젝트이 없습니다.";
     elements.notebookList.append(empty);
     return;
   }
@@ -465,6 +466,7 @@ export function showAdminNewNotebookForm() {
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  hideAdminStatsPanel();
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = false;
@@ -482,7 +484,7 @@ function hideAdminNewNotebookForm() {
 export async function adminCreateNotebook() {
   const name = (elements.adminNewNotebookName?.value ?? "").trim();
   const description = (elements.adminNewNotebookDescription?.value ?? "").trim();
-  if (!name) { alert("노트북 이름을 입력하세요."); return; }
+  if (!name) { alert("프로젝트 이름을 입력하세요."); return; }
   try {
     const response = await fetch("/api/notebooks", {
       method: "POST",
@@ -491,7 +493,7 @@ export async function adminCreateNotebook() {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || "노트북 생성 실패");
+      throw new Error(error.error || "프로젝트 생성 실패");
     }
     const result = await response.json().catch(() => ({}));
     adminUiState.selectedId = result.notebook?.id || null;
@@ -500,14 +502,14 @@ export async function adminCreateNotebook() {
     await refreshAdminNotebooks();
     await loadNotebooks();
   } catch (error) {
-    alert(`노트북 생성 실패: ${error.message}`);
+    alert(`프로젝트 생성 실패: ${error.message}`);
   }
 }
 
 export async function adminDeleteNotebook(notebookId, notebookName) {
   const confirmed = await showConfirmDialog({
-    title: "노트북 삭제",
-    body: `부서노트북 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`,
+    title: "프로젝트 삭제",
+    body: `프로젝트 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`,
     okText: "삭제",
     danger: true
   });
@@ -717,7 +719,7 @@ export async function refreshAdminNotebooks() {
   elements.adminNotebookList.innerHTML = "<div class='admin-list-empty'>불러오는 중...</div>";
   try {
     const listResponse = await fetch("/api/notebooks", { headers: adminAuthHeader() });
-    if (!listResponse.ok) throw new Error("노트북 목록 요청 실패");
+    if (!listResponse.ok) throw new Error("프로젝트 목록 요청 실패");
     const listResult = await listResponse.json();
     const summaries = Array.isArray(listResult.notebooks) ? listResult.notebooks : [];
     const detailed = await Promise.all(
@@ -751,7 +753,7 @@ function renderAdminList() {
   if (!adminUiState.notebooks.length) {
     const empty = document.createElement("div");
     empty.className = "admin-list-empty";
-    empty.textContent = "등록된 노트북이 없습니다.";
+    empty.textContent = "등록된 프로젝트가 없습니다.";
     elements.adminNotebookList.append(empty);
     return;
   }
@@ -768,7 +770,7 @@ function buildAdminListItem(notebook) {
   content.className = "admin-list-item-content";
   const name = document.createElement("span");
   name.className = "admin-list-item-name";
-  name.textContent = notebook.name || "이름 없는 노트북";
+  name.textContent = notebook.name || "이름 없는 프로젝트";
   content.append(name);
   if (notebook.description) {
     const description = document.createElement("span");
@@ -804,6 +806,7 @@ export function renderAdminDetail() {
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  hideAdminStatsPanel();
   const notebook = adminUiState.selectedNotebook;
   const creating = elements.adminNewNotebookForm && !elements.adminNewNotebookForm.hidden;
   if (creating) return;
@@ -950,6 +953,7 @@ function renderAdminConsoleNav() {
   elements.adminStatusButton?.classList.toggle("active", active === "status");
   elements.adminAccessButton?.classList.toggle("active", active === "access");
   elements.adminRagEvalButton?.classList.toggle("active", active === "ragEval");
+  elements.adminStatsButton?.classList.toggle("active", active === "stats");
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.hidden = active !== "status";
   if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.hidden = active !== "access";
   if (elements.adminListPane) elements.adminListPane.hidden = active !== "notebooks";
@@ -989,6 +993,7 @@ export async function showAdminAccessPanel() {
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  hideAdminStatsPanel();
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1239,7 +1244,7 @@ function buildGroupDeleteButton(group) {
   deleteButton.addEventListener("click", () => runAdminAccessTask(async () => {
     const confirmed = await showConfirmDialog({
       title: "접근 그룹 삭제",
-      body: `"${group.name || group.id}" 그룹을 삭제할까요? 노트북 정책에서 같은 그룹 ID도 제거해야 합니다.`,
+      body: `"${group.name || group.id}" 그룹을 삭제할까요? 프로젝트 정책에서 같은 그룹 ID도 제거해야 합니다.`,
       okText: "삭제",
       danger: true
     });
@@ -1271,7 +1276,7 @@ function buildAccessLevelDetailRow(group, level) {
   if (level === 1) {
     const warning = document.createElement("span");
     warning.className = "admin-access-level-warning";
-    warning.textContent = "전체 노트북 접근";
+    warning.textContent = "전체 프로젝트 접근";
     label.append(warning);
   }
 
@@ -1316,7 +1321,7 @@ function buildSuperAccessPanel(superState) {
 
   const warning = document.createElement("div");
   warning.className = "admin-access-super-warning";
-  warning.innerHTML = "<strong>Super 권한 주의</strong><span>Super 비밀번호는 그룹과 등급을 우회해 모든 부서노트북에 접근할 수 있습니다. 운영자 비상 접근이나 점검 용도로만 제한해서 사용하세요.</span>";
+  warning.innerHTML = "<strong>Super 권한 주의</strong><span>Super 비밀번호는 그룹과 등급을 우회해 모든 프로젝트에 접근할 수 있습니다. 운영자 비상 접근이나 점검 용도로만 제한해서 사용하세요.</span>";
 
   const card = document.createElement("div");
   card.className = "admin-access-super-settings";
@@ -1552,12 +1557,32 @@ export function showAdminRagEval() {
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  hideAdminStatsPanel();
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
   adminUiState.mobileView = "detail";
   renderAdminList();
   applyAdminMobileView();
   activateRagEvalPanel().catch((err) => alert(`RAG 품질 패널 로드 실패: ${err.message}`));
+}
+
+// ===== Stats panel =====
+
+export function showAdminStats() {
+  adminUiState.activePanel = "stats";
+  renderAdminConsoleNav();
+  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
+  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
+  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  applyAdminMobileView();
+  activateStatsPanel().catch((err) => alert(`통계 패널 로드 실패: ${err.message}`));
 }
 
 // ===== System status panel =====
@@ -1570,6 +1595,7 @@ export function showAdminStatus() {
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  hideAdminStatsPanel();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = false;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1837,7 +1863,9 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
   if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
   if (elements.adminAccessButton) elements.adminAccessButton.addEventListener("click", () => showAdminAccessPanel().catch((error) => alert(error.message)));
   if (elements.adminRagEvalButton) elements.adminRagEvalButton.addEventListener("click", showAdminRagEval);
+  if (elements.adminStatsButton) elements.adminStatsButton.addEventListener("click", showAdminStats);
   bindRagEvalEvents();
+  bindStatsEvents();
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.addEventListener("click", renderAdminRagStatus);
   if (elements.adminAccessRefreshButton) elements.adminAccessRefreshButton.addEventListener("click", () => refreshAdminAccessConfig().catch((error) => alert(error.message)));
   if (elements.adminAccessGroupsTab) elements.adminAccessGroupsTab.addEventListener("click", () => switchAdminAccessTab("groups"));

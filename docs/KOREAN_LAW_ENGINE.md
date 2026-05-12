@@ -51,7 +51,7 @@ Implemented pieces:
   admin-rule, and ordinance results based on intent flags
 - Chat integration through `server/ollama.js` and `lawContextBuilder.js`
 - `X-Notebook-Meta.law` response metadata
-- Frontend law citation grouping (법령/판례/해석례/행정규칙/자치법규/웹/노트북),
+- Frontend law citation grouping (법령/판례/해석례/행정규칙/자치법규/웹/프로젝트),
   per-source-type badge colors, verification warning, and disclaimer rendering
 - Frontend legal-prompt processing indicator that shows Korean Law Engine use
 - Law source panel detail with official-law badge, law/article label, effective
