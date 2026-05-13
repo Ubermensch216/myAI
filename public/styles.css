@@ -828,6 +828,415 @@ body.panel-resizing .panel-resizer::after {
   .cprompt-list { max-height: 220px; }
 }
 
+/* ===== Document Templates Editor ===== */
+.dtpl-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  align-items: stretch;
+  margin-top: 10px;
+  min-height: 540px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.dtpl-sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--surface-3);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dtpl-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 12px 10px;
+}
+.dtpl-sidebar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dtpl-sidebar-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+.dtpl-count-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 1px 7px;
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  border-radius: 10px;
+  line-height: 1.5;
+}
+.dtpl-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.dtpl-add-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.dtpl-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dtpl-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  transition: background 120ms ease;
+}
+.dtpl-list-item:hover { background: var(--surface); }
+.dtpl-list-item.is-active {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: inset 3px 0 0 var(--accent);
+  padding-left: 13px;
+}
+.dtpl-list-item-icon {
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 18px;
+}
+.dtpl-list-item.is-active .dtpl-list-item-icon { color: var(--accent); }
+.dtpl-list-item-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dtpl-list-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dtpl-list-item-meta {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dtpl-list-builtin-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 1px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+.dtpl-list-empty {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 32px 12px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.dtpl-editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 22px 20px;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: 70vh;
+}
+.dtpl-editor-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  padding: 48px 16px;
+  text-align: center;
+}
+.dtpl-editor-empty-icon { opacity: 0.25; margin-bottom: 8px; }
+.dtpl-editor-empty-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.dtpl-editor-empty-desc { font-size: 12px; max-width: 380px; line-height: 1.55; }
+
+.dtpl-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dtpl-title-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+.dtpl-title-input:focus {
+  outline: none;
+  border-color: var(--line);
+  background: var(--surface-3);
+}
+.dtpl-title-input::placeholder { color: var(--muted); font-weight: 500; }
+
+.dtpl-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.dtpl-action-btn:hover { background: var(--surface-2); color: var(--ink); }
+.dtpl-action-btn.is-danger:hover {
+  background: color-mix(in srgb, #dc2626 10%, var(--surface));
+  color: #dc2626;
+  border-color: color-mix(in srgb, #dc2626 35%, var(--line));
+}
+.dtpl-action-btn[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+.dtpl-field { display: flex; flex-direction: column; gap: 6px; }
+.dtpl-field-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dtpl-field-label-aux {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.dtpl-textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.dtpl-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.dtpl-textarea::placeholder { color: var(--muted); }
+.dtpl-text-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+.dtpl-text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ----- Block section ----- */
+.dtpl-blocks-section { display: flex; flex-direction: column; gap: 10px; }
+.dtpl-blocks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dtpl-blocks-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dtpl-blocks-heading-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dtpl-blocks-heading-count { font-size: 12px; color: var(--muted); }
+.dtpl-blocks-list { display: flex; flex-direction: column; gap: 10px; }
+
+.dtpl-block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.dtpl-block:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.dtpl-block-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--line);
+}
+.dtpl-block-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.dtpl-block-type {
+  height: 28px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24'><path d='M7 10l5 5 5-5' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+.dtpl-block-title-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dtpl-block-title-input:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--line);
+}
+.dtpl-block-title-input::placeholder { color: var(--muted); font-weight: 500; }
+.dtpl-block-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.dtpl-block-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.dtpl-block-action-btn:hover { background: var(--surface); color: var(--ink); }
+.dtpl-block-action-btn.is-danger:hover { color: #dc2626; }
+.dtpl-block-action-btn[disabled] { opacity: 0.25; cursor: not-allowed; }
+.dtpl-block-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dtpl-add-block-btn {
+  align-self: stretch;
+  padding: 10px 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.dtpl-add-block-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.dtpl-tips {
+  padding: 10px 12px;
+  background: var(--surface-3);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.dtpl-tips b { color: var(--ink); font-weight: 600; }
+
+@media (max-width: 720px) {
+  .dtpl-layout { grid-template-columns: 1fr; min-height: auto; }
+  .dtpl-sidebar { border-right: none; border-bottom: 1px solid var(--line); }
+  .dtpl-list { max-height: 220px; }
+  .dtpl-editor { max-height: none; }
+}
+
 .chat-area {
   position: relative;
   grid-column: 3;
