@@ -10,6 +10,7 @@ import {
   buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
 } from "./calendar.js";
 import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
+import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
 
 const MB = 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
@@ -367,7 +368,8 @@ export async function requestTextAssistantResponse(room) {
   const latestPrompt = getLastUserPrompt(room);
   const naverSearch = wantsExplicitWebSearch(latestPrompt);
   const lawProcessing = !naverSearch && shouldShowLawProcessing(latestPrompt);
-  const thinking = appendThinking({ lawProcessing, naverSearch });
+  const initialSources = buildInputSources(room, { lawProcessing, naverSearch });
+  const thinking = appendThinking({ lawProcessing, naverSearch, sources: initialSources });
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
@@ -1455,6 +1457,11 @@ export function appendThinking(options = {}) {
   const wrapper = document.createElement("div");
   wrapper.className = "thinking-card";
   if (options.lawProcessing) wrapper.classList.add("thinking-card-law");
+  if (options.sources) {
+    try { wrapper.dataset.sources = JSON.stringify(options.sources); }
+    catch { wrapper.dataset.sources = "{}"; }
+    renderSourceBadges(wrapper, options.sources, { variant: "thinking" });
+  }
   const row = document.createElement("div");
   row.className = "thinking-row";
   const dots = document.createElement("span");
@@ -1872,4 +1879,25 @@ function renderSourceBadges(host, sources, { variant }) {
     if (meta) meta.after(row);
     else host.prepend(row);
   }
+}
+
+function buildInputSources(room, { lawProcessing, naverSearch }) {
+  const notebookId = room?.selectedNotebookId || null;
+  const notebookSummary = notebookId ? findNotebookSummary(notebookId) : null;
+  const active = getActiveDocuments();
+  const documents = active
+    .filter((f) => f.kind === "document")
+    .map((f) => ({ id: f.id, displayName: formatDisplayFileName(f) }));
+  const images = active
+    .filter((f) => f.kind === "image")
+    .map((f) => ({ id: f.id, displayName: formatDisplayFileName(f) }));
+  return composeInputSources({
+    notebook: notebookSummary
+      ? { id: notebookSummary.id, name: notebookSummary.name || "이름 없는 프로젝트" }
+      : null,
+    documents,
+    images,
+    lawProcessing: Boolean(lawProcessing),
+    naverSearch: Boolean(naverSearch)
+  });
 }
