@@ -7,7 +7,8 @@ const DOCUMENT_BADGES = new Map([
   ["xlsx", "XLS"],
   ["csv", "CSV"],
   ["pptx", "PPT"],
-  ["hwpx", "HWP"]
+  ["hwpx", "HWP"],
+  ["md", "MD"]
 ]);
 
 export function displayFileName(uploadedFile) {
