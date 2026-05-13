@@ -48,7 +48,7 @@ export function renderAssistantAnswer(container, rawText) {
     }
 
     if (block.type === "list") {
-      container.append(createList(block.items, block.ordered));
+      container.append(createList(block.items, block.ordered, block.startNumber));
       continue;
     }
 
@@ -174,6 +174,7 @@ export function parseAnswerBlocks(text) {
     if (listItem) {
       flushParagraph();
       const ordered = listItem.ordered;
+      const startNumber = listItem.startNumber;
       const items = [];
 
       while (index < lines.length) {
@@ -183,7 +184,7 @@ export function parseAnswerBlocks(text) {
         index += 1;
       }
 
-      blocks.push({ type: "list", ordered, items });
+      blocks.push({ type: "list", ordered, items, startNumber });
       continue;
     }
 
@@ -204,12 +205,27 @@ export function parseAnswerBlocks(text) {
   }
 
   flushParagraph();
+  renumberOutlineOrderedLists(blocks);
   return blocks;
 
   function flushParagraph() {
     if (!paragraph.length) return;
     blocks.push({ type: "paragraph", text: paragraph.join("\n") });
     paragraph = [];
+  }
+}
+
+function renumberOutlineOrderedLists(blocks) {
+  const orderedBlocks = blocks.filter((b) => b.type === "list" && b.ordered);
+  if (orderedBlocks.length < 2) return;
+  const isOutlinePattern = orderedBlocks.every(
+    (b) => b.startNumber === 1 && Array.isArray(b.items) && b.items.length === 1
+  );
+  if (!isOutlinePattern) return;
+  let counter = 1;
+  for (const block of orderedBlocks) {
+    block.startNumber = counter;
+    counter += block.items.length;
   }
 }
 
@@ -270,6 +286,7 @@ function parseListItem(line = "") {
   if (!match) return null;
   return {
     ordered: Boolean(match[2]),
+    startNumber: match[2] ? Number(match[2]) : null,
     text: cleanPlainText(match[4])
   };
 }
@@ -324,9 +341,12 @@ function matchesAny(value, needles) {
   return needles.some((needle) => value.includes(needle));
 }
 
-function createList(items, ordered) {
+function createList(items, ordered, startNumber) {
   const list = document.createElement(ordered ? "ol" : "ul");
   list.className = "answer-list";
+  if (ordered && Number.isInteger(startNumber) && startNumber > 1) {
+    list.setAttribute("start", String(startNumber));
+  }
 
   for (const item of items) {
     const li = document.createElement("li");

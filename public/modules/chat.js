@@ -1573,7 +1573,9 @@ function buildProcessingSteps(options = {}) {
 function wantsExplicitWebSearch(prompt) {
   const text = String(prompt || "").trim();
   if (!text) return false;
-  return /네이버.{0,12}(검색|조회|뉴스|웹|찾아)|웹\s*검색|인터넷\s*(에서|검색)/u.test(text);
+  if (/네이버[^!?\n]{0,80}(검색|조회|뉴스|웹|찾아|찾아줘|찾기|확인|알려)/u.test(text)) return true;
+  if (/(검색|조회|뉴스|찾아|찾기|확인|알려)[^!?\n]{0,40}네이버/u.test(text)) return true;
+  return /웹\s*검색|인터넷\s*(에서|검색|뉴스)|구글\s*(검색|에서)|온라인\s*검색|실시간\s*(뉴스|검색|정보)/u.test(text);
 }
 
 function shouldShowLawProcessing(prompt) {

@@ -4,6 +4,7 @@ import {
 } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { renderDocumentTemplatesSettings } from "./documentTemplates.js";
+import { renderCustomPromptsSettings } from "./customPrompts.js";
 
 let activeSettingsTab = "personal";
 let adminConsoleMounted = false;
@@ -48,6 +49,7 @@ function openSettings() {
   renderSystemAvatarPreview();
   renderAvatarPreview();
   renderDocumentTemplatesSettings(document.getElementById("settingsDocumentTemplatesMount"));
+  renderCustomPromptsSettings(document.getElementById("settingsCustomPromptsMount"));
   switchSettingsTab("personal");
   switchSettingsSubTab("profileTheme");
   elements.settingsDialog.showModal();

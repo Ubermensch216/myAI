@@ -4,7 +4,7 @@ import {
   documentCacheHeaders, ensureDocumentCacheKey,
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
   normalizeCustomColorTheme, normalizeLayout, normalizeResponseStyle,
-  ensureRoomStudio, ensureDocumentTemplatesState
+  ensureRoomStudio, ensureDocumentTemplatesState, ensureCustomPromptsState
 } from "./state.js";
 
 let saveTimer = null;
@@ -148,6 +148,15 @@ export async function loadAppState() {
       (tpl) => tpl && typeof tpl === "object" && tpl.id
     );
   }
+  if (stored.customPrompts && typeof stored.customPrompts === "object") {
+    state.customPrompts = {
+      personal: Array.isArray(stored.customPrompts.personal)
+        ? stored.customPrompts.personal.filter((p) => p && typeof p === "object" && p.id)
+        : [],
+      seeded: stored.customPrompts.seeded === true
+    };
+  }
+  ensureCustomPromptsState();
 }
 
 export async function saveAppState() {
@@ -166,6 +175,7 @@ export async function saveAppState() {
     },
     settings: state.settings,
     documentTemplates: ensureDocumentTemplatesState(),
+    customPrompts: ensureCustomPromptsState(),
     savedAt: new Date().toISOString()
   });
 }

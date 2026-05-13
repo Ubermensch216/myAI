@@ -22,6 +22,7 @@ import {
   findNotebookSummary, isAdminDialogOpen, bindAdminEvents
 } from "./modules/notebook.js";
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
+import { renderCustomPromptPicker } from "./modules/customPrompts.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
 import { bindStudioEvents, renderStudio } from "./modules/studio.js";
 import { initDocTool } from "./modules/docTool.js";
@@ -161,7 +162,8 @@ function applyActiveView(view) {
   if (state.activeView === next) return;
   state.activeView = next;
   scheduleSave();
-  renderAll();
+  renderPrimaryNav();
+  if (next === "calendar") renderCalendar();
 }
 
 function renderRooms() {
@@ -501,11 +503,50 @@ function toggleAttachMenu() {
 function openAttachMenu() {
   elements.attachMenu.hidden = false;
   elements.attachFileButton.setAttribute("aria-expanded", "true");
+  if (elements.customPromptPicker && !elements.customPromptPicker.hidden) {
+    closeCustomPromptPicker();
+  }
 }
 
 function closeAttachMenu() {
   elements.attachMenu.hidden = true;
   elements.attachFileButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleCustomPromptPicker() {
+  if (!elements.customPromptPicker) return;
+  if (elements.customPromptPicker.hidden) openCustomPromptPicker();
+  else closeCustomPromptPicker();
+}
+
+function openCustomPromptPicker() {
+  if (!elements.customPromptPicker) return;
+  renderCustomPromptPicker(elements.customPromptPicker, insertPromptToInput);
+  elements.customPromptPicker.hidden = false;
+  elements.attachCustomPromptButton?.setAttribute("aria-expanded", "true");
+  closeAttachMenu();
+}
+
+function closeCustomPromptPicker() {
+  if (!elements.customPromptPicker) return;
+  elements.customPromptPicker.hidden = true;
+  elements.attachCustomPromptButton?.setAttribute("aria-expanded", "false");
+}
+
+function insertPromptToInput(prompt) {
+  const ta = elements.promptInput;
+  if (!ta || !prompt) return;
+  const text = prompt.content || "";
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? ta.value.length;
+  const before = ta.value.slice(0, start);
+  const after = ta.value.slice(end);
+  ta.value = before + text + after;
+  const caret = start + text.length;
+  ta.focus();
+  try { ta.setSelectionRange(caret, caret); } catch (_) {}
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  closeCustomPromptPicker();
 }
 
 function toggleCalendarSettingsMenu() {
@@ -668,6 +709,9 @@ function bindEvents() {
   if (elements.attachNotebookButton) {
     elements.attachNotebookButton.addEventListener("click", (event) => { event.stopPropagation(); openNotebookSelector(); });
   }
+  if (elements.attachCustomPromptButton) {
+    elements.attachCustomPromptButton.addEventListener("click", (event) => { event.stopPropagation(); toggleCustomPromptPicker(); });
+  }
   if (elements.deepAnalysisToggle) {
     elements.deepAnalysisToggle.addEventListener("click", (event) => {
       event.preventDefault();
@@ -691,6 +735,15 @@ function bindEvents() {
     if (elements.attachMenu.hidden) return;
     if (event.target === elements.attachFileButton || elements.attachMenu.contains(event.target)) return;
     closeAttachMenu();
+  });
+
+  // Custom prompt picker close on outside click
+  document.addEventListener("click", (event) => {
+    if (!elements.customPromptPicker || elements.customPromptPicker.hidden) return;
+    if (event.target === elements.attachCustomPromptButton) return;
+    if (elements.attachCustomPromptButton?.contains(event.target)) return;
+    if (elements.customPromptPicker.contains(event.target)) return;
+    closeCustomPromptPicker();
   });
 
   // Calendar settings menu close on outside click
@@ -776,6 +829,7 @@ function bindEvents() {
       }
     }
     if (event.key === "Escape" && !elements.attachMenu.hidden) { closeAttachMenu(); return; }
+    if (event.key === "Escape" && elements.customPromptPicker && !elements.customPromptPicker.hidden) { closeCustomPromptPicker(); return; }
     if (event.key === "Escape" && elements.calendarSettingsMenu && !elements.calendarSettingsMenu.hidden) { closeCalendarSettingsMenu(); return; }
     if (event.key === "Escape" && state.busy) { event.preventDefault(); stopGeneration(); }
   });

@@ -840,7 +840,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
 
   if (customPrompt) {
     systemParts.push(
-      "다음은 사용자가 설정에서 추가한 사용자 정의 프롬프트다. 안전 정책과 위 기본 규칙을 해치지 않는 범위에서 최대한 따른다.",
+      "다음은 사용자가 설정에서 추가한 사용자 프롬프트다. 안전 정책과 위 기본 규칙을 해치지 않는 범위에서 최대한 따른다.",
       customPrompt
     );
   }

@@ -165,6 +165,10 @@ export const state = {
   documentTemplates: {
     personal: []
   },
+  customPrompts: {
+    personal: [],
+    seeded: false
+  },
   notebooks: [],
   access: {
     configured: false,
@@ -309,6 +313,11 @@ export const elements = {
   calendarConfirmOkButton: document.querySelector("#calendarConfirmOkButton"),
   reminderToastContainer: document.querySelector("#reminderToastContainer"),
   attachNotebookButton: document.querySelector("#attachNotebookButton"),
+  attachCustomPromptButton: document.querySelector("#attachCustomPromptButton"),
+  customPromptPicker: document.querySelector("#customPromptPicker"),
+  settingsSubTabCustomPrompts: document.querySelector("#settingsSubTabCustomPrompts"),
+  settingsPanelCustomPrompts: document.querySelector("#settingsPanelCustomPrompts"),
+  settingsCustomPromptsMount: document.querySelector("#settingsCustomPromptsMount"),
   deepAnalysisToggle: document.querySelector("#deepAnalysisToggle"),
   notebookSelectorDialog: document.querySelector("#notebookSelectorDialog"),
   closeNotebookSelectorButton: document.querySelector("#closeNotebookSelectorButton"),
@@ -514,6 +523,36 @@ export function ensureDocumentTemplatesState() {
   }
   if (!Array.isArray(state.documentTemplates.personal)) state.documentTemplates.personal = [];
   return state.documentTemplates;
+}
+
+export const DEFAULT_CUSTOM_PROMPTS = [
+  { title: "요약", icon: "summary", content: "다음 내용을 핵심만 3줄로 요약해줘:\n\n" },
+  { title: "번역(한→영)", icon: "translate", content: "다음 한국어 텍스트를 자연스러운 영어로 번역해줘:\n\n" },
+  { title: "코드 리뷰", icon: "code", content: "다음 코드를 리뷰하고 개선점과 잠재적 버그를 알려줘:\n\n" },
+  { title: "회의록 정리", icon: "meeting", content: "다음 회의 내용을 안건/논의/결정사항/액션아이템 구조로 정리해줘:\n\n" },
+  { title: "이메일 작성", icon: "email", content: "다음 내용을 정중한 비즈니스 이메일로 작성해줘:\n\n" }
+];
+
+function makeCustomPromptId() {
+  return `personal_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+export function ensureCustomPromptsState() {
+  if (!state.customPrompts || typeof state.customPrompts !== "object") {
+    state.customPrompts = { personal: [], seeded: false };
+  }
+  if (!Array.isArray(state.customPrompts.personal)) state.customPrompts.personal = [];
+  if (typeof state.customPrompts.seeded !== "boolean") state.customPrompts.seeded = false;
+  if (!state.customPrompts.seeded && state.customPrompts.personal.length === 0) {
+    state.customPrompts.personal = DEFAULT_CUSTOM_PROMPTS.map((p) => ({
+      id: makeCustomPromptId(),
+      title: p.title,
+      icon: p.icon,
+      content: p.content
+    }));
+    state.customPrompts.seeded = true;
+  }
+  return state.customPrompts;
 }
 
 export function showConfirmDialog({ title = "확인", body = "", okText = "확인", cancelText = "취소", danger = false } = {}) {
