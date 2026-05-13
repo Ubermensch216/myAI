@@ -1757,3 +1757,119 @@ function isEmptySources(sources) {
   if (sources.lawEngine) return false;
   return true;
 }
+
+function appendBadgeIcon(host, svgKey) {
+  const icon = document.createElement("span");
+  icon.className = "source-badge-icon";
+  icon.innerHTML = SOURCE_BADGE_SVG[svgKey] || "";
+  host.append(icon);
+}
+
+function appendBadgeLabel(host, text, { title } = {}) {
+  const label = document.createElement("span");
+  label.className = "source-badge-label";
+  label.textContent = text;
+  if (title) label.title = title;
+  host.append(label);
+}
+
+function buildSourceBadge({ kind, svgKey, text, title, guessed, onClick }) {
+  const badge = document.createElement("span");
+  badge.className = `source-badge source-badge-${kind}`;
+  if (guessed) badge.classList.add("source-badge-guessed");
+  appendBadgeIcon(badge, svgKey);
+  appendBadgeLabel(badge, text, { title });
+  if (onClick) {
+    badge.setAttribute("role", "button");
+    badge.setAttribute("tabindex", "0");
+    badge.addEventListener("click", onClick);
+    badge.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+    });
+  }
+  return badge;
+}
+
+function renderSourceBadges(host, sources, { variant }) {
+  if (!host) return;
+  const existing = host.querySelector(":scope > .source-badges");
+  if (existing) existing.remove();
+  if (isEmptySources(sources)) return;
+
+  const row = document.createElement("div");
+  row.className = `source-badges ${variant === "thinking" ? "thinking-sources" : "message-sources"}`;
+
+  if (sources.notebook) {
+    row.append(buildSourceBadge({
+      kind: "notebook",
+      svgKey: "notebook",
+      text: sources.notebook.name || "프로젝트",
+      title: sources.notebook.name || ""
+    }));
+  }
+
+  const docs = Array.isArray(sources.documents) ? sources.documents : [];
+  const visibleDocs = docs.slice(0, MAX_FILE_BADGES);
+  for (const doc of visibleDocs) {
+    row.append(buildSourceBadge({
+      kind: "document",
+      svgKey: "paperclip",
+      text: doc.displayName,
+      title: doc.displayName
+    }));
+  }
+  const docOverflow = docs.length - visibleDocs.length;
+  if (docOverflow > 0) {
+    row.append(buildSourceBadge({
+      kind: "document",
+      svgKey: "paperclip",
+      text: `+${docOverflow}건`,
+      title: `첨부 문서 ${docs.length}건 중 ${docOverflow}건 더 있음`
+    }));
+  }
+
+  const images = Array.isArray(sources.images) ? sources.images : [];
+  const visibleImages = images.slice(0, MAX_FILE_BADGES);
+  for (const img of visibleImages) {
+    row.append(buildSourceBadge({
+      kind: "image",
+      svgKey: "image",
+      text: img.displayName,
+      title: img.displayName
+    }));
+  }
+  const imgOverflow = images.length - visibleImages.length;
+  if (imgOverflow > 0) {
+    row.append(buildSourceBadge({
+      kind: "image",
+      svgKey: "image",
+      text: `+${imgOverflow}건`,
+      title: `이미지 ${images.length}건 중 ${imgOverflow}건 더 있음`
+    }));
+  }
+
+  if (sources.naverSearch) {
+    row.append(buildSourceBadge({
+      kind: "naver",
+      svgKey: "globe",
+      text: "네이버 검색",
+      guessed: sources.naverSearch === "guessed"
+    }));
+  }
+  if (sources.lawEngine) {
+    row.append(buildSourceBadge({
+      kind: "law",
+      svgKey: "scales",
+      text: "공식 법령",
+      guessed: sources.lawEngine === "guessed"
+    }));
+  }
+
+  if (variant === "thinking") {
+    host.prepend(row);
+  } else {
+    const meta = host.querySelector(":scope > .message-meta");
+    if (meta) meta.after(row);
+    else host.prepend(row);
+  }
+}

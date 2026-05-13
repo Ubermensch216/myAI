@@ -10065,3 +10065,47 @@ body.panel-resizing .panel-resizer::after {
   font-size: 0.82rem;
   color: var(--muted);
 }
+
+/* ===== Source badges (analysis input) ===== */
+.source-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.thinking-sources { margin-bottom: 8px; }
+.message-sources { margin: 4px 0 10px; }
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--surface-2, #eef1f5);
+  color: var(--text-2, #4a5160);
+  border: 1px solid transparent;
+  max-width: 240px;
+}
+.source-badge-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.source-badge-icon svg { width: 100%; height: 100%; }
+.source-badge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-badge-notebook { background: #e7f0ff; color: #1e40af; cursor: pointer; }
+.source-badge-notebook:focus { outline: 2px solid #1e40af; outline-offset: 1px; }
+.source-badge-document { background: #eaf6ee; color: #166534; }
+.source-badge-image    { background: #faf3e0; color: #854d0e; }
+.source-badge-naver    { background: #e6f7ec; color: #047857; }
+.source-badge-law      { background: #f3e8ff; color: #6b21a8; }
+
+.source-badge-guessed {
+  opacity: 0.55;
+  border-style: dashed;
+  border-color: currentColor;
+}
