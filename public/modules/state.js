@@ -525,16 +525,120 @@ export function ensureDocumentTemplatesState() {
 }
 
 export const DEFAULT_CUSTOM_PROMPTS = [
-  { title: "요약", icon: "summary", content: "다음 내용을 핵심만 3줄로 요약해줘:\n\n" },
-  { title: "번역(한→영)", icon: "translate", content: "다음 한국어 텍스트를 자연스러운 영어로 번역해줘:\n\n" },
-  { title: "코드 리뷰", icon: "code", content: "다음 코드를 리뷰하고 개선점과 잠재적 버그를 알려줘:\n\n" },
-  { title: "회의록 정리", icon: "meeting", content: "다음 회의 내용을 안건/논의/결정사항/액션아이템 구조로 정리해줘:\n\n" },
-  { title: "이메일 작성", icon: "email", content: "다음 내용을 정중한 비즈니스 이메일로 작성해줘:\n\n" }
+  {
+    title: "요약",
+    icon: "summary",
+    content: `당신은 핵심을 빠르게 전달하는 정보 큐레이터입니다. 아래 내용을 읽고 다음 형식으로 요약해 주세요.
+
+[형식]
+- 한 줄 요지: 전체를 한 문장으로
+- 핵심 포인트 3가지: 각 1~2줄
+- 시사점: 독자가 알아두면 좋을 함의 1가지
+
+[규칙]
+- 원문에 없는 추측·일반론 금지
+- 숫자·고유명사·인용은 원문 그대로 유지
+- 미사여구와 중복 제거, 결론 우선
+
+[대상 내용]
+`
+  },
+  {
+    title: "번역(한→영)",
+    icon: "translate",
+    content: `당신은 한→영 전문 번역가입니다. 아래 한국어 텍스트를 영어로 옮겨 주세요.
+
+[지침]
+- 원문의 톤(공식/캐주얼/기술)을 그대로 유지
+- 직역이 아닌 자연스러운 관용 표현 사용
+- 고유명사·숫자·코드·인용은 원문 유지
+- 의미가 모호한 부분은 가장 가능성 높은 해석을 택하고 [translator's note: ...]로 표기
+
+[출력 형식]
+1) 번역문만 먼저 출력
+2) 보충이 필요할 때만 하단에 'Notes:' 섹션 추가
+
+[원문]
+`
+  },
+  {
+    title: "코드 리뷰",
+    icon: "code",
+    content: `당신은 시니어 소프트웨어 엔지니어이자 코드 리뷰어입니다. 아래 코드를 다음 관점에서 점검해 주세요.
+
+[점검 항목]
+1) 정확성: 버그·엣지케이스·논리 오류
+2) 안전성: 입력 검증·인젝션·비밀값 노출
+3) 가독성: 네이밍·함수 분리·중복
+4) 성능: 불필요한 연산·메모리·I/O
+5) 테스트 용이성
+
+[출력 형식]
+- 심각도 라벨: [Critical] / [Warning] / [Suggestion]
+- 항목별로: 위치(라인) · 문제 · 권장 수정안(필요 시 짧은 스니펫)
+- 마지막에 종합 평가 1~2줄
+
+[코드]
+`
+  },
+  {
+    title: "회의록 정리",
+    icon: "meeting",
+    content: `당신은 숙련된 회의 서기입니다. 아래 회의 내용을 다음 구조로 정리해 주세요.
+
+[형식]
+## 회의 개요
+- 일시·참석자·주제 (확인 가능한 경우만)
+
+## 주요 논의
+- 안건별로 그룹화, 핵심 발언자와 입장을 한두 줄로
+
+## 결정사항
+- 합의·결정된 항목만 불릿으로
+
+## 액션 아이템
+- [ ] (담당자) 작업 — 기한
+- 담당·기한 불명확 시 '미정' 표기
+
+[규칙]
+- 잡담·중복 제거, 원문에 없는 내용 추가 금지
+- 보류 항목은 별도 섹션에 명시
+
+[회의 내용]
+`
+  },
+  {
+    title: "이메일 작성",
+    icon: "email",
+    content: `당신은 비즈니스 커뮤니케이션 전문가입니다. 아래 요지를 정중하고 명확한 한국어 이메일로 작성해 주세요.
+
+[형식]
+- 제목: 핵심을 한 줄로(15자 내외)
+- 인사말: 간결한 격식
+- 본문: 1) 용건·배경 → 2) 요청·제안 → 3) 기한·후속 조치
+- 맺음말: 정중한 마무리 + 서명 자리([이름], [소속])
+
+[톤]
+- 존댓말, 단정하고 간결하게
+- 과장·모호한 표현 지양
+- 상대 직급·관계가 명시되면 그에 맞게 격식 조정
+
+[요지]
+`
+  }
 ];
 
 function makeCustomPromptId() {
   return `personal_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
+
+const LEGACY_DEFAULT_PROMPT_CONTENTS = {
+  "요약": "다음 내용을 핵심만 3줄로 요약해줘:\n\n",
+  "번역(한→영)": "다음 한국어 텍스트를 자연스러운 영어로 번역해줘:\n\n",
+  "코드 리뷰": "다음 코드를 리뷰하고 개선점과 잠재적 버그를 알려줘:\n\n",
+  "회의록 정리": "다음 회의 내용을 안건/논의/결정사항/액션아이템 구조로 정리해줘:\n\n",
+  "이메일 작성": "다음 내용을 정중한 비즈니스 이메일로 작성해줘:\n\n"
+};
 
 export function ensureCustomPromptsState() {
   if (!state.customPrompts || typeof state.customPrompts !== "object") {
@@ -550,6 +654,14 @@ export function ensureCustomPromptsState() {
       content: p.content
     }));
     state.customPrompts.seeded = true;
+  } else {
+    for (const item of state.customPrompts.personal) {
+      const legacy = LEGACY_DEFAULT_PROMPT_CONTENTS[item.title];
+      if (legacy && item.content === legacy) {
+        const upgraded = DEFAULT_CUSTOM_PROMPTS.find((d) => d.title === item.title);
+        if (upgraded) item.content = upgraded.content;
+      }
+    }
   }
   return state.customPrompts;
 }
