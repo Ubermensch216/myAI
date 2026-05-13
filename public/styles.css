@@ -5176,6 +5176,13 @@ body.panel-resizing .panel-resizer::after {
   outline: none;
 }
 
+.calendar-agenda-event.done {
+  opacity: 0.6;
+}
+.calendar-agenda-event.done .calendar-agenda-event-title {
+  text-decoration: line-through;
+}
+
 .calendar-agenda-event-time,
 .calendar-agenda-event-location,
 .calendar-agenda-event-reminders,

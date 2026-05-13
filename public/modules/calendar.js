@@ -972,6 +972,7 @@ function createAgendaEventCard(event) {
   const card = document.createElement("button");
   card.type = "button";
   card.className = "calendar-agenda-event";
+  if (event.done) card.classList.add("done");
   card.dataset.color = event.color || "accent";
   card.addEventListener("click", () => openEventDialogForEdit(event.id));
 
