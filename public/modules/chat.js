@@ -399,6 +399,7 @@ export async function requestTextAssistantResponse(room) {
     }
 
     const notebookMeta = decodeNotebookMetaHeader(response.headers.get("X-Notebook-Meta"));
+    updateThinkingSources(thinking, notebookMeta);
     if (notebookMeta?.law) updateThinkingLawStatus(thinking, notebookMeta.law);
     const citations = Array.isArray(notebookMeta?.citations) ? notebookMeta.citations : [];
     const webCitations = Array.isArray(notebookMeta?.webSearch?.citations) ? notebookMeta.webSearch.citations : [];
@@ -1900,4 +1901,15 @@ function buildInputSources(room, { lawProcessing, naverSearch }) {
     lawProcessing: Boolean(lawProcessing),
     naverSearch: Boolean(naverSearch)
   });
+}
+
+function updateThinkingSources(thinking, notebookMeta) {
+  if (!thinking) return;
+  let current = null;
+  try { current = JSON.parse(thinking.dataset.sources || "null"); } catch { current = null; }
+  if (!current) return;
+  const merged = mergeServerConfirmation(current, notebookMeta);
+  try { thinking.dataset.sources = JSON.stringify(merged); }
+  catch { /* ignore */ }
+  renderSourceBadges(thinking, merged, { variant: "thinking" });
 }
