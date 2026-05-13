@@ -90,7 +90,7 @@ Frontend:
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities (including `showConfirmDialog`). No imports.
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
-- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
+- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming, input source badge rendering and persistence.
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
 - `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
@@ -152,6 +152,12 @@ public/modules/chat.js -> POST /api/chat
 Naver Search is skipped when uploaded files are present or a department
 notebook is selected. No-evidence answers should not render source panels or
 follow-up suggestions.
+
+Input source badges on each assistant message show which sources were active
+(notebook, uploaded files, web search, law engine). Guessed badges are shown
+during streaming and confirmed or removed when the server response arrives.
+Clicking the notebook badge reopens the notebook selector. Badges are persisted
+in `state.rooms[roomId].messages[].sourceBadges` and re-rendered on reload.
 
 Notebook RAG:
 

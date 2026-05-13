@@ -20,6 +20,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 ## Features
 
 - Multi-room streaming chat with stop/regenerate/edit/copy/download flows.
+- Input source badges on assistant messages show which sources were active (department notebook, uploaded files, web search, law engine); clicking the notebook badge reopens the selector.
 - Autonomous, context-aware follow-up suggestions grounded in conversation logic.
 - Upload support for PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, and GIF.
 - Upload-time document summary/topic extraction through local Ollama.
