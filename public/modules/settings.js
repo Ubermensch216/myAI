@@ -36,9 +36,6 @@ function openSettings() {
   elements.appNameInput.value = state.settings.appName || "myAI";
   renderThemeToggle();
   renderColorThemeToggle();
-  if (elements.customPromptInput) {
-    elements.customPromptInput.value = state.settings.customPrompt || "";
-  }
   if (elements.responseStyleSelect) {
     elements.responseStyleSelect.value = normalizeResponseStyle(state.settings.responseStyle);
   }
@@ -320,9 +317,6 @@ export function bindSettingsEvents() {
     state.settings.userTitle = elements.userTitleInput.value.trim() || "사용자님";
     state.settings.appName = elements.appNameInput.value.trim() || "myAI";
     state.settings.aiName = state.settings.appName || "myAI";
-    if (elements.customPromptInput) {
-      state.settings.customPrompt = elements.customPromptInput.value.trim();
-    }
     if (elements.responseStyleSelect) {
       state.settings.responseStyle = normalizeResponseStyle(elements.responseStyleSelect.value);
     }
@@ -344,16 +338,4 @@ export function bindSettingsEvents() {
     input.addEventListener("input", () => updateCustomColor(input.dataset.customColorKey, input.value));
     input.addEventListener("change", () => updateCustomColor(input.dataset.customColorKey, input.value));
   }
-
-  // 예시 프롬프트 버튼 클릭 이벤트
-  document.querySelectorAll(".prompt-example-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const promptText = btn.dataset.prompt;
-      if (promptText && elements.customPromptInput) {
-        elements.customPromptInput.value = promptText;
-        elements.customPromptInput.focus();
-        elements.customPromptInput.setSelectionRange(promptText.length, promptText.length);
-      }
-    });
-  });
 }

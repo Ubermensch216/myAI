@@ -249,7 +249,6 @@ export const elements = {
   customColorPanel: document.querySelector("#customColorPanel"),
   customColorInputs: Array.from(document.querySelectorAll(".custom-color-input")),
   customColorThemeThumb: document.querySelector("#customColorThemeThumb"),
-  customPromptInput: document.querySelector("#customPromptInput"),
   responseStyleSelect: document.querySelector("#responseStyleSelect"),
   customInstructionInput: document.querySelector("#customInstructionInput"),
   appBannerInput: document.querySelector("#appBannerInput"),
