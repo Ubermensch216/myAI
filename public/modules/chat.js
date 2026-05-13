@@ -10,7 +10,7 @@ import {
   buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
 } from "./calendar.js";
 import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
-import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
+import { findNotebookSummary } from "./notebook.js";
 
 const MB = 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
