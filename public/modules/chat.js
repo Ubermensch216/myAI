@@ -1804,7 +1804,7 @@ function renderSourceBadges(host, sources, { variant }) {
       kind: "notebook",
       svgKey: "notebook",
       text: sources.notebook.name || "프로젝트",
-      title: sources.notebook.name || ""
+      title: sources.notebook.name || undefined
     }));
   }
 
