@@ -1696,3 +1696,64 @@ export function extractImageFilesFromPaste(event) {
     })
     .filter(Boolean);
 }
+
+// ===== Source badges (input sources) =====
+
+const SOURCE_BADGE_SVG = {
+  notebook: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>',
+  paperclip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>',
+  image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  scales: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M5 8h14M5 8l-2 6a3 3 0 0 0 6 0L7 8M19 8l-2 6a3 3 0 0 0 6 0l-2-6M8 20h8"/></svg>'
+};
+
+const MAX_FILE_BADGES = 5;
+
+function composeInputSources({ notebook, documents, images, lawProcessing, naverSearch }) {
+  return {
+    notebook: notebook ? { id: notebook.id, name: notebook.name || "" } : null,
+    documents: Array.isArray(documents)
+      ? documents.map((d) => ({ id: d.id, displayName: d.displayName || "" })).filter((d) => d.displayName)
+      : [],
+    images: Array.isArray(images)
+      ? images.map((d) => ({ id: d.id, displayName: d.displayName || "" })).filter((d) => d.displayName)
+      : [],
+    naverSearch: naverSearch ? "guessed" : null,
+    lawEngine: lawProcessing ? "guessed" : null
+  };
+}
+
+function mergeServerConfirmation(sources, notebookMeta) {
+  const next = {
+    notebook: sources?.notebook ?? null,
+    documents: Array.isArray(sources?.documents) ? sources.documents : [],
+    images: Array.isArray(sources?.images) ? sources.images : [],
+    naverSearch: sources?.naverSearch ?? null,
+    lawEngine: sources?.lawEngine ?? null
+  };
+  const meta = notebookMeta || null;
+  if (meta?.law?.ok) {
+    next.lawEngine = "confirmed";
+  } else if (next.lawEngine === "guessed") {
+    next.lawEngine = null;
+  }
+  if (meta?.webSearch) {
+    next.naverSearch = "confirmed";
+  } else if (next.naverSearch === "guessed") {
+    next.naverSearch = null;
+  }
+  if (meta?.notebook && !next.notebook) {
+    next.notebook = { id: meta.notebook.id || "", name: meta.notebook.name || "" };
+  }
+  return next;
+}
+
+function isEmptySources(sources) {
+  if (!sources) return true;
+  if (sources.notebook) return false;
+  if (Array.isArray(sources.documents) && sources.documents.length) return false;
+  if (Array.isArray(sources.images) && sources.images.length) return false;
+  if (sources.naverSearch) return false;
+  if (sources.lawEngine) return false;
+  return true;
+}
