@@ -1460,7 +1460,7 @@ export function appendThinking(options = {}) {
   if (options.lawProcessing) wrapper.classList.add("thinking-card-law");
   if (options.sources) {
     try { wrapper.dataset.sources = JSON.stringify(options.sources); }
-    catch { wrapper.dataset.sources = "{}"; }
+    catch { wrapper.dataset.sources = "null"; }
     renderSourceBadges(wrapper, options.sources, { variant: "thinking" });
   }
   const row = document.createElement("div");
@@ -1740,6 +1740,7 @@ function mergeServerConfirmation(sources, notebookMeta) {
     lawEngine: sources?.lawEngine ?? null
   };
   const meta = notebookMeta || null;
+  // Server-confirmed sources always win: a server-used law/naver shows as "confirmed" even without user signal; absence clears a prior "guessed" state.
   if (meta?.law?.ok) {
     next.lawEngine = "confirmed";
   } else if (next.lawEngine === "guessed") {
