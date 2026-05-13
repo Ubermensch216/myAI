@@ -27,6 +27,7 @@ export function setBusy(busy) {
   elements.sendButton.textContent = busy ? "중지" : "전송";
   elements.sendButton.classList.toggle("stop-button", busy);
   elements.fileInput.disabled = busy;
+  renderDeepAnalysisToggle();
 }
 
 export function stopGeneration() {
@@ -54,13 +55,15 @@ export function setDeepAnalysisEnabled(enabled) {
 export function renderDeepAnalysisToggle() {
   if (elements.deepAnalysisToggle) {
     const available = hasDeepAnalysisContext();
-    if (!available) state.deepAnalysisEnabled = false;
-    elements.deepAnalysisToggle.disabled = !available;
+    if (!available && !state.busy) state.deepAnalysisEnabled = false;
+    elements.deepAnalysisToggle.disabled = !available || state.busy;
     elements.deepAnalysisToggle.setAttribute("aria-pressed", state.deepAnalysisEnabled ? "true" : "false");
     elements.deepAnalysisToggle.setAttribute("aria-label", available ? "정밀 분석" : "정밀 분석 사용 불가");
-    elements.deepAnalysisToggle.title = available
-      ? "첨부 파일 또는 프로젝트 전체를 정밀 분석합니다 (시간이 오래 걸림)"
-      : "첨부 파일을 추가하거나 프로젝트을 선택하면 정밀 분석을 사용할 수 있습니다";
+    elements.deepAnalysisToggle.title = state.busy && state.deepAnalysisEnabled
+      ? "정밀 분석 진행 중"
+      : available
+        ? "첨부 파일 또는 프로젝트 전체를 정밀 분석합니다 (시간이 오래 걸림)"
+        : "첨부 파일을 추가하거나 프로젝트을 선택하면 정밀 분석을 사용할 수 있습니다";
   }
 }
 
@@ -369,9 +372,9 @@ export async function requestTextAssistantResponse(room) {
   let assistant = null;
   let assistantBody = null;
   let answer = "";
+  const useDeepAnalysis = state.deepAnalysisEnabled;
 
   try {
-    const useDeepAnalysis = state.deepAnalysisEnabled;
     const payload = {
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
       messages: room.messages.map(({ role, content }) => ({ role, content })),
@@ -387,7 +390,6 @@ export async function requestTextAssistantResponse(room) {
       headers: { "Content-Type": "application/json", ...accessAuthHeaders() },
       body: JSON.stringify(payload)
     });
-    if (useDeepAnalysis) setDeepAnalysisEnabled(false);
 
     if (!response.ok || !response.body) {
       const errorText = await response.text();
@@ -471,6 +473,7 @@ export async function requestTextAssistantResponse(room) {
     removeThinking(thinking);
     state.abortController = null;
     setBusy(false);
+    if (useDeepAnalysis) setDeepAnalysisEnabled(false);
     maybeScrollToBottom();
   }
 }

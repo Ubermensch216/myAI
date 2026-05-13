@@ -66,7 +66,16 @@ export async function streamMapReduceAnalysis({
 
   const usable = partials.filter((p) => p && p.text);
   if (!usable.length) {
-    throw new Error("Map 단계에서 사용할 수 있는 부분 결과를 얻지 못했습니다.");
+    const reasons = partials
+      .map((p, i) => {
+        if (!p) return `배치 ${i + 1}: 응답 없음`;
+        if (p.error) return `배치 ${i + 1}: ${p.error}`;
+        if (!p.text) return `배치 ${i + 1}: 모델이 빈 응답을 반환`;
+        return null;
+      })
+      .filter(Boolean);
+    const detail = reasons.length ? ` (원인: ${reasons.join(" / ")})` : "";
+    throw new Error(`Map 단계에서 사용할 수 있는 부분 결과를 얻지 못했습니다.${detail}`);
   }
 
   onProgress({ stage: "reduce", current: 0, total: 1, message: "Reduce 단계: 부분 결과들을 통합 중" });

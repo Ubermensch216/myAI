@@ -21,12 +21,23 @@ const SECTION_LABELS = new Set([
 
 export function renderAssistantAnswer(container, rawText) {
   container.innerHTML = "";
-  const blocks = parseAnswerBlocks(rawText);
+  const { progress, errors, remaining } = extractProgressLines(rawText);
+  const answerText = remaining.join("\n");
+  const hasAnswer = answerText.trim().length > 0;
+
+  if (progress.length || errors.length) {
+    container.append(createProgressPanel(progress, { collapsed: hasAnswer, errors }));
+    container.classList.add("has-progress-panel");
+  } else {
+    container.classList.remove("has-progress-panel");
+  }
+
+  const blocks = parseAnswerBlocks(answerText);
   container.classList.toggle("has-code-block", blocks.some((block) => block.type === "code"));
 
   if (!blocks.length) {
     container.classList.remove("has-code-block");
-    container.textContent = rawText;
+    if (!progress.length) container.textContent = rawText;
     return;
   }
 
@@ -55,6 +66,82 @@ export function renderAssistantAnswer(container, rawText) {
     paragraph.textContent = cleanPlainText(block.text);
     container.append(paragraph);
   }
+}
+
+function extractProgressLines(rawText) {
+  const lines = String(rawText ?? "").split(/\r?\n/);
+  const progress = [];
+  const remaining = [];
+  const errors = [];
+  const reProgress = /^\[분석 진행\]\s*(.*)$/;
+  const reError = /^\[오류\]\s*(.*)$/;
+
+  for (const line of lines) {
+    const m = line.match(reProgress);
+    if (m) { progress.push(m[1]); continue; }
+    remaining.push(line);
+  }
+
+  if (progress.length) {
+    const filtered = [];
+    for (const line of remaining) {
+      const em = line.match(reError);
+      if (em) errors.push(em[1]);
+      else filtered.push(line);
+    }
+    remaining.length = 0;
+    remaining.push(...filtered);
+  }
+
+  while (remaining.length && !remaining[0].trim()) remaining.shift();
+  return { progress, errors, remaining };
+}
+
+function createProgressPanel(steps, { collapsed, errors = [] }) {
+  const details = document.createElement("details");
+  details.className = "answer-progress-panel";
+  const hasError = errors.length > 0;
+  if (hasError) {
+    details.classList.add("has-error");
+    details.open = true;
+  } else if (collapsed) {
+    details.classList.add("is-historical");
+  } else {
+    details.open = true;
+  }
+
+  const summary = document.createElement("summary");
+  summary.className = "answer-progress-summary";
+  summary.textContent = hasError
+    ? `정밀 분석 실패 · ${steps.length}단계 진행됨`
+    : collapsed
+      ? `정밀 분석 과정 ${steps.length}단계 (완료)`
+      : `정밀 분석 진행 중 · ${steps.length}단계`;
+  details.append(summary);
+
+  if (steps.length) {
+    const list = document.createElement("ol");
+    list.className = "answer-progress-list";
+    for (const step of steps) {
+      const li = document.createElement("li");
+      li.textContent = step;
+      list.append(li);
+    }
+    details.append(list);
+  }
+
+  if (hasError) {
+    const errorBox = document.createElement("div");
+    errorBox.className = "answer-progress-error";
+    for (const err of errors) {
+      const p = document.createElement("p");
+      p.textContent = `[오류] ${err}`;
+      errorBox.append(p);
+    }
+    details.append(errorBox);
+  }
+
+  return details;
 }
 
 export function parseAnswerBlocks(text) {

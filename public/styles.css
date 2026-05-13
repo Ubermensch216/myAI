@@ -663,34 +663,119 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .message-body .answer-section-title {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  margin: 14px 0 7px;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  padding-bottom: 3px;
+  gap: 9px;
+  margin: 22px 0 10px;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-bottom: 6px;
   color: var(--accent-dark);
-  font-size: 13px;
+  font-size: 15.5px;
   font-weight: 900;
   letter-spacing: 0;
+  line-height: 1.35;
   white-space: normal;
 }
 
 .message-body .answer-section-symbol {
   display: inline-grid;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--accent) 88%, var(--surface));
   color: #fff;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .message-body .answer-section-title:first-child {
   margin-top: 0;
+}
+
+.message-body .answer-progress-panel {
+  display: block;
+  margin: -4px -4px 14px;
+  border: 1px dashed color-mix(in srgb, var(--muted) 55%, var(--line));
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--muted) 6%, var(--surface));
+  white-space: normal;
+}
+
+.message-body .answer-progress-summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  list-style: none;
+  user-select: none;
+}
+
+.message-body .answer-progress-summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-body .answer-progress-summary::before {
+  content: "▶";
+  display: inline-block;
+  width: 10px;
+  margin-right: 6px;
+  font-size: 9px;
+  transition: transform 0.15s;
+}
+
+.message-body .answer-progress-panel[open] .answer-progress-summary::before {
+  transform: rotate(90deg);
+}
+
+.message-body .answer-progress-list {
+  margin: 8px 0 2px;
+  padding-left: 26px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.message-body .answer-progress-list li {
+  margin: 2px 0;
+}
+
+.message-body .answer-progress-panel.is-historical .answer-progress-list li {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent);
+  opacity: 0.6;
+}
+
+.message-body .answer-progress-panel.has-error {
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 55%, var(--line));
+  background: color-mix(in srgb, var(--danger, #ef4444) 6%, var(--surface));
+}
+
+.message-body .answer-progress-panel.has-error .answer-progress-summary {
+  color: var(--danger, #ef4444);
+}
+
+.message-body .answer-progress-error {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger, #ef4444) 10%, var(--surface));
+  color: var(--danger, #ef4444);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.message-body .answer-progress-error p {
+  margin: 0;
+}
+
+.message-body .answer-progress-error p + p {
+  margin-top: 4px;
 }
 
 .message-body .answer-list {
@@ -1650,10 +1735,11 @@ body.panel-resizing .panel-resizer::after {
   resize: none;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px 13px;
+  padding: 10px 13px;
   background: var(--surface);
   color: var(--ink);
-  line-height: 1.45;
+  line-height: 1.4;
+  overflow-y: auto;
 }
 
 .send-button {
@@ -1779,26 +1865,35 @@ body.panel-resizing .panel-resizer::after {
 .compliance-review-button {
   min-height: 34px;
   align-self: stretch;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 5px 8px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  color: var(--accent-dark);
+  background: var(--surface);
+  color: var(--text-muted, var(--text));
   font-size: 12px;
   font-weight: 900;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
 }
 
 .compliance-review-button:hover,
 .compliance-review-button:focus-visible {
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent-dark);
   outline: none;
 }
 
 .compliance-review-button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.38;
+}
+
+.compliance-review-button:disabled:hover,
+.compliance-review-button:disabled:focus-visible {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text-muted, var(--text));
 }
 
 .material-panel-head {
@@ -4773,6 +4868,21 @@ body.panel-resizing .panel-resizer::after {
   border-color: var(--line);
   background: var(--surface);
   color: var(--text-muted, var(--text));
+}
+
+.deep-analysis-toggle[aria-pressed="true"]:disabled {
+  cursor: progress;
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.deep-analysis-toggle[aria-pressed="true"]:disabled:hover,
+.deep-analysis-toggle[aria-pressed="true"]:disabled:focus-visible {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-color: var(--accent);
+  color: var(--accent-dark);
 }
 
 .deep-analysis-label {
