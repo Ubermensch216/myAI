@@ -1358,6 +1358,7 @@ body.panel-resizing .panel-resizer::after {
   box-shadow: 0 6px 18px rgba(20, 36, 58, 0.06);
   line-height: 1.6;
   white-space: pre-wrap;
+  font-size: 0.9em;
 }
 
 .message-body p {
@@ -2523,6 +2524,7 @@ body.panel-resizing .panel-resizer::after {
   color: var(--ink);
   line-height: 1.4;
   overflow-y: auto;
+  font-size: 0.9em;
 }
 
 .send-button {

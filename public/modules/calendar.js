@@ -955,10 +955,12 @@ export function createAgendaDayColumn(date, { compact = false, fullDay = false }
   const list = document.createElement("div");
   list.className = "calendar-agenda-event-list";
   if (!events.length) {
-    const empty = document.createElement("div");
-    empty.className = "calendar-agenda-empty";
-    empty.textContent = compact ? "일정 없음" : "등록된 일정이 없습니다.";
-    list.append(empty);
+    if (compact) {
+      const empty = document.createElement("div");
+      empty.className = "calendar-agenda-empty";
+      empty.textContent = "일정 없음";
+      list.append(empty);
+    }
   } else {
     for (const ev of events) list.append(createAgendaEventCard(ev));
   }
