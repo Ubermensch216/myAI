@@ -35,6 +35,40 @@ export function stopGeneration() {
   state.abortController?.abort();
 }
 
+// ===== In-flight generation DOM tracking =====
+// Single in-flight generation at a time (state.busy is single-flight). We keep
+// references to the thinking card and streaming assistant article so that when
+// the user navigates to another room and returns, renderMessages() can re-attach
+// them. Without this, innerHTML="" detaches the nodes and they never reappear.
+let inflightGeneration = null; // { roomId, thinking, assistant }
+
+function trackInflightThinking(room, thinking) {
+  inflightGeneration = { roomId: room?.id ?? null, thinking, assistant: null };
+  if (state.activeRoomId !== inflightGeneration.roomId && thinking?.parentNode) {
+    thinking.remove();
+  }
+}
+
+function trackInflightAssistant(assistant) {
+  if (!inflightGeneration || !assistant) return;
+  inflightGeneration.assistant = assistant;
+  if (state.activeRoomId !== inflightGeneration.roomId && assistant.parentNode) {
+    assistant.remove();
+  }
+}
+
+function clearInflight() {
+  inflightGeneration = null;
+}
+
+export function restoreInflightForActiveRoom() {
+  if (!inflightGeneration) return;
+  if (inflightGeneration.roomId !== state.activeRoomId) return;
+  const { thinking, assistant } = inflightGeneration;
+  if (thinking && !thinking.isConnected) elements.messages.append(thinking);
+  if (assistant && !assistant.isConnected) elements.messages.append(assistant);
+}
+
 export function scrollToBottom() {
   elements.messages.scrollTop = elements.messages.scrollHeight;
 }
@@ -370,6 +404,7 @@ export async function requestTextAssistantResponse(room) {
   const lawProcessing = !naverSearch && shouldShowLawProcessing(latestPrompt);
   const initialSources = buildInputSources(room, { lawProcessing, naverSearch });
   const thinking = appendThinking({ lawProcessing, naverSearch, sources: initialSources });
+  trackInflightThinking(room, thinking);
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
@@ -417,6 +452,7 @@ export async function requestTextAssistantResponse(room) {
       if (!assistant) {
         assistant = appendMessage("assistant", "", { persist: false, streaming: true, autoScroll: stickToBottom });
         assistantBody = assistant.querySelector(".message-body");
+        trackInflightAssistant(assistant);
       }
       assistant.dataset.copyText = answer;
       renderAssistantContent(assistantBody, answer);
@@ -429,6 +465,7 @@ export async function requestTextAssistantResponse(room) {
       const stickToBottom = isMessagesNearBottom();
       assistant = appendMessage("assistant", "", { persist: false, streaming: true, autoScroll: stickToBottom });
       assistantBody = assistant.querySelector(".message-body");
+      trackInflightAssistant(assistant);
     }
     assistant.dataset.copyText = finalAnswer;
     renderAssistantContent(assistantBody, finalAnswer);
@@ -471,6 +508,7 @@ export async function requestTextAssistantResponse(room) {
       const stickToBottom = isMessagesNearBottom();
       assistant = appendMessage("assistant", "", { persist: false, streaming: true, autoScroll: stickToBottom });
       assistantBody = assistant.querySelector(".message-body");
+      trackInflightAssistant(assistant);
     }
     const errorText = `[오류] ${error.message}`;
     assistant.dataset.copyText = errorText;
@@ -478,6 +516,7 @@ export async function requestTextAssistantResponse(room) {
     assistant.classList.remove("streaming");
   } finally {
     removeThinking(thinking);
+    clearInflight();
     state.abortController = null;
     setBusy(false);
     if (useDeepAnalysis) setDeepAnalysisEnabled(false);
@@ -585,6 +624,7 @@ export async function requestVisualizationResponse(room) {
   setBusy(true);
   state.abortController = new AbortController();
   const thinking = appendThinking();
+  trackInflightThinking(room, thinking);
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
@@ -610,6 +650,7 @@ export async function requestVisualizationResponse(room) {
     const visualization = result.visualization;
     const finalAnswer = ensureAddressedAnswer(formatVisualizationText(visualization));
     assistant = appendMessage("assistant", finalAnswer, { persist: false, visualization });
+    trackInflightAssistant(assistant);
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
     const assistantMessage = { role: "assistant", content: finalAnswer, visualization, createdAt: new Date().toISOString() };
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
@@ -627,6 +668,7 @@ export async function requestVisualizationResponse(room) {
     if (!assistant) {
       assistant = appendMessage("assistant", "", { persist: false, streaming: true });
       assistantBody = assistant.querySelector(".message-body");
+      trackInflightAssistant(assistant);
     }
     const errorText = `[오류] ${error.message}`;
     assistant.dataset.copyText = errorText;
@@ -634,6 +676,7 @@ export async function requestVisualizationResponse(room) {
     assistant.classList.remove("streaming");
   } finally {
     removeThinking(thinking);
+    clearInflight();
     state.abortController = null;
     setBusy(false);
     scrollToBottom();
@@ -645,6 +688,7 @@ export async function requestVisualizationResponse(room) {
 export async function handleCalendarIntent(room, intentResult) {
   setBusy(true);
   const thinking = appendThinking();
+  trackInflightThinking(room, thinking);
   try {
     const outcome = await executeCalendarIntent(intentResult);
     if (outcome.mutated) { scheduleSave(); renderCalendar(); }
@@ -654,6 +698,7 @@ export async function handleCalendarIntent(room, intentResult) {
     appendCalendarAssistantMessage(room, outcome.text, { eventCards: outcome.eventCards ?? [] });
   } finally {
     removeThinking(thinking);
+    clearInflight();
     setBusy(false);
     scrollToBottom();
   }
@@ -662,6 +707,7 @@ export async function handleCalendarIntent(room, intentResult) {
 export async function handleCalendarProposal(room, intentResult) {
   setBusy(true);
   const thinking = appendThinking();
+  trackInflightThinking(room, thinking);
   try {
     const payload = intentResult?.payload || {};
     if (!payload.title || !payload.start) {
@@ -681,6 +727,7 @@ export async function handleCalendarProposal(room, intentResult) {
     appendCalendarAssistantMessage(room, text, { eventCards: conflicts.slice(0, 3) });
   } finally {
     removeThinking(thinking);
+    clearInflight();
     setBusy(false);
     scrollToBottom();
   }
@@ -689,10 +736,12 @@ export async function handleCalendarProposal(room, intentResult) {
 export async function handleCalendarStatusMessage(room, text) {
   setBusy(true);
   const thinking = appendThinking();
+  trackInflightThinking(room, thinking);
   try {
     appendCalendarAssistantMessage(room, text);
   } finally {
     removeThinking(thinking);
+    clearInflight();
     setBusy(false);
     scrollToBottom();
   }
@@ -711,6 +760,7 @@ export function appendCalendarAssistantMessage(room, text, { eventCards = [] } =
     createdAt,
     eventCards
   });
+  trackInflightAssistant(article);
   setAssistantAnswerTime(article, createdAt);
   return article;
 }

@@ -14,7 +14,8 @@ import {
   sendMessage, uploadFiles, confirmAndRemoveUploadedFile,
   appendMessage, renderFollowupSuggestions, extractImageFilesFromPaste,
   createTitleFromPrompt, submitPromptEdit, confirmAndClearRoomDocuments,
-  estimateAllRoomsStorageBytes, formatBytes
+  estimateAllRoomsStorageBytes, formatBytes,
+  restoreInflightForActiveRoom
 } from "./modules/chat.js";
 import {
   loadNotebooks, loadAdminStatus, restoreAdminTokenSession, restoreAccessSession,
@@ -423,7 +424,11 @@ function renderHeader() {
 function renderMessages() {
   const room = getActiveRoom();
   elements.messages.innerHTML = "";
-  if (!room || !room.messages.length) { appendWelcomeScreen(); return; }
+  if (!room || !room.messages.length) {
+    appendWelcomeScreen();
+    restoreInflightForActiveRoom();
+    return;
+  }
   for (const [index, message] of room.messages.entries()) {
     appendMessage(message.role, message.content, {
       persist: false,
@@ -438,6 +443,7 @@ function renderMessages() {
       sources: message.sources
     });
   }
+  restoreInflightForActiveRoom();
 }
 
 function shouldRenderMessageSuggestions(message) {
