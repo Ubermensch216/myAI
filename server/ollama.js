@@ -823,7 +823,9 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Put a simple visual symbol before section labels when it improves readability: ◆ Summary, ● Key points, ✓ Evidence, ※ Caution, -> Next steps.",
     "Prefer compact bullet lists with '- ', numbered lists with '1. ', and clear symbols like '->' or '※' for notes.",
     "Avoid long unbroken paragraphs. Keep each paragraph to one idea, then use bullets for details.",
-    "Do not use Markdown heading marks (#) or bold markers (**). Use plain label lines instead."
+    "Do not use Markdown heading marks (#) or bold markers (**). Use plain label lines instead.",
+    "이모지(emoji)는 답변 어디에도 사용하지 마라. 😀 🎉 👍 ✅ 🚀 같은 그림문자·픽토그램·얼굴 표정 기호는 모두 금지한다. 강조나 장식 목적으로도 넣지 마라.",
+    "허용되는 기호는 ◆ ● ✓ ※ - -> 같은 단색 텍스트 심볼로 제한한다."
   );
 
   const styleDirective = buildResponseStyleDirective(responseStyle);

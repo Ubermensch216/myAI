@@ -222,7 +222,8 @@ async function runReduceStreamNow({ partials, query, model, systemDirective, onC
     "여러 항목을 비교할 때는 마크다운 표(| 헤더 | … |)를 사용해도 좋다. 표 외 마크다운 제목·굵게·코드블록은 사용 금지.",
     "본문에 명시된 사실만 사용. 부분 결과들 사이에 충돌이 있으면 충돌을 그대로 노출하라.",
     "부분 결과 어디에서도 답을 찾을 수 없으면 '제공된 자료에서는 해당 질문의 답을 찾을 수 없습니다.'라고만 답해라.",
-    "출처가 부분 결과에 [청크 N.M]로 표기돼 있으면 최종 답변에도 그대로 인용 가능."
+    "출처가 부분 결과에 [청크 N.M]로 표기돼 있으면 최종 답변에도 그대로 인용 가능.",
+    "이모지(😀 🎉 👍 ✅ 🚀 등 그림문자·픽토그램·얼굴 표정 기호)는 답변에 사용하지 마라. 강조·장식 용도로도 금지."
   ];
   const directive = String(systemDirective ?? "").trim();
   if (directive) systemParts.push(directive);
