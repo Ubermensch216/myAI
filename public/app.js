@@ -434,7 +434,8 @@ function renderMessages() {
       createdAt: message.createdAt,
       citations: message.citations,
       law: message.law,
-      compliance: message.compliance
+      compliance: message.compliance,
+      sources: message.sources
     });
   }
 }

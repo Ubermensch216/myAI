@@ -435,6 +435,7 @@ export async function requestTextAssistantResponse(room) {
     assistant.classList.remove("streaming");
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
 
+    const finalSources = mergeServerConfirmation(initialSources, notebookMeta);
     const assistantMessage = { role: "assistant", content: finalAnswer, createdAt: new Date().toISOString() };
     const noEvidenceAnswer = isNoEvidenceAnswer(finalAnswer);
     if (allCitations.length && !noEvidenceAnswer) {
@@ -444,6 +445,8 @@ export async function requestTextAssistantResponse(room) {
     }
     if (notebookMeta?.law && !noEvidenceAnswer) assistantMessage.law = notebookMeta.law;
     if (notebookMeta?.compliance && !noEvidenceAnswer) assistantMessage.compliance = notebookMeta.compliance;
+    if (!isEmptySources(finalSources)) assistantMessage.sources = finalSources;
+    renderSourceBadges(assistant, finalSources, { variant: "message" });
     if (!noEvidenceAnswer) {
       renderLawNoticePanel(assistant, notebookMeta?.law);
       renderCitationsPanel(assistant, allCitations, notebookMeta?.law, notebookMeta?.compliance);
@@ -819,6 +822,9 @@ export function appendMessage(role, text, options = {}) {
   }
 
   article.append(meta, body);
+  if (role === "assistant" && options.sources) {
+    renderSourceBadges(article, options.sources, { variant: "message" });
+  }
   article.append(createMessageActions(article, role, options.createdAt));
   if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
   if (role === "assistant" && Array.isArray(options.citations) && options.citations.length && !isNoEvidenceAnswer(text)) {
