@@ -824,8 +824,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Prefer compact bullet lists with '- ', numbered lists with '1. ', and clear symbols like '->' or '※' for notes.",
     "Avoid long unbroken paragraphs. Keep each paragraph to one idea, then use bullets for details.",
     "Do not use Markdown heading marks (#) or bold markers (**). Use plain label lines instead.",
-    "이모지(emoji)는 답변 어디에도 사용하지 마라. 😀 🎉 👍 ✅ 🚀 같은 그림문자·픽토그램·얼굴 표정 기호는 모두 금지한다. 강조나 장식 목적으로도 넣지 마라.",
-    "허용되는 기호는 ◆ ● ✓ ※ - -> 같은 단색 텍스트 심볼로 제한한다."
+    "이모지(emoji)는 사용하지 마라. 😀 🎉 👍 같은 컬러 이모지 캐릭터(Unicode Emoji 표준에 정의된 문자)만 금지 대상이다. ◆ ● ✓ ※ → ★ 같은 단색 텍스트 기호·픽토그램·딩뱃은 자유롭게 써도 된다."
   );
 
   const styleDirective = buildResponseStyleDirective(responseStyle);
