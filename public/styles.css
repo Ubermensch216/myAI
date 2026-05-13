@@ -7596,10 +7596,6 @@ body.panel-resizing .panel-resizer::after {
   min-width: 0;
 }
 
-.admin-access-level-detail-row.level-1 {
-  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
-}
-
 .admin-access-level-name {
   display: flex;
   align-items: center;
@@ -7608,10 +7604,6 @@ body.panel-resizing .panel-resizer::after {
   color: var(--ink);
   font-size: 12px;
   font-weight: 900;
-}
-
-.admin-access-level-detail-row.level-1 .admin-access-level-name {
-  color: var(--danger);
 }
 
 .admin-access-level-warning {

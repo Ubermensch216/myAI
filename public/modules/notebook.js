@@ -1276,7 +1276,7 @@ function buildAccessLevelDetailRow(group, level) {
   if (level === 1) {
     const warning = document.createElement("span");
     warning.className = "admin-access-level-warning";
-    warning.textContent = "전체 프로젝트 접근";
+    warning.textContent = "그룹 내 모든 프로젝트 접근";
     label.append(warning);
   }
 
