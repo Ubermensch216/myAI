@@ -10099,7 +10099,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .source-badge-notebook { background: #e7f0ff; color: #1e40af; cursor: pointer; }
-.source-badge-notebook:focus { outline: 2px solid #1e40af; outline-offset: 1px; }
+.source-badge-notebook:focus-visible { outline: 2px solid #1e40af; outline-offset: 1px; }
 .source-badge-document { background: #eaf6ee; color: #166534; }
 .source-badge-image    { background: #faf3e0; color: #854d0e; }
 .source-badge-naver    { background: #e6f7ec; color: #047857; }

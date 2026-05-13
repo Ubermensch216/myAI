@@ -445,6 +445,7 @@ export async function requestTextAssistantResponse(room) {
     }
     if (notebookMeta?.law && !noEvidenceAnswer) assistantMessage.law = notebookMeta.law;
     if (notebookMeta?.compliance && !noEvidenceAnswer) assistantMessage.compliance = notebookMeta.compliance;
+    // Source badges represent what was analyzed, not what was found — show even on no-evidence answers.
     if (!isEmptySources(finalSources)) assistantMessage.sources = finalSources;
     renderSourceBadges(assistant, finalSources, { variant: "message" });
     if (!noEvidenceAnswer) {
@@ -1758,7 +1759,7 @@ function mergeServerConfirmation(sources, notebookMeta) {
     next.naverSearch = null;
   }
   if (meta?.notebook && !next.notebook) {
-    next.notebook = { id: meta.notebook.id || "", name: meta.notebook.name || "" };
+    next.notebook = { id: meta.notebook.id || "", name: meta.notebook.name || "이름 없는 프로젝트" };
   }
   return next;
 }
