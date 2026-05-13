@@ -4,42 +4,24 @@ import { scheduleSave } from "./persistence.js";
 let editingPromptId = null;
 
 const ICON_KEYS = [
-  "default", "summary", "translate", "code", "meeting", "email",
-  "doc", "idea", "chat", "brain", "book", "search",
-  "edit", "calendar", "chart", "image", "clock", "flag",
-  "tag", "folder", "link", "bookmark", "check", "lock",
-  "globe", "terminal", "database", "sparkles",
+  "doc", "email", "meeting", "calendar", "chart", "folder",
+  "edit", "summary", "book", "bookmark", "clock", "check",
 ];
 
 const ICON_PATHS = {
-  default:   `<path d="M12 3l2.5 5.5L20 9.5l-4 4 1 5.5-5-2.6L7 19l1-5.5-4-4 5.5-1L12 3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
-  summary:   `<path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
-  translate: `<path d="M4 5h9M8.5 5v2M4 9c1.5 4 4.5 6 8 6M11 7c-1 4-4 7-7 8M13 20l4-9 4 9M14.5 17h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
-  code:      `<path d="m9 8-4 4 4 4M15 8l4 4-4 4M13 6l-2 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
-  meeting:   `<circle cx="8" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 19c0-2.8 2.2-5 5-5s5 2.2 5 5M13 19c0-2.8 2.2-5 5-5s3 1 3 1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
-  email:     `<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+  default:   `<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v5h5 M9 13h7 M9 17h7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
   doc:       `<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v5h5 M9 13h7 M9 17h7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
-  idea:      `<path d="M9 18h6 M10 21h4 M12 3a6 6 0 0 0-4 10.5c1 1 1.5 2 1.5 3.5h5c0-1.5.5-2.5 1.5-3.5A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
-  chat:      `<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
-  brain:     `<path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-2 3 3 3 0 0 0 1 2 3 3 0 0 0 0 4 3 3 0 0 0 4 2 2 2 0 0 0 4 0V4a3 3 0 0 0-4 0z M15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 2 3 3 3 0 0 1-1 2 3 3 0 0 1 0 4 3 3 0 0 1-4 2 2 2 0 0 1-4 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>`,
-  book:      `<path d="M4 4h6a3 3 0 0 1 3 3v13 M20 4h-6a3 3 0 0 0-3 3v13 M4 4v15h6a3 3 0 0 1 3 2 M20 4v15h-6a3 3 0 0 0-3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`,
-  search:    `<circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
-  edit:      `<path d="M4 20h4l10-10-4-4L4 16v4z M14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
+  email:     `<rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+  meeting:   `<circle cx="8" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 19c0-2.8 2.2-5 5-5s5 2.2 5 5M13 19c0-2.8 2.2-5 5-5s3 1 3 1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
   calendar:  `<rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h18 M8 3v4 M16 3v4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
   chart:     `<path d="M4 20V10 M10 20V4 M16 20v-8 M22 20H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
-  image:     `<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="10" r="1.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 18 5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
-  clock:     `<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
-  flag:      `<path d="M5 21V4 M5 4h13l-2 4 2 4H5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
-  tag:       `<path d="M3 12V4h8l10 10-8 8L3 12z M8 8h.01" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
   folder:    `<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
-  link:      `<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
+  edit:      `<path d="M4 20h4l10-10-4-4L4 16v4z M14 6l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`,
+  summary:   `<path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
+  book:      `<path d="M4 4h6a3 3 0 0 1 3 3v13 M20 4h-6a3 3 0 0 0-3 3v13 M4 4v15h6a3 3 0 0 1 3 2 M20 4v15h-6a3 3 0 0 0-3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`,
   bookmark:  `<path d="M6 3h12v18l-6-4-6 4V3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  clock:     `<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
   check:     `<path d="m4 12 5 5L20 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  lock:      `<rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
-  globe:     `<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18 M12 3a14 14 0 0 1 0 18 M12 3a14 14 0 0 0 0 18" fill="none" stroke="currentColor" stroke-width="1.4"/>`,
-  terminal:  `<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m7 9 3 3-3 3 M13 15h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
-  database:  `<ellipse cx="12" cy="5" rx="8" ry="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5 M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
-  sparkles:  `<path d="M12 3v4 M12 17v4 M3 12h4 M17 12h4 M6 6l2.5 2.5 M15.5 15.5 18 18 M6 18l2.5-2.5 M15.5 8.5 18 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
 };
 
 function iconSvg(key, size = 18) {
@@ -52,7 +34,7 @@ function makePromptId() {
 }
 
 function createNewPrompt() {
-  const p = { id: makePromptId(), title: "새 프롬프트", icon: "default", content: "" };
+  const p = { id: makePromptId(), title: "새 프롬프트", icon: "doc", content: "" };
   ensureCustomPromptsState().personal.push(p);
   scheduleSave();
   return p;
