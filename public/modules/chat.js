@@ -10,7 +10,7 @@ import {
   buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
 } from "./calendar.js";
 import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
-import { findNotebookSummary } from "./notebook.js";
+import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
 
 const MB = 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
@@ -1819,7 +1819,8 @@ function renderSourceBadges(host, sources, { variant }) {
       kind: "notebook",
       svgKey: "notebook",
       text: sources.notebook.name || "프로젝트",
-      title: sources.notebook.name || undefined
+      title: sources.notebook.name || undefined,
+      onClick: () => { openNotebookSelector(); }
     }));
   }
 
