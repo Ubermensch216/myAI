@@ -100,6 +100,12 @@ export function parseAiSearchXml(xmlText) {
   if (!xmlText || typeof xmlText !== "string") return {};
   const text = xmlText.trim();
   if (!text.startsWith("<")) return {};
+  // Detect API error envelopes (invalid OC key, server validation failure, etc.)
+  const errorMatch = /<result>([\s\S]*?)<\/result>/i.exec(text);
+  if (errorMatch && /실패|fail|오류|error/i.test(errorMatch[1])) {
+    const msgMatch = /<msg>([\s\S]*?)<\/msg>/i.exec(text);
+    return { result: errorMatch[1].trim(), msg: msgMatch ? msgMatch[1].trim() : "" };
+  }
   const items = [];
   const blockRe = /<(법령조문|행정규칙조문|법령별표서식|행정규칙별표서식)>([\s\S]*?)<\/\1>/gi;
   let match;

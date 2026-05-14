@@ -31,6 +31,11 @@ const {
   getCachedLawResponse,
   setCachedLawResponse
 } = await import("../server/law/lawCache.js");
+const {
+  parseAiSearchXml,
+  normalizeAiSearchResults,
+  findUpstreamError
+} = await import("../server/law/lawApiParser.js");
 
 let failureCount = 0;
 
@@ -61,6 +66,9 @@ await run("disclaimerForLawMode maps modes to disclaimer policy", testDisclaimer
 await run("buildLawContext action_plan injects non-legal-advice template", testActionPlanContext);
 await run("law name alias resolution (산안법 → 산업안전보건법)", testLawAliasResolution);
 await run("law_topic_search intent mode detection", testTopicSearchIntent);
+await run("parseAiSearchXml extracts 법령조문 blocks", testParseAiSearchXml);
+await run("parseAiSearchXml extracts 행정규칙조문 blocks", testParseAiSearchXmlAdmin);
+await run("parseAiSearchXml detects API error envelope", testParseAiSearchXmlError);
 
 await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 if (failureCount > 0) process.exitCode = 1;
@@ -697,4 +705,70 @@ function testTopicSearchIntent() {
   // Verify alias resolution happens in normalizeLawName()
   assert.equal(normalizeLawName("산안법"), "산업안전보건법", "normalizeLawName should resolve alias");
   assert.equal(normalizeLawName("중처법"), "중대재해 처벌 등에 관한 법률", "multiple aliases should be supported");
+}
+
+function testParseAiSearchXml() {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<aiSearch>
+  <검색결과개수>2</검색결과개수>
+  <법령조문>
+    <법령ID>123</법령ID>
+    <법령명>산업안전보건기준에 관한 규칙</법령명>
+    <조문번호>619</조문번호>
+    <조문제목>정의</조문제목>
+    <조문내용>"밀폐공간"이란 산소결핍, 유해가스로 인한 건강장해를 일으킬 수 있는 장소를 말한다.</조문내용>
+    <시행일자>20240101</시행일자>
+  </법령조문>
+  <법령조문>
+    <법령ID>124</법령ID>
+    <법령명>산업안전보건법</법령명>
+    <조문번호>38</조문번호>
+    <조문제목>안전조치</조문제목>
+    <조문내용>사업주는 근로자가 작업장에서 안전하게 작업할 수 있도록 조치하여야 한다.</조문내용>
+    <시행일자>20240701</시행일자>
+  </법령조문>
+</aiSearch>`;
+  const parsed = parseAiSearchXml(xml);
+  assert.ok(parsed.aiSearch, "should produce aiSearch root");
+  const results = normalizeAiSearchResults(parsed);
+  assert.equal(results.length, 2, "should extract two 법령조문 entries");
+  assert.equal(results[0].lawName, "산업안전보건기준에 관한 규칙");
+  assert.equal(results[0].articleNo, "619");
+  assert.equal(results[0].articleTitle, "정의");
+  assert.ok(results[0].snippet.includes("밀폐공간"), "snippet should preserve content");
+  assert.equal(results[1].lawName, "산업안전보건법");
+  assert.equal(results[1].articleNo, "38");
+}
+
+function testParseAiSearchXmlError() {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <result>사용자 정보 검증에 실패하였습니다.</result>
+  <msg>OPEN API 호출 시 사용자 검증을 위하여 정확한 서버장비의 IP주소 및 도메인주소를 등록해 주세요.</msg>
+</Response>`;
+  const parsed = parseAiSearchXml(xml);
+  assert.equal(parsed.result, "사용자 정보 검증에 실패하였습니다.", "should extract error result");
+  assert.ok(parsed.msg && parsed.msg.includes("IP주소"), "should extract error msg");
+  const upstream = findUpstreamError(parsed);
+  assert.ok(upstream && upstream.length > 0, "findUpstreamError should detect failure");
+}
+
+function testParseAiSearchXmlAdmin() {
+  const xml = `<aiSearch>
+  <행정규칙조문>
+    <행정규칙ID>456</행정규칙ID>
+    <행정규칙명>밀폐공간 작업의 안전에 관한 고시</행정규칙명>
+    <발령기관명>고용노동부</발령기관명>
+    <조문번호>5</조문번호>
+    <조문제목>작업절차</조문제목>
+    <조문내용>밀폐공간 작업 전 산소 및 유해가스 농도를 측정하여야 한다.</조문내용>
+    <시행일자>20230101</시행일자>
+  </행정규칙조문>
+</aiSearch>`;
+  const parsed = parseAiSearchXml(xml);
+  const results = normalizeAiSearchResults(parsed);
+  assert.equal(results.length, 1, "should extract 행정규칙조문 entry via 행정규칙명 key");
+  assert.equal(results[0].lawName, "밀폐공간 작업의 안전에 관한 고시");
+  assert.equal(results[0].articleNo, "5");
+  assert.ok(results[0].snippet.includes("산소"), "snippet should preserve content");
 }

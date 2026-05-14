@@ -269,7 +269,7 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
   const query = extracted.query || prompt;
 
   const tasks = [];
-  // Parallel: AI semantic search (법조문, 행정규칙조문) + law name search + admin rules search
+  // Parallel: AI semantic search (법조문, 행정규칙조문) + law name search + admin rules + precedents + interpretations
   tasks.push(
     searchAiLaw({ query, searchType: 0, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
@@ -286,8 +286,16 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     searchAdminRules({ query, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
+  tasks.push(
+    searchPrecedents({ query, display: 3 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
+  tasks.push(
+    searchInterpretations({ query, display: 3 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
 
-  const [aiLawResult, aiAdminResult, lawResult, admResult] = await Promise.all(tasks);
+  const [aiLawResult, aiAdminResult, lawResult, admResult, precResult, interpResult] = await Promise.all(tasks);
 
   const sections = [];
   const citations = [];
@@ -327,6 +335,24 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     citations.push(...block.citations);
   } else if (admResult?.error) {
     errors.push({ source: "admin_rules", marker: admResult.error.marker });
+  }
+
+  // Format precedents (판례) results
+  if (precResult && !precResult.error && precResult.results?.length > 0) {
+    const block = formatPrecedentResultsBlock(precResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (precResult?.error) {
+    errors.push({ source: "precedents", marker: precResult.error.marker });
+  }
+
+  // Format interpretations (해석례) results
+  if (interpResult && !interpResult.error && interpResult.results?.length > 0) {
+    const block = formatInterpretationResultsBlock(interpResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (interpResult?.error) {
+    errors.push({ source: "interpretations", marker: interpResult.error.marker });
   }
 
   return {
