@@ -6,9 +6,11 @@ import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persist
 import {
   hasCalendarKeyword, isCalendarConfirmation, isCalendarRejection,
   isLikelyCalendarActionPrompt, isExplicitCalendarListRequest, extractCalendarListDateRange,
+  isCalendarAvailabilityInquiry, extractCalendarTimeSlot,
   classifyMessageIntent, clearPendingCalendarAction,
   executeCalendarIntent, renderCalendar, renderEventCardList, findConflictingEvents,
-  buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
+  buildCalendarProposalText, buildConflictWarning, formatEventOneLine, getCalendarEventsForRange,
+  maybeRequestNotificationPermission
 } from "./calendar.js";
 import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
 import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
@@ -349,6 +351,18 @@ export async function sendMessage(prompt) {
     || isCalendarConfirmation(prompt);
 
   if (shouldTryCalendarIntent) {
+    // Pre-classifier guard: availability inquiry is answered directly from local calendar
+    // state — runs BEFORE the LLM classifier so that no matter what the classifier returns,
+    // time-slot availability queries are never delegated to the chat LLM (which has no
+    // access to state.calendar.events and will hallucinate).
+    if (isCalendarAvailabilityInquiry(prompt)) {
+      const slot = extractCalendarTimeSlot(prompt);
+      if (slot) {
+        await handleCalendarAvailabilityInquiry(room, prompt, slot);
+        return;
+      }
+    }
+
     const intentResult = await classifyMessageIntent(prompt, room);
     if (intentResult && intentResult.intent && intentResult.intent !== "chat") {
       if (intentResult.intent === "calendar.propose") {
@@ -367,6 +381,11 @@ export async function sendMessage(prompt) {
     if (isExplicitCalendarListRequest(prompt)) {
       const dateRange = extractCalendarListDateRange(prompt) || {};
       await handleCalendarIntent(room, { intent: "calendar.list", payload: dateRange });
+      return;
+    }
+    // Post-classifier fallback for availability with no extractable slot: ask for clarification.
+    if (isCalendarAvailabilityInquiry(prompt)) {
+      await handleCalendarAvailabilityInquiry(room, prompt, null);
       return;
     }
     // Only show the vague calendar request warning if the LLM classification failed or wasn't definitive.
@@ -504,7 +523,7 @@ export async function requestTextAssistantResponse(room) {
     room.updatedAt = new Date().toISOString();
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
-    if (!noEvidenceAnswer) {
+    if (!noEvidenceAnswer && !hasCalendarKeyword(latestPrompt)) {
       renderFollowupSuggestions(assistant, [], { loading: true });
       attachFollowupSuggestions(room, assistantMessage, assistant);
     }
@@ -781,6 +800,50 @@ export async function handleCalendarStatusMessage(room, text) {
   trackInflightThinking(room, thinking);
   try {
     appendCalendarAssistantMessage(room, text);
+  } finally {
+    removeThinking(thinking);
+    clearInflight();
+    setBusy(false);
+    scrollToBottom();
+  }
+}
+
+function formatTimeSlotLabel(slot) {
+  if (slot.allDay) return `${slot.date} 종일`;
+  return `${slot.date} ${slot.start.slice(11)} ~ ${slot.end.slice(11)}`;
+}
+
+function buildAvailabilityResponseText(slot, conflicts) {
+  const label = formatTimeSlotLabel(slot);
+  if (!conflicts.length) {
+    return `${label} 시간대에 등록된 일정이 없습니다. 이 시간에 새 일정을 추가하려면 제목과 (필요하면) 종료 시간을 알려주세요.`;
+  }
+  return [
+    `${label} 시간대에 이미 등록된 일정이 있습니다:`,
+    buildConflictWarning(conflicts),
+    "",
+    "그래도 새 일정을 추가하시려면 제목과 시간을 알려주세요."
+  ].join("\n");
+}
+
+export async function handleCalendarAvailabilityInquiry(room, prompt, slot = undefined) {
+  const resolvedSlot = slot !== undefined ? slot : extractCalendarTimeSlot(prompt);
+  if (!resolvedSlot) {
+    await handleCalendarStatusMessage(
+      room,
+      "확인할 날짜를 명확히 알려주세요. 예: \"5월 14일 오후 8시 일정 가능?\""
+    );
+    return;
+  }
+  setBusy(true);
+  const thinking = appendThinking(calendarThinkingOptions("calendar.list"));
+  trackInflightThinking(room, thinking);
+  try {
+    const conflicts = slot.allDay
+      ? getCalendarEventsForRange(slot.range?.from || slot.date, slot.range?.to || slot.date)
+      : findConflictingEvents({ start: slot.start, end: slot.end, allDay: false });
+    const text = buildAvailabilityResponseText(slot, conflicts);
+    appendCalendarAssistantMessage(room, text, { eventCards: conflicts.slice(0, 5) });
   } finally {
     removeThinking(thinking);
     clearInflight();

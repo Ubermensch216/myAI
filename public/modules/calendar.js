@@ -107,6 +107,14 @@ export function parseEventEnd(event) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function addOneHourIso(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  d.setHours(d.getHours() + 1);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function formatEventChipLabel(event) {
   if (event.allDay) return event.title || "(제목 없음)";
   const start = parseEventStart(event);
@@ -343,8 +351,9 @@ export function findConflictingEvents({ start, end, allDay }, excludeId) {
   if (!start) return [];
   const newStartMs = (allDay ? new Date(`${String(start).slice(0, 10)}T00:00`) : new Date(start)).getTime();
   const newEndRaw = end || start;
-  const newEndMs = (allDay ? new Date(`${String(newEndRaw).slice(0, 10)}T23:59`) : new Date(newEndRaw)).getTime();
+  let newEndMs = (allDay ? new Date(`${String(newEndRaw).slice(0, 10)}T23:59`) : new Date(newEndRaw)).getTime();
   if (Number.isNaN(newStartMs) || Number.isNaN(newEndMs)) return [];
+  if (newEndMs < newStartMs) newEndMs = newStartMs;
   const fromISO = String(start).slice(0, 10);
   const toISO = String(newEndRaw).slice(0, 10) || fromISO;
   return getCalendarEventsForRange(fromISO, toISO).filter((event) => {
@@ -352,7 +361,16 @@ export function findConflictingEvents({ start, end, allDay }, excludeId) {
     const existingStart = parseEventStart(event);
     const existingEnd = parseEventEnd(event) || existingStart;
     if (!existingStart || !existingEnd) return false;
-    return existingStart.getTime() < newEndMs && existingEnd.getTime() > newStartMs;
+    const exStartMs = existingStart.getTime();
+    let exEndMs = existingEnd.getTime();
+    if (exEndMs < exStartMs) exEndMs = exStartMs;
+    // Point-on-either-side: inclusive coincidence counts as conflict so legacy
+    // zero-width events (end == start) at the same start time are detected.
+    if (exEndMs === exStartMs || newEndMs === newStartMs) {
+      return exStartMs <= newEndMs && exEndMs >= newStartMs;
+    }
+    // Standard half-open overlap preserves back-to-back (e.g. 14-15 vs 15-16 → no conflict).
+    return exStartMs < newEndMs && exEndMs > newStartMs;
   });
 }
 
@@ -470,12 +488,15 @@ export function showCalendarConfirm({ title = "Confirm", body = "", okText = "Co
 // ===== Calendar event CRUD =====
 
 export function createCalendarEventFromPayload(payload, nowIso = new Date().toISOString()) {
+  const normalizedEnd = payload.allDay
+    ? (payload.end || payload.start)
+    : (payload.end && payload.end !== payload.start ? payload.end : addOneHourIso(payload.start));
   return {
     id: crypto.randomUUID(),
     title: payload.title,
     allDay: !!payload.allDay,
     start: payload.start,
-    end: payload.end || payload.start,
+    end: normalizedEnd,
     location: payload.location || "",
     notes: payload.notes || "",
     recurrence: normalizeRecurrence(payload.recurrence || payload.repeat),
@@ -762,6 +783,62 @@ export function isExplicitCalendarListRequest(prompt) {
       && /(보고|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
 }
 
+const CALENDAR_INQUIRY_PATTERN = /(가능\s*[?？하한할까]?|괜찮\s*[?？하한할까]?|비어\s*(있|있나|있어|있냐)|여유\s*(있|있나|있어)|할\s*수\s*있|잡을\s*수\s*있|되\s*나요|되\s*냐|되\s*(나|냐)|있어\s*[?？]?|있나\s*[?？]?|있냐\s*[?？]?|확인해\s*(줘|주세요|볼까|줄)|등록\s*(가능|할 수 있|돼|되)|available)/i;
+
+export function isCalendarAvailabilityInquiry(prompt) {
+  const text = String(prompt || "").trim();
+  if (!text) return false;
+  return CALENDAR_INQUIRY_PATTERN.test(text);
+}
+
+function parseKoreanTimes(text) {
+  const results = [];
+  const re = /(오전|오후|아침|점심|저녁|밤|새벽)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const period = m[1] || "";
+    let hour = Number(m[2]);
+    const minute = m[3] ? Number(m[3]) : 0;
+    if (hour < 0 || hour > 24 || minute < 0 || minute > 59) continue;
+    if (period === "오후" || period === "저녁" || period === "밤") {
+      if (hour < 12) hour += 12;
+    } else if (period === "점심") {
+      if (hour < 8) hour += 12;
+    } else if (period === "새벽") {
+      if (hour === 12) hour = 0;
+    } else if (period === "오전" || period === "아침") {
+      if (hour === 12) hour = 0;
+    }
+    if (hour === 24) hour = 0;
+    if (hour >= 0 && hour <= 23) results.push({ hour, minute });
+  }
+  return results;
+}
+
+export function extractCalendarTimeSlot(prompt, baseDate = new Date()) {
+  const text = String(prompt || "").trim();
+  if (!text) return null;
+  const dateRange = extractCalendarListDateRange(prompt, baseDate);
+  if (!dateRange) return null;
+  const dateISO = dateRange.from;
+  const sameDay = dateRange.from === dateRange.to;
+  const times = parseKoreanTimes(text);
+  const pad = (n) => String(n).padStart(2, "0");
+  if (!times.length || !sameDay) {
+    return { date: dateISO, range: dateRange, allDay: true };
+  }
+  const startISO = `${dateISO}T${pad(times[0].hour)}:${pad(times[0].minute)}`;
+  let endISO;
+  if (times[1]) {
+    endISO = `${dateISO}T${pad(times[1].hour)}:${pad(times[1].minute)}`;
+  } else {
+    const d = new Date(startISO);
+    d.setHours(d.getHours() + 1);
+    endISO = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return { date: dateISO, start: startISO, end: endISO, allDay: false };
+}
+
 export function extractCalendarListDateRange(prompt, baseDate = new Date()) {
   const text = String(prompt || "").replace(/\s+/g, " ").trim();
   if (!text) return null;
@@ -790,6 +867,18 @@ export function extractCalendarListDateRange(prompt, baseDate = new Date()) {
     return { from: isoOf(ws), to: isoOf(we) };
   }
   if (/(이번\s*달|이번달|이달)/.test(text)) return monthRange(baseYear, baseMonth);
+  // Specific day: "5월 14일", "2026년 5월 14일"
+  const specificDay = /(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(text);
+  if (specificDay) {
+    const y = specificDay[1] ? Number(specificDay[1]) : baseYear;
+    const m = Number(specificDay[2]);
+    const d = Number(specificDay[3]);
+    const lastDay = new Date(y, m, 0).getDate();
+    if (m >= 1 && m <= 12 && d >= 1 && d <= lastDay) {
+      const iso = `${y}-${pad(m)}-${pad(d)}`;
+      return { from: iso, to: iso };
+    }
+  }
   if (/(다음\s*달|다음달)/.test(text)) {
     const d = new Date(baseYear, baseMonth, 1);
     return monthRange(d.getFullYear(), d.getMonth() + 1);
