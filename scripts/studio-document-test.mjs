@@ -38,6 +38,63 @@ async function asJson(response) {
 
 console.log("Studio Document API smoke");
 
+await check("visual markdown parser supports headings, lists, checklists, and tables", async () => {
+  const { parseMarkdownToVisualBlocks } = await import("../public/modules/documentStudioMarkdown.js");
+  const blocks = parseMarkdownToVisualBlocks([
+    "# Review plan",
+    "",
+    "Opening paragraph.",
+    "",
+    "- Alpha",
+    "- Beta",
+    "",
+    "1. First",
+    "2. Second",
+    "",
+    "- [x] Done",
+    "- [ ] Todo",
+    "",
+    "| Name | Status |",
+    "| --- | --- |",
+    "| A | Ready |",
+    "",
+    "```js",
+    "console.log('raw');",
+    "```"
+  ].join("\n"));
+  const types = blocks.map((block) => block.type);
+  const expectedTypes = ["heading", "paragraph", "bullet_list", "numbered_list", "checklist", "table", "raw"];
+  if (JSON.stringify(types) !== JSON.stringify(expectedTypes)) {
+    throw new Error(`types mismatch: ${types.join(",")}`);
+  }
+  if (blocks[0].level !== 1 || blocks[0].text !== "Review plan") throw new Error("heading mismatch");
+  if (blocks[2].items?.[1]?.text !== "Beta") throw new Error("bullet item mismatch");
+  if (blocks[4].items?.[0]?.checked !== true || blocks[4].items?.[1]?.checked !== false) throw new Error("checklist state mismatch");
+  if (blocks[5].headers?.[1] !== "Status" || blocks[5].rows?.[0]?.[1] !== "Ready") throw new Error("table mismatch");
+  if (!blocks[6].markdown.includes("console.log")) throw new Error("raw block not preserved");
+});
+
+await check("visual markdown serializer preserves edits and raw fallback blocks", async () => {
+  const { serializeVisualBlocksToMarkdown } = await import("../public/modules/documentStudioMarkdown.js");
+  const markdown = serializeVisualBlocksToMarkdown([
+    { type: "heading", level: 2, text: "Edited" },
+    { type: "paragraph", text: "Body" },
+    { type: "checklist", items: [{ text: "Confirm", checked: true }] },
+    { type: "table", headers: ["A", "B"], rows: [["1", "2"]] },
+    { type: "raw", markdown: "```txt\nunchanged\n```" }
+  ]);
+  for (const needle of [
+    "## Edited",
+    "Body",
+    "- [x] Confirm",
+    "| A | B |",
+    "| 1 | 2 |",
+    "```txt\nunchanged\n```"
+  ]) {
+    if (!markdown.includes(needle)) throw new Error(`missing ${needle}`);
+  }
+});
+
 await check("GET /templates returns 5 built-in templates", async () => {
   const { response, body } = await asJson(await fetch(`${base}/templates`));
   if (!response.ok) throw new Error(`status ${response.status}`);
