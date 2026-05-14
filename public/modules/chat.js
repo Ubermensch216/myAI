@@ -11,6 +11,7 @@ import {
 } from "./calendar.js";
 import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
 import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
+import { createDeleteButton, getSelectionMode, isSelected, toggleSelection } from "./messageDelete.js";
 
 const MB = 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
@@ -338,7 +339,7 @@ export async function sendMessage(prompt) {
 
   if (room.pendingCalendarAction && isCalendarRejection(prompt)) {
     clearPendingCalendarAction(room);
-    await handleCalendarStatusMessage(room, "알겠습니다. 보류 중이던 일정 등록은 취소했습니다.");
+    await handleCalendarStatusMessage(room, "알겠습니다. 보류 중이던 일정 등록은 취소했습니다.", { calendar: "cancel" });
     return;
   }
 
@@ -687,7 +688,7 @@ export async function requestVisualizationResponse(room) {
 
 export async function handleCalendarIntent(room, intentResult) {
   setBusy(true);
-  const thinking = appendThinking();
+  const thinking = appendThinking({ calendar: calendarKindFromIntent(intentResult?.intent) });
   trackInflightThinking(room, thinking);
   try {
     const outcome = await executeCalendarIntent(intentResult);
@@ -706,7 +707,7 @@ export async function handleCalendarIntent(room, intentResult) {
 
 export async function handleCalendarProposal(room, intentResult) {
   setBusy(true);
-  const thinking = appendThinking();
+  const thinking = appendThinking({ calendar: "propose" });
   trackInflightThinking(room, thinking);
   try {
     const payload = intentResult?.payload || {};
@@ -733,9 +734,9 @@ export async function handleCalendarProposal(room, intentResult) {
   }
 }
 
-export async function handleCalendarStatusMessage(room, text) {
+export async function handleCalendarStatusMessage(room, text, { calendar = "status" } = {}) {
   setBusy(true);
-  const thinking = appendThinking();
+  const thinking = appendThinking({ calendar });
   trackInflightThinking(room, thinking);
   try {
     appendCalendarAssistantMessage(room, text);
@@ -873,6 +874,20 @@ export function appendMessage(role, text, options = {}) {
   }
 
   article.append(meta, body);
+  if (getSelectionMode() && Number.isInteger(options.messageIndex) && !options.streaming) {
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "message-select-checkbox";
+    checkbox.setAttribute("aria-label", "메시지 선택");
+    const idx = options.messageIndex;
+    checkbox.checked = isSelected(idx);
+    if (checkbox.checked) article.classList.add("selected");
+    checkbox.addEventListener("change", () => {
+      toggleSelection(idx);
+      article.classList.toggle("selected", checkbox.checked);
+    });
+    article.prepend(checkbox);
+  }
   if (role === "assistant" && options.sources) {
     renderSourceBadges(article, options.sources, { variant: "message" });
   }
@@ -1188,6 +1203,7 @@ export function createMessageActions(article, role, createdAt = "") {
     actions.append(createSendToStudioButton(article));
   }
   if (role === "user") actions.append(createEditButton(article));
+  actions.append(createDeleteButton(article));
   if (role === "assistant" && createdAt) actions.append(createMessageTime(createdAt));
   return actions;
 }
@@ -1515,6 +1531,7 @@ export function appendThinking(options = {}) {
   const wrapper = document.createElement("div");
   wrapper.className = "thinking-card";
   if (options.lawProcessing) wrapper.classList.add("thinking-card-law");
+  if (options.calendar) wrapper.classList.add("thinking-card-calendar");
   if (options.sources) {
     try { wrapper.dataset.sources = JSON.stringify(options.sources); }
     catch { wrapper.dataset.sources = "null"; }
@@ -1522,16 +1539,25 @@ export function appendThinking(options = {}) {
   }
   const row = document.createElement("div");
   row.className = "thinking-row";
-  const dots = document.createElement("span");
-  dots.className = "thinking-dots";
-  dots.setAttribute("aria-hidden", "true");
-  dots.innerHTML = "<span></span><span></span><span></span>";
+  let indicator;
+  if (options.calendar) {
+    indicator = document.createElement("span");
+    indicator.className = "calendar-spinner";
+    indicator.setAttribute("aria-hidden", "true");
+    indicator.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" focusable="false"><rect class="cal-frame" x="2.5" y="4.5" width="19" height="17" rx="2"></rect><rect class="cal-header" x="2.5" y="4.5" width="19" height="4.5" rx="2"></rect><rect class="cal-ring" x="7" y="2.5" width="2" height="4" rx="1"></rect><rect class="cal-ring" x="15" y="2.5" width="2" height="4" rx="1"></rect><g class="cal-cells"><rect x="5" y="11" width="4" height="3.5" rx="0.6"></rect><rect x="10" y="11" width="4" height="3.5" rx="0.6"></rect><rect x="15" y="11" width="4" height="3.5" rx="0.6"></rect><rect x="5" y="16" width="4" height="3.5" rx="0.6"></rect><rect x="10" y="16" width="4" height="3.5" rx="0.6"></rect><rect x="15" y="16" width="4" height="3.5" rx="0.6"></rect></g><rect class="cal-highlight" x="5" y="11" width="4" height="3.5" rx="0.6"></rect></svg>`;
+  } else {
+    indicator = document.createElement("span");
+    indicator.className = "thinking-dots";
+    indicator.setAttribute("aria-hidden", "true");
+    indicator.innerHTML = "<span></span><span></span><span></span>";
+  }
   const text = document.createElement("span");
   text.className = "thinking-text";
-  text.textContent = options.naverSearch
-    ? "네이버 검색 중..."
+  text.textContent = options.calendar
+    ? calendarThinkingText(options.calendar)
+    : options.naverSearch ? "네이버 검색 중..."
     : options.lawProcessing ? "공식 법령 근거 확인 중..." : "Thinking...";
-  row.append(dots, text);
+  row.append(indicator, text);
 
   const details = document.createElement("details");
   details.className = "thinking-details";
@@ -1562,6 +1588,11 @@ export function appendThinking(options = {}) {
     const status = document.createElement("div");
     status.className = "thinking-law-status";
     status.textContent = "Korean Law Engine으로 공식 법령 정보를 조회하고 있습니다.";
+    wrapper.append(status);
+  } else if (options.calendar) {
+    const status = document.createElement("div");
+    status.className = "thinking-law-status";
+    status.textContent = calendarThinkingStatus(options.calendar);
     wrapper.append(status);
   }
   wrapper.dataset.completedSteps = "0";
@@ -1619,6 +1650,7 @@ export function getThinkingStepCount(thinking) {
 }
 
 function buildProcessingSteps(options = {}) {
+  if (options.calendar) return buildCalendarProcessingSteps(options.calendar);
   const steps = ["사용자 질문 확인", "대화 맥락 정리"];
   const { displayFileName: fmt } = { displayFileName: formatDisplayFileName };
   const documents = getActiveDocuments().filter((f) => f.kind === "document");
@@ -1633,6 +1665,57 @@ function buildProcessingSteps(options = {}) {
     steps.splice(Math.max(2, steps.length - 2), 0, "Korean Law Engine으로 공식 법령 정보 조회", "법령명·조항·공식 링크 근거 정리");
   }
   return steps;
+}
+
+function calendarKindFromIntent(intent) {
+  switch (intent) {
+    case "calendar.create": return "create";
+    case "calendar.update": return "update";
+    case "calendar.delete": return "delete";
+    case "calendar.query": return "query";
+    default: return "status";
+  }
+}
+
+function calendarThinkingText(kind) {
+  switch (kind) {
+    case "create": return "캘린더에 일정 등록 중...";
+    case "update": return "캘린더 일정 변경 중...";
+    case "delete": return "캘린더 일정 삭제 중...";
+    case "query": return "캘린더 일정 조회 중...";
+    case "propose": return "일정 후보 검토 중...";
+    case "cancel": return "일정 등록 취소 처리 중...";
+    case "status":
+    default: return "캘린더 처리 중...";
+  }
+}
+
+function calendarThinkingStatus(kind) {
+  switch (kind) {
+    case "create": return "날짜·시간·제목을 확인하고 캘린더에 일정을 추가하고 있습니다.";
+    case "update": return "대상 일정을 식별하여 변경 내용을 반영하고 있습니다.";
+    case "delete": return "대상 일정을 캘린더에서 삭제하고 있습니다.";
+    case "query": return "지정한 기간의 일정을 조회하고 있습니다.";
+    case "propose": return "충돌하는 일정이 있는지 확인하고 등록 후보를 정리하고 있습니다.";
+    case "cancel": return "보류 중이던 일정 등록을 폐기하고 있습니다.";
+    case "status":
+    default: return "캘린더 요청을 처리하고 있습니다.";
+  }
+}
+
+function buildCalendarProcessingSteps(kind) {
+  const head = ["일정 의도 분석", "날짜·시간·제목 파싱"];
+  const tail = ["응답 메시지 작성"];
+  switch (kind) {
+    case "create": return [...head, "기존 일정 충돌 확인", "캘린더에 등록", ...tail];
+    case "update": return [...head, "대상 일정 식별", "변경 내용 반영", ...tail];
+    case "delete": return [...head, "대상 일정 식별", "캘린더에서 삭제", ...tail];
+    case "query":  return [...head, "기간 내 일정 조회", "결과 정리", ...tail];
+    case "propose":return [...head, "기존 일정 충돌 확인", "등록 확인 요청 준비", ...tail];
+    case "cancel": return ["보류 일정 식별", "등록 후보 폐기", ...tail];
+    case "status":
+    default:       return [...head, "캘린더 상태 갱신", ...tail];
+  }
 }
 
 function wantsExplicitWebSearch(prompt) {

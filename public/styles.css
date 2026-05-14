@@ -1255,7 +1255,7 @@ body.panel-resizing .panel-resizer::after {
 
 .chat-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 14px;
   align-items: center;
   padding: 16px min(5vw, 56px);
@@ -1986,6 +1986,94 @@ body.panel-resizing .panel-resizer::after {
   stroke-linejoin: round;
 }
 
+.delete-message-button:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
+.message.streaming .delete-message-button {
+  display: none;
+}
+
+.message-select-checkbox {
+  position: absolute;
+  top: 6px;
+  left: -28px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.messages-selection-mode .message {
+  position: relative;
+}
+
+.message.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.selection-mode-toggle.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.bulk-delete-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px min(5vw, 56px);
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface-2));
+}
+
+.bulk-delete-bar[hidden] {
+  display: none;
+}
+
+.bulk-count {
+  flex: 1;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.bulk-delete-button {
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 6px 14px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bulk-delete-button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.bulk-delete-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bulk-cancel-button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bulk-cancel-button:hover {
+  background: var(--surface-2);
+}
+
 .message-download {
   position: relative;
   display: inline-grid;
@@ -2117,6 +2205,91 @@ body.panel-resizing .panel-resizer::after {
 
 .thinking-card-law {
   border-left: 3px solid color-mix(in srgb, var(--muted) 35%, var(--line));
+}
+
+.thinking-card-calendar {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 65%, var(--line));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--surface)) 0%, var(--surface) 65%);
+}
+
+.thinking-card-calendar .thinking-text {
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink));
+}
+
+.calendar-spinner {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--accent) 75%, var(--muted));
+}
+
+.calendar-spinner svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.calendar-spinner .cal-frame {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.calendar-spinner .cal-header {
+  fill: currentColor;
+  opacity: 0.85;
+}
+
+.calendar-spinner .cal-ring {
+  fill: currentColor;
+}
+
+.calendar-spinner .cal-cells rect {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.calendar-spinner .cal-highlight {
+  fill: color-mix(in srgb, var(--accent) 92%, transparent);
+  animation: calCellHop 1.8s steps(1, end) infinite;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 60%, transparent));
+}
+
+.calendar-spinner::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 8px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: calPulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes calCellHop {
+  0%   { transform: translate(0px, 0px); }
+  16%  { transform: translate(5px, 0px); }
+  32%  { transform: translate(10px, 0px); }
+  48%  { transform: translate(0px, 5px); }
+  64%  { transform: translate(5px, 5px); }
+  80%  { transform: translate(10px, 5px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes calPulse {
+  0%   { transform: scale(0.85); opacity: 0.85; }
+  70%  { opacity: 0; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-spinner .cal-highlight,
+  .calendar-spinner::after {
+    animation: none;
+  }
 }
 
 .thinking-row {
@@ -2906,6 +3079,34 @@ body.panel-resizing .panel-resizer::after {
   font-size: 14px;
   font-weight: 700;
 }
+
+.drop-overlay-formats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.drop-fmt-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  opacity: 0.88;
+}
+
+.fmt-pdf  { background: #d63842; }
+.fmt-docx { background: #2a6fdb; }
+.fmt-xlsx { background: #1f9d55; }
+.fmt-pptx { background: #d97706; }
+.fmt-hwpx { background: #7c3aed; }
+.fmt-img  { background: #0891b2; }
 
 .settings-dialog {
   width: min(520px, calc(100vw - 32px));
@@ -3719,7 +3920,7 @@ body.panel-resizing .panel-resizer::after {
   }
 
   .chat-header {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 4px;
     padding: 12px 18px;
   }

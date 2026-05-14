@@ -27,6 +27,7 @@ import { renderCustomPromptPicker } from "./modules/customPrompts.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
 import { bindStudioEvents, renderStudio } from "./modules/studio.js";
 import { initDocTool } from "./modules/docTool.js";
+import { toggleSelectionMode, exitSelectionMode, requestDeleteMessages, getSelectedIndicesSnapshot, refreshBulkBar } from "./modules/messageDelete.js";
 
 let titleTimer = null;
 let dragDepth = 0;
@@ -711,6 +712,28 @@ function bindEvents() {
       prefillComplianceReviewPrompt();
     });
   }
+
+  if (elements.selectionModeToggle) {
+    elements.selectionModeToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleSelectionMode();
+    });
+  }
+  if (elements.bulkDeleteButton) {
+    elements.bulkDeleteButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      const indices = getSelectedIndicesSnapshot();
+      if (!indices.length) return;
+      requestDeleteMessages(indices);
+    });
+  }
+  if (elements.bulkCancelButton) {
+    elements.bulkCancelButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      exitSelectionMode();
+    });
+  }
+  refreshBulkBar();
 
   // Notebook
   if (elements.attachNotebookButton) {

@@ -75,6 +75,12 @@
       <section class="chat-area" aria-label="채팅">
         <div class="chat-header">
           <input id="roomTitleInput" class="room-title-input" aria-label="대화방 제목" />
+          <button id="selectionModeToggle" class="icon-button selection-mode-toggle" type="button" aria-pressed="false" aria-label="여러 메시지 선택" title="메시지 선택 모드">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+              <path d="M8 12.5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
           <button id="settingsButton" class="icon-button settings-icon-button" type="button" aria-label="설정 열기" title="설정">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
@@ -86,6 +92,12 @@
         </div>
 
         <div id="messages" class="messages"></div>
+
+        <div id="bulkDeleteBar" class="bulk-delete-bar" hidden>
+          <span id="bulkCount" class="bulk-count">0개 선택됨</span>
+          <button id="bulkDeleteButton" type="button" class="bulk-delete-button" disabled>선택 삭제</button>
+          <button id="bulkCancelButton" type="button" class="bulk-cancel-button">취소</button>
+        </div>
 
         <form id="chatForm" class="composer">
           <div class="composer-main-row">
@@ -160,6 +172,18 @@
           <div class="drop-overlay-panel">
             <div class="drop-overlay-title">파일을 놓아 첨부</div>
             <div class="drop-overlay-subtitle">현재 대화방에 추가됩니다</div>
+            <div class="drop-overlay-formats">
+              <span class="drop-fmt-badge fmt-pdf">PDF</span>
+              <span class="drop-fmt-badge fmt-docx">DOCX</span>
+              <span class="drop-fmt-badge fmt-xlsx">XLSX</span>
+              <span class="drop-fmt-badge fmt-xlsx">CSV</span>
+              <span class="drop-fmt-badge fmt-pptx">PPTX</span>
+              <span class="drop-fmt-badge fmt-hwpx">HWPX</span>
+              <span class="drop-fmt-badge fmt-img">PNG</span>
+              <span class="drop-fmt-badge fmt-img">JPG</span>
+              <span class="drop-fmt-badge fmt-img">WEBP</span>
+              <span class="drop-fmt-badge fmt-img">GIF</span>
+            </div>
           </div>
         </div>
       </section>
