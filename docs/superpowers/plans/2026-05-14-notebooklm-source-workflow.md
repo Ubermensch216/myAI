@@ -253,7 +253,7 @@ If the API returns no `dataBase64` because the binary is too large, the source m
 
 ## Task 6: Studio Editor Mode Split
 
-Status: pending. This is intentionally outside MVP 1.
+Status: completed.
 
 **Files:**
 
@@ -262,23 +262,23 @@ Status: pending. This is intentionally outside MVP 1.
 - Modify: `public/styles.css`
 - Test: `scripts/studio-document-test.mjs`
 
-- [ ] **Step 1: Add mode control**
+- [x] **Step 1: Add mode control**
 
 Add a segmented control with `문서 편집` and `원문 보기` above the current Markdown toolbar.
 
-- [ ] **Step 2: Default to visual mode**
+- [x] **Step 2: Default to visual mode**
 
 Store mode in the active draft or local module state. Default to visual mode for new and existing drafts.
 
-- [ ] **Step 3: Render visual blocks**
+- [x] **Step 3: Render visual blocks**
 
 Parse current Markdown into simple visual blocks. MVP supports headings, paragraphs, bullet lists, numbered lists, checklists, and pipe tables.
 
-- [ ] **Step 4: Limited editing**
+- [x] **Step 4: Limited editing**
 
 Allow editing heading/paragraph text, checklist item text and checked state, and simple table cell text. Sync changes back into `doc.markdown`.
 
-- [ ] **Step 5: Raw fallback**
+- [x] **Step 5: Raw fallback**
 
 Keep the existing textarea and toolbar under `원문 보기`. Unsupported Markdown structures remain editable there.
 
@@ -305,6 +305,18 @@ Latest MVP 1 verification:
 - `npm.cmd test` passed through the law test group, but the smoke group could
   not complete because the local app server was not reachable on the expected
   smoke-test URL during that run.
+
+Latest Task 6 verification:
+
+- `npm.cmd run test:source-workflow` passed.
+- `npm.cmd run test:studio-document` passed.
+- `node --check public/modules/documentStudio.js`,
+  `public/modules/documentStudioMarkdown.js`, and
+  `scripts/studio-document-test.mjs` passed.
+- `git diff --check` passed.
+- `npm.cmd test` passed with a temporary local HTTPS server and
+  `MYAI_SMOKE_BASE_URL=https://127.0.0.1:3000` because this workspace's `.env`
+  enables HTTPS on port 3000.
 
 Manual checks:
 

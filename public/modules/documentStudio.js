@@ -8,6 +8,7 @@
 import { state, elements, ensureRoomStudio, getActiveRoom } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { setStudioCollapsed } from "./layout.js";
+import { parseMarkdownToVisualBlocks, serializeVisualBlocksToMarkdown } from "./documentStudioMarkdown.js";
 
 const EXPORT_FORMATS = [
   { id: "docx", label: "Word (.docx)" },
@@ -20,6 +21,7 @@ let _templates = null;
 let _activeAbort = null;
 let _switchToDocumentTool = null;
 let _suppressEditorChange = false;
+let _visualBlocks = [];
 
 export function registerDocumentStudioActivator(fn) {
   _switchToDocumentTool = typeof fn === "function" ? fn : null;
@@ -82,6 +84,14 @@ export function bindDocumentStudioEvents() {
     scheduleSave();
   });
 
+  elements.studioDocumentVisualModeButton?.addEventListener("click", () => {
+    setDocumentEditorMode("visual");
+  });
+
+  elements.studioDocumentRawModeButton?.addEventListener("click", () => {
+    setDocumentEditorMode("raw");
+  });
+
   initEditor();
 
   elements.studioDocumentToolbar?.addEventListener("click", (event) => {
@@ -131,6 +141,212 @@ function setEditorValue(text) {
 
 function resizeEditor() { /* textarea sizes itself via flex; nothing to do */ }
 
+function getDocumentEditorMode(doc) {
+  return doc?.editorMode === "raw" ? "raw" : "visual";
+}
+
+function setDocumentEditorMode(mode) {
+  const doc = getActiveDraft();
+  if (!doc) return;
+  const next = mode === "raw" ? "raw" : "visual";
+  if (getDocumentEditorMode(doc) === next) return;
+  doc.editorMode = next;
+  markDirty(doc);
+  renderDocumentStudio();
+}
+
+function renderEditorMode(doc) {
+  const mode = getDocumentEditorMode(doc);
+  const visualActive = mode === "visual";
+  if (elements.studioDocumentVisual) elements.studioDocumentVisual.hidden = !visualActive;
+  if (elements.studioDocumentRaw) elements.studioDocumentRaw.hidden = visualActive;
+  updateModeButton(elements.studioDocumentVisualModeButton, visualActive);
+  updateModeButton(elements.studioDocumentRawModeButton, !visualActive);
+  if (visualActive) renderVisualEditor(doc);
+}
+
+function updateModeButton(button, active) {
+  if (!button) return;
+  button.classList.toggle("is-active", Boolean(active));
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+function renderVisualEditor(doc) {
+  const root = elements.studioDocumentVisual;
+  if (!root) return;
+  _visualBlocks = parseMarkdownToVisualBlocks(doc.markdown || "");
+  root.innerHTML = "";
+  for (let index = 0; index < _visualBlocks.length; index += 1) {
+    root.append(renderVisualBlock(doc, _visualBlocks[index], index));
+  }
+}
+
+function renderVisualBlock(doc, block, blockIndex) {
+  if (block.type === "heading") return renderHeadingBlock(doc, block);
+  if (block.type === "paragraph") return renderParagraphBlock(doc, block);
+  if (block.type === "bullet_list" || block.type === "numbered_list") return renderListBlock(doc, block);
+  if (block.type === "checklist") return renderChecklistBlock(doc, block);
+  if (block.type === "table") return renderTableBlock(doc, block);
+  return renderRawBlock(block, blockIndex);
+}
+
+function renderHeadingBlock(doc, block) {
+  const wrap = createVisualShell("heading");
+  const input = document.createElement("input");
+  input.className = `studio-document-visual-heading is-h${Math.min(6, Math.max(1, Number(block.level) || 1))}`;
+  input.type = "text";
+  input.value = block.text || "";
+  input.addEventListener("input", () => {
+    block.text = input.value;
+    syncVisualBlocks(doc);
+  });
+  wrap.append(input);
+  return wrap;
+}
+
+function renderParagraphBlock(doc, block) {
+  const wrap = createVisualShell("paragraph");
+  const input = document.createElement("textarea");
+  input.className = "studio-document-visual-paragraph";
+  input.rows = Math.max(2, Math.min(8, String(block.text || "").split("\n").length + 1));
+  input.value = block.text || "";
+  input.addEventListener("input", () => {
+    block.text = input.value;
+    syncVisualBlocks(doc);
+    autosizeVisualTextarea(input);
+  });
+  wrap.append(input);
+  requestAnimationFrame(() => autosizeVisualTextarea(input));
+  return wrap;
+}
+
+function renderListBlock(doc, block) {
+  const wrap = createVisualShell(block.type === "numbered_list" ? "numbered-list" : "bullet-list");
+  const list = document.createElement(block.type === "numbered_list" ? "ol" : "ul");
+  list.className = "studio-document-visual-list";
+  const items = Array.isArray(block.items) ? block.items : [];
+  for (const item of items) {
+    const li = document.createElement("li");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = item.text || "";
+    input.addEventListener("input", () => {
+      item.text = input.value;
+      syncVisualBlocks(doc);
+    });
+    li.append(input);
+    list.append(li);
+  }
+  wrap.append(list);
+  return wrap;
+}
+
+function renderChecklistBlock(doc, block) {
+  const wrap = createVisualShell("checklist");
+  const list = document.createElement("ul");
+  list.className = "studio-document-visual-list studio-document-visual-checklist";
+  const items = Array.isArray(block.items) ? block.items : [];
+  for (const item of items) {
+    const li = document.createElement("li");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = Boolean(item.checked);
+    checkbox.addEventListener("change", () => {
+      item.checked = checkbox.checked;
+      syncVisualBlocks(doc);
+    });
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = item.text || "";
+    input.addEventListener("input", () => {
+      item.text = input.value;
+      syncVisualBlocks(doc);
+    });
+    li.append(checkbox, input);
+    list.append(li);
+  }
+  wrap.append(list);
+  return wrap;
+}
+
+function renderTableBlock(doc, block) {
+  const wrap = createVisualShell("table");
+  const scroller = document.createElement("div");
+  scroller.className = "studio-document-visual-table-scroll";
+  const table = document.createElement("table");
+  table.className = "studio-document-visual-table";
+  const headers = Array.isArray(block.headers) ? block.headers : [];
+  const rows = Array.isArray(block.rows) ? block.rows : [];
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headers.forEach((header, colIndex) => {
+    const th = document.createElement("th");
+    th.append(createTableInput(header, (value) => {
+      block.headers[colIndex] = value;
+      syncVisualBlocks(doc);
+    }));
+    headerRow.append(th);
+  });
+  thead.append(headerRow);
+  table.append(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row, rowIndex) => {
+    const tr = document.createElement("tr");
+    headers.forEach((_, colIndex) => {
+      const td = document.createElement("td");
+      td.append(createTableInput(row?.[colIndex] || "", (value) => {
+        if (!Array.isArray(block.rows[rowIndex])) block.rows[rowIndex] = [];
+        block.rows[rowIndex][colIndex] = value;
+        syncVisualBlocks(doc);
+      }));
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  table.append(tbody);
+  scroller.append(table);
+  wrap.append(scroller);
+  return wrap;
+}
+
+function renderRawBlock(block, blockIndex) {
+  const wrap = createVisualShell("raw");
+  const pre = document.createElement("pre");
+  pre.className = "studio-document-visual-raw";
+  pre.tabIndex = 0;
+  pre.dataset.blockIndex = String(blockIndex);
+  pre.textContent = block.markdown || "";
+  wrap.append(pre);
+  return wrap;
+}
+
+function createVisualShell(type) {
+  const wrap = document.createElement("section");
+  wrap.className = `studio-document-visual-block is-${type}`;
+  return wrap;
+}
+
+function createTableInput(value, onInput) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value || "";
+  input.addEventListener("input", () => onInput(input.value));
+  return input;
+}
+
+function syncVisualBlocks(doc) {
+  doc.markdown = serializeVisualBlocksToMarkdown(_visualBlocks);
+  setEditorValue(doc.markdown);
+  markDirty(doc);
+}
+
+function autosizeVisualTextarea(input) {
+  input.style.height = "auto";
+  input.style.height = `${Math.max(48, input.scrollHeight)}px`;
+}
+
 // ── Entry point from chat.js ─────────────────────────────────────────────
 
 export async function openWithAnswer({ title, markdown, messageId, metadata = {}, model } = {}) {
@@ -166,6 +382,7 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
     model: model || elements.modelInput?.value?.trim() || "gemma3n:e2b",
     answerMarkdown: text,
     metadata,
+    editorMode: "visual",
     exportOptions: { includeCitations: true },
     pending: true,
     warnings: [],
@@ -190,6 +407,7 @@ export function renderDocumentStudio() {
   if (!doc) {
     if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = false;
     if (elements.studioDocumentEditor) elements.studioDocumentEditor.hidden = true;
+    if (elements.studioDocumentVisual) elements.studioDocumentVisual.innerHTML = "";
     return;
   }
   if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = true;
@@ -201,6 +419,7 @@ export function renderDocumentStudio() {
     elements.studioDocumentTitle.value = doc.title || "";
   }
   setEditorValue(doc.markdown || "");
+  renderEditorMode(doc);
   populateTemplateSelect(doc.templateId);
   if (!_templates || !_templates.length) {
     ensureTemplatesLoaded().then(() => {
