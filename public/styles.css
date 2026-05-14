@@ -4327,7 +4327,7 @@ body.panel-resizing .panel-resizer::after {
 .studio-document-title {
   width: 100%;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .studio-document-header-row {
@@ -4346,7 +4346,7 @@ body.panel-resizing .panel-resizer::after {
   padding: 0 8px;
   background: var(--surface);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .studio-document-download {
@@ -4658,7 +4658,8 @@ body.panel-resizing .panel-resizer::after {
   border-radius: 5px;
   background: transparent;
   color: var(--ink);
-  font: inherit;
+  font-family: inherit;
+  font-size: 12px;
   line-height: 1.5;
   outline: none;
 }
@@ -4677,12 +4678,12 @@ body.panel-resizing .panel-resizer::after {
   font-weight: 700;
 }
 
-.studio-document-visual-heading.is-h1 { font-size: 20px; }
-.studio-document-visual-heading.is-h2 { font-size: 17px; }
-.studio-document-visual-heading.is-h3 { font-size: 15px; }
+.studio-document-visual-heading.is-h1 { font-size: 17px; }
+.studio-document-visual-heading.is-h2 { font-size: 14.5px; }
+.studio-document-visual-heading.is-h3 { font-size: 13px; }
 .studio-document-visual-heading.is-h4,
 .studio-document-visual-heading.is-h5,
-.studio-document-visual-heading.is-h6 { font-size: 14px; }
+.studio-document-visual-heading.is-h6 { font-size: 12px; }
 
 .studio-document-visual-paragraph {
   min-height: 48px;
@@ -4772,7 +4773,7 @@ body.panel-resizing .panel-resizer::after {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -4829,7 +4830,7 @@ body.panel-resizing .panel-resizer::after {
   color: var(--ink);
   padding: 12px 14px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.7;
   resize: none;
   outline: none;

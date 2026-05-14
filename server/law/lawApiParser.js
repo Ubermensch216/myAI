@@ -18,7 +18,7 @@ const TEXT_KEY_PATTERN = /^(조문내용|조문내용문|항내용|호내용|목
 const AI_ARTICLE_NUMBER_KEYS = ["조문번호", "articleNumber", "articleNo"];
 const AI_ARTICLE_TITLE_KEYS = ["조문제목", "articleTitle", "title"];
 const AI_ARTICLE_CONTENT_KEYS = ["조문내용", "content", "snippet", "text"];
-const AI_LAW_NAME_KEYS = ["법령명한글", "법령명", "lawName"];
+const AI_LAW_NAME_KEYS = ["법령명한글", "법령명", "행정규칙명", "lawName"];
 
 export function findUpstreamError(payload) {
   if (!payload || typeof payload !== "object") return "";
@@ -101,10 +101,11 @@ export function parseAiSearchXml(xmlText) {
   const text = xmlText.trim();
   if (!text.startsWith("<")) return {};
   const items = [];
-  const blockRe = /<law>([\s\S]*?)<\/law>/gi;
+  const blockRe = /<(법령조문|행정규칙조문|법령별표서식|행정규칙별표서식)>([\s\S]*?)<\/\1>/gi;
   let match;
   while ((match = blockRe.exec(text)) !== null) {
-    const block = match[1];
+    const blockKind = match[1];
+    const block = match[2];
     const getTag = (tag) => {
       const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i").exec(block);
       if (!m) return "";
@@ -114,15 +115,19 @@ export function parseAiSearchXml(xmlText) {
         .trim();
     };
     const item = {
-      "법령명한글": getTag("법령명한글") || getTag("법령명"),
-      "조문번호": getTag("조문번호"),
-      "조문제목": getTag("조문제목"),
+      "법령명": getTag("법령명") || getTag("행정규칙명"),
+      "법령ID": getTag("법령ID") || getTag("행정규칙ID"),
+      "법령종류명": getTag("법령종류명") || getTag("발령기관명"),
+      "조문번호": getTag("조문번호") || getTag("별표서식번호"),
+      "조문가지번호": getTag("조문가지번호"),
+      "조문제목": getTag("조문제목") || getTag("별표서식제목"),
       "조문내용": getTag("조문내용"),
-      "시행일자": getTag("시행일자")
+      "시행일자": getTag("시행일자"),
+      "_blockKind": blockKind
     };
-    if (item["법령명한글"] || item["조문번호"]) items.push(item);
+    if (item["법령명"] || item["조문번호"]) items.push(item);
   }
-  return { law: items };
+  return { aiSearch: { 법령조문: items } };
 }
 
 export function chooseLawSearchResult(results, lawName) {
