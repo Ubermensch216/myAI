@@ -239,11 +239,14 @@ export async function uploadFiles(files) {
       // renderRooms triggered via custom event so chat.js doesn't import app.js
       window.dispatchEvent(new CustomEvent("myai:renderrooms"));
       setUploadProgressItemState(item, "done", `${file.name} 분석 준비 완료`);
+      if (item) setTimeout(() => item.remove(), 1500);
     } catch (error) {
       setUploadProgressItemState(item, "error", `${file.name}: ${error.message}`);
     }
   }
 }
+
+window.addEventListener("myai:roomchange", clearUploadProgress);
 
 function shouldUploadFile(file) {
   const size = Number(file?.size || 0);

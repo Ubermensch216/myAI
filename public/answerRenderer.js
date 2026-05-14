@@ -487,6 +487,8 @@ function createTable(rows) {
   return wrapper;
 }
 
+const EMOJI_STRIP_RE = /[\p{Emoji_Presentation}\p{Emoji_Modifier}️]/gu;
+
 function cleanPlainText(text) {
   return String(text ?? "")
     .replace(/^#{1,6}\s+/gm, "")
@@ -497,5 +499,7 @@ function cleanPlainText(text) {
     .replace(/\*(.*?)\*/g, "$1")
     .replace(/_(.*?)_/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
+    .replace(EMOJI_STRIP_RE, "")
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
