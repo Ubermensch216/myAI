@@ -2207,6 +2207,68 @@ body.panel-resizing .panel-resizer::after {
   border-left: 3px solid color-mix(in srgb, var(--muted) 35%, var(--line));
 }
 
+.thinking-card-calendar {
+  border-left: 3px solid color-mix(in srgb, var(--accent, #4f8cff) 65%, var(--line));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent, #4f8cff) 8%, var(--surface)) 0%,
+    var(--surface) 60%
+  );
+}
+
+.thinking-card-calendar .thinking-text {
+  color: color-mix(in srgb, var(--accent, #4f8cff) 70%, var(--text, currentColor));
+  animation: thinkingCalendarTextPulse 1.4s ease-in-out infinite;
+}
+
+.thinking-card-calendar .thinking-dots span {
+  background: color-mix(in srgb, var(--accent, #4f8cff) 75%, transparent);
+}
+
+.thinking-calendar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: color-mix(in srgb, var(--accent, #4f8cff) 80%, var(--muted));
+  animation: thinkingCalendarBounce 1.2s ease-in-out infinite;
+  transform-origin: 50% 70%;
+}
+
+.thinking-calendar-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.thinking-calendar-icon svg circle[fill="currentColor"] {
+  animation: thinkingCalendarDot 1.4s ease-in-out infinite;
+}
+
+.thinking-calendar-icon svg circle[fill="currentColor"]:nth-of-type(2) {
+  animation-delay: 0.18s;
+}
+
+.thinking-calendar-icon svg circle[fill="currentColor"]:nth-of-type(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes thinkingCalendarBounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  35% { transform: translateY(-3px) rotate(-4deg); }
+  70% { transform: translateY(0) rotate(3deg); }
+}
+
+@keyframes thinkingCalendarDot {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes thinkingCalendarTextPulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
 .thinking-row {
   display: inline-flex;
   max-width: 100%;

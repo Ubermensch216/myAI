@@ -5,7 +5,8 @@ import { state, elements, documentCacheHeaders, accessAuthHeaders, getActiveRoom
 import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persistence.js";
 import {
   hasCalendarKeyword, isCalendarConfirmation, isCalendarRejection,
-  isLikelyCalendarActionPrompt, classifyMessageIntent, clearPendingCalendarAction,
+  isLikelyCalendarActionPrompt, isExplicitCalendarListRequest, extractCalendarListDateRange,
+  classifyMessageIntent, clearPendingCalendarAction,
   executeCalendarIntent, renderCalendar, renderEventCardList, findConflictingEvents,
   buildCalendarProposalText, formatEventOneLine, maybeRequestNotificationPermission
 } from "./calendar.js";
@@ -361,6 +362,13 @@ export async function sendMessage(prompt) {
       await handleCalendarIntent(room, room.pendingCalendarAction);
       return;
     }
+    // Client-side guard: explicit calendar list queries (e.g. "5월 일정 조회해") must
+    // never fall through to the chat path, which would trigger Naver web search.
+    if (isExplicitCalendarListRequest(prompt)) {
+      const dateRange = extractCalendarListDateRange(prompt) || {};
+      await handleCalendarIntent(room, { intent: "calendar.list", payload: dateRange });
+      return;
+    }
     // Only show the vague calendar request warning if the LLM classification failed or wasn't definitive.
     // If intentResult.intent is 'chat', it means the LLM explicitly decided this is a normal conversation.
     const isExplicitChat = intentResult && intentResult.intent === "chat" && !intentResult.fallbackReason;
@@ -686,9 +694,22 @@ export async function requestVisualizationResponse(room) {
 
 // ===== Calendar message handlers (need chat rendering + calendar logic) =====
 
+const CALENDAR_PROCESSING_LABELS = {
+  "calendar.create": { text: "일정 등록 중...", status: "캘린더에 새 일정을 추가하고 있습니다." },
+  "calendar.update": { text: "일정 수정 중...", status: "기존 일정을 업데이트하고 있습니다." },
+  "calendar.delete": { text: "일정 삭제 중...", status: "캘린더에서 일정을 제거하고 있습니다." },
+  "calendar.list": { text: "일정 조회 중...", status: "등록된 일정을 확인하고 있습니다." },
+  "calendar.propose": { text: "일정 후보 확인 중...", status: "일정 후보와 일정 충돌 여부를 확인하고 있습니다." }
+};
+
+function calendarThinkingOptions(intent) {
+  const label = CALENDAR_PROCESSING_LABELS[intent] || CALENDAR_PROCESSING_LABELS["calendar.list"];
+  return { calendarProcessing: label.text, calendarStatus: label.status };
+}
+
 export async function handleCalendarIntent(room, intentResult) {
   setBusy(true);
-  const thinking = appendThinking();
+  const thinking = appendThinking(calendarThinkingOptions(intentResult?.intent));
   trackInflightThinking(room, thinking);
   try {
     const outcome = await executeCalendarIntent(intentResult);
@@ -707,7 +728,7 @@ export async function handleCalendarIntent(room, intentResult) {
 
 export async function handleCalendarProposal(room, intentResult) {
   setBusy(true);
-  const thinking = appendThinking();
+  const thinking = appendThinking(calendarThinkingOptions("calendar.propose"));
   trackInflightThinking(room, thinking);
   try {
     const payload = intentResult?.payload || {};
@@ -1531,6 +1552,7 @@ export function appendThinking(options = {}) {
   const wrapper = document.createElement("div");
   wrapper.className = "thinking-card";
   if (options.lawProcessing) wrapper.classList.add("thinking-card-law");
+  if (options.calendarProcessing) wrapper.classList.add("thinking-card-calendar");
   if (options.sources) {
     try { wrapper.dataset.sources = JSON.stringify(options.sources); }
     catch { wrapper.dataset.sources = "null"; }
@@ -1538,15 +1560,24 @@ export function appendThinking(options = {}) {
   }
   const row = document.createElement("div");
   row.className = "thinking-row";
+  if (options.calendarProcessing) {
+    const icon = document.createElement("span");
+    icon.className = "thinking-calendar-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 9.5h17"/><circle cx="8.5" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="14" r="1" fill="currentColor" stroke="none"/></svg>';
+    row.append(icon);
+  }
   const dots = document.createElement("span");
   dots.className = "thinking-dots";
   dots.setAttribute("aria-hidden", "true");
   dots.innerHTML = "<span></span><span></span><span></span>";
   const text = document.createElement("span");
   text.className = "thinking-text";
-  text.textContent = options.naverSearch
-    ? "네이버 검색 중..."
-    : options.lawProcessing ? "공식 법령 근거 확인 중..." : "Thinking...";
+  text.textContent = options.calendarProcessing
+    ? options.calendarProcessing
+    : options.naverSearch
+      ? "네이버 검색 중..."
+      : options.lawProcessing ? "공식 법령 근거 확인 중..." : "Thinking...";
   row.append(dots, text);
 
   const details = document.createElement("details");
@@ -1578,6 +1609,11 @@ export function appendThinking(options = {}) {
     const status = document.createElement("div");
     status.className = "thinking-law-status";
     status.textContent = "Korean Law Engine으로 공식 법령 정보를 조회하고 있습니다.";
+    wrapper.append(status);
+  } else if (options.calendarProcessing) {
+    const status = document.createElement("div");
+    status.className = "thinking-law-status";
+    status.textContent = options.calendarStatus || "캘린더를 업데이트하고 있습니다.";
     wrapper.append(status);
   }
   wrapper.dataset.completedSteps = "0";

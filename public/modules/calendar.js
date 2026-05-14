@@ -755,6 +755,76 @@ export function isLikelyCalendarActionPrompt(prompt) {
   return CALENDAR_ACTION_PATTERN.test(String(prompt || ""));
 }
 
+export function isExplicitCalendarListRequest(prompt) {
+  const text = String(prompt || "").trim();
+  if (!text) return false;
+  return /(일정|스케줄|캘린더|calendar|schedule)/i.test(text)
+      && /(보고|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
+}
+
+export function extractCalendarListDateRange(prompt, baseDate = new Date()) {
+  const text = String(prompt || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const today = baseDate instanceof Date && Number.isFinite(baseDate.getTime()) ? baseDate : new Date();
+  const baseYear = today.getFullYear();
+  const baseMonth = today.getMonth() + 1;
+  const pad = (n) => String(n).padStart(2, "0");
+  const isoOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const monthRange = (y, m) => {
+    const lastDay = new Date(y, m, 0).getDate();
+    return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(lastDay)}` };
+  };
+
+  if (/(오늘|금일)/.test(text)) {
+    const iso = isoOf(today);
+    return { from: iso, to: iso };
+  }
+  if (/(내일|명일)/.test(text)) {
+    const d = new Date(today); d.setDate(today.getDate() + 1);
+    const iso = isoOf(d);
+    return { from: iso, to: iso };
+  }
+  if (/(이번\s*주|이번주)/.test(text)) {
+    const ws = new Date(today); ws.setDate(today.getDate() - today.getDay());
+    const we = new Date(ws); we.setDate(ws.getDate() + 6);
+    return { from: isoOf(ws), to: isoOf(we) };
+  }
+  if (/(이번\s*달|이번달|이달)/.test(text)) return monthRange(baseYear, baseMonth);
+  if (/(다음\s*달|다음달)/.test(text)) {
+    const d = new Date(baseYear, baseMonth, 1);
+    return monthRange(d.getFullYear(), d.getMonth() + 1);
+  }
+  if (/(지난\s*달|지난달|전월)/.test(text)) {
+    const d = new Date(baseYear, baseMonth - 2, 1);
+    return monthRange(d.getFullYear(), d.getMonth() + 1);
+  }
+
+  const multiMonth = /(\d{1,2})\s*월\s*(?:부터|에서|~|-)\s*(?:\d{4}\s*년\s*)?(\d{1,2})\s*월/.exec(text);
+  if (multiMonth) {
+    const fm = Number(multiMonth[1]);
+    const tm = Number(multiMonth[2]);
+    if (fm >= 1 && fm <= 12 && tm >= 1 && tm <= 12) {
+      const ty = tm < fm ? baseYear + 1 : baseYear;
+      return { from: monthRange(baseYear, fm).from, to: monthRange(ty, tm).to };
+    }
+  }
+  const yearMatch = /(\d{4})\s*년(?:도)?/.exec(text);
+  if (yearMatch) {
+    const y = Number(yearMatch[1]);
+    const after = text.slice(yearMatch.index + yearMatch[0].length);
+    if (y >= 2000 && y <= 2100 && !/^\s*\d{1,2}\s*월/.test(after)) {
+      return { from: `${y}-01-01`, to: `${y}-12-31` };
+    }
+  }
+  const explicitMonth = /(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월/.exec(text);
+  if (explicitMonth) {
+    const m = Number(explicitMonth[2]);
+    const y = explicitMonth[1] ? Number(explicitMonth[1]) : baseYear;
+    if (Number.isInteger(m) && m >= 1 && m <= 12) return monthRange(y, m);
+  }
+  return null;
+}
+
 export async function classifyMessageIntent(prompt, room = getActiveRoom()) {
   try {
     const response = await fetch("/api/agent/intent", {
