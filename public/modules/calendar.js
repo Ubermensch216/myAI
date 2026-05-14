@@ -631,7 +631,7 @@ export async function applyCalendarCreateAsync(payload) {
     };
   }
   const conflicts = findConflictingEvents({ start: payload.start, end: payload.end || payload.start, allDay: !!payload.allDay });
-  if (conflicts.length) {
+  if (conflicts.length && !payload._conflictConfirmed) {
     const proceed = await showCalendarConfirm({
       title: "Conflicting event",
       body: `기존 일정과 시간이 겹칩니다:\n${buildConflictWarning(conflicts)}\n\n그래도 추가할까요?`,

@@ -359,7 +359,7 @@ export async function sendMessage(prompt) {
       return;
     }
     if (room.pendingCalendarAction && isCalendarConfirmation(prompt)) {
-      await handleCalendarIntent(room, room.pendingCalendarAction);
+      await handleCalendarIntent(room, { ...room.pendingCalendarAction, _userConfirmed: true });
       return;
     }
     // Client-side guard: explicit calendar list queries (e.g. "5월 일정 조회해") must
@@ -708,13 +708,33 @@ function calendarThinkingOptions(intent) {
 }
 
 export async function handleCalendarIntent(room, intentResult) {
+  // Conflict pre-check for new calendar.create: warn via chat and ask confirmation
+  // instead of letting applyCalendarCreateAsync raise a modal dialog. Bypass when the
+  // user already confirmed (pendingCalendarAction confirmation path sets _userConfirmed).
+  if (intentResult?.intent === "calendar.create" && !intentResult._userConfirmed) {
+    const payload = intentResult.payload || {};
+    if (payload.title && payload.start) {
+      const conflicts = findConflictingEvents({
+        start: payload.start,
+        end: payload.end || payload.start,
+        allDay: !!payload.allDay
+      });
+      if (conflicts.length) {
+        await handleCalendarProposal(room, { intent: "calendar.propose", payload });
+        return;
+      }
+    }
+  }
+  const effectiveIntent = intentResult?._userConfirmed && intentResult?.intent === "calendar.create"
+    ? { ...intentResult, payload: { ...(intentResult.payload || {}), _conflictConfirmed: true } }
+    : intentResult;
   setBusy(true);
-  const thinking = appendThinking(calendarThinkingOptions(intentResult?.intent));
+  const thinking = appendThinking(calendarThinkingOptions(effectiveIntent?.intent));
   trackInflightThinking(room, thinking);
   try {
-    const outcome = await executeCalendarIntent(intentResult);
+    const outcome = await executeCalendarIntent(effectiveIntent);
     if (outcome.mutated) { scheduleSave(); renderCalendar(); }
-    if (outcome.mutated && ["calendar.create", "calendar.delete", "calendar.update"].includes(intentResult.intent)) {
+    if (outcome.mutated && ["calendar.create", "calendar.delete", "calendar.update"].includes(effectiveIntent.intent)) {
       clearPendingCalendarAction(room);
     }
     appendCalendarAssistantMessage(room, outcome.text, { eventCards: outcome.eventCards ?? [] });
