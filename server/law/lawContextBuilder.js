@@ -10,6 +10,7 @@ import { searchInterpretations } from "./tools/interpretations.js";
 import { searchAdminRules } from "./tools/adminRules.js";
 import { searchOrdinances } from "./tools/ordinances.js";
 import { getLawConfig } from "./lawConfig.js";
+import { buildLawTopicSearchQuery, inferLawArticleRefsForTopic } from "./lawTopicHints.js";
 import { buildCompliancePromptBlock } from "../compliance/compliancePrompt.js";
 import { buildComplianceSearchQuery, getReviewType } from "../compliance/complianceTypes.js";
 
@@ -156,6 +157,66 @@ export async function buildForcedLawContext(query, options = {}) {
   return buildTopicSearchContext(query, forcedIntent, { ...options, startedAt });
 }
 
+export async function buildActionPlanContext(input = {}, options = {}) {
+  const prompt = String(input.query || input.prompt || "").trim();
+  const extracted = {
+    ...(input.extracted || {}),
+    lawName: input.lawName || input.extracted?.lawName || "",
+    article: input.article || input.jo || input.extracted?.article || "",
+    query: prompt || input.extracted?.query || ""
+  };
+  const startedAt = options.startedAt ?? Date.now();
+  const intent = input.intent || {
+    isLegalQuery: true,
+    mode: "action_plan",
+    extracted,
+    confidence: extracted.lawName && extracted.article ? 0.9 : 0.75,
+    mayUseWebSearch: false
+  };
+
+  if (extracted.lawName && extracted.article) {
+    const article = await getArticleDetail(extracted, { signal: options.signal, client: options.client });
+    const citation = normalizeLawCitationForMeta(article.citation, 0, article.text);
+    const contextItems = [{ citation, text: article.text }];
+    const lawBlock = formatLawContext(contextItems);
+    return {
+      ok: true,
+      query: prompt || extracted.query,
+      mode: "action_plan",
+      intent,
+      citations: [citation],
+      verification: { checked: false, failCount: 0, results: [] },
+      disclaimer: disclaimerForLawMode("action_plan"),
+      contextText: fitLawContext([lawBlock, ACTION_PLAN_TEMPLATE].filter(Boolean).join("\n\n")),
+      error: "",
+      latencyMs: Date.now() - startedAt
+    };
+  }
+
+  const topic = await buildTopicSearchContext(prompt || extracted.query, intent, {
+    signal: options.signal,
+    startedAt,
+    client: options.client
+  });
+  if (!topic.ok || !topic.citations.length) {
+    return {
+      ...topic,
+      mode: "action_plan",
+      intent,
+      disclaimer: disclaimerForLawMode("action_plan"),
+      contextText: "",
+      error: topic.error || LAW_ERROR_MARKERS.NOT_FOUND
+    };
+  }
+  return {
+    ...topic,
+    mode: "action_plan",
+    intent,
+    disclaimer: disclaimerForLawMode("action_plan"),
+    contextText: fitLawContext([topic.contextText, ACTION_PLAN_TEMPLATE].filter(Boolean).join("\n\n"))
+  };
+}
+
 export async function buildLawContext(prompt, { hasNotebook = false, hasDocuments = false, signal, client } = {}) {
   const intent = detectLawIntent(prompt, { hasNotebook, hasDocuments });
   if (!intent.isLegalQuery) return null;
@@ -201,37 +262,22 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
     }
 
     if (intent.mode === "action_plan") {
-      const article = await getArticleDetail(intent.extracted, { signal, client });
-      const citation = normalizeLawCitationForMeta(article.citation, 0, article.text);
-      const contextItems = [{ citation, text: article.text }];
-      const lawBlock = formatLawContext(contextItems);
-      return {
-        ok: true,
-        query: prompt,
-        mode: intent.mode,
-        intent,
-        citations: [citation],
-        verification: { checked: false, failCount: 0, results: [] },
-        disclaimer: disclaimerForLawMode(intent.mode),
-        contextText: fitLawContext([lawBlock, ACTION_PLAN_TEMPLATE].filter(Boolean).join("\n\n")),
-        error: "",
-        latencyMs: Date.now() - startedAt
-      };
+      return buildActionPlanContext({ query: prompt, extracted: intent.extracted, intent }, { signal, client, startedAt });
     }
 
     if (intent.mode === "law_search") {
       const result = await searchLaw({ query: intent.extracted.query }, { signal, client });
-      const contextText = formatSearchContext(result);
+      const block = formatSearchResultsBlock("법령 검색 결과", result.results, 0);
       return {
-        ok: result.ok,
+        ok: Boolean(result.ok && block.citations.length),
         query: result.query || prompt,
         mode: intent.mode,
         intent,
-        citations: [],
+        citations: block.citations,
         verification: { checked: false, failCount: 0, results: [] },
         disclaimer: disclaimerForLawMode(intent.mode),
-        contextText: fitLawContext(contextText),
-        error: result.ok ? "" : LAW_ERROR_MARKERS.NOT_FOUND,
+        contextText: fitLawContext(block.text),
+        error: result.ok && block.citations.length ? "" : LAW_ERROR_MARKERS.NOT_FOUND,
         latencyMs: Date.now() - startedAt
       };
     }
@@ -267,39 +313,65 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
 async function buildTopicSearchContext(prompt, intent, { signal, startedAt, client }) {
   const extracted = intent.extracted || {};
   const query = extracted.query || prompt;
+  const searchQuery = buildLawTopicSearchQuery(query);
+  const inferredRefs = inferLawArticleRefsForTopic(query);
+  const inferredArticleTask = Promise.all(
+    inferredRefs.map((ref) =>
+      getArticleDetail(ref, { signal, client })
+        .then((result) => ({ ok: true, ref, result }))
+        .catch((error) => ({ ok: false, ref, error: toLawError(error) }))
+    )
+  );
 
   const tasks = [];
   // Parallel: AI semantic search (법조문, 행정규칙조문) + law name search + admin rules + precedents + interpretations
   tasks.push(
-    searchAiLaw({ query, searchType: 0, display: 5 }, { signal, client })
+    searchAiLaw({ query: searchQuery, searchType: 0, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
-    searchAiLaw({ query, searchType: 2, display: 5 }, { signal, client })
+    searchAiLaw({ query: searchQuery, searchType: 2, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
-    searchLaw({ query }, { signal, client })
+    searchLaw({ query: searchQuery }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
-    searchAdminRules({ query, display: 5 }, { signal, client })
+    searchAdminRules({ query: searchQuery, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
-    searchPrecedents({ query, display: 3 }, { signal, client })
+    searchPrecedents({ query: searchQuery, display: 3 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
-    searchInterpretations({ query, display: 3 }, { signal, client })
+    searchInterpretations({ query: searchQuery, display: 3 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
+  tasks.push(
+    searchOrdinances({ query: searchQuery, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
 
-  const [aiLawResult, aiAdminResult, lawResult, admResult, precResult, interpResult] = await Promise.all(tasks);
+  const [inferredArticleResults, aiLawResult, aiAdminResult, lawResult, admResult, precResult, interpResult, ordResult] = await Promise.all([
+    inferredArticleTask,
+    ...tasks
+  ]);
 
   const sections = [];
   const citations = [];
   const errors = [];
+
+  for (const entry of inferredArticleResults) {
+    if (entry.ok) {
+      const cite = normalizeLawCitationForMeta(entry.result.citation, citations.length, entry.result.text);
+      citations.push(cite);
+      sections.push(formatLawContext([{ citation: cite, text: entry.result.text }]));
+    } else {
+      errors.push({ source: "inferred_article", marker: entry.error?.marker || LAW_ERROR_MARKERS.LAW_API_ERROR });
+    }
+  }
 
   // Format AI law article search results
   if (aiLawResult && !aiLawResult.error && aiLawResult.results?.length > 0) {
@@ -355,6 +427,14 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     errors.push({ source: "interpretations", marker: interpResult.error.marker });
   }
 
+  if (ordResult && !ordResult.error && ordResult.results?.length > 0) {
+    const block = formatOrdinanceResultsBlock(ordResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (ordResult?.error) {
+    errors.push({ source: "ordinances", marker: ordResult.error.marker });
+  }
+
   return {
     ok: citations.length > 0 || sections.length > 0,
     query,
@@ -377,16 +457,32 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
   const article = extracted.article || "";
 
   const wantArticle = Boolean(lawName && article);
+  const wantLawSources = Boolean(extracted.wantLawSources || wantArticle);
   const wantPrecedents = Boolean(extracted.wantPrecedents);
   const wantInterpretations = Boolean(extracted.wantInterpretations);
   const wantAdminRules = Boolean(extracted.wantAdminRules);
   const wantOrdinances = Boolean(extracted.wantOrdinances);
 
-  const searchQuery = [lawName, article, baseQuery].filter(Boolean).join(" ").trim() || baseQuery;
+  const topicSearchQuery = buildLawTopicSearchQuery(baseQuery);
+  const searchQuery = [lawName, article, topicSearchQuery].filter(Boolean).join(" ").trim() || baseQuery;
+  const inferredRefs = wantLawSources && !wantArticle ? inferLawArticleRefsForTopic(baseQuery) : [];
+  const inferredArticleTask = Promise.all(
+    inferredRefs.map((ref) =>
+      getArticleDetail(ref, { signal, client })
+        .then((result) => ({ ok: true, ref, result }))
+        .catch((error) => ({ ok: false, ref, error: toLawError(error) }))
+    )
+  );
 
   const tasks = [];
   tasks.push(wantArticle
     ? getArticleDetail({ lawName, article }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
+    : Promise.resolve(null));
+  tasks.push(wantLawSources
+    ? searchAiLaw({ query: searchQuery, searchType: 0, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
+    : Promise.resolve(null));
+  tasks.push(wantLawSources
+    ? searchLaw({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantPrecedents
     ? searchPrecedents({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
@@ -401,7 +497,10 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
     ? searchOrdinances({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
 
-  const [articleResult, precResult, expcResult, admResult, ordResult] = await Promise.all(tasks);
+  const [inferredArticleResults, articleResult, aiLawResult, lawResult, precResult, expcResult, admResult, ordResult] = await Promise.all([
+    inferredArticleTask,
+    ...tasks
+  ]);
 
   const sections = [];
   const citations = [];
@@ -413,6 +512,32 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
     sections.push(formatLawContext([{ citation: cite, text: articleResult.text }]));
   } else if (articleResult?.error) {
     errors.push({ source: "article", marker: articleResult.error.marker });
+  }
+
+  for (const entry of inferredArticleResults) {
+    if (entry.ok) {
+      const cite = normalizeLawCitationForMeta(entry.result.citation, citations.length, entry.result.text);
+      citations.push(cite);
+      sections.push(formatLawContext([{ citation: cite, text: entry.result.text }]));
+    } else {
+      errors.push({ source: "inferred_article", marker: entry.error?.marker || LAW_ERROR_MARKERS.LAW_API_ERROR });
+    }
+  }
+
+  if (aiLawResult && !aiLawResult.error) {
+    const block = formatAiSearchResultsBlock("법령 조문 (AI 검색)", aiLawResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (aiLawResult?.error) {
+    errors.push({ source: "ai_law", marker: aiLawResult.error.marker });
+  }
+
+  if (lawResult && !lawResult.error) {
+    const block = formatSearchResultsBlock("법령 (이름 기준)", lawResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (lawResult?.error) {
+    errors.push({ source: "law", marker: lawResult.error.marker });
   }
 
   if (precResult && !precResult.error) {
@@ -752,10 +877,10 @@ function formatSearchContext(result) {
   const lines = [
     "[공식 법령 검색 결과]",
     `Query: ${result.query}`,
-    "The official law database confirmed the following law(s) exist. " +
-    "Answer the user's question using your knowledge of these laws. " +
-    "If you cite a specific article, clearly note whether you retrieved the full text from the API or are relying on training knowledge. " +
-    "Do NOT fabricate article numbers or content you are not confident about."
+    "The official law database confirmed the following law-name records. " +
+    "Use these records only for law identity, law type, MST/ID, and effective-date facts shown below. " +
+    "Do not infer article text, duties, exceptions, precedents, interpretations, or policy recommendations from law names alone. " +
+    "If a specific article or ruling is needed, ask for a narrower query or retrieve that official text first."
   ];
   items.forEach((item, index) => {
     lines.push(`[L-S${index + 1}] ${item.lawName}\nID: ${item.lawId || ""}\nMST: ${item.mst || ""}\nType: ${item.lawType || ""}\nEffective date: ${item.effectiveDate || ""}`);
@@ -769,7 +894,7 @@ function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], star
   const lines = [
     `[${title}]`,
     "These results are based on semantic matching of your query against law article content. " +
-    "Snippets below are truncated (200 chars max); review full text before citing."
+    "Snippets below are official search excerpts and may be truncated; cite them only for facts visible in the excerpt and do not infer beyond the excerpt."
   ];
   const citations = [];
   list.forEach((item, index) => {
@@ -795,7 +920,7 @@ function formatSearchResultsBlock(title = "법령 검색 결과", items = [], st
   if (!list.length) return { text: "", citations: [] };
   const lines = [
     `[${title}]`,
-    "The following laws match your query. Use these law names to look up specific articles."
+    "The following official law-name records match your query. Cite these records only for law identity, law type, and effective-date facts; do not infer article content or legal obligations from names alone."
   ];
   const citations = [];
   list.forEach((item, index) => {

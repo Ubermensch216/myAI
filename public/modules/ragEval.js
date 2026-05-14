@@ -1,4 +1,6 @@
-import { state, elements } from "./state.js";
+import { elements } from "./state.js";
+import { escapeHtml } from "./html.js";
+import { adminAuthHeaders as authHeaders, fetchAdminJson } from "./adminApi.js";
 
 const PRESETS = {
   default: [{ label: "default" }],
@@ -34,20 +36,8 @@ const ragEvalState = {
   selectedRunId: null
 };
 
-function authHeaders() {
-  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
-}
-
 async function api(path, init = {}) {
-  const headers = { "Content-Type": "application/json", ...authHeaders(), ...(init.headers || {}) };
-  const response = await fetch(`/api/admin/rag-eval${path}`, { ...init, headers });
-  if (!response.ok) {
-    let body = "";
-    try { body = (await response.json()).error || ""; } catch { /* ignore */ }
-    throw new Error(body || `HTTP ${response.status}`);
-  }
-  if (response.status === 204) return null;
-  return response.json();
+  return fetchAdminJson(`/api/admin/rag-eval${path}`, init);
 }
 
 function fmtPct(value) {
@@ -718,12 +708,3 @@ export function bindRagEvalEvents() {
 }
 
 // ===== utils =====
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}

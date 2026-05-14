@@ -558,7 +558,7 @@ function toggleLawSearchMode() {
   const ta = elements.promptInput;
   if (ta) {
     ta.placeholder = state.lawSearchMode
-      ? "법령 검색 모드: 법령·판례·해석례를 검색하여 답변합니다"
+      ? "법령 검색 모드: 공식 근거가 확인된 경우에만 답변합니다"
       : "myAI에게 물어보세요 [⇧+I]";
   }
 }

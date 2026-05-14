@@ -1,5 +1,7 @@
 import { elements, accessAuthHeaders, state } from "./state.js";
 import { getActiveNotebookId, findNotebookSummary } from "./notebook.js";
+import { escapeHtml } from "./html.js";
+import { fetchAdminJson } from "./adminApi.js";
 
 const REBUILD_POLL_MS = 3000;
 
@@ -53,30 +55,8 @@ async function api(pathname, init = {}) {
   return response.json();
 }
 
-function adminAuthHeaders() {
-  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
-}
-
 async function adminGraphApi(pathname, init = {}) {
-  const headers = { ...adminAuthHeaders(), ...(init.headers || {}) };
-  if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  const response = await fetch(`/api/admin/graph${pathname}`, { ...init, headers });
-  if (!response.ok) {
-    let body = "";
-    try { body = (await response.json()).error || ""; } catch { /* ignore */ }
-    throw new Error(body || `HTTP ${response.status}`);
-  }
-  if (response.status === 204) return null;
-  return response.json();
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  return fetchAdminJson(`/api/admin/graph${pathname}`, init);
 }
 
 function colorFor(type) {

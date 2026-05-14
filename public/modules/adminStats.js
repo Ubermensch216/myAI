@@ -1,4 +1,6 @@
-import { state, elements } from "./state.js";
+import { elements } from "./state.js";
+import { escapeHtml } from "./html.js";
+import { fetchAdminJson } from "./adminApi.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PALETTE = ["#0f766e", "#2563eb", "#e11d48", "#f59e0b", "#7c3aed", "#0891b2", "#16a34a", "#ea580c"];
@@ -15,28 +17,8 @@ const statsState = {
   loading: false
 };
 
-function authHeaders() {
-  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
-}
-
 async function adminStatsApi(path) {
-  const response = await fetch(`/api/admin/stats${path}`, {
-    headers: { "Content-Type": "application/json", ...authHeaders() }
-  });
-  if (!response.ok) {
-    let msg = "";
-    try { msg = (await response.json()).error || ""; } catch { /* ignore */ }
-    throw new Error(msg || `HTTP ${response.status}`);
-  }
-  return response.json();
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return fetchAdminJson(`/api/admin/stats${path}`);
 }
 
 function fmtNum(value) {

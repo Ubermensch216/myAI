@@ -18,7 +18,7 @@ const LAW_EXCERPT_MAX = 800;
 
 export function normalizeLawCitationForMeta(citation, index = 0, articleText = "") {
   const meta = {
-    citationId: citation.citationId || `L${index + 1}`,
+    citationId: `L${index + 1}`,
     sourceType: "law",
     lawName: citation.lawName || "",
     lawId: citation.lawId || "",

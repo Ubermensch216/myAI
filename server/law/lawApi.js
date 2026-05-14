@@ -3,6 +3,7 @@ import { getLawConfig, getLawRateLimitDefaults } from "./lawConfig.js";
 import { getLawCacheHealth, getLawCacheStats } from "./lawCache.js";
 import { createLawApiClient } from "./lawApiClient.js";
 import { lawErrorPayload, toLawError, assertLawAvailable } from "./lawErrors.js";
+import { buildActionPlanContext, buildForcedLawContext } from "./lawContextBuilder.js";
 import { searchLaw } from "./tools/searchLaw.js";
 import { searchAiLaw } from "./tools/searchAiLaw.js";
 import { getArticleDetail } from "./tools/articleDetail.js";
@@ -15,6 +16,8 @@ import { searchInterpretations, getInterpretationDetail } from "./tools/interpre
 import { searchAdminRules, getAdminRuleDetail } from "./tools/adminRules.js";
 import { searchOrdinances, getOrdinanceDetail } from "./tools/ordinances.js";
 import { buildImpactMap } from "./tools/impactMap.js";
+import { runTimeTravel } from "./tools/timeTravel.js";
+import { executeLawTool, listLawTools } from "./tools/toolRegistry.js";
 import { createRateLimiter } from "../rateLimit.js";
 
 export const lawApiRouter = express.Router();
@@ -31,7 +34,11 @@ lawApiRouter.get("/status", async (_request, response) => {
     cache,
     api: { provider: config.apiProvider },
     features: {
-      impactMap: config.impactMapEnabled
+      actionPlan: true,
+      impactMap: config.impactMapEnabled,
+      timeTravel: true,
+      topicResearch: true,
+      toolRegistry: true
     },
     usage: {
       todayCalls: 0,
@@ -41,6 +48,33 @@ lawApiRouter.get("/status", async (_request, response) => {
   };
   response.status(payload.ok ? 200 : 503).json(payload);
 });
+
+lawApiRouter.get("/tools", async (request, response) => {
+  response.json({
+    ok: true,
+    tools: listLawTools({
+      query: request.query?.q || request.query?.query,
+      category: request.query?.category
+    })
+  });
+});
+
+lawApiRouter.post(
+  "/execute",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_execute:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await executeLawTool({
+        toolName: request.body?.toolName || request.body?.tool_name || request.body?.name,
+        params: request.body?.params || request.body?.arguments || {}
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.status(result?.ok === false ? 400 : 200).json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
 
 lawApiRouter.post(
   "/search",
@@ -78,6 +112,41 @@ lawApiRouter.post(
 );
 
 lawApiRouter.post(
+  "/research",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_topic_research:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await buildForcedLawContext(String(request.body?.query || request.body?.prompt || ""), {
+        client: createLawApiClient(),
+        signal: request.signal
+      });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/action-plan",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_action_plan:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await buildActionPlanContext({
+        query: request.body?.query || request.body?.prompt,
+        lawName: request.body?.lawName,
+        article: request.body?.article || request.body?.jo
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
   "/article",
   createRateLimiter({ name: "law_article", keyPrefix: "law_article:", ...lawRateLimits.article }),
   async (request, response) => {
@@ -98,6 +167,26 @@ lawApiRouter.post(
         text: result.text,
         cacheHit: Boolean(result.cacheHit)
       });
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/time-travel",
+  createRateLimiter({ name: "law_time_travel", keyPrefix: "law_time_travel:", ...lawRateLimits.timeTravel }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await runTimeTravel({
+        query: request.body?.query,
+        lawName: request.body?.lawName,
+        article: request.body?.article || request.body?.jo,
+        fromDate: request.body?.fromDate,
+        toDate: request.body?.toDate
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
     } catch (error) {
       sendLawError(response, error);
     }

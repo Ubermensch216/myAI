@@ -148,9 +148,10 @@ If notebook, web-search, or analysis metadata exists, the response includes
   law: {
     ok,
     query,
-    mode,                  // law_article | law_search | verify_citations |
-                           // legal_research | department_legal_review |
-                           // action_plan | kg_articles
+    mode,                  // law_article | law_search | law_topic_search |
+                           // verify_citations | legal_research |
+                           // department_legal_review | action_plan |
+                           // kg_articles
     error,
     errorMessage,
     disclaimer,            // null | "short" | "mandatory"
@@ -198,6 +199,63 @@ Body:
 ```
 
 Searches official Korean law names.
+
+### `GET /api/law/tools`
+
+Lists the MCP-compatible Korean Law Engine tool names exposed by myAI. Query
+parameters `q`/`query` and `category` filter the list.
+
+### `POST /api/law/execute`
+
+Body:
+
+```js
+{ toolName: "search_all", params: { query: "전세금 못 받았어" } }
+```
+
+Executes the native myAI equivalent of common `korean-law-mcp` tool names,
+including `search_law`, `search_ai_law`, `search_all`, `get_law_text`,
+`verify_citations`, `impact_map`, `time_travel`, `action_plan`,
+`chain_full_research`, and `chain_amendment_track`. It is a compatibility
+surface over native handlers, not an external MCP server.
+
+### `POST /api/law/ai-search`
+
+Body:
+
+```js
+{ query: "전세보증금 반환", searchType: 0, display: 5 }
+```
+
+Runs law.go.kr `aiSearch` semantic search for natural-language article
+matches. `searchType: 0` searches statute articles; `searchType: 2` searches
+administrative-rule article content.
+
+### `POST /api/law/research`
+
+Body:
+
+```js
+{ query: "전세금 못 받았어" }
+```
+
+Natural-language topic research. The engine searches semantic law articles,
+law names, administrative rules, precedents, legal interpretations, and local
+ordinances in parallel, then returns official-source context and citation
+metadata for chat or API callers.
+
+### `POST /api/law/action-plan`
+
+Body:
+
+```js
+{ query: "전세금 못 받았어" }
+```
+
+Builds an evidence-grounded `action_plan` context. If `lawName` + `article`
+are supplied, it uses that official article directly. Otherwise it performs
+topic research first and appends the 5-step action-plan response template only
+when official source candidates were found.
 
 ### `POST /api/law/article`
 
@@ -336,6 +394,20 @@ return 400. Snapshots are immutable (30-day cache TTL). Uses the
 `law_time_travel` rate-limit bucket. Response carries `effectiveDate` (the
 requested date) and `snapshotEffectiveDate` (the actual snapshot date
 law.go.kr returned).
+
+### `POST /api/law/time-travel`
+
+Body:
+
+```js
+{ query: "개인정보 보호법", fromDate: "2020-01-01", toDate: "2025-11-01" }
+```
+
+MCP-style wrapper for date comparison. With an `article`/`jo` value it returns
+the article-level diff. Without an article, it resolves historical full-law
+snapshots, fetches official full-law text for both dates, and returns a
+deterministic line diff. Large full-law diffs may be capped with
+`warnings: ["full_law_diff_truncated"]`.
 
 ### `POST /api/law/article/diff`
 

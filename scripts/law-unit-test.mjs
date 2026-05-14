@@ -6,6 +6,7 @@ import path from "node:path";
 const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "myai-law-test-"));
 process.env.LAW_OC = "SECRET-LAW-KEY";
 process.env.LAW_CACHE_PATH = path.join(tempDir, "law-cache.sqlite");
+process.env.NAVER_SEARCH_ENABLED = "true";
 
 const {
   normalizeArticleRef,
@@ -20,10 +21,13 @@ const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
 const { LawApiClient, stripLawPrivateFields } = await import("../server/law/lawApiClient.js");
 const { normalizeLawCitationForMeta, disclaimerForLawMode } = await import("../server/law/lawCitationFormatter.js");
-const { buildLawContext, ACTION_PLAN_TEMPLATE } = await import("../server/law/lawContextBuilder.js");
+const { buildLawContext, buildForcedLawContext, ACTION_PLAN_TEMPLATE } = await import("../server/law/lawContextBuilder.js");
+const { resolveChatModeFlags } = await import("../server/ollama.js");
 const { buildImpactMap, createDeterministicImpactMap } = await import("../server/law/tools/impactMap.js");
 const { getArticleAt } = await import("../server/law/tools/articleAt.js");
 const { getArticleDiff } = await import("../server/law/tools/articleDiff.js");
+const { runTimeTravel } = await import("../server/law/tools/timeTravel.js");
+const { executeLawTool, listLawTools } = await import("../server/law/tools/toolRegistry.js");
 const { bigramSimilarity, computeArticleDiff } = await import("../server/law/lawDiff.js");
 const { getLawHistory } = await import("../server/law/tools/lawHistory.js");
 const {
@@ -64,6 +68,12 @@ await run("LawApiClient.getLawHistory uses configured target + ID/MST", testLawA
 await run("action_plan intent detection requires statute grounding", testActionPlanIntent);
 await run("disclaimerForLawMode maps modes to disclaimer policy", testDisclaimerPolicy);
 await run("buildLawContext action_plan injects non-legal-advice template", testActionPlanContext);
+await run("citizen action_plan uses topic research evidence", testCitizenActionPlanContext);
+await run("forced law search context stays official-evidence only", testForcedLawSearchContext);
+await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
+await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
+await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
+await run("law search mode overrides web/search context flags", testLawSearchModeFlags);
 await run("law name alias resolution (산안법 → 산업안전보건법)", testLawAliasResolution);
 await run("law_topic_search intent mode detection", testTopicSearchIntent);
 await run("parseAiSearchXml extracts 법령조문 blocks", testParseAiSearchXml);
@@ -666,6 +676,273 @@ async function testActionPlanContext() {
   assert.match(ctx.contextText, /법률 자문이 아닙니다/,
     "rendered system block must include the non-legal-advice phrase");
   assert.match(ctx.contextText, /단계별 조치/);
+}
+
+async function testCitizenActionPlanContext() {
+  const citizen = detectLawIntent("전세금 못 받았어");
+  assert.equal(citizen.isLegalQuery, true, "citizen legal problem should trigger law engine");
+  assert.equal(citizen.mode, "action_plan");
+  assert.equal(citizen.extracted.query, "전세금 못 받았어");
+
+  const fakeClient = {
+    async searchAiLaw(input) {
+      if (input.searchType === 0) {
+        return {
+          ok: true,
+          results: [
+            {
+              lawName: "주택임대차보호법",
+              articleNo: "제3조의2",
+              articleTitle: "보증금의 회수",
+              snippet: "임차인은 임차주택에 대하여 보증금반환채권을 가진다.",
+              effectiveDate: "2024-01-01"
+            }
+          ]
+        };
+      }
+      return { ok: true, results: [] };
+    },
+    async searchLaw() { return { ok: true, results: [] }; },
+    async searchAdminRules() { return { ok: true, results: [] }; },
+    async searchPrecedents() { return { ok: true, results: [] }; },
+    async searchInterpretations() { return { ok: true, results: [] }; },
+    async searchOrdinances() { return { ok: true, results: [] }; }
+  };
+  const ctx = await buildLawContext("전세금 못 받았어", { client: fakeClient });
+  assert.equal(ctx.ok, true);
+  assert.equal(ctx.mode, "action_plan");
+  assert.equal(ctx.disclaimer, "mandatory");
+  assert.ok(ctx.citations.some((item) => item.citationId === "AI-L1"));
+  assert.match(ctx.contextText, /\[AI-L1\]/);
+  assert.match(ctx.contextText, /행동 계획 응답 템플릿/);
+}
+
+async function testForcedLawSearchContext() {
+  const fakeClient = {
+    async searchAiLaw(input) {
+      if (input.searchType === 0) {
+        return {
+          ok: true,
+          results: [
+            {
+              lawName: "개인정보 보호법",
+              articleNo: "제15조",
+              articleTitle: "개인정보의 수집ㆍ이용",
+              snippet: "개인정보처리자는 정보주체의 동의를 받은 경우 개인정보를 수집할 수 있다.",
+              effectiveDate: "2023-09-15"
+            }
+          ]
+        };
+      }
+      return { ok: true, results: [] };
+    },
+    async searchLaw() {
+      return {
+        ok: true,
+        query: "개인정보",
+        results: [
+          {
+            lawName: "개인정보 보호법",
+            lawId: "011357",
+            mst: "258625",
+            lawType: "법률",
+            effectiveDate: "2023-09-15"
+          }
+        ]
+      };
+    },
+    async searchAdminRules() { return { ok: true, results: [] }; },
+    async searchPrecedents() { return { ok: true, results: [] }; },
+    async searchInterpretations() { return { ok: true, results: [] }; }
+  };
+
+  const ctx = await buildForcedLawContext("개인정보 수집 법령 검색", { client: fakeClient });
+  assert.equal(ctx.ok, true);
+  assert.ok(ctx.citations.length >= 2, "forced law search should expose official citations");
+  assert.match(ctx.contextText, /\[AI-L1\]/);
+  assert.match(ctx.contextText, /\[L-S2\]/);
+  assert.doesNotMatch(ctx.contextText, /training knowledge|using your knowledge/i);
+  assert.match(ctx.contextText, /do not infer/i);
+}
+
+async function testResearchSurveyPrompt() {
+  const prompt = "위반건축물 관련 법령이나 판례를 조사해";
+  const intent = detectLawIntent(prompt);
+  assert.equal(intent.isLegalQuery, true);
+  assert.equal(intent.mode, "legal_research");
+  assert.equal(intent.extracted.wantLawSources, true);
+  assert.equal(intent.extracted.wantPrecedents, true);
+  assert.match(intent.extracted.query, /위반건축물/);
+
+  const calls = [];
+  const fakeClient = {
+    async getLawArticle(input) {
+      calls.push(["getLawArticle", input]);
+      return {
+        ok: true,
+        cacheHit: false,
+        text: `${input.lawName} ${input.article} 공식 조문 본문`,
+        citation: {
+          citationId: "L1",
+          sourceType: "law",
+          lawName: input.lawName,
+          article: input.article,
+          canonical: `${input.lawName}/${input.article}`,
+          title: input.article === "제79조" ? "위반 건축물 등에 대한 조치 등" : "이행강제금",
+          locator: `${input.lawName} ${input.article}`,
+          effectiveDate: "2024-01-01",
+          url: "https://www.law.go.kr/lsInfoP.do?lsiSeq=123456"
+        }
+      };
+    },
+    async searchAiLaw(input) {
+      calls.push(["searchAiLaw", input]);
+      return {
+        ok: true,
+        results: [
+          {
+            lawName: "건축법",
+            articleNo: "제79조",
+            articleTitle: "위반 건축물 등에 대한 조치 등",
+            snippet: "허가권자는 위반 건축물에 대하여 필요한 조치를 명할 수 있다.",
+            effectiveDate: "2024-01-01"
+          }
+        ]
+      };
+    },
+    async searchLaw(input) {
+      calls.push(["searchLaw", input]);
+      return {
+        ok: true,
+        query: input.query,
+        results: [
+          { lawName: "건축법", lawId: "000001", mst: "123456", lawType: "법률", effectiveDate: "2024-01-01" }
+        ]
+      };
+    },
+    async searchPrecedents(input) {
+      calls.push(["searchPrecedents", input]);
+      return {
+        ok: true,
+        results: [
+          { title: "위반건축물 시정명령 취소", caseNumber: "2020두12345", court: "대법원", date: "2021-01-01", precId: "98765" }
+        ]
+      };
+    },
+    async searchInterpretations() { return { ok: true, results: [] }; },
+    async searchAdminRules() { return { ok: true, results: [] }; },
+    async searchOrdinances() { return { ok: true, results: [] }; }
+  };
+
+  const ctx = await buildLawContext(prompt, { client: fakeClient });
+  assert.equal(ctx.ok, true);
+  assert.equal(ctx.mode, "legal_research");
+  assert.equal(new Set(ctx.citations.map((item) => item.citationId)).size, ctx.citations.length, "citation ids must be unique");
+  assert.ok(calls.some(([name]) => name === "getLawArticle"), "must fetch inferred law articles");
+  assert.ok(calls.some(([name]) => name === "searchAiLaw"), "must search semantic law articles");
+  assert.ok(calls.some(([name]) => name === "searchLaw"), "must search law names");
+  assert.ok(calls.some(([name]) => name === "searchPrecedents"), "must search precedents");
+  assert.ok(ctx.citations.some((item) => item.citationId.startsWith("AI-L")), "must include AI law result citation");
+  assert.ok(ctx.citations.some((item) => item.sourceType === "law_precedent"), "must include precedent citation");
+  assert.match(ctx.contextText, /건축법/);
+  assert.match(ctx.contextText, /위반건축물 시정명령 취소/);
+}
+
+function testLawSearchModeFlags() {
+  const forced = resolveChatModeFlags({
+    lawSearchMode: true,
+    prompt: "민법 제750조 검색해줘",
+    notebookId: "nb_1",
+    documents: [{ id: "doc_1" }]
+  });
+  assert.equal(forced.isLawSearchMode, true);
+  assert.equal(forced.forceWebSearch, false, "law-search mode must suppress explicit web search routing");
+  assert.equal(forced.allowWebSearch, false, "law-search mode must suppress ambient web search");
+  assert.equal(forced.shouldLoadNotebookContext, false, "law-search mode must not inject notebook context");
+
+  const normal = resolveChatModeFlags({
+    lawSearchMode: false,
+    prompt: "민법 제750조 검색해줘",
+    notebookId: null,
+    documents: []
+  });
+  assert.equal(normal.forceWebSearch, true, "normal chat still honors explicit web-search prompts");
+}
+
+async function testTimeTravelFullLaw() {
+  const fakeClient = {
+    async getLawText(input) {
+      const oldText = "제1조 목적\n이 법은 개인정보의 처리 및 보호를 목적으로 한다.";
+      const newText = "제1조 목적\n이 법은 개인정보의 처리와 안전한 활용을 목적으로 한다.\n제2조 정의";
+      return {
+        ok: true,
+        cacheHit: false,
+        text: input.effectiveDate === "2020-01-01" ? oldText : newText,
+        citation: {
+          citationId: "L1",
+          sourceType: "law",
+          lawName: "개인정보 보호법",
+          canonical: "개인정보 보호법/full-text",
+          locator: "개인정보 보호법 full text",
+          effectiveDate: input.effectiveDate,
+          url: "https://www.law.go.kr/lsInfoP.do?lsiSeq=1"
+        },
+        snapshotEffectiveDate: input.effectiveDate
+      };
+    }
+  };
+  const result = await runTimeTravel({
+    query: "개인정보 보호법",
+    fromDate: "2020-01-01",
+    toDate: "2025-11-01"
+  }, { client: fakeClient });
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "time_travel");
+  assert.equal(result.scope, "law");
+  assert.ok(result.diff.hunks.length >= 2);
+  assert.equal(result.from.effectiveDate, "2020-01-01");
+  assert.equal(result.to.effectiveDate, "2025-11-01");
+}
+
+async function testLawToolRegistry() {
+  assert.ok(listLawTools({ query: "time" }).some((tool) => tool.name === "time_travel"));
+
+  const result = await executeLawTool({
+    toolName: "chain_full_research",
+    params: { query: "전세금 못 받았어", scenario: "action_plan" }
+  }, {
+    client: {
+      async searchAiLaw(input) {
+        if (input.searchType === 0) {
+          return {
+            ok: true,
+            results: [
+              {
+                lawName: "주택임대차보호법",
+                articleNo: "제3조의2",
+                articleTitle: "보증금의 회수",
+                snippet: "보증금 반환 관련 조문",
+                effectiveDate: "2024-01-01"
+              }
+            ]
+          };
+        }
+        return { ok: true, results: [] };
+      },
+      async searchLaw() { return { ok: true, results: [] }; },
+      async searchAdminRules() { return { ok: true, results: [] }; },
+      async searchPrecedents() { return { ok: true, results: [] }; },
+      async searchInterpretations() { return { ok: true, results: [] }; },
+      async searchOrdinances() { return { ok: true, results: [] }; }
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "action_plan");
+  assert.ok(result.citations.length >= 1);
+
+  const unknown = await executeLawTool({ toolName: "no_such_tool", params: {} }, {});
+  assert.equal(unknown.ok, false);
+  assert.equal(unknown.error, "UNKNOWN_LAW_TOOL");
 }
 
 async function testLawCache() {

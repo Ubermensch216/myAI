@@ -351,7 +351,7 @@ export async function sendMessage(prompt) {
     || !!room.pendingCalendarAction
     || isCalendarConfirmation(prompt);
 
-  if (shouldTryCalendarIntent) {
+  if (!state.lawSearchMode && shouldTryCalendarIntent) {
     // Pre-classifier guard: availability inquiry is answered directly from local calendar
     // state — runs BEFORE the LLM classifier so that no matter what the classifier returns,
     // time-slot availability queries are never delegated to the chat LLM (which has no
@@ -406,7 +406,7 @@ export async function sendMessage(prompt) {
 
 export async function requestAssistantResponse(room) {
   if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
-  if (shouldRequestVisualizationResponse(room)) {
+  if (!state.lawSearchMode && shouldRequestVisualizationResponse(room)) {
     await requestVisualizationResponse(room);
     return;
   }
@@ -414,7 +414,7 @@ export async function requestAssistantResponse(room) {
 }
 
 export async function requestTextAssistantResponse(room) {
-  if (getActiveDocuments().length > 0 && isSearchIntent(getLastUserPrompt(room))) {
+  if (!state.lawSearchMode && getActiveDocuments().length > 0 && isSearchIntent(getLastUserPrompt(room))) {
     const msg = "첨부된 파일이 있는 경우 파일 내용에 기반하여 답변하도록 되어 있어 검색이 불가능합니다.";
     const createdAt = new Date().toISOString();
     room.messages.push({ role: "assistant", content: msg, createdAt });
@@ -429,26 +429,27 @@ export async function requestTextAssistantResponse(room) {
   setBusy(true);
   state.abortController = new AbortController();
   const latestPrompt = getLastUserPrompt(room);
-  const naverSearch = wantsExplicitWebSearch(latestPrompt);
-  const lawProcessing = !naverSearch && shouldShowLawProcessing(latestPrompt);
-  const initialSources = buildInputSources(room, { lawProcessing, naverSearch });
+  const lawSearchMode = Boolean(state.lawSearchMode);
+  const naverSearch = !lawSearchMode && wantsExplicitWebSearch(latestPrompt);
+  const lawProcessing = lawSearchMode || (!naverSearch && shouldShowLawProcessing(latestPrompt));
+  const initialSources = buildInputSources(room, { lawProcessing, naverSearch, lawOnly: lawSearchMode });
   const thinking = appendThinking({ lawProcessing, naverSearch, sources: initialSources });
   trackInflightThinking(room, thinking);
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));
   let assistant = null;
   let assistantBody = null;
   let answer = "";
-  const useDeepAnalysis = state.deepAnalysisEnabled;
+  const useDeepAnalysis = !lawSearchMode && state.deepAnalysisEnabled;
 
   try {
     const payload = {
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
       messages: room.messages.map(({ role, content }) => ({ role, content })),
-      documents: queryTrimDocuments(getActiveDocuments(), latestPrompt),
+      documents: lawSearchMode ? [] : queryTrimDocuments(getActiveDocuments(), latestPrompt),
       personalization: getPersonalizationSettings(),
-      notebookId: room.selectedNotebookId || null,
+      notebookId: lawSearchMode ? null : room.selectedNotebookId || null,
       ...(useDeepAnalysis ? { mode: "map_reduce" } : {}),
-      ...(state.lawSearchMode ? { lawSearchMode: true } : {})
+      ...(lawSearchMode ? { lawSearchMode: true } : {})
     };
     validateChatPayloadSize(payload);
     const response = await fetch("/api/chat", {
@@ -525,7 +526,7 @@ export async function requestTextAssistantResponse(room) {
     room.updatedAt = new Date().toISOString();
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
-    if (!noEvidenceAnswer && !hasCalendarKeyword(latestPrompt)) {
+    if (!noEvidenceAnswer && !hasCalendarKeyword(latestPrompt) && !lawSearchMode) {
       renderFollowupSuggestions(assistant, [], { loading: true });
       attachFollowupSuggestions(room, assistantMessage, assistant);
     }
@@ -2097,7 +2098,16 @@ function renderSourceBadges(host, sources, { variant }) {
   }
 }
 
-function buildInputSources(room, { lawProcessing, naverSearch }) {
+function buildInputSources(room, { lawProcessing, naverSearch, lawOnly = false }) {
+  if (lawOnly) {
+    return composeInputSources({
+      notebook: null,
+      documents: [],
+      images: [],
+      lawProcessing: Boolean(lawProcessing),
+      naverSearch: false
+    });
+  }
   const notebookId = room?.selectedNotebookId || null;
   const notebookSummary = notebookId ? findNotebookSummary(notebookId) : null;
   const active = getActiveDocuments();

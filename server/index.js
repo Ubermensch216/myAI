@@ -346,8 +346,8 @@ app.post("/api/chat", async (request, response) => {
   const notebookId = typeof request.body.notebookId === "string" && request.body.notebookId
     ? request.body.notebookId
     : null;
-  const mode = request.body.mode === "map_reduce" ? "map_reduce" : "chat";
   const lawSearchMode = Boolean(request.body.lawSearchMode);
+  const mode = request.body.mode === "map_reduce" && !lawSearchMode ? "map_reduce" : "chat";
 
   if (!messages.length) {
     response.status(400).json({ error: "messages媛 鍮꾩뼱 ?덉뒿?덈떎." });

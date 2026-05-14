@@ -29,6 +29,17 @@ loadLocalEnv();
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const MAX_CONTEXT_CHARS = Number(process.env.MAX_CONTEXT_CHARS || 24000);
+const LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE =
+  "법령검색 모드에서 관련 법령 정보를 찾을 수 없습니다. Korea Law Engine(law.go.kr)에서 해당 질의에 맞는 법령·판례·해석례·행정규칙 근거가 확인되지 않았습니다. 근거 없이 답변할 수 없으므로, 구체적인 법령명·조문 번호·사건번호·지침명을 포함하여 다시 질의해 주세요.";
+const STRICT_LAW_SEARCH_SYSTEM_BLOCK = [
+  "[Strict Law Search Mode]",
+  "This request is in forced law-search mode.",
+  "Use only Korean Law Engine evidence blocks included below as legal authority.",
+  "Do not use model training knowledge, web search, department notebook text, uploaded files, prior assistant messages, or uncited memory as legal authority.",
+  "Every legal claim, policy recommendation, statute, case, interpretation, admin-rule, ordinance, or guideline statement must include an inline citation from the provided evidence identifiers: [L*], [AI-L*], [L-S*], [P*], [I*], [R*], or [O*].",
+  "If the available evidence only lists law-name candidates without article, case, rule, or guideline text, summarize only those candidates and ask for a specific law/article or narrower query.",
+  "If the evidence does not directly support the requested answer, say that the Korean Law Engine results are insufficient and do not answer from background knowledge."
+].join("\n");
 
 export async function listModels() {
   const response = await fetch(`${OLLAMA_URL}/api/tags`);
@@ -51,7 +62,8 @@ export async function streamChat({
   signal
 }) {
   throwIfAborted(signal);
-  if (mode === "map_reduce") {
+  const isLawSearchMode = Boolean(lawSearchMode);
+  if (mode === "map_reduce" && !isLawSearchMode) {
     await runMapReduceChat({
       messages,
       documents,
@@ -67,12 +79,15 @@ export async function streamChat({
 
   const latestUserIndex = findLatestUserMessageIndex(messages);
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-  const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
   const hasDocuments = Array.isArray(documents) && documents.length > 0;
-  const forceWebSearch = shouldUseNaverSearch(latestUserQuery);
-  const isLawSearchMode = Boolean(lawSearchMode) && !forceWebSearch;
+  const { allowWebSearch, forceWebSearch, shouldLoadNotebookContext } = resolveChatModeFlags({
+    lawSearchMode: isLawSearchMode,
+    prompt: latestUserQuery,
+    notebookId,
+    documents
+  });
   const lawIntent = detectLawIntent(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments });
-  const isComplianceReview = lawIntent.mode === "department_legal_review";
+  const isComplianceReview = !isLawSearchMode && lawIntent.mode === "department_legal_review";
   if (isComplianceReview && !notebookId && !hasDocuments) {
     const compliance = buildComplianceMeta(lawIntent, { error: "NO_INTERNAL_MATERIAL", evidenceFamilies: [] });
     if (typeof onMeta === "function") onMeta({ compliance, law: null, citations: [] });
@@ -87,7 +102,7 @@ export async function streamChat({
       })
     : "";
   const [notebookContext, explicitLawContext, webSearchContext] = await Promise.all([
-    loadNotebookContext(notebookId, messages, { signal, queryOverride: notebookQueryOverride }),
+    loadNotebookContext(shouldLoadNotebookContext ? notebookId : null, messages, { signal, queryOverride: notebookQueryOverride }),
     !forceWebSearch
       ? (isLawSearchMode
           ? buildForcedLawContext(latestUserQuery, { signal })
@@ -115,7 +130,7 @@ export async function streamChat({
   // explicit context. Failures degrade silently — KG enrichment is additive.
   let lawContext = explicitLawContext;
   const kgArticleRefs = Array.isArray(notebookContext?.articleRefs) ? notebookContext.articleRefs : [];
-  if (kgArticleRefs.length && !forceWebSearch) {
+  if (kgArticleRefs.length && !forceWebSearch && !isLawSearchMode) {
     try {
       const kgLawContext = await buildLawContextFromArticleRefs(kgArticleRefs, { signal });
       if (kgLawContext) {
@@ -128,20 +143,33 @@ export async function streamChat({
   }
   throwIfAborted(signal);
 
-  if (isLawSearchMode && !lawContext?.ok) {
+  const hasStrictLawEvidence = Boolean(
+    lawContext?.ok &&
+    String(lawContext?.contextText || "").trim() &&
+    Array.isArray(lawContext?.citations) &&
+    lawContext.citations.length > 0
+  );
+  if (isLawSearchMode && !hasStrictLawEvidence) {
     if (typeof onMeta === "function") {
       onMeta({
         citations: [],
-        law: { ok: false, query: latestUserQuery, mode: "law_topic_search", citations: [], error: "NOT_FOUND" }
+        law: {
+          ok: false,
+          query: latestUserQuery,
+          mode: lawContext?.mode || "law_topic_search",
+          citations: [],
+          error: lawContext?.error || "NOT_FOUND",
+          errorMessage: lawContext?.errorMessage || ""
+        }
       });
     }
-    onChunk("법령검색 모드에서 관련 법령 정보를 찾을 수 없습니다. 법령 데이터베이스(law.go.kr)에서 해당 질의에 맞는 법령·판례·해석례가 검색되지 않았습니다. 구체적인 법령명 또는 조문 번호를 포함하여 다시 질의해 주세요.");
+    onChunk(LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE);
     return;
   }
   if (isLawSearchMode && lawContext?.ok) {
     lawContext = {
       ...lawContext,
-      contextText: "[법령검색 전용 모드]\n법령 데이터베이스 검색 결과만 사용하여 답변하십시오. 훈련 데이터에서 법령 조문·판례·해석례를 추측하거나 인용하지 마십시오.\n\n" + (lawContext.contextText || "")
+      contextText: [STRICT_LAW_SEARCH_SYSTEM_BLOCK, lawContext.contextText || ""].filter(Boolean).join("\n\n")
     };
   }
 
@@ -209,7 +237,17 @@ export async function streamChat({
     });
   }
 
-  const ollamaMessages = await buildMessages(messages, documents, personalization, notebookContext, webSearchContext, lawContext, { signal });
+  const modelMessages = isLawSearchMode && latestUserIndex >= 0 ? [messages[latestUserIndex]] : messages;
+  const modelDocuments = isLawSearchMode ? [] : documents;
+  const ollamaMessages = await buildMessages(
+    modelMessages,
+    modelDocuments,
+    personalization,
+    isLawSearchMode ? null : notebookContext,
+    isLawSearchMode ? null : webSearchContext,
+    lawContext,
+    { signal, strictLawSearchMode: isLawSearchMode }
+  );
   throwIfAborted(signal);
 
   await runChatStreamWithOptionalQueue({
@@ -218,6 +256,16 @@ export async function streamChat({
     onChunk,
     signal
   });
+}
+
+export function resolveChatModeFlags({ lawSearchMode = false, prompt = "", notebookId = null, documents = [] } = {}) {
+  const isLawSearchMode = Boolean(lawSearchMode);
+  return {
+    isLawSearchMode,
+    forceWebSearch: !isLawSearchMode && shouldUseNaverSearch(prompt),
+    allowWebSearch: !isLawSearchMode && shouldAllowWebSearch({ notebookId, documents }),
+    shouldLoadNotebookContext: !isLawSearchMode && Boolean(notebookId)
+  };
 }
 
 function shouldAllowWebSearch({ notebookId, documents }) {
@@ -780,12 +828,13 @@ function normalizeStringArray(value, limit) {
     .slice(0, limit);
 }
 
-async function buildMessages(messages, documents, personalization, notebookContext = null, webSearchContext = null, lawContext = null, { signal } = {}) {
+async function buildMessages(messages, documents, personalization, notebookContext = null, webSearchContext = null, lawContext = null, { signal, strictLawSearchMode = false } = {}) {
+  const isStrictLawSearch = Boolean(strictLawSearchMode);
   const userTitle = sanitizeName(personalization.userTitle, "사용자님");
   const aiName = sanitizeName(personalization.aiName, "AI");
-  const customPrompt = sanitizeCustomPrompt(personalization.customPrompt);
-  const responseStyle = sanitizeResponseStyle(personalization.responseStyle);
-  const customInstruction = sanitizeCustomInstruction(personalization.customInstruction);
+  const customPrompt = isStrictLawSearch ? "" : sanitizeCustomPrompt(personalization.customPrompt);
+  const responseStyle = isStrictLawSearch ? "default" : sanitizeResponseStyle(personalization.responseStyle);
+  const customInstruction = isStrictLawSearch ? "" : sanitizeCustomInstruction(personalization.customInstruction);
   const notebook = notebookContext?.notebook ?? null;
   const notebookChunks = notebookContext?.chunks ?? [];
   const notebookDocumentSummaries = notebookContext?.documentSummaries ?? [];
@@ -811,7 +860,17 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "내부 사고 과정 전문을 공개하지 말고, 답변에는 결론과 근거만 제공한다."
   ];
 
-  if (notebook) {
+  if (isStrictLawSearch) {
+    systemParts.push(
+      "Strict law-search mode is active.",
+      "Use only the Korean Law Engine evidence block as legal authority.",
+      "Do not use prior assistant messages, model training knowledge, web search, uploaded files, department notebook text, or personalization instructions as legal authority.",
+      "Every legal claim or policy recommendation must cite a provided evidence identifier such as [L*], [AI-L*], [L-S*], [P*], [I*], [R*], or [O*].",
+      "If the evidence is insufficient, say so and do not fill the gap from background knowledge."
+    );
+  }
+
+  if (!isStrictLawSearch && notebook) {
     systemParts.push(
       `이 대화는 프로젝트 "${notebook.name}"을(를) 지식 기반으로 사용한다. (RAG 모드)`,
       "프로젝트 컨텍스트와 사용자 첨부 파일이 유일한 답변 자료다. 이 두 자료 외부의 일반 지식이나 추측은 절대 사용하지 마라.",
@@ -823,20 +882,21 @@ async function buildMessages(messages, documents, personalization, notebookConte
     );
   }
 
-  if (hasUploadedFiles) {
+  if (!isStrictLawSearch && hasUploadedFiles) {
     systemParts.push(
       "When uploaded files are present, answer from the uploaded file context and image inputs instead of external web search.",
       "Do not use or request Naver Search for file-grounded questions. If the uploaded file context is insufficient, say what is missing from the file."
     );
   }
 
-  if (hasGeneratedSources) {
+  if (!isStrictLawSearch && hasGeneratedSources) {
     systemParts.push(
       "Some provided sources are AI-generated working documents. Treat them as secondary references. Prefer original uploaded documents, department notebooks, and official legal sources when available. Do not treat AI-generated sources as independent proof of legal or factual claims."
     );
   }
 
-  systemParts.push(
+  if (!isStrictLawSearch) {
+    systemParts.push(
     "App capability: this web app can render data visualizations for uploaded CSV/XLSX table data.",
     "When the user asks whether charts, graphs, dashboards, visualizations, or infographics are possible, answer that they are possible in this app when table data is uploaded.",
     "Do not claim that visualization is impossible just because the language model itself cannot directly paint pixels.",
@@ -853,7 +913,8 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Avoid long unbroken paragraphs. Keep each paragraph to one idea, then use bullets for details.",
     "Do not use Markdown heading marks (#) or bold markers (**). Use plain label lines instead.",
     "이모지(emoji)는 사용하지 마라. 😀 🎉 👍 같은 컬러 이모지 캐릭터(Unicode Emoji 표준에 정의된 문자)만 금지 대상이다. ◆ ● ✓ ※ → ★ 같은 단색 텍스트 기호·픽토그램·딩뱃은 자유롭게 써도 된다."
-  );
+    );
+  }
 
   const styleDirective = buildResponseStyleDirective(responseStyle);
   if (styleDirective) {
@@ -876,15 +937,17 @@ async function buildMessages(messages, documents, personalization, notebookConte
 
   const system = systemParts.join("\n");
 
-  const imageDocuments = documents.filter((documentItem) => documentItem.kind === "image");
+  const imageDocuments = isStrictLawSearch ? [] : documents.filter((documentItem) => documentItem.kind === "image");
   const latestUserIndex = findLatestUserMessageIndex(messages);
   const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
   const complianceCitationOffset = lawContext?.mode === "department_legal_review" ? notebookChunks.length : 0;
-  const context = await buildContext(documents, latestUserQuery, {
-    signal,
-    citationPrefix: lawContext?.mode === "department_legal_review" ? "N" : "",
-    citationOffset: complianceCitationOffset
-  });
+  const context = isStrictLawSearch
+    ? ""
+    : await buildContext(documents, latestUserQuery, {
+        signal,
+        citationPrefix: lawContext?.mode === "department_legal_review" ? "N" : "",
+        citationOffset: complianceCitationOffset
+      });
 
   const mapped = messages.map((message, index) => {
     const mappedMessage = {

@@ -32,7 +32,12 @@ Implemented pieces:
 - `server/law/` module structure with config, router, API client, cache,
   logging, intent detection, article normalization, and tool handlers.
 - `GET /api/law/status`
+- `GET /api/law/tools`
+- `POST /api/law/execute`
 - `POST /api/law/search`
+- `POST /api/law/ai-search`
+- `POST /api/law/research`
+- `POST /api/law/action-plan`
 - `POST /api/law/article`
 - `POST /api/law/verify-citations`
 - `POST /api/law/precedents/search`
@@ -44,6 +49,7 @@ Implemented pieces:
 - `POST /api/law/ordinances/search`
 - `POST /api/law/ordinances/detail`
 - `POST /api/law/impact-map`
+- `POST /api/law/time-travel`
 - `POST /api/law/article/at`
 - `POST /api/law/article/diff`
 - `POST /api/law/history`
@@ -102,6 +108,11 @@ Implemented pieces:
 
 All roadmap phases (Phase 1 baseline, Phase 2 research, Phase 3 impact map,
 Phase 4 time-travel, Phase 5 action_plan, Knowledge Graph track) have shipped.
+The native API also exposes an MCP-compatible compatibility surface:
+`/api/law/tools` for discovery and `/api/law/execute` for names such as
+`search_all`, `time_travel`, `action_plan`, `chain_full_research`, and
+`chain_amendment_track`. These call myAI native handlers; myAI still does not
+run an external MCP server in-process.
 
 ## Configuration
 
@@ -172,6 +183,8 @@ server/law/tools/lawText.js
 server/law/tools/ordinances.js
 server/law/tools/precedents.js
 server/law/tools/searchLaw.js
+server/law/tools/timeTravel.js
+server/law/tools/toolRegistry.js
 server/law/tools/verifyCitations.js
 ```
 
@@ -431,6 +444,10 @@ Legal lookup runs when:
   컴플라이언스 체크리스트 등) AND carries statute grounding — citation or a
   recognized law name + article. Bare "계획 짜줘" requests cannot trigger this
   mode.
+- The prompt is a common citizen legal problem phrased in natural language
+  (for example "전세금 못 받았어" or "임금 체불 신고하고 싶어"). In that case
+  `action_plan` first runs topic research and only injects the 5-step template
+  when official source candidates are found.
 - The selected department notebook's knowledge graph surfaces matched `Article`
   nodes via `expandQueryWithGraph` → `articleRefs`. Even without an explicit
   legal prompt, the chat orchestration re-fetches those articles via
@@ -478,8 +495,9 @@ Chat responses expose law metadata through `X-Notebook-Meta`:
 law: {
   ok: true,
   query: "...",
-  mode: "law_article" | "law_search" | "verify_citations" | "legal_research"
-       | "department_legal_review" | "action_plan" | "kg_articles",
+  mode: "law_article" | "law_search" | "law_topic_search"
+       | "verify_citations" | "legal_research" | "department_legal_review"
+       | "action_plan" | "kg_articles",
   citations: [
     {
       citationId: "L1",

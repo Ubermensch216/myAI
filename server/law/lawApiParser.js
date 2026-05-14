@@ -196,6 +196,20 @@ export function normalizeArticlePayload(payload, { lawName, lawId, mst, articleR
   };
 }
 
+export function normalizeLawTextPayload(payload, { lawName = "", lawId = "", mst = "" } = {}) {
+  return {
+    lawName: stripHtml(deepRead(payload, LAW_NAME_KEYS)) || lawName,
+    lawId: String(deepRead(payload, LAW_ID_KEYS) || lawId || ""),
+    mst: String(deepRead(payload, LAW_MST_KEYS) || mst || ""),
+    lawType: stripHtml(deepRead(payload, LAW_TYPE_KEYS)),
+    effectiveDate: normalizeDate(deepRead(payload, EFFECTIVE_DATE_KEYS)),
+    promulgationDate: normalizeDate(deepRead(payload, PROMULGATION_DATE_KEYS)),
+    lastModified: normalizeDate(deepRead(payload, LAST_MODIFIED_KEYS)),
+    text: collectArticleText(payload),
+    raw: payload
+  };
+}
+
 function deepRead(value, keys) {
   for (const node of findObjects(value)) {
     const found = readFirst(node, keys);

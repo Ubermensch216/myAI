@@ -21,6 +21,7 @@ import {
   normalizeHistoryResults,
   normalizeInterpretationPayload,
   normalizeInterpretationResults,
+  normalizeLawTextPayload,
   normalizeOrdinancePayload,
   normalizeOrdinanceResults,
   normalizePrecedentPayload,
@@ -193,6 +194,83 @@ export class LawApiClient {
       ? { ttlMs: cacheTtl }
       : { ttlMs: cacheTtl, lastModified: articleData.lastModified || "" };
     await setCachedLawResponse(cacheKey, response, cacheWriteOpts);
+    return { ...response, cacheHit: false };
+  }
+
+  async getLawText({ lawName, lawId, mst, effectiveDate } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedLawName = normalizeLawName(lawName);
+    const effective = normalizeEffectiveDate(effectiveDate);
+    const isHistorical = Boolean(effective.compact);
+
+    let resolved = { lawName: normalizedLawName, lawId, mst, effectiveDate: effective.iso };
+    if (isHistorical && !resolved.mst) {
+      const history = await this.getLawHistory({ lawName: normalizedLawName, lawId, mst }, { signal });
+      const revision = chooseRevisionForDate(history.revisions, effective.iso);
+      if (revision?.mst) {
+        resolved = {
+          lawName: revision.title || history.lawName || normalizedLawName,
+          lawId: history.lawId || lawId || "",
+          mst: revision.mst,
+          effectiveDate: revision.effectiveDate || effective.iso
+        };
+      } else {
+        throw new LawError(`Historical law snapshot not found for ${normalizedLawName || lawId || mst} at ${effective.iso}.`, {
+          marker: LAW_ERROR_MARKERS.NOT_FOUND,
+          statusCode: 404
+        });
+      }
+    }
+
+    if (!resolved.lawId && !resolved.mst) {
+      const search = await this.searchLaw({ query: normalizedLawName, display: 5 }, { signal });
+      resolved = chooseLawSearchResult(search.results, normalizedLawName) || resolved;
+    }
+    if (!resolved.lawId && !resolved.mst) {
+      throw new LawError(`Law not found: ${normalizedLawName}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+
+    const normalizedInput = {
+      lawName: resolved.lawName || normalizedLawName,
+      lawId: resolved.lawId || "",
+      mst: resolved.mst || "",
+      effectiveDate: effective.iso || resolved.effectiveDate || ""
+    };
+    const cacheKey = buildLawCacheKey(isHistorical ? "law_text_at" : "law_text", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: isHistorical ? LAW_HISTORICAL_TTL_MS : LAW_TEXT_TTL_MS });
+    if (cached) {
+      const stripped = stripLawPrivateFields(cached);
+      if (stripped.citation) {
+        stripped.citation = { ...stripped.citation, url: buildPublicLawUrl(stripped.citation.lawName, "", stripped.citation.mst) };
+      }
+      return { ...stripped, cacheHit: true };
+    }
+
+    const params = { target: "law", type: "JSON" };
+    if (resolved.mst) params.MST = resolved.mst;
+    else params.ID = resolved.lawId;
+
+    const payload = await this.requestService(params, { signal });
+    const data = normalizeLawTextPayload(payload, {
+      lawName: resolved.lawName || normalizedLawName,
+      lawId: resolved.lawId || "",
+      mst: resolved.mst || ""
+    });
+    if (!data.text) {
+      throw new LawError(`${normalizedInput.lawName || "Law"} text was not found in official law data.`, {
+        marker: LAW_ERROR_MARKERS.NOT_FOUND,
+        statusCode: 404
+      });
+    }
+    const citation = buildLawTextCitation(data, effective.iso || resolved.effectiveDate || data.effectiveDate);
+    const response = {
+      ok: true,
+      citation,
+      text: data.text,
+      effectiveDateRequested: effective.iso || "",
+      snapshotEffectiveDate: citation.effectiveDate || ""
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: isHistorical ? LAW_HISTORICAL_TTL_MS : LAW_TEXT_TTL_MS });
     return { ...response, cacheHit: false };
   }
 
@@ -613,6 +691,33 @@ export class LawApiClient {
 
 export function createLawApiClient() {
   return new LawApiClient();
+}
+
+function chooseRevisionForDate(revisions = [], isoDate = "") {
+  const target = String(isoDate || "").replace(/\D+/g, "");
+  const list = Array.isArray(revisions) ? revisions.filter((item) => item?.mst && item?.effectiveDate) : [];
+  if (!target) return list[0] || null;
+  const sorted = [...list].sort((a, b) => String(b.effectiveDate || "").localeCompare(String(a.effectiveDate || "")));
+  return sorted.find((item) => String(item.effectiveDate || "").replace(/\D+/g, "") <= target)
+    || sorted[sorted.length - 1]
+    || null;
+}
+
+function buildLawTextCitation(data, effectiveDate = "", citationId = "L1") {
+  const lawName = data.lawName || "";
+  return {
+    citationId,
+    sourceType: "law",
+    lawName,
+    lawId: data.lawId || "",
+    mst: data.mst || "",
+    article: "",
+    canonical: `${lawName}/full-text`,
+    title: "Full law text",
+    locator: lawName ? `${lawName} full text` : "Full law text",
+    effectiveDate: effectiveDate || data.effectiveDate || "",
+    url: buildPublicLawUrl(lawName, "", data.mst)
+  };
 }
 
 function parseJson(text) {
