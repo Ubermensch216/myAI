@@ -12,7 +12,9 @@ const {
   normalizeEffectiveDate,
   normalizeLawCitationParts,
   parseArticleLocator,
-  extractLawCitations
+  extractLawCitations,
+  normalizeLawName,
+  resolveAliasedLawName
 } = await import("../server/law/lawArticleRef.js");
 const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
@@ -57,6 +59,8 @@ await run("LawApiClient.getLawHistory uses configured target + ID/MST", testLawA
 await run("action_plan intent detection requires statute grounding", testActionPlanIntent);
 await run("disclaimerForLawMode maps modes to disclaimer policy", testDisclaimerPolicy);
 await run("buildLawContext action_plan injects non-legal-advice template", testActionPlanContext);
+await run("law name alias resolution (산안법 → 산업안전보건법)", testLawAliasResolution);
+await run("law_topic_search intent mode detection", testTopicSearchIntent);
 
 await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
 if (failureCount > 0) process.exitCode = 1;
@@ -664,4 +668,33 @@ async function testLawCache() {
   await setCachedLawResponse(keyA, { ok: true, text: "cached" }, { ttlMs: 60_000, lastModified: "20260510" });
   assert.equal((await getCachedLawResponse(keyA, { lastModified: "20260510" })).text, "cached");
   assert.equal(await getCachedLawResponse(keyA, { lastModified: "20260511" }), null);
+}
+
+function testLawAliasResolution() {
+  // Test safety/labor law aliases
+  assert.equal(normalizeLawName("산안법"), "산업안전보건법");
+  assert.equal(normalizeLawName("산안기준규칙"), "산업안전보건기준에 관한 규칙");
+  assert.equal(normalizeLawName("안전보건규칙"), "산업안전보건기준에 관한 규칙");
+  assert.equal(normalizeLawName("중처법"), "중대재해 처벌 등에 관한 법률");
+  assert.equal(normalizeLawName("근기법"), "근로기준법");
+  assert.equal(normalizeLawName("산재법"), "산업재해보상보험법");
+
+  // Test resolveAliasedLawName direct call
+  assert.equal(resolveAliasedLawName("산안법"), "산업안전보건법");
+  assert.equal(resolveAliasedLawName("산업안전보건법"), "산업안전보건법");
+
+  // Test non-aliased names pass through
+  assert.equal(normalizeLawName("개인정보 보호법"), "개인정보 보호법");
+  assert.equal(normalizeLawName("도로교통법"), "도로교통법");
+}
+
+function testTopicSearchIntent() {
+  // Test that explicit legal pattern + topic (no law suffix) triggers law_topic_search
+  const topicIntent = detectLawIntent("법령에서 밀폐공간 작업 찾아");
+  assert.equal(topicIntent.isLegalQuery, true, "explicit pattern should trigger legal query");
+  assert.equal(topicIntent.mode, "law_topic_search", "topic without law suffix should be law_topic_search");
+
+  // Verify alias resolution happens in normalizeLawName()
+  assert.equal(normalizeLawName("산안법"), "산업안전보건법", "normalizeLawName should resolve alias");
+  assert.equal(normalizeLawName("중처법"), "중대재해 처벌 등에 관한 법률", "multiple aliases should be supported");
 }

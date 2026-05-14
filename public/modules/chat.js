@@ -447,7 +447,8 @@ export async function requestTextAssistantResponse(room) {
       documents: queryTrimDocuments(getActiveDocuments(), latestPrompt),
       personalization: getPersonalizationSettings(),
       notebookId: room.selectedNotebookId || null,
-      ...(useDeepAnalysis ? { mode: "map_reduce" } : {})
+      ...(useDeepAnalysis ? { mode: "map_reduce" } : {}),
+      ...(state.lawSearchMode ? { lawSearchMode: true } : {})
     };
     validateChatPayloadSize(payload);
     const response = await fetch("/api/chat", {

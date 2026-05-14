@@ -14,6 +14,12 @@ const ARTICLE_TITLE_KEYS = ["조문제목", "제목", "title"];
 const ARTICLE_BODY_KEYS = ["조문내용", "조문내용문", "내용", "본문", "text"];
 const TEXT_KEY_PATTERN = /^(조문내용|조문내용문|항내용|호내용|목내용|내용|본문|text)$/u;
 
+// aiSearch (law.go.kr target=aiSearch) returns article-level results with semantic snippets
+const AI_ARTICLE_NUMBER_KEYS = ["조문번호", "articleNumber", "articleNo"];
+const AI_ARTICLE_TITLE_KEYS = ["조문제목", "articleTitle", "title"];
+const AI_ARTICLE_CONTENT_KEYS = ["조문내용", "content", "snippet", "text"];
+const AI_LAW_NAME_KEYS = ["법령명한글", "법령명", "lawName"];
+
 export function findUpstreamError(payload) {
   if (!payload || typeof payload !== "object") return "";
   for (const node of findObjects(payload)) {
@@ -56,6 +62,67 @@ export function normalizeSearchResults(payload) {
     });
   }
   return results;
+}
+
+export function normalizeAiSearchResults(payload) {
+  const candidates = findObjects(payload).filter((item) => {
+    const articleNo = readFirst(item, AI_ARTICLE_NUMBER_KEYS);
+    const title = readFirst(item, AI_ARTICLE_TITLE_KEYS);
+    const content = readFirst(item, AI_ARTICLE_CONTENT_KEYS);
+    const lawName = readFirst(item, AI_LAW_NAME_KEYS);
+    return (articleNo || title) && (lawName || content);
+  });
+  const seen = new Set();
+  const results = [];
+  for (const item of candidates) {
+    const lawName = stripHtml(readFirst(item, AI_LAW_NAME_KEYS));
+    const articleNo = stripHtml(readFirst(item, AI_ARTICLE_NUMBER_KEYS));
+    const title = stripHtml(readFirst(item, AI_ARTICLE_TITLE_KEYS));
+    const content = stripHtml(readFirst(item, AI_ARTICLE_CONTENT_KEYS) || "");
+    // Truncate snippet to 200 chars
+    const snippet = content.slice(0, 200);
+    const key = `${lawName}|${articleNo}|${title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      lawName,
+      articleNo,
+      articleTitle: title,
+      snippet,
+      effectiveDate: normalizeDate(readFirst(item, EFFECTIVE_DATE_KEYS)),
+      raw: item
+    });
+  }
+  return results;
+}
+
+export function parseAiSearchXml(xmlText) {
+  if (!xmlText || typeof xmlText !== "string") return {};
+  const text = xmlText.trim();
+  if (!text.startsWith("<")) return {};
+  const items = [];
+  const blockRe = /<law>([\s\S]*?)<\/law>/gi;
+  let match;
+  while ((match = blockRe.exec(text)) !== null) {
+    const block = match[1];
+    const getTag = (tag) => {
+      const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i").exec(block);
+      if (!m) return "";
+      return m[1]
+        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+        .replace(/<[^>]+>/g, "")
+        .trim();
+    };
+    const item = {
+      "법령명한글": getTag("법령명한글") || getTag("법령명"),
+      "조문번호": getTag("조문번호"),
+      "조문제목": getTag("조문제목"),
+      "조문내용": getTag("조문내용"),
+      "시행일자": getTag("시행일자")
+    };
+    if (item["법령명한글"] || item["조문번호"]) items.push(item);
+  }
+  return { law: items };
 }
 
 export function chooseLawSearchResult(results, lawName) {

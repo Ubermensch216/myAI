@@ -551,6 +551,18 @@ function closeAttachMenu() {
   elements.attachFileButton.setAttribute("aria-expanded", "false");
 }
 
+function toggleLawSearchMode() {
+  state.lawSearchMode = !state.lawSearchMode;
+  const btn = elements.lawSearchButton;
+  if (btn) btn.setAttribute("aria-pressed", String(state.lawSearchMode));
+  const ta = elements.promptInput;
+  if (ta) {
+    ta.placeholder = state.lawSearchMode
+      ? "법령 검색 모드: 법령·판례·해석례를 검색하여 답변합니다"
+      : "myAI에게 물어보세요 [⇧+I]";
+  }
+}
+
 function toggleCustomPromptPicker() {
   if (!elements.customPromptPicker) return;
   if (elements.customPromptPicker.hidden) openCustomPromptPicker();
@@ -771,6 +783,13 @@ function bindEvents() {
   }
   if (elements.attachCustomPromptButton) {
     elements.attachCustomPromptButton.addEventListener("click", (event) => { event.stopPropagation(); toggleCustomPromptPicker(); });
+  }
+  if (elements.lawSearchButton) {
+    elements.lawSearchButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleLawSearchMode();
+      closeAttachMenu();
+    });
   }
   if (elements.deepAnalysisToggle) {
     elements.deepAnalysisToggle.addEventListener("click", (event) => {

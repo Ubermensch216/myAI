@@ -347,6 +347,7 @@ app.post("/api/chat", async (request, response) => {
     ? request.body.notebookId
     : null;
   const mode = request.body.mode === "map_reduce" ? "map_reduce" : "chat";
+  const lawSearchMode = Boolean(request.body.lawSearchMode);
 
   if (!messages.length) {
     response.status(400).json({ error: "messages媛 鍮꾩뼱 ?덉뒿?덈떎." });
@@ -391,6 +392,7 @@ app.post("/api/chat", async (request, response) => {
       personalization,
       notebookId,
       mode,
+      lawSearchMode,
       signal,
       onMeta: (meta) => {
         if (meta && (

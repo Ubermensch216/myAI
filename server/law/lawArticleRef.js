@@ -242,17 +242,17 @@ export function isStrongLawName(value) {
 }
 
 export function resolveAliasedLawName(value) {
-  const raw = String(value ?? “”).trim();
+  const raw = String(value ?? "").trim();
   return LAW_ALIAS_MAP.get(raw) || raw;
 }
 
 export function normalizeLawName(value) {
-  const text = normalizeSpaces(String(value ?? “”))
-    .replace(/[“’`””’’]/g, “”)
-    .replace(/^.*?(?:법령에서|법에서)\s*/u, “”)
-    .replace(/^(?:와|과|및|그리고|또는|,|:)\s*/u, “”)
-    .replace(/^(?:법령|법|조문|판례|해석례|공식)\s*/u, “”)
-    .replace(/\s*(?:에서|의|에|를|을|은|는|이|가)$/u, “”)
+  const text = normalizeSpaces(String(value ?? ""))
+    .replace(/["’`""’’]/g, "")
+    .replace(/^.*?(?:법령에서|법에서)\s*/u, "")
+    .replace(/^(?:와|과|및|그리고|또는|,|:)\s*/u, "")
+    .replace(/^(?:법령|법|조문|판례|해석례|공식)\s*/u, "")
+    .replace(/\s*(?:에서|의|에|를|을|은|는|이|가)$/u, "")
     .trim();
   return resolveAliasedLawName(text);
 }

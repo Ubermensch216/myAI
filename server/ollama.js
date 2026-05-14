@@ -11,7 +11,7 @@ import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
 import { buildNaverSearchContext, shouldUseNaverSearch } from "./naverSearch.js";
-import { buildLawContext, buildLawContextFromArticleRefs, mergeLawContexts } from "./law/lawContextBuilder.js";
+import { buildLawContext, buildForcedLawContext, buildLawContextFromArticleRefs, mergeLawContexts } from "./law/lawContextBuilder.js";
 import { detectLawIntent } from "./law/lawIntent.js";
 import { LAW_ERROR_MARKERS } from "./law/lawErrors.js";
 import { buildComplianceUnavailableMessage } from "./compliance/compliancePrompt.js";
@@ -45,6 +45,7 @@ export async function streamChat({
   personalization = {},
   notebookId = null,
   mode = "chat",
+  lawSearchMode = false,
   onChunk,
   onMeta,
   signal
@@ -69,6 +70,7 @@ export async function streamChat({
   const allowWebSearch = shouldAllowWebSearch({ notebookId, documents });
   const hasDocuments = Array.isArray(documents) && documents.length > 0;
   const forceWebSearch = shouldUseNaverSearch(latestUserQuery);
+  const isLawSearchMode = Boolean(lawSearchMode) && !forceWebSearch;
   const lawIntent = detectLawIntent(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments });
   const isComplianceReview = lawIntent.mode === "department_legal_review";
   if (isComplianceReview && !notebookId && !hasDocuments) {
@@ -87,7 +89,9 @@ export async function streamChat({
   const [notebookContext, explicitLawContext, webSearchContext] = await Promise.all([
     loadNotebookContext(notebookId, messages, { signal, queryOverride: notebookQueryOverride }),
     !forceWebSearch
-      ? buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal })
+      ? (isLawSearchMode
+          ? buildForcedLawContext(latestUserQuery, { signal })
+          : buildLawContext(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments, signal }))
       : Promise.resolve(null),
     allowWebSearch || forceWebSearch
       ? buildNaverSearchContext(latestUserQuery, { signal }).catch((error) => {
@@ -123,6 +127,23 @@ export async function streamChat({
     }
   }
   throwIfAborted(signal);
+
+  if (isLawSearchMode && !lawContext?.ok) {
+    if (typeof onMeta === "function") {
+      onMeta({
+        citations: [],
+        law: { ok: false, query: latestUserQuery, mode: "law_topic_search", citations: [], error: "NOT_FOUND" }
+      });
+    }
+    onChunk("법령검색 모드에서 관련 법령 정보를 찾을 수 없습니다. 법령 데이터베이스(law.go.kr)에서 해당 질의에 맞는 법령·판례·해석례가 검색되지 않았습니다. 구체적인 법령명 또는 조문 번호를 포함하여 다시 질의해 주세요.");
+    return;
+  }
+  if (isLawSearchMode && lawContext?.ok) {
+    lawContext = {
+      ...lawContext,
+      contextText: "[법령검색 전용 모드]\n법령 데이터베이스 검색 결과만 사용하여 답변하십시오. 훈련 데이터에서 법령 조문·판례·해석례를 추측하거나 인용하지 마십시오.\n\n" + (lawContext.contextText || "")
+    };
+  }
 
   if (isComplianceReview && lawContext?.error === LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED) {
     const compliance = buildComplianceMeta(lawIntent, { error: LAW_ERROR_MARKERS.LAW_NOT_CONFIGURED, evidenceFamilies: [] });

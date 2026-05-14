@@ -181,6 +181,7 @@ export const state = {
     }
   },
   deepAnalysisEnabled: false,
+  lawSearchMode: false,
   admin: {
     configured: false,
     token: null,
@@ -318,6 +319,7 @@ export const elements = {
   reminderToastContainer: document.querySelector("#reminderToastContainer"),
   attachNotebookButton: document.querySelector("#attachNotebookButton"),
   attachCustomPromptButton: document.querySelector("#attachCustomPromptButton"),
+  lawSearchButton: document.querySelector("#lawSearchButton"),
   customPromptPicker: document.querySelector("#customPromptPicker"),
   settingsSubTabCustomPrompts: document.querySelector("#settingsSubTabCustomPrompts"),
   settingsPanelCustomPrompts: document.querySelector("#settingsPanelCustomPrompts"),

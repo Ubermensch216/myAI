@@ -3,6 +3,7 @@ import { formatLawContext, normalizeLawCitationForMeta, disclaimerForLawMode } f
 import { LAW_ERROR_MARKERS, toLawError } from "./lawErrors.js";
 import { getArticleDetail } from "./tools/articleDetail.js";
 import { searchLaw } from "./tools/searchLaw.js";
+import { searchAiLaw } from "./tools/searchAiLaw.js";
 import { verifyLawCitations } from "./tools/verifyCitations.js";
 import { searchPrecedents } from "./tools/precedents.js";
 import { searchInterpretations } from "./tools/interpretations.js";
@@ -143,6 +144,18 @@ export const ACTION_PLAN_TEMPLATE = [
   "- \"본 답변은 일반 정보이며 법률 자문이 아닙니다\" 문구를 5)번에 반드시 포함."
 ].join("\n");
 
+export async function buildForcedLawContext(query, options = {}) {
+  const forcedIntent = {
+    isLegalQuery: true,
+    mode: "law_topic_search",
+    extracted: { query },
+    confidence: 1.0,
+    mayUseWebSearch: false
+  };
+  const startedAt = options.startedAt ?? Date.now();
+  return buildTopicSearchContext(query, forcedIntent, { ...options, startedAt });
+}
+
 export async function buildLawContext(prompt, { hasNotebook = false, hasDocuments = false, signal, client } = {}) {
   const intent = detectLawIntent(prompt, { hasNotebook, hasDocuments });
   if (!intent.isLegalQuery) return null;
@@ -223,6 +236,10 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
       };
     }
 
+    if (intent.mode === "law_topic_search") {
+      return await buildTopicSearchContext(prompt, intent, { signal, startedAt, client });
+    }
+
     if (intent.mode === "legal_research") {
       return await buildResearchContext(prompt, intent, { signal, startedAt, client });
     }
@@ -245,6 +262,86 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
       latencyMs: Date.now() - startedAt
     };
   }
+}
+
+async function buildTopicSearchContext(prompt, intent, { signal, startedAt, client }) {
+  const extracted = intent.extracted || {};
+  const query = extracted.query || prompt;
+
+  const tasks = [];
+  // Parallel: AI semantic search (법조문, 행정규칙조문) + law name search + admin rules search
+  tasks.push(
+    searchAiLaw({ query, searchType: 0, display: 5 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
+  tasks.push(
+    searchAiLaw({ query, searchType: 2, display: 5 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
+  tasks.push(
+    searchLaw({ query }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
+  tasks.push(
+    searchAdminRules({ query, display: 5 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
+
+  const [aiLawResult, aiAdminResult, lawResult, admResult] = await Promise.all(tasks);
+
+  const sections = [];
+  const citations = [];
+  const errors = [];
+
+  // Format AI law article search results
+  if (aiLawResult && !aiLawResult.error && aiLawResult.results?.length > 0) {
+    const block = formatAiSearchResultsBlock("법령 조문 (AI 검색)", aiLawResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (aiLawResult?.error) {
+    errors.push({ source: "ai_law", marker: aiLawResult.error.marker });
+  }
+
+  // Format AI admin rules article search results
+  if (aiAdminResult && !aiAdminResult.error && aiAdminResult.results?.length > 0) {
+    const block = formatAiSearchResultsBlock("행정규칙 조문 (AI 검색)", aiAdminResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (aiAdminResult?.error) {
+    errors.push({ source: "ai_admin", marker: aiAdminResult.error.marker });
+  }
+
+  // Format law name search results
+  if (lawResult && !lawResult.error && lawResult.results?.length > 0) {
+    const block = formatSearchResultsBlock("법령 (이름 기준)", lawResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (lawResult?.error) {
+    errors.push({ source: "law", marker: lawResult.error.marker });
+  }
+
+  // Format admin rules search results
+  if (admResult && !admResult.error && admResult.results?.length > 0) {
+    const block = formatAdminRuleResultsBlock(admResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (admResult?.error) {
+    errors.push({ source: "admin_rules", marker: admResult.error.marker });
+  }
+
+  return {
+    ok: citations.length > 0 || sections.length > 0,
+    query,
+    mode: "law_topic_search",
+    intent,
+    citations,
+    verification: { checked: false, failCount: 0, results: [] },
+    disclaimer: disclaimerForLawMode("law_topic_search"),
+    contextText: fitLawContext(sections.filter(Boolean).join("\n\n")),
+    error: errors.length && citations.length === 0 ? LAW_ERROR_MARKERS.LAW_API_ERROR : "",
+    errorDetails: errors,
+    latencyMs: Date.now() - startedAt
+  };
 }
 
 async function buildResearchContext(prompt, intent, { signal, startedAt, client }) {
@@ -638,6 +735,59 @@ function formatSearchContext(result) {
     lines.push(`[L-S${index + 1}] ${item.lawName}\nID: ${item.lawId || ""}\nMST: ${item.mst || ""}\nType: ${item.lawType || ""}\nEffective date: ${item.effectiveDate || ""}`);
   });
   return lines.join("\n\n");
+}
+
+function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], startIndex = 0) {
+  const list = Array.isArray(items) ? items.slice(0, 5) : [];
+  if (!list.length) return { text: "", citations: [] };
+  const lines = [
+    `[${title}]`,
+    "These results are based on semantic matching of your query against law article content. " +
+    "Snippets below are truncated (200 chars max); review full text before citing."
+  ];
+  const citations = [];
+  list.forEach((item, index) => {
+    const citationId = `AI-L${startIndex + index + 1}`;
+    citations.push({
+      citationId,
+      sourceType: "law_article",
+      recordType: "law",
+      lawName: item.lawName,
+      articleNo: item.articleNo,
+      articleTitle: item.articleTitle,
+      snippet: item.snippet,
+      effectiveDate: item.effectiveDate,
+      url: item.lawName && item.articleNo ? `https://www.law.go.kr/법령/${encodeURIComponent(item.lawName)}/${encodeURIComponent(item.articleNo)}` : ""
+    });
+    lines.push(`[${citationId}] ${item.lawName} ${item.articleNo}\n${item.articleTitle || ""}\n${item.snippet}`);
+  });
+  return { text: lines.join("\n\n"), citations };
+}
+
+function formatSearchResultsBlock(title = "법령 검색 결과", items = [], startIndex = 0) {
+  const list = Array.isArray(items) ? items.slice(0, 5) : [];
+  if (!list.length) return { text: "", citations: [] };
+  const lines = [
+    `[${title}]`,
+    "The following laws match your query. Use these law names to look up specific articles."
+  ];
+  const citations = [];
+  list.forEach((item, index) => {
+    const citationId = `L-S${startIndex + index + 1}`;
+    citations.push({
+      citationId,
+      sourceType: "law",
+      recordType: "law",
+      lawName: item.lawName,
+      lawId: item.lawId,
+      mst: item.mst,
+      lawType: item.lawType,
+      effectiveDate: item.effectiveDate,
+      url: item.mst ? `https://www.law.go.kr/법령/${encodeURIComponent(item.lawName)}` : ""
+    });
+    lines.push(`[${citationId}] ${item.lawName}\nType: ${item.lawType || "-"}\nEffective date: ${item.effectiveDate || "-"}`);
+  });
+  return { text: lines.join("\n\n"), citations };
 }
 
 function formatVerificationContext(verification) {

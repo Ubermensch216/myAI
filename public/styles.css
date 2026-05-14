@@ -2664,6 +2664,13 @@ body.panel-resizing .panel-resizer::after {
   outline: none;
 }
 
+.attach-menu-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  color: var(--accent-dark);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
 .attach-menu-button svg {
   width: 21px;
   height: 21px;

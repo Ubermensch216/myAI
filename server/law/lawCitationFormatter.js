@@ -42,7 +42,7 @@ export function normalizeLawCitationForMeta(citation, index = 0, articleText = "
 }
 
 export function disclaimerForLawMode(mode) {
-  if (mode === "legal_research" || mode === "department_legal_review") return "short";
+  if (mode === "legal_research" || mode === "department_legal_review" || mode === "law_topic_search") return "short";
   if (mode === "action_plan") return "mandatory";
   return null;
 }

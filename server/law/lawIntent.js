@@ -109,10 +109,15 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
   }
 
   if (explicit || (config.autoDetect && LEGAL_KEYWORDS.test(text))) {
+    const query = normalizeSearchQuery(text);
+    // Topic search (key word) vs law name search: if query doesn't end with law suffix,
+    // treat as topic and use aiSearch + parallel search (law_topic_search mode)
+    const isTopicSearch = query && !/(법|령|규칙|규정|조례|고시|예규|지침)$/u.test(query);
     return {
       isLegalQuery: true,
-      mode: "law_search",
-      extracted: { query: normalizeSearchQuery(text) },
+      mode: isTopicSearch ? "law_topic_search" : "law_search",
+      extracted: { query },
+      isTopicSearch,
       confidence: explicit ? 0.8 : 0.55,
       mayUseWebSearch: NEWS_KEYWORDS.test(text)
     };

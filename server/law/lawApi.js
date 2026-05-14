@@ -4,6 +4,7 @@ import { getLawCacheHealth, getLawCacheStats } from "./lawCache.js";
 import { createLawApiClient } from "./lawApiClient.js";
 import { lawErrorPayload, toLawError, assertLawAvailable } from "./lawErrors.js";
 import { searchLaw } from "./tools/searchLaw.js";
+import { searchAiLaw } from "./tools/searchAiLaw.js";
 import { getArticleDetail } from "./tools/articleDetail.js";
 import { getArticleAt } from "./tools/articleAt.js";
 import { getArticleDiff } from "./tools/articleDiff.js";
@@ -49,6 +50,24 @@ lawApiRouter.post(
       assertLawAvailable(getLawConfig());
       const result = await searchLaw({
         query: request.body?.query,
+        display: request.body?.display
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/ai-search",
+  createRateLimiter({ name: "law_search", keyPrefix: "law_ai_search:", ...lawRateLimits.search }),
+  async (request, response) => {
+    try {
+      assertLawAvailable(getLawConfig());
+      const result = await searchAiLaw({
+        query: request.body?.query,
+        searchType: request.body?.searchType,
         display: request.body?.display
       }, { client: createLawApiClient(), signal: request.signal });
       response.json(result);

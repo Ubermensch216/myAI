@@ -14,6 +14,8 @@ import {
   findUpstreamError,
   normalizeAdminRulePayload,
   normalizeAdminRuleResults,
+  normalizeAiSearchResults,
+  parseAiSearchXml,
   normalizeArticlePayload,
   normalizeComparableLawName,
   normalizeHistoryResults,
@@ -70,6 +72,46 @@ export class LawApiClient {
       display: normalizedInput.display
     }, { signal });
     const results = stripLawPrivateFields(normalizeSearchResults(payload).slice(0, normalizedInput.display));
+    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async searchAiLaw({ query, searchType = 0, display } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedQuery = String(query || "").trim();
+    if (!normalizedQuery) {
+      throw new LawError("AI law search query is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const normalizedInput = {
+      query: normalizedQuery,
+      searchType: Number(searchType || 0),
+      display: clampInt(display, this.config.maxResults, 1, 100)
+    };
+    const cacheKey = buildLawCacheKey("search_ai_law", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+
+    const rawText = await this.requestRaw(this.config.searchUrl, {
+      target: "aiSearch",
+      query: normalizedQuery,
+      search: normalizedInput.searchType,
+      display: normalizedInput.display
+    }, { signal });
+    let payload;
+    try {
+      payload = JSON.parse(rawText);
+    } catch {
+      payload = parseAiSearchXml(rawText);
+    }
+    const upstreamError = findUpstreamError(payload);
+    if (upstreamError) {
+      throw new LawError(maskLawSecrets(upstreamError), {
+        marker: LAW_ERROR_MARKERS.LAW_API_ERROR,
+        statusCode: 502
+      });
+    }
+    const results = stripLawPrivateFields(normalizeAiSearchResults(payload).slice(0, normalizedInput.display));
     const response = { ok: results.length > 0, query: normalizedQuery, results };
     await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
     return { ...response, cacheHit: false };
@@ -480,6 +522,42 @@ export class LawApiClient {
 
   async requestSearch(params, options) {
     return this.request(this.config.searchUrl, params, options);
+  }
+
+  async requestRaw(baseUrl, params = {}, { signal } = {}) {
+    throwIfAborted(signal);
+    const url = new URL(baseUrl);
+    url.searchParams.set("OC", this.config.apiKey);
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null && value !== "") url.searchParams.set(key, String(value));
+    }
+    const timeoutSignal = AbortSignal.timeout(this.config.timeoutMs);
+    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        signal: combinedSignal,
+        headers: {
+          "User-Agent": this.config.userAgent,
+          Accept: "text/xml, application/json, */*"
+        }
+      });
+    } catch (error) {
+      throw new LawError(maskLawSecrets(`Law API network error: ${error.message}`), {
+        marker: LAW_ERROR_MARKERS.LAW_API_ERROR,
+        statusCode: 502,
+        cause: error
+      });
+    }
+    const text = await response.text();
+    if (!response.ok) {
+      throw new LawError(maskLawSecrets(`Law API HTTP ${response.status}: ${text.slice(0, 400)}`), {
+        marker: LAW_ERROR_MARKERS.LAW_API_ERROR,
+        statusCode: 502
+      });
+    }
+    return text;
   }
 
   async requestService(params, options) {
