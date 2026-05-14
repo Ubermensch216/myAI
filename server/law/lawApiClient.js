@@ -89,7 +89,7 @@ export class LawApiClient {
       searchType: Number(searchType || 0),
       display: clampInt(display, this.config.maxResults, 1, 100)
     };
-    const cacheKey = buildLawCacheKey("search_ai_law", normalizedInput);
+    const cacheKey = buildLawCacheKey("search_ai_law_v2", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
     if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
 

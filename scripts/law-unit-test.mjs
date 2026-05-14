@@ -40,6 +40,10 @@ const {
   normalizeAiSearchResults,
   findUpstreamError
 } = await import("../server/law/lawApiParser.js");
+const {
+  buildLawTopicSearchQuery,
+  inferLawArticleRefsForTopic
+} = await import("../server/law/lawTopicHints.js");
 
 let failureCount = 0;
 
@@ -76,7 +80,9 @@ await run("MCP-compatible law tool registry executes aliases", testLawToolRegist
 await run("law search mode overrides web/search context flags", testLawSearchModeFlags);
 await run("law name alias resolution (산안법 → 산업안전보건법)", testLawAliasResolution);
 await run("law_topic_search intent mode detection", testTopicSearchIntent);
+await run("law topic hints expand confined-space work", testConfinedSpaceTopicHints);
 await run("parseAiSearchXml extracts 법령조문 blocks", testParseAiSearchXml);
+await run("parseAiSearchXml extracts attributed law.go.kr aiSearch blocks", testParseAiSearchXmlWithAttributes);
 await run("parseAiSearchXml extracts 행정규칙조문 blocks", testParseAiSearchXmlAdmin);
 await run("parseAiSearchXml detects API error envelope", testParseAiSearchXmlError);
 
@@ -984,6 +990,24 @@ function testTopicSearchIntent() {
   assert.equal(normalizeLawName("중처법"), "중대재해 처벌 등에 관한 법률", "multiple aliases should be supported");
 }
 
+function testConfinedSpaceTopicHints() {
+  const prompt = "밀폐공간 작업이라는 주제와 관련있는 법령, 판례, 조문 등을 가능한 모두 조사해줘.";
+  assert.equal(buildLawTopicSearchQuery(prompt), "밀폐공간 작업 산업안전보건기준에 관한 규칙 산업안전보건법");
+  const refs = inferLawArticleRefsForTopic(prompt);
+  assert.ok(
+    refs.some((ref) => ref.lawName === "산업안전보건기준에 관한 규칙" && ref.article === "제618조"),
+    "should infer the confined-space definition article"
+  );
+  assert.ok(
+    refs.some((ref) => ref.lawName === "산업안전보건기준에 관한 규칙" && ref.article === "제619조"),
+    "should infer the confined-space work program article"
+  );
+  assert.ok(
+    refs.some((ref) => ref.lawName === "산업안전보건법" && ref.article === "제39조"),
+    "should infer the Industrial Safety and Health Act health-measures article"
+  );
+}
+
 function testParseAiSearchXml() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <aiSearch>
@@ -1015,6 +1039,33 @@ function testParseAiSearchXml() {
   assert.ok(results[0].snippet.includes("밀폐공간"), "snippet should preserve content");
   assert.equal(results[1].lawName, "산업안전보건법");
   assert.equal(results[1].articleNo, "38");
+}
+
+function testParseAiSearchXmlWithAttributes() {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<aiSearch>
+  <target>aiSearch</target>
+  <키워드>밀폐공간</키워드>
+  <검색결과개수>1</검색결과개수>
+  <법령조문 id="1">
+    <법령일련번호>280187</법령일련번호>
+    <법령ID>007363</법령ID>
+    <법령명><![CDATA[산업안전보건기준에 관한 규칙]]></법령명>
+    <시행일자>20251201121200</시행일자>
+    <법령종류명>고용노동부령</법령종류명>
+    <조문번호>0619</조문번호>
+    <조문가지번호>00</조문가지번호>
+    <조문제목><![CDATA[밀폐공간 작업 프로그램의 수립ㆍ시행]]></조문제목>
+    <조문내용><![CDATA[① 사업주는 밀폐공간에서 근로자에게 작업을 하도록 하는 경우 밀폐공간 작업 프로그램을 수립하여 시행하여야 한다.]]></조문내용>
+  </법령조문>
+</aiSearch>`;
+  const parsed = parseAiSearchXml(xml);
+  const results = normalizeAiSearchResults(parsed);
+  assert.equal(results.length, 1, "should extract attributed 법령조문 entry");
+  assert.equal(results[0].lawName, "산업안전보건기준에 관한 규칙");
+  assert.equal(results[0].articleNo, "0619");
+  assert.equal(results[0].articleTitle, "밀폐공간 작업 프로그램의 수립ㆍ시행");
+  assert.ok(results[0].snippet.includes("밀폐공간"), "snippet should preserve law.go.kr CDATA content");
 }
 
 function testParseAiSearchXmlError() {

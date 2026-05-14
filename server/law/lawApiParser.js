@@ -107,7 +107,7 @@ export function parseAiSearchXml(xmlText) {
     return { result: errorMatch[1].trim(), msg: msgMatch ? msgMatch[1].trim() : "" };
   }
   const items = [];
-  const blockRe = /<(법령조문|행정규칙조문|법령별표서식|행정규칙별표서식)>([\s\S]*?)<\/\1>/gi;
+  const blockRe = /<(법령조문|행정규칙조문|법령별표서식|행정규칙별표서식)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi;
   let match;
   while ((match = blockRe.exec(text)) !== null) {
     const blockKind = match[1];
