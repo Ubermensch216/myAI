@@ -29,7 +29,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
-- Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit blocks and export as HWPX, DOCX, PDF, or MD.
+- Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit the generated markdown draft and export as HWPX, DOCX, PDF, or MD.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, structured document editor, and file tools (merging/splitting PDF, XLSX, TXT).
 - File Tools for merging multiple files into one or splitting a large file into smaller parts (PDF, XLSX, TXT supported; entirely client-side for privacy).
 - Whole-document or whole-notebook **Precision Analysis** ("정밀 분석") through the Map-Reduce mode. The control is available only when the active room has uploaded documents or a selected department notebook.
@@ -268,6 +268,9 @@ follow-up suggestions for that no-evidence answer.
 | `MAP_REDUCE_MAX_CHUNKS` | `80` | maximum chunks per Precision Analysis / Map-Reduce run |
 | `MAP_REDUCE_PARALLELISM` | `2` | concurrent map calls |
 | `MAP_REDUCE_MAP_TIMEOUT_MS` | `45000` | map-call timeout |
+| `STUDIO_DOCUMENT_FALLBACK_MODEL` | `gemma3n:e2b` | fallback model for Studio answer-to-document conversion when the selected/default model fails due to memory pressure |
+| `STUDIO_DOCUMENT_OLLAMA_TIMEOUT_MS` | `90000` | timeout for Studio answer-to-document conversion |
+| `STUDIO_DOCUMENT_ANSWER_MAX_CHARS` | `120000` | maximum assistant-answer text accepted by Studio document conversion |
 | `TRUST_PROXY` | `false` | enables Express proxy IP handling when behind a trusted reverse proxy |
 | `RATE_LIMIT_KEY_HEADER` | unset | optional trusted proxy-auth user header used for rate-limit keys |
 
@@ -336,7 +339,7 @@ public/
     ragEval.js         Admin RAG Evaluation panel
     adminStats.js      Admin Console usage statistics panel (KPI / groups / notebooks / sessions)
     studio.js          Studio panel UI and mind-map SVG renderer
-    documentStudio.js  Studio Document Editor tab: template selection, block editing, export
+    documentStudio.js  Studio Document Editor tab: template selection, markdown editing, export
     docTool.js         Studio File Tools: client-side PDF/XLSX/TXT merge and split
     settings.js        Personal Settings tab, Admin Console mounting, brand/theme/avatar/banner
   answerRenderer.js
@@ -353,6 +356,7 @@ docs/
   RAG.md
   CALENDAR.md
   KOREAN_LAW_ENGINE.md
+  USAGE_TELEMETRY.md
   DESIGN.md
   SECURITY.md
 ```
@@ -366,6 +370,7 @@ docs/
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
+- [Usage Telemetry and Admin Statistics](docs/USAGE_TELEMETRY.md)
 - [Design Guide](docs/DESIGN.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
 
