@@ -724,7 +724,8 @@ export function createRoom() {
     materialsExpanded: false,
     materialGroups: {
       notebook: false,
-      attachments: false
+      attachments: false,
+      generatedSources: false
     },
     pendingCalendarAction: null,
     selectedNotebookId: null,

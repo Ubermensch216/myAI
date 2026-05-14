@@ -223,6 +223,7 @@ export async function hydrateStoredDocuments() {
     }
     for (let index = 0; index < room.documents.length; index += 1) {
       const doc = room.documents[index];
+      if (normalizeGeneratedSourceDocument(doc)) changed = true;
       if (normalizeStoredDocumentContent(doc)) changed = true;
       if (!doc?.id || hasPersistentDocumentContent(doc)) continue;
       try {
@@ -266,4 +267,47 @@ export function normalizeStoredDocumentContent(doc) {
   doc.textLength = text.length;
   doc.preview = text.slice(0, 280);
   return true;
+}
+
+export function normalizeGeneratedSourceDocument(doc) {
+  if (!doc || typeof doc !== "object") return false;
+  const generated = doc.trustLevel === "generated" || doc.origin === "assistant_answer" || doc.type === "generated_answer";
+  if (!generated) return false;
+
+  let changed = false;
+  if (doc.kind !== "document") {
+    doc.kind = "document";
+    changed = true;
+  }
+  if (doc.origin !== "assistant_answer") {
+    doc.origin = "assistant_answer";
+    changed = true;
+  }
+  if (doc.trustLevel !== "generated") {
+    doc.trustLevel = "generated";
+    changed = true;
+  }
+  if (doc.sourceTrust !== 0.5) {
+    doc.sourceTrust = 0.5;
+    changed = true;
+  }
+  if (!Array.isArray(doc.labels) || !doc.labels.includes("AI 생성") || !doc.labels.includes("검증 필요")) {
+    doc.labels = ["AI 생성", "검증 필요"];
+    changed = true;
+  }
+  if (typeof doc.text === "string") {
+    if (doc.textLength !== doc.text.length) {
+      doc.textLength = doc.text.length;
+      changed = true;
+    }
+    if (doc.preview !== doc.text.slice(0, 280)) {
+      doc.preview = doc.text.slice(0, 280);
+      changed = true;
+    }
+  }
+  if (!Array.isArray(doc.citations)) {
+    doc.citations = [];
+    changed = true;
+  }
+  return changed;
 }

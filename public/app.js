@@ -228,9 +228,13 @@ function renderRooms() {
 
 function getActiveMaterials(room = getActiveRoom()) {
   const documents = Array.isArray(room?.documents) ? room.documents : [];
+  const generatedSources = documents.filter(isGeneratedSource);
+  const attachments = documents.filter((doc) => !isGeneratedSource(doc));
   const notebook = room?.selectedNotebookId ? findNotebookSummary(room.selectedNotebookId) : null;
   return {
     documents,
+    attachments,
+    generatedSources,
     notebook,
     hasNotebook: Boolean(room?.selectedNotebookId),
     count: documents.length + (room?.selectedNotebookId ? 1 : 0)
@@ -239,7 +243,7 @@ function getActiveMaterials(room = getActiveRoom()) {
 
 function renderMaterialContext() {
   const room = getActiveRoom();
-  const { documents, notebook, hasNotebook, count } = getActiveMaterials(room);
+  const { documents, attachments, generatedSources, notebook, hasNotebook, count } = getActiveMaterials(room);
   const expanded = Boolean(room?.materialsExpanded && count);
 
   if (elements.materialToggleButton) {
@@ -274,11 +278,11 @@ function renderMaterialContext() {
   if (elements.materialSummaryLabel) elements.materialSummaryLabel.textContent = `자료(${count}개)`;
   if (elements.materialClearButton) elements.materialClearButton.hidden = documents.length === 0;
   if (elements.complianceReviewButton) elements.complianceReviewButton.disabled = count === 0;
-  renderMaterialList({ room, documents, notebook, hasNotebook });
+  renderMaterialList({ room, documents, attachments, generatedSources, notebook, hasNotebook });
   renderDeepAnalysisToggle();
 }
 
-function renderMaterialList({ room, documents, notebook, hasNotebook }) {
+function renderMaterialList({ room, documents, attachments, generatedSources, notebook, hasNotebook }) {
   if (!elements.materialList) return;
   elements.materialList.innerHTML = "";
   const groups = ensureMaterialGroupState(room);
@@ -293,24 +297,35 @@ function renderMaterialList({ room, documents, notebook, hasNotebook }) {
     }));
   }
 
-  if (documents.length) {
+  if (attachments.length) {
     elements.materialList.append(buildMaterialTreeGroup({
       key: "attachments",
       title: "첨부",
-      count: documents.length,
+      count: attachments.length,
       collapsed: groups.attachments,
-      children: documents.map(buildAttachmentMaterialItem)
+      children: attachments.map(buildAttachmentMaterialItem)
+    }));
+  }
+
+  if (generatedSources.length) {
+    elements.materialList.append(buildMaterialTreeGroup({
+      key: "generatedSources",
+      title: "AI 생성 자료",
+      count: generatedSources.length,
+      collapsed: groups.generatedSources,
+      children: generatedSources.map(buildAttachmentMaterialItem)
     }));
   }
 }
 
 function ensureMaterialGroupState(room = getActiveRoom()) {
-  if (!room) return { notebook: false, attachments: false };
+  if (!room) return { notebook: false, attachments: false, generatedSources: false };
   if (!room.materialGroups || typeof room.materialGroups !== "object") {
-    room.materialGroups = { notebook: false, attachments: false };
+    room.materialGroups = { notebook: false, attachments: false, generatedSources: false };
   }
   room.materialGroups.notebook = Boolean(room.materialGroups.notebook);
   room.materialGroups.attachments = Boolean(room.materialGroups.attachments);
+  room.materialGroups.generatedSources = Boolean(room.materialGroups.generatedSources);
   return room.materialGroups;
 }
 
@@ -368,6 +383,17 @@ function buildAttachmentMaterialItem(doc) {
   const name = document.createElement("span");
   name.className = "material-tree-name";
   name.textContent = formatDisplayFileName(doc);
+  if (isGeneratedSource(doc)) {
+    const badges = document.createElement("span");
+    badges.className = "source-trust-badges";
+    for (const label of doc.labels || ["AI 생성", "검증 필요"]) {
+      const badge = document.createElement("span");
+      badge.className = "source-trust-badge";
+      badge.textContent = label;
+      badges.append(badge);
+    }
+    name.append(" ", badges);
+  }
   const removeButton = document.createElement("button");
   removeButton.type = "button";
   removeButton.className = "material-tree-remove";
@@ -380,6 +406,10 @@ function buildAttachmentMaterialItem(doc) {
   });
   item.append(type, name, removeButton);
   return item;
+}
+
+function isGeneratedSource(doc) {
+  return doc?.trustLevel === "generated" || doc?.origin === "assistant_answer" || doc?.type === "generated_answer";
 }
 
 function toggleMaterialGroup(key) {

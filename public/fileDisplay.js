@@ -12,11 +12,16 @@ const DOCUMENT_BADGES = new Map([
 ]);
 
 export function displayFileName(uploadedFile) {
-  return repairMojibake(String(uploadedFile.fileName || "uploaded-file"));
+  const name = repairMojibake(String(uploadedFile.fileName || "uploaded-file"));
+  if (uploadedFile?.trustLevel === "generated" || uploadedFile?.origin === "assistant_answer") {
+    return name.startsWith("AI 생성") ? name : `AI 생성 ${name}`;
+  }
+  return name;
 }
 
 export function fileTypeIcon(uploadedFile) {
   const type = String(uploadedFile.fileType || "").toLowerCase();
+  if (uploadedFile?.trustLevel === "generated" || uploadedFile?.origin === "assistant_answer") return "AI";
   if (uploadedFile.kind === "image" || IMAGE_TYPES.has(type)) return "IMG";
   return DOCUMENT_BADGES.get(type) || "FILE";
 }

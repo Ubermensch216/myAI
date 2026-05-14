@@ -2176,6 +2176,96 @@ body.panel-resizing .panel-resizer::after {
   transform: translateY(-50%) translateX(0);
 }
 
+.source-workflow-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.source-workflow-dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
+}
+
+.source-workflow-dialog h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.source-workflow-field {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.source-workflow-field > span,
+.source-workflow-field legend {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.source-workflow-format {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.source-workflow-format legend {
+  grid-column: 1 / -1;
+}
+
+.source-workflow-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 0.86rem;
+}
+
+.source-workflow-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.source-trust-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.source-trust-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .message-time {
   color: var(--muted);
   font-size: 12px;

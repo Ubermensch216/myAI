@@ -774,6 +774,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
   const lawError = String(lawContext?.error ?? "").trim();
   const lawErrorMessage = String(lawContext?.errorMessage ?? "").trim();
   const hasUploadedFiles = Array.isArray(documents) && documents.length > 0;
+  const hasGeneratedSources = Array.isArray(documents) && documents.some(isGeneratedSourceDocument);
 
   const systemParts = [
     "너는 로컬 Ollama 기반 문서/이미지 분석 도우미다.",
@@ -805,6 +806,12 @@ async function buildMessages(messages, documents, personalization, notebookConte
     systemParts.push(
       "When uploaded files are present, answer from the uploaded file context and image inputs instead of external web search.",
       "Do not use or request Naver Search for file-grounded questions. If the uploaded file context is insufficient, say what is missing from the file."
+    );
+  }
+
+  if (hasGeneratedSources) {
+    systemParts.push(
+      "Some provided sources are AI-generated working documents. Treat them as secondary references. Prefer original uploaded documents, department notebooks, and official legal sources when available. Do not treat AI-generated sources as independent proof of legal or factual claims."
     );
   }
 
@@ -1061,7 +1068,8 @@ function collectChunks(documents) {
     for (const chunk of chunkDocumentSections(documentItem)) {
       const label = chunk.label ? `${chunk.page} / ${chunk.label}` : chunk.page;
       const part = chunk.part ? ` (part ${chunk.part}/${chunk.partTotal})` : "";
-      const text = `[${documentItem.fileName} - ${label}${part}]\n${chunk.text}`;
+      const sourcePrefix = isGeneratedSourceDocument(documentItem) ? "[AI 생성 참고자료]\n" : "";
+      const text = `${sourcePrefix}[${documentItem.fileName} - ${label}${part}]\n${chunk.text}`;
       chunks.push({
         text,
         fileName: documentItem.fileName,
@@ -1075,6 +1083,10 @@ function collectChunks(documents) {
     }
   }
   return chunks;
+}
+
+function isGeneratedSourceDocument(documentItem) {
+  return documentItem?.trustLevel === "generated" || documentItem?.origin === "assistant_answer" || documentItem?.type === "generated_answer";
 }
 
 function hasDocumentContext(documentItem) {

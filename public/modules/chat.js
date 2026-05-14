@@ -13,6 +13,7 @@ import {
   maybeRequestNotificationPermission
 } from "./calendar.js";
 import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio.js";
+import { openAnswerAsSourceDialog } from "./sourceWorkflow.js";
 import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
 import { createDeleteButton, getSelectionMode, isSelected, toggleSelection } from "./messageDelete.js";
 
@@ -1305,11 +1306,30 @@ export function createMessageActions(article, role, createdAt = "") {
   if (role === "assistant") {
     actions.append(createDownloadButton(article));
     actions.append(createSendToStudioButton(article));
+    actions.append(createSaveAsSourceButton(article));
   }
   if (role === "user") actions.append(createEditButton(article));
   actions.append(createDeleteButton(article));
   if (role === "assistant" && createdAt) actions.append(createMessageTime(createdAt));
   return actions;
+}
+
+function createSaveAsSourceButton(article) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "message-action-button save-as-source-button";
+  button.title = "자료로 추가";
+  button.setAttribute("aria-label", "자료로 추가");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 3h9l3 3v15H6z"></path>
+      <path d="M15 3v4h4"></path>
+      <path d="M9 13h6"></path>
+      <path d="M12 10v6"></path>
+    </svg>
+  `;
+  button.addEventListener("click", () => openAnswerAsSourceDialog(article));
+  return button;
 }
 
 function createSendToStudioButton(article) {
@@ -2017,7 +2037,7 @@ function renderSourceBadges(host, sources, { variant }) {
       kind: "document",
       svgKey: "paperclip",
       text: doc.displayName,
-      title: doc.displayName
+      title: doc.generated ? `${doc.displayName} · AI 생성 자료` : doc.displayName
     }));
   }
   const docOverflow = docs.length - visibleDocs.length;
@@ -2082,7 +2102,11 @@ function buildInputSources(room, { lawProcessing, naverSearch }) {
   const active = getActiveDocuments();
   const documents = active
     .filter((f) => f.kind === "document")
-    .map((f) => ({ id: f.id, displayName: formatDisplayFileName(f) }));
+    .map((f) => ({
+      id: f.id,
+      displayName: formatDisplayFileName(f),
+      generated: f.trustLevel === "generated" || f.origin === "assistant_answer"
+    }));
   const images = active
     .filter((f) => f.kind === "image")
     .map((f) => ({ id: f.id, displayName: formatDisplayFileName(f) }));
