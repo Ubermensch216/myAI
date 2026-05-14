@@ -101,6 +101,8 @@ Do not include in MVP 1:
 
 ## Task 1: Generated Source Model And API
 
+Status: completed in MVP 1.
+
 **Files:**
 
 - Create: `server/sourceWorkflow/generatedSourceModel.js`
@@ -108,19 +110,19 @@ Do not include in MVP 1:
 - Modify: `server/index.js`
 - Test: `scripts/source-workflow-test.mjs`
 
-- [ ] **Step 1: Create model helpers**
+- [x] **Step 1: Create model helpers**
 
 Implement `normalizeGeneratedSourceRequest`, `buildGeneratedSource`, and constants for supported formats, trust labels, max title length, and max answer length. Validate empty answers and unsupported formats before export.
 
-- [ ] **Step 2: Create API router**
+- [x] **Step 2: Create API router**
 
 Add `POST /api/source-workflow/from-answer`. The endpoint accepts `messageId`, `title`, `answerMarkdown`, `format`, and `metadata`; calls `createExportFile`; returns document-like source metadata plus optional `dataBase64`.
 
-- [ ] **Step 3: Mount router**
+- [x] **Step 3: Mount router**
 
 Import the router in `server/index.js` and mount it under `/api/source-workflow` with the existing lightweight rate limiter style.
 
-- [ ] **Step 4: Add API tests**
+- [x] **Step 4: Add API tests**
 
 Create `scripts/source-workflow-test.mjs` with Node assertions for:
 
@@ -129,7 +131,7 @@ Create `scripts/source-workflow-test.mjs` with Node assertions for:
 - `md`, `pdf`, `docx`, `hwpx` produce expected metadata
 - source metadata includes `origin`, `sourceMessageId`, `trustLevel`, `sourceTrust`, `labels`, and preserved citations
 
-- [ ] **Step 5: Add npm script**
+- [x] **Step 5: Add npm script**
 
 Add:
 
@@ -141,35 +143,39 @@ Add:
 
 ## Task 2: Frontend Save-As-Source Flow
 
+Status: completed in MVP 1.
+
 **Files:**
 
 - Create: `public/modules/sourceWorkflow.js`
 - Modify: `public/modules/chat.js`
 - Modify: `public/styles.css`
 
-- [ ] **Step 1: Add assistant action**
+- [x] **Step 1: Add assistant action**
 
 In `createMessageActions`, append a `자료로 추가` icon button for assistant messages after download and Studio actions.
 
-- [ ] **Step 2: Add modal**
+- [x] **Step 2: Add modal**
 
 Create a small dialog from `sourceWorkflow.js` that asks for title and format. Default title should come from room title or message date. Supported formats are `md`, `pdf`, `docx`, and `hwpx`.
 
-- [ ] **Step 3: Capture provenance**
+- [x] **Step 3: Capture provenance**
 
 Read the assistant message by `article.dataset.messageIndex`. Send answer text plus `message.id`, citations, notebook, law, compliance, and webSearch metadata to the API.
 
-- [ ] **Step 4: Add to room materials**
+- [x] **Step 4: Add to room materials**
 
 Push the returned generated source into `room.documents`, update `room.updatedAt`, persist app state, clear mind-map cache for the room, and dispatch `myai:renderrooms`.
 
-- [ ] **Step 5: User feedback**
+- [x] **Step 5: User feedback**
 
 Show modal-level progress and errors. Do not use a browser download as the primary success signal.
 
 ---
 
 ## Task 3: Material Panel And Source Badges
+
+Status: completed in MVP 1.
 
 **Files:**
 
@@ -178,19 +184,19 @@ Show modal-level progress and errors. Do not use a browser download as the prima
 - Modify: `public/modules/chat.js`
 - Modify: `public/styles.css`
 
-- [ ] **Step 1: Display generated sources separately**
+- [x] **Step 1: Display generated sources separately**
 
 Update material rendering to split regular attachments and generated sources. Use a group label such as `AI 생성 자료`.
 
-- [ ] **Step 2: Add labels**
+- [x] **Step 2: Add labels**
 
 Render `AI 생성` and `검증 필요` badges next to generated source names.
 
-- [ ] **Step 3: Preserve room indicators**
+- [x] **Step 3: Preserve room indicators**
 
 Keep the room list compact. Do not show generated file names in the left room list.
 
-- [ ] **Step 4: Source badge rendering**
+- [x] **Step 4: Source badge rendering**
 
 When generated sources are active in `/api/chat`, message source badges may still use the document badge, but the title should include `AI 생성 자료`.
 
@@ -198,15 +204,17 @@ When generated sources are active in `/api/chat`, message source badges may stil
 
 ## Task 4: Prompt Trust Integration
 
+Status: completed in MVP 1.
+
 **Files:**
 
 - Modify: `server/ollama.js`
 
-- [ ] **Step 1: Detect generated documents**
+- [x] **Step 1: Detect generated documents**
 
 Add helper logic near `buildMessages` or `buildContext` to detect `documentItem.trustLevel === "generated"` or `origin === "assistant_answer"`.
 
-- [ ] **Step 2: Add system instruction**
+- [x] **Step 2: Add system instruction**
 
 When generated sources are present, add a prompt note:
 
@@ -214,7 +222,7 @@ When generated sources are present, add a prompt note:
 Some provided sources are AI-generated working documents. Treat them as secondary references. Prefer original uploaded documents, department notebooks, and official legal sources when available. Do not treat AI-generated sources as independent proof of legal or factual claims.
 ```
 
-- [ ] **Step 3: Label generated source chunks**
+- [x] **Step 3: Label generated source chunks**
 
 In `collectChunks`, prefix generated chunks with a visible marker such as `[AI 생성 참고자료]`.
 
@@ -222,26 +230,30 @@ In `collectChunks`, prefix generated chunks with a visible marker such as `[AI �
 
 ## Task 5: Persistence Compatibility
 
+Status: completed in MVP 1.
+
 **Files:**
 
 - Modify: `public/modules/state.js`
 - Modify: `public/modules/persistence.js`
 
-- [ ] **Step 1: Keep old rooms valid**
+- [x] **Step 1: Keep old rooms valid**
 
 Do not require a new top-level room field for MVP. Store generated sources inside `room.documents` to preserve existing room persistence behavior.
 
-- [ ] **Step 2: Normalize generated docs**
+- [x] **Step 2: Normalize generated docs**
 
 Extend hydration/normalization only enough to ensure generated source documents keep `text`, `textLength`, `preview`, `labels`, and provenance fields.
 
-- [ ] **Step 3: Quota handling**
+- [x] **Step 3: Quota handling**
 
 If the API returns no `dataBase64` because the binary is too large, the source must still be usable for chat from `text`.
 
 ---
 
 ## Task 6: Studio Editor Mode Split
+
+Status: pending. This is intentionally outside MVP 1.
 
 **Files:**
 
@@ -281,6 +293,18 @@ npm.cmd run test:source-workflow
 npm.cmd run test:studio-document
 npm.cmd test
 ```
+
+Latest MVP 1 verification:
+
+- `npm.cmd run test:source-workflow` passed.
+- `npm.cmd run test:studio-document` passed.
+- `node --check server/sourceWorkflow/generatedSourceModel.js`,
+  `server/sourceWorkflow/generatedSourceApi.js`, and
+  `public/modules/sourceWorkflow.js` passed.
+- `git diff --check` passed.
+- `npm.cmd test` passed through the law test group, but the smoke group could
+  not complete because the local app server was not reachable on the expected
+  smoke-test URL during that run.
 
 Manual checks:
 

@@ -19,6 +19,7 @@ Browser clients
 | Notebook reads | Public until Department Notebook Access Control is configured; then requires group/level or Super access token | Existing local installs keep working, while shared deployments can restrict notebook visibility and RAG by policy. |
 | Notebook writes/admin actions | Protected by `ADMIN_TOKEN` | Use a long random token. Admin manages groups/passwords/policies but is not itself a notebook-read identity for chat. |
 | Personal rooms, uploads, calendar, settings | Encrypted in each browser IndexedDB | Isolation is by browser key, not by server-side accounts. Clearing browser storage deletes the data. |
+| AI-generated room sources | Stored with the room in encrypted browser IndexedDB after `/api/source-workflow/from-answer` conversion | Treat as personal working artifacts. They are marked generated / needs verification and are not official or department-approved sources. |
 | File Tools (Merge/Split) | Entirely client-side (browser) | No file content or metadata is sent to the server. Maximum privacy for sensitive documents. |
 | Upload temp files | Written under `uploads/`, then removed after parse | The server sees personal files during parsing. Keep the host and temp directory private. |
 | Runtime upload cache | In-memory, scoped by `X-MyAI-Document-Key`, TTL/LRU bounded | Convenience hydration cache only; not listable and not durable. |
@@ -143,6 +144,8 @@ The server has two direct limits:
 | `MAX_UPLOAD_BYTES` | `41943040` | Single multipart upload handled by `/api/upload` and notebook document upload |
 | `DOCUMENT_CACHE_TTL_MS` | `21600000` | Same-browser runtime cache for recently uploaded personal documents |
 | `DOCUMENT_CACHE_MAX_ENTRIES` | `256` | Max in-memory personal document cache entries |
+| `GENERATED_SOURCE_MAX_CHARS` | `180000` | Max assistant-answer text accepted by source workflow conversion |
+| `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES` | `750000` | Max generated binary payload returned inline as base64 |
 
 The browser also preflights large personal chat payloads:
 
@@ -150,6 +153,12 @@ The browser also preflights large personal chat payloads:
 - Shows compact room material status and detailed active materials in the composer material panel.
 - Offers active-room attachment cleanup from the composer material panel.
 - Blocks `/api/chat` before the request gets too close to the server JSON body limit.
+
+Generated sources created from assistant answers are included in later chat
+requests as document context. They are deliberately labeled as secondary
+references in the prompt and UI to avoid confusing AI-generated working notes
+with original uploads, official law evidence, or approved department notebook
+content.
 
 Keep proxy body limits equal to or lower than the server limits. If the proxy allows larger bodies than Node.js, users will see late server failures. If the proxy limit is lower, document that limit in the deployment runbook.
 

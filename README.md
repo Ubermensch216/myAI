@@ -1,6 +1,6 @@
 # myAI
 
-myAI is a local Ollama-based AI secretary web app. It provides chat, document and image analysis, CSV/XLSX visualizations, a right-side Studio workspace with document mind maps, a local calendar agent, department-notebook RAG, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It provides chat, document and image analysis, CSV/XLSX visualizations, a right-side Studio workspace with document mind maps, a local calendar agent, department-notebook RAG, answer-as-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
 
 ## Current Setup
 
@@ -29,6 +29,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
+- Assistant answers can be saved back into the current room as AI-generated source material (`md`, `pdf`, `docx`, or `hwpx`). The generated source is stored with the room in encrypted IndexedDB, marked as AI-generated / needs verification, and treated as secondary context in later chat turns.
 - Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit the generated markdown draft and export as HWPX, DOCX, PDF, or MD.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, structured document editor, and file tools (merging/splitting PDF, XLSX, TXT).
 - File Tools for merging multiple files into one or splitting a large file into smaller parts (PDF, XLSX, TXT supported; entirely client-side for privacy).
@@ -151,6 +152,12 @@ The smoke test covers app shell IDs, `/api/status`, notebook list, file upload, 
 npm.cmd run test:xlsx
 ```
 
+Run source-workflow regression tests after changing answer-as-source behavior:
+
+```powershell
+npm.cmd run test:source-workflow
+```
+
 Run the slower live tests when Ollama is running and you want to exercise parser behavior, notebook CRUD, embeddings, document analysis, and notebook query metadata:
 
 ```powershell
@@ -176,6 +183,8 @@ npm.cmd run rag:quality-test -- --k 10
 
 Uploaded room files are stored in the browser's encrypted IndexedDB and are sent back in `/api/chat` requests as JSON. The UI shows compact material status in the room list, exposes detailed uploaded-file cleanup from the composer material panel, warns before large uploads, and blocks chat requests that are too close to the server JSON body limit.
 
+Room-generated sources created from assistant answers follow the same browser-owned persistence model. The server converts the answer through `/api/source-workflow/from-answer` and returns a document-like payload; the browser adds it to the current room material set. Generated source text is always kept for later analysis, while generated binary data is inlined only when it is below the configured size cap.
+
 The XLSX regression test covers Excel date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, invalid plan validation, and server-computed chart specs.
 
 ## Configuration
@@ -196,6 +205,8 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `MAX_JSON_BYTES` | `80mb` | Express JSON body limit |
 | `MAX_UPLOAD_BYTES` | `41943040` | single upload limit |
 | `MAX_CONTEXT_CHARS` | `24000` | uploaded-document context budget |
+| `GENERATED_SOURCE_MAX_CHARS` | `180000` | maximum assistant-answer text accepted by `/api/source-workflow/from-answer` |
+| `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES` | `750000` | maximum generated file size returned as `dataBase64`; larger files remain text-only room sources |
 | `MINDMAP_P1_MAX_CONTEXT` | `18000` | Pass 1 concept-extraction document context budget |
 | `MINDMAP_P1_MAX_CHUNKS` | `8` | max evenly-sampled chunks per document in Pass 1 (spans full document) |
 | `MINDMAP_P1_MAX_CONCEPTS` | `20` | max concepts extracted per Pass 1 run |
@@ -281,6 +292,7 @@ server/
   index.js             Express server, static files, API routes
   env.js               project-root .env loader
   exportFiles.js       answer export generators for MD/XLSX/PDF/HWPX/DOCX
+  sourceWorkflow/      answer-as-source API and generated-source metadata model
   mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
@@ -333,6 +345,7 @@ public/
     persistence.js     IndexedDB + WebCrypto AES-GCM
     calendar.js        calendar rendering, CRUD, reminders
     chat.js            streaming chat, message rendering, file upload, query-trim
+    sourceWorkflow.js  assistant answer -> room source dialog and client orchestration
     layout.js          three-pane panel resize/collapse behavior
     notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD
     graphStudio.js     Studio knowledge-graph viewer for selected department notebooks
@@ -410,6 +423,10 @@ The room list shows only compact state icons for uploaded attachments and
 department notebooks. Detailed material names and attachment deletion controls
 live in the composer material panel to avoid duplicate lists.
 
+Generated answer sources appear in the same material panel under an `AI 생성
+자료` group and show `AI 생성` / `검증 필요` badges. They remain personal room
+artifacts and are not automatically promoted to department notebooks.
+
 Department notebook read access is optional. Until at least one group level or
 Super password is configured, notebook reads remain public for compatibility.
 Once access control is active, normal users authenticate from the department
@@ -426,6 +443,7 @@ to Level 1, 2, or 3 in the same group.
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
+- AI-generated room sources are personal working artifacts. They are not automatically added to department notebooks, are visibly marked as generated / needs verification, and are prompted as secondary references rather than independent legal or factual proof.
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
 - Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
 - Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a two-pass LLM pipeline: Pass 1 extracts concepts spanning the full document (evenly sampled chunks); Pass 2 derives node/edge relationships from the concept list.

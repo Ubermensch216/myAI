@@ -29,6 +29,7 @@ myAI has a two-tier deployment model:
 |---|---|---|
 | Department notebook chunks + embeddings | Server filesystem (`data/notebooks/`) | Shared, GPU-embedded, admin-managed |
 | Personal room uploads (documents, images) | Browser IndexedDB (AES-GCM) | Private per-user; server is parse-only |
+| Room-generated sources from assistant answers | Browser IndexedDB (AES-GCM) | Personal working artifacts; server converts but does not persist |
 | Chat and message history | Browser IndexedDB | Per-user private |
 | Calendar events | Browser IndexedDB | Per-user private, no server sync |
 | App settings | Browser IndexedDB | Per-user private |
@@ -83,6 +84,28 @@ assistant answer action menu
 ```
 
 Word export uses `.docx`; legacy binary `.doc` is intentionally not generated.
+
+### Answer As Room Source
+
+```text
+assistant message "자료로 추가" action
+-> public/modules/sourceWorkflow.js opens title/format dialog
+-> POST /api/source-workflow/from-answer
+-> server/sourceWorkflow/generatedSourceApi.js validates the request
+-> server/exportFiles.js creates md/pdf/docx/hwpx output
+-> server/sourceWorkflow/generatedSourceModel.js returns document-like metadata
+-> browser pushes generatedSource into room.documents
+-> browser persists room state in encrypted IndexedDB
+-> later /api/chat requests include the generated source text as document context
+```
+
+Generated sources are marked with `origin: "assistant_answer"`,
+`trustLevel: "generated"`, `sourceTrust: 0.5`, and the labels `AI 생성` /
+`검증 필요`. They appear in the material panel under `AI 생성 자료`. When
+`server/ollama.js` sees generated sources in the document context, it injects
+an instruction to treat them as secondary references and prefixes their chunks
+with `[AI 생성 참고자료]`. Original uploads, department notebooks, and official
+law evidence remain preferred evidence sources.
 
 ### Studio Document Editor
 
@@ -245,8 +268,11 @@ composer material panel "정밀 분석" toggle
 The toggle is visible inside the composer material panel and is enabled only
 when the active room has uploaded documents or a selected department notebook.
 The room list intentionally shows only compact attachment/notebook state icons;
-the composer material panel owns the detailed tree view for department notebook
-and uploaded attachment entries.
+the composer material panel owns the detailed tree view for department notebook,
+uploaded attachment, and AI-generated source entries. Assistant-answer generated
+sources are room-level personal artifacts only. Do not auto-promote them to
+department notebooks; any future promotion path needs review metadata and admin
+approval.
 
 ### Visualization
 

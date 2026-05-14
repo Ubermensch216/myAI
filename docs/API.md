@@ -395,6 +395,69 @@ frontend sends the already-rendered assistant answer text from the message
 action menu. `.doc` is intentionally not supported; Word export uses `.docx`.
 PDF export embeds a Korean-capable server font when one is available.
 
+## Source Workflow
+
+### `POST /api/source-workflow/from-answer`
+
+Body:
+
+```js
+{
+  messageId: "msg_123",
+  title: "검토 보고서",
+  answerMarkdown: "...",
+  format: "md", // "md" | "pdf" | "docx" | "hwpx"
+  metadata: {
+    notebook: {},
+    law: {},
+    compliance: {},
+    webSearch: {},
+    citations: []
+  }
+}
+```
+
+Converts an assistant answer into a document-like room source payload. The
+server reuses `server/exportFiles.js` for file generation and returns:
+
+```js
+{
+  ok: true,
+  generatedSource: {
+    id: "generated_doc_...",
+    kind: "document",
+    fileName: "검토 보고서.docx",
+    fileType: "docx",
+    mimeType: "...",
+    text: "...",
+    textLength: 1234,
+    preview: "...",
+    origin: "assistant_answer",
+    sourceMessageId: "msg_123",
+    generatedBy: "assistant",
+    generatedAt: "2026-05-14T00:00:00.000Z",
+    trustLevel: "generated",
+    sourceTrust: 0.5,
+    labels: ["AI 생성", "검증 필요"],
+    citations: [],
+    sourceMetadata: {
+      notebook: null,
+      law: null,
+      compliance: null,
+      webSearch: null
+    },
+    dataBase64: ""
+  }
+}
+```
+
+The frontend stores the returned object in `room.documents` and persists it in
+encrypted IndexedDB with the current room. The endpoint does not promote
+generated sources into department notebooks and does not create server-side
+permanent personal storage. `dataBase64` is present only when the generated
+binary is no larger than `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES`; `text`
+remains the analysis source either way.
+
 ## Studio
 
 ### `GET /api/studio/document/templates`

@@ -1,6 +1,6 @@
 # Agent Handoff
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), answer-as-room-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
 
 This file is intentionally short. Keep long explanations in `docs/`.
 
@@ -23,6 +23,7 @@ Useful checks:
 curl.exe -s http://127.0.0.1:11434/api/tags
 curl.exe -s http://127.0.0.1:3000/api/status
 npm.cmd test
+npm.cmd run test:source-workflow
 npm.cmd run test:xlsx
 npm.cmd run test:live
 ```
@@ -45,6 +46,8 @@ Server:
 
 - `server/index.js` - Express routes, uploads, static frontend, API dispatch.
 - `server/exportFiles.js` - assistant answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
+- `server/sourceWorkflow/generatedSourceApi.js` - converts assistant answers into generated room-source payloads.
+- `server/sourceWorkflow/generatedSourceModel.js` - generated source validation, trust metadata, labels, and inline binary cap.
 - `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/graphStudioApi.js` - Studio knowledge-graph endpoints for accessible department notebooks.
 - `server/graphAdminApi.js` - Admin knowledge-graph inspection, node/edge override, and rebuild endpoints.
@@ -91,6 +94,7 @@ Frontend:
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming, input source badge rendering and persistence.
+- `public/modules/sourceWorkflow.js` - "자료로 추가" dialog, `/api/source-workflow/from-answer` call, and generated-source insertion into room materials.
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
 - `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
@@ -149,12 +153,24 @@ public/modules/chat.js -> POST /api/chat
 -> /api/followups generates autonomous context-aware suggestions
 ```
 
+Answer-as-source loop:
+
+```text
+assistant message "자료로 추가"
+-> public/modules/sourceWorkflow.js
+-> POST /api/source-workflow/from-answer
+-> server/sourceWorkflow/* + server/exportFiles.js
+-> generatedSource pushed into room.documents
+-> encrypted IndexedDB persistence
+-> later /api/chat includes it as secondary document context
+```
+
 Naver Search is skipped when uploaded files are present or a department
 notebook is selected. No-evidence answers should not render source panels or
 follow-up suggestions.
 
 Input source badges on each assistant message show which sources were active
-(notebook, uploaded files, web search, law engine). Guessed badges are shown
+(notebook, uploaded files, generated room sources, web search, law engine). Guessed badges are shown
 during streaming and confirmed or removed when the server response arrives.
 Clicking the notebook badge reopens the notebook selector. Badges are persisted
 in `state.rooms[roomId].messages[].sourceBadges` and re-rendered on reload.
@@ -229,13 +245,14 @@ unchanged.
 
 ## Key Caveats
 
-- `npm.cmd test` runs the fast app-server smoke checks. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
+- `npm.cmd test` runs the fast app-server smoke checks. `npm.cmd run test:source-workflow` covers answer-as-source API/frontend wiring/trust metadata. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
 - Department RAG uses Qdrant + SQLite FTS5 when configured; falls back to JSON/BM25. Fallback is triggered per-request if either backend is unavailable.
 - Notebook chunk cache (`NOTEBOOK_CHUNK_CACHE_MAX`) is a single in-process LRU shared across all sessions. Tune upward on high-core-count servers.
 - `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
 - Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only cache; empty after server restart.
 - `/api/chat` receives active documents in the JSON body. The browser warns on large uploads, shows room/material status, and preflights chat payload size before sending.
-- The composer material panel is the single detailed UI for active materials. It shows a collapsible tree where `자료(n개)` contains separate `프로젝트(0/1)` and `첨부(n)` groups, and each group lists only item names below it. The room list should show only compact state icons for attachment/notebook presence, not duplicate file lists.
+- Generated room sources are durable in encrypted browser IndexedDB with the room. They are marked `trustLevel: "generated"`, `sourceTrust: 0.5`, `AI 생성`, and `검증 필요`; `server/ollama.js` treats them as secondary references.
+- The composer material panel is the single detailed UI for active materials. It shows a collapsible tree where `자료(n개)` contains separate `프로젝트(0/1)`, `첨부(n)`, and `AI 생성 자료(n)` groups, and each group lists only item names below it. The room list should show only compact state icons for attachment/notebook presence, not duplicate file lists.
 - Studio mind maps also use active room uploaded document payloads. They do not use Naver Search or department notebook RAG.
 - Department notebook knowledge graphs are optional server-side notebook indexes. They are distinct from uploaded-document Studio mind maps and live as `data/notebooks/<notebookId>/graph.sqlite`.
 - Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects Admin Console management actions only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
@@ -252,6 +269,7 @@ unchanged.
 - Preserve chat abort behavior through `AbortController`.
 - Preserve markdown-lite answer rendering unless intentionally replacing it.
 - Keep `state.settings` backward compatible with old IndexedDB records.
+- Keep generated source document metadata backward compatible in old IndexedDB room records.
 - Use `--accent` / `--accent-dark` theme tokens for new UI styling.
 - If changing visualization, preserve the plan-first contract: LLM chooses intent/columns, server validates/computes, browser renders.
 - If changing calendar, preserve the split: LLM extracts intent/fields, browser deterministic code mutates calendar state.
