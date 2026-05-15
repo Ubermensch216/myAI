@@ -175,6 +175,8 @@ async function generateMindmap() {
     _mindmapAbortController = new AbortController();
     setMindmapBusy(true);
     clearSvg();
+    _map = null;
+    setMindmapDetailsMessage("마인드맵을 새로 생성하는 중입니다.");
     if (elements.studioMindmapEmpty) elements.studioMindmapEmpty.hidden = true;
     elements.studioMindmapCanvas?.classList.add("is-loading");
     const response = await fetch("/api/studio/mindmap", {
@@ -1007,6 +1009,15 @@ function renderDetails(node) {
     target.append(wrap);
   }
   appendRelatedEdges(target, node);
+}
+
+function setMindmapDetailsMessage(message) {
+  const target = elements.studioMindmapDetails;
+  if (!target) return;
+  target.innerHTML = "";
+  const empty = document.createElement("p");
+  empty.textContent = message || "";
+  target.append(empty);
 }
 
 function getGroupLabel(groupId) {

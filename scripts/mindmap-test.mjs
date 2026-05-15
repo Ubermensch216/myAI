@@ -94,6 +94,8 @@ const studioJs = await fs.readFile(new URL("../public/modules/studio.js", import
 assert.match(studioJs, /function buildInitialCollapsed/);
 assert.match(studioJs, /AUTO_COLLAPSE_NODE_THRESHOLD/);
 assert.match(studioJs, /fitMindmapToViewport/);
+assert.match(studioJs, /function setMindmapDetailsMessage/);
+assert.match(studioJs, /clearSvg\(\);\s+_map = null;\s+setMindmapDetailsMessage\("마인드맵을 새로 생성하는 중입니다\."\)/);
 
 const stylesCss = await fs.readFile(new URL("../public/styles.css", import.meta.url), "utf8");
 assert.match(stylesCss, /\.studio-mindmap-canvas[\s\S]*background:\s*#050706/);
