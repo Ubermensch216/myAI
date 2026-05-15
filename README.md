@@ -214,7 +214,7 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `GENERATED_SOURCE_MAX_CHARS` | `180000` | maximum assistant-answer text accepted by `/api/source-workflow/from-answer` |
 | `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES` | `750000` | maximum generated file size returned as `dataBase64`; larger files remain text-only room sources |
 | `MINDMAP_MODEL` | unset | dedicated Ollama model for mind-map generation; falls back to `OLLAMA_MODEL` |
-| `MINDMAP_P1_MAX_CONTEXT` | `18000` | outline context budget for mind-map generation |
+| `MINDMAP_P1_MAX_CONTEXT` | `12000` | outline context budget for mind-map generation |
 | `MINDMAP_P1_MAX_CHUNKS` | `10` | max evenly-sampled chunks per document (spans full document) |
 | `MINDMAP_OUTLINE_MAX_ITEMS` | `28` | max outline items extracted during mind-map generation (`MINDMAP_P1_MAX_CONCEPTS` accepted as fallback) |
 | `MINDMAP_MAX_NODES` | `24` | max generated Studio mind-map nodes |

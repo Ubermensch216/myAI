@@ -9,7 +9,7 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const MINDMAP_MODEL = String(process.env.MINDMAP_MODEL || "").trim();
 
-const OUTLINE_MAX_CONTEXT = clampInt(process.env.MINDMAP_P1_MAX_CONTEXT, 18000, 2000, 80000);
+const OUTLINE_MAX_CONTEXT = clampInt(process.env.MINDMAP_P1_MAX_CONTEXT, 12000, 2000, 80000);
 const OUTLINE_MAX_CHUNKS = clampInt(process.env.MINDMAP_P1_MAX_CHUNKS, 10, 3, 40);
 const OUTLINE_MAX_ITEMS = clampInt(process.env.MINDMAP_OUTLINE_MAX_ITEMS || process.env.MINDMAP_P1_MAX_CONCEPTS, 28, 8, 80);
 const OLLAMA_TIMEOUT_MS = clampInt(process.env.MINDMAP_OLLAMA_TIMEOUT_MS, 180000, 5000, 600000);
@@ -63,32 +63,69 @@ async function buildHierarchicalMindmap({ documents, model, signal }) {
       body: JSON.stringify({
         model,
         stream: false,
-        format: "json",
+        format: {
+          type: "object",
+          required: ["title", "nodes", "edges"],
+          properties: {
+            title: { type: "string" },
+            groups: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { id: { type: "string" }, label: { type: "string" } },
+                required: ["id", "label"]
+              }
+            },
+            nodes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  label: { type: "string" },
+                  summary: { type: "string" },
+                  group: { type: "string" },
+                  parentId: { type: "string" },
+                  importance: { type: "integer" }
+                },
+                required: ["id", "label", "parentId"]
+              }
+            },
+            edges: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  from: { type: "string" },
+                  to: { type: "string" },
+                  label: { type: "string" },
+                  strength: { type: "integer" }
+                },
+                required: ["from", "to"]
+              }
+            }
+          }
+        },
         messages: [
           {
             role: "system",
             content: [
-              "Build a hierarchical mind map from the provided document excerpts.",
-              "Return JSON only.",
+              "You are a document analysis AI. Build a hierarchical mind map.",
               "Use Korean labels and summaries when the source is Korean.",
-              "Create one root node, 4 to 6 major branch nodes, and compact leaf nodes under each branch.",
-              `Prefer 12 to 20 nodes total. Do not return a filename-only map.`,
-              "Every non-root node must include parentId. Parent-child structure is more important than cross-links.",
-              `Return at most ${OUTLINE_MAX_ITEMS} candidate nodes before normalization.`,
-              `Use at most ${MAX_NODES} nodes.`,
-              `Schema: {"title": string, "groups": [{"id": string, "label": string}], "nodes": [{"id": string, "label": string, "summary": string, "group": string, "parentId": string, "importance": 1-5, "sourceRefs": [string]}], "edges": [{"from": string, "to": string, "label": string, "strength": 1-5}]}`
+              "Create 1 root node, 4-6 major branch nodes, and leaf nodes under each branch. Total 12-20 nodes.",
+              "Every non-root node MUST have parentId set to its parent node's id."
             ].join("\n")
           },
           {
             role: "user",
             content: [
-              "문서 내용을 바탕으로 중심 주제에서 오른쪽으로 펼쳐지는 계층형 마인드맵을 만들어주세요.",
-              "문서의 목적, 요구사항 본질, 핵심 기능군, 구축 단계, 신규 모듈, 보안/데이터 구조를 우선적으로 구조화하세요.",
-              "각 노드는 짧은 명사구로 작성하고, leaf 노드는 실행 항목이나 구체 기능을 담아주세요.",
+              "아래 문서 내용을 분석하여 계층형 마인드맵을 생성하세요.",
+              "핵심 주제, 기능군, 구축 단계, 신규 모듈을 노드로 구조화하고 모든 노드에 parentId를 포함하세요.",
               "",
               context
             ].join("\n")
-          }
+          },
+          { role: "assistant", content: "{" }
         ],
         options: { temperature: 0.15 }
       })
@@ -160,7 +197,12 @@ function tryParseJson(text) {
 function parseMindmapJson(raw) {
   const text = String(raw || "").trim();
   if (!text) throw new Error("empty mindmap response");
-  return tryParseJson(text);
+  try {
+    return tryParseJson(text);
+  } catch (err) {
+    console.error("[mindmap] parse failed:", err.message, "| raw preview:", text.slice(0, 200));
+    throw err;
+  }
 }
 
 function normalizeDocuments(documents) {

@@ -14,7 +14,6 @@ import {
   sendMessage, uploadFiles, confirmAndRemoveUploadedFile,
   appendMessage, renderFollowupSuggestions, extractImageFilesFromPaste,
   createTitleFromPrompt, submitPromptEdit, confirmAndClearRoomDocuments,
-  estimateAllRoomsStorageBytes, formatBytes,
   restoreInflightForActiveRoom
 } from "./modules/chat.js";
 import {
@@ -170,10 +169,6 @@ function applyActiveView(view) {
 
 function renderRooms() {
   elements.roomList.innerHTML = "";
-  const storageSummary = document.createElement("div");
-  storageSummary.className = "room-storage-summary";
-  storageSummary.textContent = `브라우저 저장 ${formatBytes(estimateAllRoomsStorageBytes())}`;
-  elements.roomList.append(storageSummary);
 
   for (const room of state.rooms) {
     const item = document.createElement("button");
