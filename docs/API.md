@@ -94,8 +94,9 @@ Body:
   messages,
   documents,
   personalization,
-  notebookId, // optional
-  mode        // optional; "map_reduce" activates Precision Analysis / Map-Reduce
+  notebookId,      // optional
+  mode,            // optional; "map_reduce" activates Precision Analysis / Map-Reduce
+  lawSearchMode    // optional; true → law-only context, documents and notebook excluded
 }
 ```
 

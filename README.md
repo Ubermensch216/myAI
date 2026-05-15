@@ -140,13 +140,19 @@ Check the app server:
 curl.exe -s http://127.0.0.1:3000/api/status
 ```
 
-Run fast smoke tests while the app server is running:
+Run the full fast test suite (law unit tests, mind-map validation, and smoke tests) while the app server is running:
 
 ```powershell
 npm.cmd test
 ```
 
-The smoke test covers app shell IDs, `/api/status`, notebook list, file upload, answer export, Studio mind-map validation, visualization error handling, chat, and calendar intent classification. Run deterministic XLSX/visualization regression tests without Ollama:
+The suite covers law parsing/intent/KG unit tests, mind-map generation validation, app shell IDs, `/api/status`, notebook list, file upload, answer export, visualization error handling, chat, and calendar intent classification. Run mind-map tests alone:
+
+```powershell
+npm.cmd run test:mindmap
+```
+
+Run deterministic XLSX/visualization regression tests without Ollama:
 
 ```powershell
 npm.cmd run test:xlsx
@@ -207,11 +213,12 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `MAX_CONTEXT_CHARS` | `24000` | uploaded-document context budget |
 | `GENERATED_SOURCE_MAX_CHARS` | `180000` | maximum assistant-answer text accepted by `/api/source-workflow/from-answer` |
 | `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES` | `750000` | maximum generated file size returned as `dataBase64`; larger files remain text-only room sources |
-| `MINDMAP_P1_MAX_CONTEXT` | `18000` | Pass 1 concept-extraction document context budget |
-| `MINDMAP_P1_MAX_CHUNKS` | `8` | max evenly-sampled chunks per document in Pass 1 (spans full document) |
-| `MINDMAP_P1_MAX_CONCEPTS` | `20` | max concepts extracted per Pass 1 run |
-| `MINDMAP_MAX_NODES` | `16` | max generated Studio mind-map nodes (Pass 2) |
-| `MINDMAP_MAX_EDGES` | `24` | max generated Studio mind-map edges (Pass 2) |
+| `MINDMAP_MODEL` | unset | dedicated Ollama model for mind-map generation; falls back to `OLLAMA_MODEL` |
+| `MINDMAP_P1_MAX_CONTEXT` | `24000` | outline context budget for mind-map generation |
+| `MINDMAP_P1_MAX_CHUNKS` | `12` | max evenly-sampled chunks per document (spans full document) |
+| `MINDMAP_OUTLINE_MAX_ITEMS` | `48` | max outline items extracted during mind-map generation (`MINDMAP_P1_MAX_CONCEPTS` accepted as fallback) |
+| `MINDMAP_MAX_NODES` | `42` | max generated Studio mind-map nodes |
+| `MINDMAP_MAX_EDGES` | `64` | max generated Studio mind-map edges |
 | `DOCUMENT_CACHE_TTL_MS` | `21600000` | same-browser runtime cache lifetime for recently uploaded personal documents |
 | `DOCUMENT_CACHE_MAX_ENTRIES` | `256` | max personal upload cache entries kept in server memory |
 | `CHUNK_WINDOW_CHARS` | `1024` | sliding chunk size |
@@ -446,7 +453,7 @@ to Level 1, 2, or 3 in the same group.
 - AI-generated room sources are personal working artifacts. They are not automatically added to department notebooks, are visibly marked as generated / needs verification, and are prompted as secondary references rather than independent legal or factual proof.
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
 - Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
-- Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a two-pass LLM pipeline: Pass 1 extracts concepts spanning the full document (evenly sampled chunks); Pass 2 derives node/edge relationships from the concept list.
+- Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a single-pass hierarchical LLM pipeline that evenly samples chunks across the full document and directly produces a parent-based node/edge hierarchy.
 - Department notebook knowledge graphs are separate from uploaded-document mind maps. Graph data lives under the notebook index area, can be inspected from Studio, and can be moderated from admin graph endpoints.
 - When uploaded documents are present in a room, explicit search prompts (e.g., "네이버 검색해줘") are blocked client-side before reaching the LLM; a descriptive message is shown instead.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.

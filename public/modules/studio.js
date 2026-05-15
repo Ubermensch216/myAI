@@ -12,8 +12,7 @@ const NODE_H = 42;
 const ROOT_W = 218;
 const GAP_H = 76;  // horizontal gap between parent right edge and child left edge
 const GAP_V = 18;  // vertical gap between sibling subtrees
-const AUTO_COLLAPSE_NODE_THRESHOLD = 54;
-const AUTO_COLLAPSE_DEPTH = 2;
+const INITIAL_COLLAPSE_DEPTH = 1;
 const REQUEST_TEXT_BUDGET_CHARS = 48000;
 const REQUEST_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -617,26 +616,15 @@ function buildTreeStructure(mindmap) {
   return { root, childrenMap };
 }
 
-// Collapse all nodes that have children, except root (so root's children are visible)
+// Start with root and first-level branches visible; users expand deeper nodes.
 function buildInitialCollapsed(root, childrenMap) {
   const collapsed = new Set();
-  if (countTreeNodes(root, childrenMap) <= AUTO_COLLAPSE_NODE_THRESHOLD) return collapsed;
   function visit(node, depth) {
-    if (depth >= AUTO_COLLAPSE_DEPTH && (childrenMap.get(node.id) || []).length > 0) collapsed.add(node.id);
+    if (depth >= INITIAL_COLLAPSE_DEPTH && (childrenMap.get(node.id) || []).length > 0) collapsed.add(node.id);
     for (const child of childrenMap.get(node.id) || []) visit(child, depth + 1);
   }
   visit(root, 0);
   return collapsed;
-}
-
-function countTreeNodes(root, childrenMap) {
-  let count = 0;
-  function visit(node) {
-    count += 1;
-    for (const child of childrenMap.get(node.id) || []) visit(child);
-  }
-  visit(root);
-  return count;
 }
 
 // ── Layout (left-to-right tree) ───────────────────────────────────
