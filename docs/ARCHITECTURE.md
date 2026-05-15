@@ -30,6 +30,8 @@ myAI has a two-tier deployment model:
 | Department notebook chunks + embeddings | Server filesystem (`data/notebooks/`) | Shared, GPU-embedded, admin-managed |
 | Personal room uploads (documents, images) | Browser IndexedDB (AES-GCM) | Private per-user; server is parse-only |
 | Room-generated sources from assistant answers | Browser IndexedDB (AES-GCM) | Personal working artifacts; server converts but does not persist |
+| Studio outputs and source guides | Browser IndexedDB (AES-GCM), inside `room.studio.outputs` | Room-level work products that can be reopened, added as generated sources, or submitted for admin promotion review |
+| Source promotion requests | Server filesystem (`data/source-promotions/promotions.json`) | Admin-reviewed queue before any AI-generated output enters a department notebook |
 | Chat and message history | Browser IndexedDB | Per-user private |
 | Calendar events | Browser IndexedDB | Per-user private, no server sync |
 | App settings | Browser IndexedDB | Per-user private |
@@ -107,6 +109,39 @@ an instruction to treat them as secondary references and prefixes their chunks
 with `[AI 생성 참고자료]`. Original uploads, department notebooks, and official
 law evidence remain preferred evidence sources.
 
+### Source Guides And Studio Outputs
+
+```text
+uploaded room documents and/or selected department notebook
+-> POST /api/source-workflow/source-guide
+-> server/sourceWorkflow/sourceGuide.js samples source text and asks Ollama for a guide
+-> browser stores the result under room.studio.outputs
+-> user can reopen it as a Studio draft, add it as a room source, or request notebook promotion
+```
+
+Studio outputs are room-level work products stored in encrypted IndexedDB under
+`room.studio.outputs`. Current output types include Studio documents and source
+guides. Adding an output as a room source reuses
+`/api/source-workflow/from-answer`, so the inserted material remains labeled
+`AI 생성` / `검증 필요` and is treated as secondary context.
+
+### Department Notebook Promotion
+
+```text
+Studio output "승인 요청"
+-> POST /api/source-workflow/promotions
+-> data/source-promotions/promotions.json stores pending request
+-> Admin Console "승인 요청" panel
+-> PATCH /api/admin/source-promotions/:id { status: "approved" }
+-> server/sourceWorkflow/sourcePromotions.js ingests reviewed markdown
+-> addNotebookDocument() writes target notebook document and updates indexes
+```
+
+Promotion is never automatic. A generated output enters a department notebook
+only after an admin approves it. The promoted document includes provenance such
+as source room/output/message IDs, generation time, review status, and reviewer
+metadata. Rejected requests stay in the promotion store for operational context.
+
 ### Studio Document Editor
 
 ```text
@@ -124,7 +159,10 @@ assistant answer action menu "스튜디오로 보내기"
 -> browser receives a Blob and starts the download
 ```
 
-This feature converts AI answers into structured, template-driven public-sector document drafts while preserving source citations.
+This feature converts AI answers into structured, template-driven public-sector
+document drafts while preserving source citations. Completed drafts are also
+stored as Studio outputs so they can be reused as room sources or submitted for
+admin-reviewed notebook promotion.
 
 ### Studio Mind Map
 
@@ -268,9 +306,8 @@ when the active room has uploaded documents or a selected department notebook.
 The room list intentionally shows only compact attachment/notebook state icons;
 the composer material panel owns the detailed tree view for department notebook,
 uploaded attachment, and AI-generated source entries. Assistant-answer generated
-sources are room-level personal artifacts only. Do not auto-promote them to
-department notebooks; any future promotion path needs review metadata and admin
-approval.
+sources are room-level personal artifacts unless an admin explicitly approves a
+Studio-output promotion request.
 
 ### Visualization
 
@@ -299,6 +336,10 @@ The LLM does not directly mutate calendar data.
 
 - `server/index.js` - Express setup, static serving, upload route, chat/visualize/followup/calendar/notebook endpoints.
 - `server/exportFiles.js` - answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
+- `server/sourceWorkflow/generatedSourceApi.js` - assistant-answer-to-room-source API.
+- `server/sourceWorkflow/generatedSourceModel.js` - generated source validation, metadata, trust labels, and inline binary cap.
+- `server/sourceWorkflow/sourceGuide.js` - source guide generation from room documents and selected department notebooks.
+- `server/sourceWorkflow/sourcePromotions.js` - admin-reviewed promotion queue and approved output ingestion into department notebooks.
 - `server/studioDocument/studioDocumentApi.js` - endpoints for templates, from-answer conversion, and document export.
 - `server/studioDocument/documentModel.js` - validates and normalizes document models and blocks.
 - `server/studioDocument/answerToDocument.js` - converts answer markdown into template-structured JSON using Ollama.
@@ -352,7 +393,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
-- `public/modules/documentStudio.js` - Studio Document Editor tab rendering, block editing, template selection, and export handling.
+- `public/modules/documentStudio.js` - Studio Document Editor tab rendering, visual/raw markdown editing, source guide creation, output library actions, and export handling.
 - `public/modules/documentStudioMarkdown.js` - Markdown to visual-block conversion and serialization for Studio documents.
 - `public/modules/documentTemplates.js` - built-in and personal Studio document template state.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
@@ -360,7 +401,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
 - `public/modules/messageDelete.js` - single-message deletion, selection mode, and bulk delete orchestration.
 - `public/modules/customPrompts.js` - reusable custom prompt presets, composer picker, and Settings subtab rendering.
-- `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
+- `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, source promotion review, file upload progress, access policy UI, admin event binding.
 - `public/modules/docTool.js` - Studio File Tool: client-side PDF/XLSX/TXT merging and splitting, drag-and-drop file queue, and reset handling.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.
 - `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI cards, per-group/per-notebook activity, recent sessions).
@@ -377,13 +418,17 @@ Object store: records, record id: app-state
 Object store: keys, record id: local-aes-gcm-key
 ```
 
-Stored browser state includes rooms, messages, settings, active room files, per-room Studio mind-map caches, selected notebook IDs, active view, panel layout settings, and calendar events. It is encrypted with WebCrypto AES-GCM.
+Stored browser state includes rooms, messages, settings, active room files,
+per-room Studio mind-map caches, Studio document drafts and outputs, selected
+notebook IDs, active view, panel layout settings, and calendar events. It is
+encrypted with WebCrypto AES-GCM.
 
 Server:
 
 ```text
 data/notebooks/<notebookId>/manifest.json
 data/notebooks/<notebookId>/docs/<documentId>.json
+data/source-promotions/promotions.json
 ```
 
 Notebook data is shared server-side state. Management writes are protected by

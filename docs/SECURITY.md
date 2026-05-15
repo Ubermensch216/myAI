@@ -20,6 +20,8 @@ Browser clients
 | Notebook writes/admin actions | Protected by `ADMIN_TOKEN` | Use a long random token. Admin manages groups/passwords/policies but is not itself a notebook-read identity for chat. |
 | Personal rooms, uploads, calendar, settings | Encrypted in each browser IndexedDB | Isolation is by browser key, not by server-side accounts. Clearing browser storage deletes the data. |
 | AI-generated room sources | Stored with the room in encrypted browser IndexedDB after `/api/source-workflow/from-answer` conversion | Treat as personal working artifacts. They are marked generated / needs verification and are not official or department-approved sources. |
+| Studio outputs and source guides | Stored with the room in encrypted browser IndexedDB | Can be reused as generated room sources. They enter department notebooks only after admin promotion approval. |
+| Source promotion requests | Stored server-side under `data/source-promotions/promotions.json` | Admin-reviewed queue. Approval ingests reviewed markdown into the target department notebook with provenance metadata. |
 | File Tools (Merge/Split) | Entirely client-side (browser) | No file content or metadata is sent to the server. Maximum privacy for sensitive documents. |
 | Upload temp files | Written under `uploads/`, then removed after parse | The server sees personal files during parsing. Keep the host and temp directory private. |
 | Runtime upload cache | In-memory, scoped by `X-MyAI-Document-Key`, TTL/LRU bounded | Convenience hydration cache only; not listable and not durable. |
@@ -40,6 +42,10 @@ OLLAMA_URL=http://127.0.0.1:11434
 
 Open `http://127.0.0.1:3000` on the same machine.
 
+Browsers treat `localhost` and `127.0.0.1` as secure enough for WebCrypto.
+Remote LAN URLs such as `http://192.168.x.x:3000` may not expose
+`crypto.subtle`, which breaks encrypted IndexedDB startup.
+
 ### Department trusted-LAN mode
 
 This is acceptable when the workstation is reachable only by trusted personal PCs on a private network.
@@ -51,6 +57,11 @@ ADMIN_TOKEN=<long-random-token>
 ```
 
 Bind `HOST` only as broadly as the network policy requires. If the host has more than one network interface, prefer a private interface over all interfaces.
+
+For browser clients on other PCs, use HTTPS. myAI can serve HTTPS directly when
+`HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` are set, or it can sit behind a
+TLS-terminating reverse proxy. Without HTTPS, remote browsers may block
+WebCrypto and the UI may fail before app state loads.
 
 ### Production-like shared mode
 
@@ -146,6 +157,9 @@ The server has two direct limits:
 | `DOCUMENT_CACHE_MAX_ENTRIES` | `256` | Max in-memory personal document cache entries |
 | `GENERATED_SOURCE_MAX_CHARS` | `180000` | Max assistant-answer text accepted by source workflow conversion |
 | `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES` | `750000` | Max generated binary payload returned inline as base64 |
+| `SOURCE_GUIDE_INPUT_MAX_CHARS` | `36000` | Max sampled source text sent to source-guide generation |
+| `SOURCE_GUIDE_TIMEOUT_MS` | `75000` | Source-guide model-call timeout |
+| `SOURCE_PROMOTION_MAX_CHARS` | `180000` | Max Studio-output markdown accepted for promotion review |
 
 The browser also preflights large personal chat payloads:
 
@@ -159,6 +173,10 @@ requests as document context. They are deliberately labeled as secondary
 references in the prompt and UI to avoid confusing AI-generated working notes
 with original uploads, official law evidence, or approved department notebook
 content.
+
+Approved promotion requests create department notebook documents. Approval does
+not make the text original evidence; it means an admin accepted the generated
+work product into the department notebook with visible provenance.
 
 Keep proxy body limits equal to or lower than the server limits. If the proxy allows larger bodies than Node.js, users will see late server failures. If the proxy limit is lower, document that limit in the deployment runbook.
 
@@ -261,6 +279,7 @@ lifetime defaults to 12 hours and can be adjusted with
 - `ADMIN_TOKEN` set for any shared notebook deployment.
 - Department notebook access groups/passwords configured when notebook reads should be restricted.
 - Reverse proxy terminates TLS.
+- If not using a reverse proxy, set `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` before serving remote browser clients.
 - Reverse proxy enforces user auth before `/` and `/api/*`.
 - Proxy body limits match `MAX_JSON_BYTES` / `MAX_UPLOAD_BYTES`.
 - Proxy buffering disabled for `/api/chat`.

@@ -525,11 +525,108 @@ server reuses `server/exportFiles.js` for file generation and returns:
 ```
 
 The frontend stores the returned object in `room.documents` and persists it in
-encrypted IndexedDB with the current room. The endpoint does not promote
-generated sources into department notebooks and does not create server-side
-permanent personal storage. `dataBase64` is present only when the generated
-binary is no larger than `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES`; `text`
-remains the analysis source either way.
+encrypted IndexedDB with the current room. The endpoint does not automatically
+promote generated sources into department notebooks and does not create
+server-side permanent personal storage. Department notebook promotion is a
+separate admin-reviewed workflow. `dataBase64` is present only when the
+generated binary is no larger than `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES`;
+`text` remains the analysis source either way.
+
+### `POST /api/source-workflow/source-guide`
+
+Body:
+
+```js
+{
+  title: "감사자료 소스 가이드",
+  documents: [/* current room document payloads */],
+  notebookId: "nb_...", // optional selected department notebook
+  model: "gemma4:e2b"
+}
+```
+
+Builds a NotebookLM-style source guide from uploaded room documents and/or the
+selected department notebook. If `notebookId` is provided and Department
+Notebook Access Control is active, the request must include the normal notebook
+read token unless it is an admin request.
+
+Response:
+
+```js
+{
+  ok: true,
+  guide: {
+    id: "source_guide_...",
+    kind: "source_guide",
+    title: "...",
+    summary: "...",
+    keyIssues: [],
+    relatedLaws: [],
+    recommendedQuestions: [],
+    possibleOutputs: [],
+    markdown: "...",
+    sourceScope: {
+      documentCount: 2,
+      notebook: { id: "nb_...", name: "..." }
+    },
+    warnings: [],
+    createdAt: "2026-05-16T00:00:00.000Z"
+  }
+}
+```
+
+The browser stores the guide as a room-level Studio output under
+`room.studio.outputs`; it can later be reopened as a Studio draft, added back to
+the room as a generated source, or submitted for notebook-promotion review.
+
+### `POST /api/source-workflow/promotions`
+
+Body:
+
+```js
+{
+  notebookId: "nb_...",
+  title: "검토의견서",
+  markdown: "...",
+  summary: "...",
+  sourceType: "studio_output",
+  sourceRoomId: "room_...",
+  sourceMessageId: "msg_...",
+  sourceOutputId: "studio_output_...",
+  generatedAt: "2026-05-16T00:00:00.000Z",
+  citations: [],
+  metadata: {}
+}
+```
+
+Creates a pending department-notebook promotion request for an AI-generated
+Studio output. The request is stored server-side under
+`data/source-promotions/promotions.json`. It does not modify the target notebook
+until an admin approves it.
+
+If Department Notebook Access Control is active, non-admin users must have read
+access to the target notebook to submit a request.
+
+### `GET /api/admin/source-promotions`
+
+Admin-only. Lists pending and reviewed promotion requests without returning the
+full markdown body.
+
+### `PATCH /api/admin/source-promotions/:id`
+
+Admin-only. Body:
+
+```js
+{
+  status: "approved", // or "rejected"
+  reviewNote: "...",
+  approvedBy: "admin"
+}
+```
+
+Approving a request ingests the reviewed generated output into the target
+department notebook as a Markdown document with provenance metadata. Rejected
+requests remain in the promotion store for audit context.
 
 ## Studio
 

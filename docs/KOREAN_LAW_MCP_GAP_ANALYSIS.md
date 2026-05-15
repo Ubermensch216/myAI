@@ -1,19 +1,23 @@
 # Korean Law MCP 대비 myAI 법령 기능 Gap Analysis
 
 작성일: 2026-05-15
+현행화: 2026-05-16
 
 ## 분석 소스
 
-- Korean Law MCP repository: https://github.com/Ubermensch216/korean-law-mcp
-- Korean Law MCP README: https://github.com/Ubermensch216/korean-law-mcp/blob/main/README.md
-- Korean Law MCP package.json: https://github.com/Ubermensch216/korean-law-mcp/blob/main/package.json
-- Korean Law MCP tool registry: https://github.com/Ubermensch216/korean-law-mcp/blob/main/src/tool-registry.ts
-- Korean Law MCP entrypoint: https://github.com/Ubermensch216/korean-law-mcp/blob/main/src/index.ts
+- Korean Law MCP reference implementation: https://github.com/chrisryugj/korean-law-mcp
+- Lean Korean Law MCP implementation: https://github.com/seo-jinseok/korean-law-mcp
 - myAI repository: https://github.com/Ubermensch216/myAI
 - myAI README: https://github.com/Ubermensch216/myAI/blob/main/README.md
 - myAI Korean Law Engine 문서: https://github.com/Ubermensch216/myAI/blob/main/docs/KOREAN_LAW_ENGINE.md
 - myAI law API router: https://github.com/Ubermensch216/myAI/blob/main/server/law/lawApi.js
 - myAI law tool registry: https://github.com/Ubermensch216/myAI/blob/main/server/law/tools/toolRegistry.js
+
+2026-05-16 기준 공개 검색 결과에서 `chrisryugj/korean-law-mcp`는
+“법제처 41개 API → 17개 MCP 도구”의 TypeScript 구현으로, `seo-jinseok/korean-law-mcp`는
+법령·판례·행정규칙·법령해석례·서식 검색 중심의 Python 구현으로 확인된다.
+이 문서는 더 넓은 기능군을 가진 `chrisryugj/korean-law-mcp` 계열을 주 비교 대상으로
+두고, `seo-jinseok/korean-law-mcp`의 별표/서식·법률 체인 탐색 흐름도 보조 참고한다.
 
 ## 요약 결론
 

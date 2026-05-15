@@ -51,7 +51,11 @@ The implementation files are:
 
 - `server/sourceWorkflow/generatedSourceApi.js`
 - `server/sourceWorkflow/generatedSourceModel.js`
+- `server/sourceWorkflow/sourceGuide.js`
+- `server/sourceWorkflow/sourcePromotions.js`
 - `public/modules/sourceWorkflow.js`
+- `public/modules/documentStudio.js`
+- `public/modules/notebook.js`
 - `public/modules/chat.js`
 - `public/app.js`
 - `public/modules/persistence.js`
@@ -143,6 +147,54 @@ Response:
 }
 ```
 
+### `POST /api/source-workflow/source-guide`
+
+Request:
+
+```js
+{
+  title: "소스 가이드",
+  documents: [],
+  notebookId: "nb_...",
+  model: "gemma4:e2b"
+}
+```
+
+Response:
+
+```js
+{
+  ok: true,
+  guide: {
+    id: "source_guide_...",
+    kind: "source_guide",
+    title: "...",
+    summary: "...",
+    keyIssues: [],
+    relatedLaws: [],
+    recommendedQuestions: [],
+    possibleOutputs: [],
+    markdown: "...",
+    sourceScope: {}
+  }
+}
+```
+
+### `POST /api/source-workflow/promotions`
+
+Creates a pending promotion request for a Studio output and stores it in
+`data/source-promotions/promotions.json`. It does not ingest anything into the
+target notebook until an admin approves it.
+
+### `GET /api/admin/source-promotions`
+
+Admin-only list of pending/reviewed promotion requests.
+
+### `PATCH /api/admin/source-promotions/:id`
+
+Admin-only approval or rejection. Approval calls notebook ingest for the target
+department notebook and records reviewer/provenance metadata.
+
 ## Implemented Product Phases
 
 ### Phase 2: Studio Editor UX
@@ -181,4 +233,5 @@ npm.cmd run test:source-workflow
 
 This covers source-workflow API validation, supported formats, generated source
 metadata, frontend wiring, material display expectations, prompt trust markers,
-and persistence metadata compatibility.
+source-guide wiring, Studio output reuse, promotion-review wiring, and
+persistence metadata compatibility.

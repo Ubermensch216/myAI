@@ -32,6 +32,9 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department legal-review prompts combine uploaded/notebook material with statute, precedent, interpretation, admin-rule, or ordinance evidence when configured.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Assistant answers can be saved back into the current room as AI-generated source material (`md`, `pdf`, `docx`, or `hwpx`). The generated source is stored with the room in encrypted IndexedDB, marked as AI-generated / needs verification, and treated as secondary context in later chat turns.
+- Studio Source Guide can summarize uploaded files and/or the selected department notebook into key issues, related laws, recommended questions, and possible outputs.
+- Studio output library stores generated documents and source guides under `room.studio.outputs`; outputs can be reopened, added back as room sources, or submitted for department-notebook promotion review.
+- Admin-reviewed promotion requests let an operator approve selected Studio outputs into department notebooks with provenance metadata.
 - Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit the generated markdown draft and export as HWPX, DOCX, PDF, or MD.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, structured document editor, and file tools (merging/splitting PDF, XLSX, TXT).
 - File Tools for merging multiple files into one or splitting a large file into smaller parts (PDF, XLSX, TXT supported; entirely client-side for privacy).
@@ -84,6 +87,11 @@ npm start
 ```
 
 Then open <http://localhost:3000>.
+
+For same-machine use, `http://localhost:3000` or `http://127.0.0.1:3000`
+works. For remote PCs connecting by LAN IP, use HTTPS or a TLS-terminating
+reverse proxy; browsers can block `crypto.subtle` on plain
+`http://<lan-ip>`, which prevents the encrypted IndexedDB UI from loading.
 
 ## Docker Quick Start
 
@@ -210,6 +218,9 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 |---|---:|---|
 | `PORT` | `3000` | HTTP port |
 | `HOST` | unset | HTTP bind host; unset listens on all interfaces |
+| `HTTPS_KEY_PATH` | unset | optional TLS private key path for serving HTTPS directly |
+| `HTTPS_CERT_PATH` | unset | optional TLS certificate path for serving HTTPS directly |
+| `HTTPS_CA_PATH` | unset | optional CA bundle path for HTTPS server chains |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API endpoint |
 | `OLLAMA_MODEL` | `gemma3n:e2b` | default chat/analysis model |
 | `EMBED_MODEL` | `bge-m3` | Ollama `/api/embed` model |
@@ -223,6 +234,9 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `MAX_CONTEXT_CHARS` | `24000` | uploaded-document context budget |
 | `GENERATED_SOURCE_MAX_CHARS` | `180000` | maximum assistant-answer text accepted by `/api/source-workflow/from-answer` |
 | `GENERATED_SOURCE_BINARY_INLINE_MAX_BYTES` | `750000` | maximum generated file size returned as `dataBase64`; larger files remain text-only room sources |
+| `SOURCE_GUIDE_INPUT_MAX_CHARS` | `36000` | source text budget for `/api/source-workflow/source-guide` |
+| `SOURCE_GUIDE_TIMEOUT_MS` | `75000` | source guide model-call timeout |
+| `SOURCE_PROMOTION_MAX_CHARS` | `180000` | maximum markdown body accepted for Studio-output promotion requests |
 | `MINDMAP_MODEL` | unset | dedicated Ollama model for mind-map generation; falls back to `OLLAMA_MODEL` |
 | `MINDMAP_P1_MAX_CONTEXT` | `12000` | outline context budget for mind-map generation |
 | `MINDMAP_P1_MAX_CHUNKS` | `10` | max evenly-sampled chunks per document (spans full document) |
@@ -339,7 +353,7 @@ server/
   index.js             Express server, static files, API routes
   env.js               project-root .env loader
   exportFiles.js       answer export generators for MD/XLSX/PDF/HWPX/DOCX
-  sourceWorkflow/      answer-as-source API and generated-source metadata model
+  sourceWorkflow/      answer-as-source, source guide, and promotion-review helpers
   mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
@@ -396,13 +410,13 @@ public/
     customPrompts.js   reusable prompt presets and picker/settings UI
     sourceWorkflow.js  assistant answer -> room source dialog and client orchestration
     layout.js          three-pane panel resize/collapse behavior
-    notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD
+    notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD, promotion review
     graphStudio.js     Studio knowledge-graph viewer for selected department notebooks
     ragEval.js         Admin RAG Evaluation panel
     adminStats.js      Admin Console usage statistics panel (KPI / groups / notebooks / sessions)
     adminApi.js        small Admin Console fetch helpers
     studio.js          Studio panel UI and mind-map SVG renderer
-    documentStudio.js  Studio Document Editor tab: template selection, markdown editing, export
+    documentStudio.js  Studio Document Editor tab: template selection, markdown editing, source guides, output library, export
     documentStudioMarkdown.js  markdown <-> visual block conversion for Studio documents
     documentTemplates.js built-in/personal Studio document templates
     docTool.js         Studio File Tools: client-side PDF/XLSX/TXT merge and split
@@ -436,6 +450,8 @@ docs/
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
+- [Korean Law MCP Gap Analysis](docs/KOREAN_LAW_MCP_GAP_ANALYSIS.md)
+- [NotebookLM-Style Source Workflow](docs/PRD_NOTEBOOKLM_STYLE_SOURCE_WORKFLOW.md)
 - [Usage Telemetry and Admin Statistics](docs/USAGE_TELEMETRY.md)
 - [Design Guide](docs/DESIGN.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
@@ -456,6 +472,7 @@ The gear button in the main header opens one Settings dialog with two tabs:
 
 - **Personal Settings**: AI name, banner, avatars, theme, built-in/custom color palette, document templates, and reusable custom prompts. These settings remain local to the browser's encrypted IndexedDB.
 - **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups operational items (**Department Notebook Management**, **Access Management**) separately from visibility/quality items (**RAG Status**, **RAG Quality**, **Usage Statistics**). **RAG Quality** is split into a left-to-right workflow (golden set -> run -> results) plus an operations-health tab. **Usage Statistics** is backed by `/api/admin/stats/*` (KPI summary, per-group activity, per-notebook activity, and recent sessions).
+- **Promotion Review**: admins review Studio-output promotion requests before any AI-generated output is ingested into a department notebook.
 - **Studio graph**: when the selected department notebook has a built graph, the Studio panel can show searchable nodes, relationships, source references, and notebook graph statistics. Normal notebook read-access rules still apply.
 
 The chat composer keeps the main input row focused on four controls: add (`+`),
@@ -477,7 +494,8 @@ department notebooks. Detailed material names and attachment deletion controls
 live in the composer material panel to avoid duplicate lists.
 
 Generated answer sources appear in the same material panel under an `AI 생성 자료` group and show `AI 생성` / `검증 필요` badges. They remain personal room
-artifacts and are not automatically promoted to department notebooks.
+artifacts unless an admin approves a Studio-output promotion request into a
+department notebook.
 
 Department notebook read access is optional. Until at least one group level or
 Super password is configured, notebook reads remain public for compatibility.
@@ -495,7 +513,7 @@ to Level 1, 2, or 3 in the same group.
 ## Known Constraints
 
 - Uploaded room files and calendar data are durable in browser IndexedDB, not server memory.
-- AI-generated room sources are personal working artifacts. They are not automatically added to department notebooks, are visibly marked as generated / needs verification, and are prompted as secondary references rather than independent legal or factual proof.
+- AI-generated room sources are personal working artifacts. They are not automatically added to department notebooks, are visibly marked as generated / needs verification, and are prompted as secondary references rather than independent legal or factual proof. Studio outputs can enter department notebooks only through the admin-reviewed promotion workflow.
 - Department notebook retrieval uses Qdrant (vector) + SQLite FTS5 (lexical) when configured. Normal indexed hits avoid loading every notebook chunk JSON; JSON/in-memory BM25 is loaded lazily only for fallback or empty-query first-chunk fitting.
 - Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
 - Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a single-pass hierarchical LLM pipeline that evenly samples chunks across the full document and directly produces a parent-based node/edge hierarchy.
