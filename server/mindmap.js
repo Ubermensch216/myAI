@@ -9,13 +9,13 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const MINDMAP_MODEL = String(process.env.MINDMAP_MODEL || "").trim();
 
-const OUTLINE_MAX_CONTEXT = clampInt(process.env.MINDMAP_P1_MAX_CONTEXT, 24000, 2000, 80000);
-const OUTLINE_MAX_CHUNKS = clampInt(process.env.MINDMAP_P1_MAX_CHUNKS, 12, 3, 40);
-const OUTLINE_MAX_ITEMS = clampInt(process.env.MINDMAP_OUTLINE_MAX_ITEMS || process.env.MINDMAP_P1_MAX_CONCEPTS, 48, 12, 80);
+const OUTLINE_MAX_CONTEXT = clampInt(process.env.MINDMAP_P1_MAX_CONTEXT, 18000, 2000, 80000);
+const OUTLINE_MAX_CHUNKS = clampInt(process.env.MINDMAP_P1_MAX_CHUNKS, 10, 3, 40);
+const OUTLINE_MAX_ITEMS = clampInt(process.env.MINDMAP_OUTLINE_MAX_ITEMS || process.env.MINDMAP_P1_MAX_CONCEPTS, 28, 8, 80);
 const OLLAMA_TIMEOUT_MS = clampInt(process.env.MINDMAP_OLLAMA_TIMEOUT_MS, 180000, 5000, 600000);
 
-const MAX_NODES = clampInt(process.env.MINDMAP_MAX_NODES, 42, 8, 80);
-const MAX_EDGES = clampInt(process.env.MINDMAP_MAX_EDGES, 64, 8, 120);
+const MAX_NODES = clampInt(process.env.MINDMAP_MAX_NODES, 24, 8, 80);
+const MAX_EDGES = clampInt(process.env.MINDMAP_MAX_EDGES, 36, 8, 120);
 const ROOT_ID = "root";
 
 export async function generateMindmap({ documents = [], model = DEFAULT_MODEL, signal } = {}) {
@@ -42,6 +42,7 @@ export async function generateMindmap({ documents = [], model = DEFAULT_MODEL, s
       error.statusCode = 429;
       throw error;
     }
+    console.error("[mindmap] generation failed, returning fallback:", error.message);
     return {
       ...fallback,
       warnings: [...(fallback.warnings || []), `model_fallback: ${error.message}`]
@@ -67,11 +68,11 @@ async function buildHierarchicalMindmap({ documents, model, signal }) {
           {
             role: "system",
             content: [
-              "Build a NotebookLM-style hierarchical mind map from the provided document excerpts.",
+              "Build a hierarchical mind map from the provided document excerpts.",
               "Return JSON only.",
               "Use Korean labels and summaries when the source is Korean.",
-              "Create one root node, 5 to 7 major branch nodes, and compact leaf nodes under each branch.",
-              "Prefer 25 to 45 nodes for a substantial PRD/report. Do not return a filename-only map.",
+              "Create one root node, 4 to 6 major branch nodes, and compact leaf nodes under each branch.",
+              `Prefer 12 to 20 nodes total. Do not return a filename-only map.`,
               "Every non-root node must include parentId. Parent-child structure is more important than cross-links.",
               `Return at most ${OUTLINE_MAX_ITEMS} candidate nodes before normalization.`,
               `Use at most ${MAX_NODES} nodes.`,
