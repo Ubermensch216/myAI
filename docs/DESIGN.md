@@ -1,87 +1,96 @@
-# myAI 디자인 가이드
+# myAI Design Guide
 
-이 문서는 프로젝트 전반의 시각 언어와 컴포넌트 규칙을 정의한다.  
-새 화면이나 컴포넌트를 추가할 때 반드시 여기서 정한 토큰·패턴을 따른다.
+This guide captures the current UI conventions for the plain HTML/CSS/JS
+frontend. Keep new screens consistent with `public/index.html`,
+`public/styles.css`, and the module patterns under `public/modules/`.
 
----
+## Design Tokens
 
-## 1. 디자인 토큰 (CSS 변수)
+Use CSS variables from `:root` in `public/styles.css`. Do not hard-code theme
+colors in new components unless the value is a one-off semantic color such as
+an error state.
 
-모든 색상·간격은 `styles.css` 최상단의 `:root` 변수를 참조한다. 하드코딩하지 않는다.
+Core tokens:
 
-### 1-1. 색상
+| Token | Purpose |
+|---|---|
+| `--bg` | app background |
+| `--surface` | primary panels, dialogs, cards |
+| `--surface-2` | input/tool areas and subtle selected backgrounds |
+| `--surface-3` | canvas and nested workspace backgrounds |
+| `--ink` | primary text |
+| `--muted` | secondary text and low-emphasis icons |
+| `--line` | borders and dividers |
+| `--accent` | primary brand/action color |
+| `--accent-dark` | stronger accent text/border |
+| `--accent-aux` | secondary accent |
+| `--danger` | destructive actions |
+| `--shadow` | elevated dialogs and popovers |
 
-| 변수 | Light | Dark | 용도 |
-|---|---|---|---|
-| `--bg` | `#f5f7fb` | `#101418` | 앱 바깥 배경 |
-| `--surface` | `#ffffff` | `#171d23` | 카드·패널 기본 배경 |
-| `--surface-2` | `#eef3f8` | `#202832` | 입력·툴바 등 한 단계 낮은 배경 |
-| `--surface-3` | `#fbfcfe` | `#12171d` | 사이드바·그래프 캔버스 배경 |
-| `--ink` | `#17202a` | `#edf2f7` | 기본 텍스트 |
-| `--muted` | `#667085` | `#aab6c3` | 보조 텍스트·아이콘 |
-| `--line` | `#d8e0ea` | `#303a45` | 테두리·구분선 |
-| `--accent` | `#0f766e` | `#2dd4bf` | 브랜드 대표색 |
-| `--accent-dark` | `#115e59` | `#5eead4` | 액센트 강조·텍스트용 |
-| `--accent-aux` | `#00a3e0` | `#38bdf8` | 보조 브랜드색 |
-| `--danger` | `#b42318` | `#f97066` | 오류·삭제 |
-| `--shadow` | `0 18px 45px rgba(20,36,58,.12)` | `0 18px 45px rgba(0,0,0,.32)` | 부상 요소 그림자 |
+For transparent theme-aware colors, prefer:
 
-> **color-mix 패턴**: 투명도가 필요할 때 `rgba()` 대신 `color-mix(in srgb, var(--accent) N%, transparent)` 또는 `color-mix(in srgb, var(--accent) N%, var(--line))`을 사용한다. 다크 테마에서 자동으로 올바른 색이 나온다.
-
-### 1-2. 컬러 테마
-
-사용자가 테마를 변경하면 `:root[data-color-theme="..."]`로 `--accent`, `--accent-dark`, `--accent-aux` 세 변수만 교체된다.  
-컴포넌트 코드에서 이 세 변수 외의 색을 테마별로 분기하지 않는다.
-
----
-
-## 2. 타이포그래피
-
-폰트 패밀리: `Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`  
-`body`에 전역 설정되므로 개별 컴포넌트에서 재선언하지 않는다.
-
-| 용도 | `font-size` | `font-weight` | 비고 |
-|---|---|---|---|
-| 섹션 제목 (h2) | `14px` | `700` | |
-| 노드·카드 제목 (h3) | `13–14px` | `700` | |
-| 본문·설명 | `13px` | `400–500` | `line-height: 1.5–1.6` |
-| 레이블·캡션 | `12px` | `700` | `color: var(--muted)` |
-| 배지·메타 | `10–11px` | `700–800` | 대문자+`letter-spacing: 0.04em` |
-| 버튼 | `12–13px` | `700` | |
-
----
-
-## 3. 레이아웃 그리드
-
-앱 셸은 5-컬럼 그리드로 구성된다.
-
+```css
+color-mix(in srgb, var(--accent) 12%, transparent)
+color-mix(in srgb, var(--accent) 16%, var(--surface))
 ```
+
+## Typography
+
+The global font stack is:
+
+```css
+Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif
+```
+
+Use compact type for work surfaces. Avoid hero-scale headings inside sidebars,
+tool panels, cards, dialogs, and admin tables.
+
+| Use | Size | Weight |
+|---|---:|---:|
+| Section title | `14px` | `700` |
+| Field/card title | `13px` | `700` |
+| Body/help text | `13px` | `400-600` |
+| Labels/table headers | `12px` | `700` |
+| Badges/metadata | `10-11px` | `700-800` |
+| Buttons | `12-13px` | `700` |
+
+## Layout
+
+The app shell uses a five-column grid:
+
+```text
 sidebar | resizer | chat-area | resizer | studio-panel
   340px     8px     minmax(0,1fr)  8px     360px
 ```
 
-- 사이드바(`--left-panel-width`)·스튜디오(`--right-panel-width`) 폭은 CSS 변수로 관리하며, JS 드래그로 조정된다.
-- `[hidden]`은 `display: none !important`로 강제하므로 JS에서 `.hidden = true`만 사용한다.
+`--left-panel-width` and `--right-panel-width` are adjusted by
+`public/modules/layout.js`. Keep new layout code compatible with the existing
+left resize and right resize/collapse behavior.
 
----
+Use `[hidden]` for visibility. The stylesheet forces `[hidden]` to
+`display: none !important`, so JS should set `element.hidden = true/false`
+instead of adding ad hoc hidden classes.
 
-## 4. 공통 컴포넌트
+## Common Components
 
-### 4-1. 버튼
+### Buttons
 
-| 종류 | 클래스 | 크기 | 용도 |
-|---|---|---|---|
-| 기본(제출) | `.send-button` | `height: 38px`, `padding: 0 18px` | 주요 액션·폼 제출 |
-| 보조 | `.ghost-button` | `min-height: 30px`, `padding: 0 10px` | 취소·보조 액션 |
-| 아이콘 | `.icon-button` | `30px × 30px` | 아이콘만 있는 버튼 |
+| Type | Class | Use |
+|---|---|---|
+| Primary | `.send-button` | submit/run/export primary actions |
+| Secondary | `.ghost-button` | cancel, refresh, neutral commands |
+| Icon | `.icon-button` | icon-only controls |
+| Danger | `.admin-danger-button` modifier | destructive actions |
 
-- `ghost-button`과 `icon-button`의 기본 스타일(border, radius, background, color)은 같다: `border: 1px solid var(--line)`, `border-radius: 6px`, `background: var(--surface)`, `color: var(--muted)`.
-- 위험 동작(삭제 등)은 `.ghost-button.admin-danger-button` 수식어를 추가한다.
+Icon-only buttons must have `aria-label` and should also have `title` when the
+meaning is not obvious.
 
-### 4-2. 텍스트 입력
+### Inputs
+
+Use `.text-input` for inputs, selects, and textareas unless a component already
+has a more specific established class.
 
 ```css
-/* .text-input */
 height: 38px;
 border: 1px solid var(--line);
 border-radius: 6px;
@@ -90,12 +99,11 @@ background: var(--surface);
 color: var(--ink);
 ```
 
-- `textarea`로 쓸 때는 `height: auto`로 재정의하고 `padding-top/bottom: 10px`를 더한다.
-- 라벨: `.field-label` — `font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px;`
+For textarea variants, set `height: auto` and vertical padding explicitly.
 
-### 4-3. 패널 박스 (`.panel`)
+### Panels And Dialogs
 
-사이드바 섹션 등에 쓰이는 범용 카드.
+Use `.panel` for sidebar sections and simple repeated cards:
 
 ```css
 border: 1px solid var(--line);
@@ -104,240 +112,133 @@ background: var(--surface);
 padding: 14px;
 ```
 
-> 스튜디오 내부 박스는 이 `.panel`을 사용하지 않고 인라인 스타일로 정의한다 — 섹션 6 참조.
+Settings/Admin Console use the existing `.settings-dialog` and
+`.admin-dialog` structure. Keep admin views dense, table-friendly, and
+optimized for repeated operations.
 
-### 4-4. 다이얼로그 (`.settings-dialog`)
+## Studio Tools
 
-```
-max-width: 680px; border-radius: 16px; padding: 0;
-```
-
-- 헤더(`.dialog-heading`): `h2 + 닫기 버튼`을 가로 배치.
-- 하단 액션(`.dialog-actions`): 오른쪽 정렬, `ghost-button` + `send-button` 순.
-- `<dialog>` 요소를 사용하며 `method="dialog"` 폼을 내부에 배치한다.
-
----
-
-## 5. 인터랙션 규칙
-
-- **hover**: `background`, `border-color` 전환. `transition: 0.12–0.15s`.
-- **focus-visible**: `outline: none` + border나 box-shadow로 포커스 표시. `:focus` 대신 `:focus-visible`을 사용한다.
-- **active/selected 상태**: `border-color: color-mix(in srgb, var(--accent) 45–55%, var(--line))` + `background: color-mix(in srgb, var(--accent) 7–12%, var(--surface))`.
-- **busy/loading**: `aria-busy="true"` 속성 부여 + 버튼 텍스트 변경. 스피너가 필요하면 `::after` 가상 요소로 CSS 애니메이션 사용.
-- **위험 동작**: hover 시 `background: #fff0ee; color: var(--danger)`.
-
----
-
-## 6. 스튜디오 하위 패널 규칙
-
-스튜디오 우측 패널에 새 도구를 추가할 때 따르는 세부 규칙.
-
-### 6-1. 전체 구조
-
-```
-#studioContent (.studio-content)
-  ├── .studio-tools-grid          ← 상단 탭 버튼 그리드 (공통, 수정 금지)
-  ├── .studio-tool-panel.studio-[name]-panel
-  └── ...
-```
-
-### 6-2. HTML 패턴
+The Studio panel is a tool workspace, not a marketing area. New tools should
+follow this structure:
 
 ```html
-<div id="studio[Name]Panel"
-     class="studio-tool-panel studio-[name]-panel"
-     data-tool-panel="[name]"
+<button id="studioExampleButton"
+        class="studio-tool-card"
+        type="button"
+        data-tool="example"
+        aria-label="Example tool">
+  ...
+</button>
+
+<div id="studioExamplePanel"
+     class="studio-tool-panel studio-example-panel"
+     data-tool-panel="example"
      hidden>
-  <!-- 패널 내용 -->
+  ...
 </div>
 ```
 
-- `studio-tool-panel` : 공통 Flex 기반 클래스 (변경 금지)
-- `studio-[name]-panel` : 도구별 고유 modifier 클래스 (필수)
-- 초기 상태는 `hidden`
+Add matching rail buttons for collapsed mode:
 
-### 6-3. 패널 레이아웃 — 공통 기준값
+```html
+<button id="studioExampleRailButton"
+        class="studio-rail-button"
+        type="button"
+        title="Example"
+        aria-label="Example">
+  ...
+</button>
+```
 
-| 속성 | 값 |
-|---|---|
-| `padding` | `10px 12px 12px` |
-| `gap` | `10px` |
-| `display / flex-direction` | 상속 (`.studio-tool-panel`이 `flex + column` 설정) |
+Required JS touch points:
+
+- `public/modules/state.js`: add DOM refs for button, rail button, and panel.
+- `public/modules/studio.js`: add the tool key to `setActiveTool()`, toggle
+  active button state, show/hide the panel, and bind click events.
+- `public/modules/layout.js`: if a rail button should expand the collapsed
+  Studio panel, bind it to `setStudioCollapsed(false)`.
+
+Current Studio tools:
+
+| Tool key | Panel | Purpose |
+|---|---|---|
+| `document` | `studioDocumentPanel` | answer-to-document drafting and export |
+| `law` | `studioLawPanel` | impact maps and article history/diff |
+| `doctool` | `studioDocToolPanel` | client-side PDF/XLSX/TXT merge/split |
+| `mindmap` | `studioMindmapPanel` | uploaded-document mind maps |
+| `graph` | `studioGraphPanel` | department notebook knowledge graphs |
+
+## Studio Panel Layout
+
+Use these defaults for new Studio panels:
 
 ```css
-.studio-[name]-panel {
+.studio-example-panel {
   gap: 10px;
   padding: 10px 12px 12px;
 }
 ```
 
-> `.studio-mindmap-panel`, `.studio-graph-panel`, `.studio-law-panel`, `.studio-document-panel` 모두 이 값을 따른다.
+Internal boxes should use:
 
-### 6-4. 내부 박스 스타일
-
-| 속성 | 값 |
-|---|---|
-| `border` | `1px solid var(--line)` |
-| `border-radius` | **`10px`** (8px 사용 금지) |
-| 캔버스·그래프 배경 | `var(--surface)` 또는 `var(--surface-3)` |
-| 툴바·입력 영역 배경 | `var(--surface-2)` |
-| 상세·결과 영역 배경 | `var(--surface)` |
-
-### 6-5. 기존 패널 구조 참고
-
-**문서편집기**
-```
-.studio-document-panel (padding 10/12/12, gap 10)
-  ├── .studio-document-empty          (flex:1, 중앙 정렬, 텍스트만)
-  └── .studio-document-editor         (flex:1, gap 8)
-        ├── .studio-document-header   (gap 6)
-        │     ├── .studio-document-title      (input)
-        │     └── .studio-document-header-row (flex row, gap 6, select, 버튼 등)
-        ├── .studio-document-status   (텍스트만)
-        ├── .studio-document-toolbar  (border, radius:6px, surface-2)
-        └── .studio-document-markdown (flex:1, textarea, radius:8px)
+```css
+border: 1px solid var(--line);
+border-radius: 10px;
+background: var(--surface);
 ```
 
-**마인드맵**
-```
-.studio-mindmap-panel (padding 10/12/12, gap 10)
-  ├── .studio-mindmap-canvas  (flex:1, border, radius:10px, surface)
-  └── .studio-mindmap-details (min-height:84px, border, radius:10px, surface)
-```
+Canvases and graph-like areas may use `var(--surface-3)`. Toolbar/input bands
+may use `var(--surface-2)`.
 
-**지식그래프**
-```
-.studio-graph-panel (padding 10/12/12, gap 10)
-  ├── .kg-toolbar        (border, radius:10px, surface-2)
-  ├── .kg-stats-bar
-  └── .kg-body           (grid: 1fr 320px, gap 12px)
-        ├── .kg-canvas-wrap   (border, radius:10px, surface-3)
-        └── .kg-detail-pane   (border, radius:10px, surface)
-```
+Do not nest decorative cards inside other cards. Tool panels should be direct,
+compact, and functional.
 
-**법령탐색**
-```
-.studio-law-panel (padding 10/12/12, gap 10)
-  ├── .law-mode-tabs                  (segmented radius:10px, surface-2)
-  │     ├── #lawModeImpactButton      (영향맵 — 기본 활성)
-  │     └── #lawModeHistoryButton     (조문 이력)
-  ├── #lawImpactSection .law-mode-section   (영향맵 모드)
-  │     ├── .law-explorer-toolbar           (border, radius:10px, surface-2)
-  │     ├── #lawExplorerStatus              (텍스트만, flex-shrink:0)
-  │     ├── #lawExplorerSummary             (border, radius:10px, 결과 후 표시)
-  │     └── .law-explorer-body              (grid: 1fr 1fr)
-  │           ├── #lawExplorerMap          (border, radius:10px, surface)
-  │           └── #lawExplorerDetail        (border, radius:10px, surface)
-  └── #lawHistorySection .law-mode-section  (조문 이력 모드 — 기본 hidden)
-        ├── .law-explorer-toolbar           (법령명/조문 입력 + 이력 조회)
-        │     ├── #lawHistoryLawName        (input — 법령명 필수)
-        │     └── #lawHistoryArticle        (input — 조문 필수, 비어있고 시행일 선택되면 `.is-required-empty` 부여)
-        ├── #lawHistoryStatus               (텍스트만)
-        ├── #lawHistorySelection            (선택 1~2건 + 액션 버튼)
-        │     ├── .law-history-selection-chip       (선택된 시행일자)
-        │     ├── .law-history-selection-hint       (article 비어있을 때 빨간 안내)
-        │     └── .law-history-selection-action     ("이 시점 조문 보기" | "두 시점 비교")
-        └── .law-history-body               (grid: 1fr 1.4fr)
-              ├── #lawHistoryList           (시행일별 revision row)
-              └── #lawHistoryViewer         (스냅샷 본문 또는 diff hunks)
-```
+## Current Tool Notes
 
-**파일도구**
-```
-.studio-doctool-panel (padding 10/12/12, gap 10)
-  ├── .law-mode-tabs                  (병합/분할 선택 탭 + 초기화 버튼 통합 바)
-  │     ├── #docToolModeMergeBtn      (병합 탭)
-  │     ├── #docToolModeSplitBtn      (분할 탭)
-  │     ├── .doctool-tab-sep          (구분선)
-  │     └── #docToolResetBtn          (초기화 버튼 ↺)
-  └── .doctool-flow                   (도구 실행 영역)
-        ├── .doctool-step [data-step="1"] (파일 선택)
-        │     ├── #doctoolDropZone    (드롭존 + 가이드 메시지)
-        │     └── #doctoolFileList    (파일 목록 + 드래그 정렬)
-        ├── .doctool-step [data-step="2"] (옵션 설정)
-        │     ├── #doctoolMergeOptions (병합 옵션)
-        │     └── #doctoolSplitOptions (분할 옵션 - 파일 타입별 동적 표시)
-        └── .doctool-step [data-step="3"] (실행 및 다운로드)
-              ├── #doctoolExecuteBtn  (실행 버튼)
-              └── #doctoolDownloadStep (결과 다운로드 링크 목록)
-```
+- **Document Studio** uses visual and raw markdown modes. Keep
+  `documentStudioMarkdown.js` as the conversion boundary between rendered
+  blocks and persisted markdown.
+- **Law Explorer** has impact-map and article-history modes. Article-history
+  actions require law name, article, and selected effective date(s); disabled
+  actions should be visually distinct.
+- **File Tools** are client-side only. PDF/XLSX/TXT merge/split operations
+  should not upload content to the server.
+- **Mind Map** renders an SVG tree with zoom, pan, collapse, fullscreen, and a
+  node-detail panel.
+- **Knowledge Graph** renders Cytoscape in a canvas/detail split and honors
+  normal notebook read access.
 
-조문 이력 모드의 diff hunks (`.law-diff-hunk-{added,removed,modified,unchanged}`)는
-색상으로 변경 종류를 구분하며, `modified` 행은 line-through 처리한 oldText와
-강조 newText를 함께 보여준다. 유사도(%)는 별도 태그로 표시.
+## Interactions
 
-**조문 입력 필수 가드 (Studio 조문 이력)**
-- `/api/law/article/at`, `/api/law/article/diff` 모두 lawName+article+date를 함께 요구하므로 조문 칸이 비어 있으면 액션 버튼은 disabled. disabled 시각은 `opacity 0.45 + grayscale(1) + surface-2` 배경 — 일반 보라색 send-button과 즉시 구별.
-- `#lawHistorySection` 이벤트 바인딩은 `input` 외에 `change` / `compositionend` / `blur`까지 잡아 한글 IME 합성·붙여넣기·Enter commit 모두에서 상태 동기화.
-- 시행일을 처음 선택했는데 조문 인풋이 비어 있으면 자동으로 인풋에 focus 이동 + `#lawHistoryArticle.is-required-empty` 클래스로 빨간 펄스 강조 + 선택바에 `← 위쪽 "조문" 칸을 먼저 입력하세요` inline hint.
-- 인풋 상태는 `room.studio.lawHistory.input.{lawName, article}`로 저장되며 `renderLawHistory()`는 인풋이 비어있을 때만 hydrate — 사용자가 타이핑 중인 값을 절대 clobber 하지 않는다.
+- Hover transitions should be short (`0.12s-0.15s`) and limited to background,
+  border, color, or shadow.
+- Use `:focus-visible` for keyboard focus. Do not remove focus indicators.
+- Selected/active states should use accent color mixes, not one-off colors.
+- Destructive actions should use `--danger` and require `showConfirmDialog`
+  from `public/modules/state.js`.
+- Dynamic status text should use `aria-live="polite"` where users need feedback.
 
-### 6-6. JS 연동 — 새 도구 추가 시 수정 위치
+## Responsive Rules
 
-**`state.js`** — `elements` 객체에 추가
-```js
-studio[Name]Button:     document.getElementById("studio[Name]Button"),
-studio[Name]RailButton: document.getElementById("studio[Name]RailButton"),
-studio[Name]Panel:      document.getElementById("studio[Name]Panel"),
-```
-
-**`studio.js` — `setActiveTool()`** 확장
-```js
-// 1. 유효 도구 목록
-if (... && tool !== "[name]") return;
-
-// 2. 버튼 토글
-elements.studio[Name]Button?.classList.toggle("is-active", tool === "[name]");
-
-// 3. 패널 표시
-if (elements.studio[Name]Panel) elements.studio[Name]Panel.hidden = tool !== "[name]";
-
-// 4. 렌더 함수 분기
-if (tool === "[name]") render[Name]();
-```
-
-**`studio.js` — `bindStudioEvents()`** 클릭 바인딩 추가
-```js
-elements.studio[Name]Button?.addEventListener("click", () => setActiveTool("[name]"));
-elements.studio[Name]RailButton?.addEventListener("click", () => setActiveTool("[name]"));
-```
-
-### 6-7. Collapsed Rail 버튼
-
-`.studio-collapsed-rail` 안에 추가:
-
-```html
-<button id="studio[Name]RailButton"
-        class="studio-rail-button"
-        type="button"
-        title="[도구 설명]"
-        aria-label="[도구 설명]">
-  <svg viewBox="0 0 24 24" aria-hidden="true"><!-- 24×24 아이콘 --></svg>
-</button>
-```
-
----
-
-## 7. 반응형
-
-패널 폭이 좁아지면(≤900px) 가로 그리드를 세로로 전환한다.
+When a panel becomes narrow (usually below `900px`), switch two-column tool
+bodies to a single column:
 
 ```css
 @media (max-width: 900px) {
-  .studio-[name]-body {
+  .studio-example-body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 ```
 
----
+Text must not overflow buttons, cards, badges, or toolbars. Prefer wrapping and
+stable dimensions over viewport-scaled font sizes.
 
-## 8. 접근성 체크리스트
+## Accessibility Checklist
 
-새 컴포넌트를 추가할 때 반드시 확인한다.
-
-- 버튼에 텍스트가 없으면 `aria-label` 또는 `title` 필수.
-- 동적으로 변하는 콘텐츠에는 `aria-live="polite"` 적용.
-- 키보드로 접근 가능해야 하는 인터랙티브 요소에 `tabindex="0"` + `keydown` 핸들러(Enter/Space).
-- 포커스 인디케이터 삭제 금지 — `:focus` 제거 시 `:focus-visible` 대체 필수.
-- SVG 아이콘에 `aria-hidden="true"` 부여 (레이블은 부모 버튼에).
+- Every icon-only button has `aria-label`.
+- Interactive custom elements are keyboard reachable.
+- Dynamic result/status areas use `aria-live="polite"` when appropriate.
+- SVG icons inside labeled buttons use `aria-hidden="true"`.
+- Dialog close buttons are obvious and keyboard accessible.
+- Destructive actions route through the shared confirmation dialog.

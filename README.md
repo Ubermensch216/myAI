@@ -1,6 +1,6 @@
 # myAI
 
-myAI is a local Ollama-based AI secretary web app. It provides chat, document and image analysis, CSV/XLSX visualizations, a right-side Studio workspace with document mind maps, a local calendar agent, department-notebook RAG, answer-as-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It provides chat, document and image analysis, CSV/XLSX visualizations, a right-side Studio workspace with document mind maps, a local calendar agent, department-notebook RAG, Korean law/compliance workflows, answer-as-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
 
 ## Current Setup
 
@@ -19,8 +19,8 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 
 ## Features
 
-- Multi-room streaming chat with stop/regenerate/edit/copy/download flows.
-- Input source badges on assistant messages show which sources were active (department notebook, uploaded files, web search, law engine); clicking the notebook badge reopens the selector.
+- Multi-room streaming chat with stop/regenerate/edit/copy/download/delete flows and bulk message deletion.
+- Input source badges on assistant messages show which sources were active (department notebook, uploaded files, generated room sources, web search, law engine); clicking the notebook badge reopens the selector.
 - Autonomous, context-aware follow-up suggestions grounded in conversation logic.
 - Upload support for PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, and GIF.
 - Upload-time document summary/topic extraction through local Ollama.
@@ -28,6 +28,8 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebooks stored on the server filesystem with citation panels in chat and optional group/level access control.
 - Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
+- Explicit law-search mode can isolate legal prompts from room documents/notebooks and ground answers in official law.go.kr evidence.
+- Department legal-review prompts combine uploaded/notebook material with statute, precedent, interpretation, admin-rule, or ordinance evidence when configured.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Assistant answers can be saved back into the current room as AI-generated source material (`md`, `pdf`, `docx`, or `hwpx`). The generated source is stored with the room in encrypted IndexedDB, marked as AI-generated / needs verification, and treated as secondary context in later chat turns.
 - Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit the generated markdown draft and export as HWPX, DOCX, PDF, or MD.
@@ -38,7 +40,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.
 - Unified Settings dialog with Personal Settings and an Admin Console tab.
-- Personalized app name, avatars, banner, theme, and built-in or custom 3-color accent palette.
+- Personalized app name, avatars, banner, theme, built-in or custom 3-color accent palette, and reusable custom prompt presets.
 - Admin Console for department notebooks, access groups/levels, RAG status, RAG quality (golden-set evaluation), and a usage statistics dashboard.
 
 ## Requirements
@@ -176,6 +178,13 @@ Run the Studio knowledge-graph end-to-end check against a running app server whe
 npm.cmd run test:studio-graph
 ```
 
+Run the Studio document workflow check after changing answer-to-document,
+template, or export behavior:
+
+```powershell
+npm.cmd run test:studio-document
+```
+
 `npm.cmd run test:ci` runs the deterministic XLSX regression and the smoke
 suite together for CI-style validation without Ollama-backed parsers.
 
@@ -204,6 +213,7 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama API endpoint |
 | `OLLAMA_MODEL` | `gemma3n:e2b` | default chat/analysis model |
 | `EMBED_MODEL` | `bge-m3` | Ollama `/api/embed` model |
+| `EMBED_DIM` | unset | expected embedding dimension; set `1024` for `bge-m3` to validate ingest/query vectors |
 | `KOREA_HOLIDAY_SERVICE_KEY` | unset | optional Korean public-holiday API key |
 | `ADMIN_TOKEN` | unset | bearer token for notebook management APIs |
 | `ACCESS_TOKEN_SECRET` | generated under `data/access/` | optional HMAC secret for notebook-read access tokens; set explicitly for multi-instance deployments |
@@ -225,6 +235,17 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `CHUNK_OVERLAP_CHARS` | `256` | sliding chunk overlap |
 | `NOTEBOOK_QUERY_BUDGET` | `12000` | notebook RAG context budget |
 | `NOTEBOOK_CHUNK_CACHE_MAX` | `4` | hot notebook chunk caches kept in server memory |
+| `DEPARTMENT_VECTOR_BACKEND` | `json` | department vector backend: `json` or `qdrant` |
+| `DEPARTMENT_LEXICAL_BACKEND` | `memory` | department lexical backend: `memory` or `sqlite` |
+| `QDRANT_URL` | unset | Qdrant REST URL when vector backend is `qdrant` |
+| `QDRANT_API_KEY` | unset | optional Qdrant API key; server-side only |
+| `QDRANT_COLLECTION` | `myai_notebook_chunks` | Qdrant collection name |
+| `QDRANT_VECTOR_NAME` | `dense_bge_m3` | named vector slot used in Qdrant |
+| `QDRANT_TIMEOUT_MS` | `2500` | Qdrant request timeout |
+| `QDRANT_SEARCH_LIMIT` | `48` | dense candidate count before fusion |
+| `QDRANT_UPSERT_BATCH_SIZE` | `128` | notebook ingest batch size for Qdrant upserts |
+| `SQLITE_FTS_PATH` | `data/indexes/department-rag.sqlite` | SQLite FTS5 lexical index path |
+| `SQLITE_FTS_SEARCH_LIMIT` | `80` | lexical candidate count before fusion |
 | `QUERY_EXPANSION_ENABLED` | `true` | enable LLM query expansion |
 | `QUERY_EXPANSION_VARIANTS` | `3` | generated query variants |
 | `QUERY_EXPANSION_TIMEOUT_MS` | `6000` | query expansion timeout |
@@ -257,7 +278,7 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `LAW_AUTO_DETECT` | `false` | keep legal auto-detection off except explicit legal prompts/article patterns |
 | `LAW_VERIFY_CITATIONS` | `true` | enable citation verification behavior |
 | `LAW_IMPACT_MAP_ENABLED` | `true` | enable the Korean Law Engine impact-map endpoint and Studio Law Explorer |
-| `LAW_HISTORY_TARGET` | `eflaw` | upstream target for `/api/law/history` (시행일자별 검색); override if law.go.kr renames the revision-history endpoint |
+| `LAW_HISTORY_TARGET` | `eflaw` | upstream target for `/api/law/history` (revision-history query); override if law.go.kr renames it |
 | `RATE_LIMIT_LAW_SEARCH_PER_MINUTE` | `15` | rate limit for `/api/law/search` |
 | `RATE_LIMIT_LAW_ARTICLE_PER_MINUTE` | `20` | rate limit for `/api/law/article` |
 | `RATE_LIMIT_LAW_VERIFY_PER_MINUTE` | `20` | rate limit for `/api/law/verify-citations` |
@@ -272,7 +293,7 @@ Korean Law Engine is separate from Naver Search: explicit legal prompts may use
 official law.go.kr context alongside uploaded documents or department notebooks,
 and law citations render as `[L1]` separately from notebook `[N]` and web `[W]`
 citations. The engine covers article retrieval, citation verification,
-precedent / 해석례 / admin-rule / ordinance research, impact maps, time-travel
+precedent / interpretation / admin-rule / ordinance research, impact maps, time-travel
 diff (`/article/at`, `/article/diff`, `/history`), `action_plan` mode with a
 mandatory non-legal-advice disclaimer, and notebook KG enrichment that
 auto-fetches articles surfaced by `graph.sqlite`.
@@ -286,11 +307,30 @@ follow-up suggestions for that no-evidence answer.
 | `MAP_REDUCE_MAX_CHUNKS` | `80` | maximum chunks per Precision Analysis / Map-Reduce run |
 | `MAP_REDUCE_PARALLELISM` | `2` | concurrent map calls |
 | `MAP_REDUCE_MAP_TIMEOUT_MS` | `45000` | map-call timeout |
+| `EMBED_QUEUE_CONCURRENCY` | `2` | concurrent embedding calls |
+| `EMBED_QUEUE_MAX_QUEUED` | `64` | queued embedding-call limit |
+| `MAP_REDUCE_QUEUE_CONCURRENCY` | `2` | concurrent Map-Reduce jobs |
+| `MAP_REDUCE_QUEUE_MAX_QUEUED` | `32` | queued Map-Reduce job limit |
+| `ANALYSIS_QUEUE_CONCURRENCY` | `2` | concurrent document-analysis calls |
+| `ANALYSIS_QUEUE_MAX_QUEUED` | `32` | queued document-analysis limit |
 | `STUDIO_DOCUMENT_FALLBACK_MODEL` | `gemma3n:e2b` | fallback model for Studio answer-to-document conversion when the selected/default model fails due to memory pressure |
 | `STUDIO_DOCUMENT_OLLAMA_TIMEOUT_MS` | `90000` | timeout for Studio answer-to-document conversion |
 | `STUDIO_DOCUMENT_ANSWER_MAX_CHARS` | `120000` | maximum assistant-answer text accepted by Studio document conversion |
 | `TRUST_PROXY` | `false` | enables Express proxy IP handling when behind a trusted reverse proxy |
 | `RATE_LIMIT_KEY_HEADER` | unset | optional trusted proxy-auth user header used for rate-limit keys |
+| `RATE_LIMIT_CHAT_PER_MINUTE` | `20` | rate limit for `/api/chat` |
+| `RATE_LIMIT_VISUALIZE_PER_MINUTE` | `10` | rate limit for `/api/visualize` |
+| `RATE_LIMIT_UPLOAD_PER_MINUTE` | `8` | rate limit for `/api/upload` |
+| `RATE_LIMIT_LIGHTWEIGHT_PER_MINUTE` | `30` | shared rate limit for lightweight model/API routes |
+| `RATE_LIMIT_ADMIN_WRITE_PER_MINUTE` | `10` | admin write-route rate limit |
+| `CHAT_QUEUE_ENABLED` | `false` | enables queueing for chat model calls |
+| `CHAT_QUEUE_CONCURRENCY` | `4` | concurrent queued chat calls when enabled |
+| `CHAT_QUEUE_MAX_QUEUED` | `32` | queued chat-call limit |
+| `RAG_RERANK_ENABLED` | `false` | enables external reranker calls after RRF fusion |
+| `RERANK_MODEL` | `bge-reranker-v2-m3` | reranker model name sent to the external `/api/rerank` service |
+| `RERANK_TOP_K` | `40` | max fused candidates sent to reranker |
+| `RERANK_TIMEOUT_MS` | `8000` | reranker timeout |
+| `RETRIEVAL_LOG_ENABLED` | `true` | enables privacy-safe retrieval/usage telemetry logs |
 
 ## Project Structure
 
@@ -352,15 +392,21 @@ public/
     persistence.js     IndexedDB + WebCrypto AES-GCM
     calendar.js        calendar rendering, CRUD, reminders
     chat.js            streaming chat, message rendering, file upload, query-trim
+    messageDelete.js   single/bulk chat message deletion
+    customPrompts.js   reusable prompt presets and picker/settings UI
     sourceWorkflow.js  assistant answer -> room source dialog and client orchestration
     layout.js          three-pane panel resize/collapse behavior
     notebook.js        notebook selector UI, access login, Admin Console, notebook CRUD
     graphStudio.js     Studio knowledge-graph viewer for selected department notebooks
     ragEval.js         Admin RAG Evaluation panel
     adminStats.js      Admin Console usage statistics panel (KPI / groups / notebooks / sessions)
+    adminApi.js        small Admin Console fetch helpers
     studio.js          Studio panel UI and mind-map SVG renderer
     documentStudio.js  Studio Document Editor tab: template selection, markdown editing, export
+    documentStudioMarkdown.js  markdown <-> visual block conversion for Studio documents
+    documentTemplates.js built-in/personal Studio document templates
     docTool.js         Studio File Tools: client-side PDF/XLSX/TXT merge and split
+    html.js            DOM escaping/sanitizing helpers
     settings.js        Personal Settings tab, Admin Console mounting, brand/theme/avatar/banner
   answerRenderer.js
   visualizationRenderer.js
@@ -408,8 +454,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) before exposing the app beyond localhos
 
 The gear button in the main header opens one Settings dialog with two tabs:
 
-- **Personal Settings**: AI name, banner, avatars, theme, and built-in/custom color palette. These settings remain local to the browser's encrypted IndexedDB.
-- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups items by purpose with a thin vertical divider — *operations* (**Department Notebook Management**, **Access Management**) on the left, *visibility* (**RAG Status** / `RAG 현황`, **RAG Quality** / `RAG 품질`, **통계**) on the right. **RAG Quality** is split into a left-to-right workflow (`골든셋 › 실행 › 결과`) plus a separate `운영 지표` tab. **통계** is a usage dashboard backed by `/api/admin/stats/*` (KPI summary, per-group activity, per-notebook activity, and recent sessions).
+- **Personal Settings**: AI name, banner, avatars, theme, built-in/custom color palette, document templates, and reusable custom prompts. These settings remain local to the browser's encrypted IndexedDB.
+- **Admin Console**: requires `ADMIN_TOKEN` when configured. After authentication, the top console menu groups operational items (**Department Notebook Management**, **Access Management**) separately from visibility/quality items (**RAG Status**, **RAG Quality**, **Usage Statistics**). **RAG Quality** is split into a left-to-right workflow (golden set -> run -> results) plus an operations-health tab. **Usage Statistics** is backed by `/api/admin/stats/*` (KPI summary, per-group activity, per-notebook activity, and recent sessions).
 - **Studio graph**: when the selected department notebook has a built graph, the Studio panel can show searchable nodes, relationships, source references, and notebook graph statistics. Normal notebook read-access rules still apply.
 
 The chat composer keeps the main input row focused on four controls: add (`+`),
@@ -430,8 +476,7 @@ The room list shows only compact state icons for uploaded attachments and
 department notebooks. Detailed material names and attachment deletion controls
 live in the composer material panel to avoid duplicate lists.
 
-Generated answer sources appear in the same material panel under an `AI 생성
-자료` group and show `AI 생성` / `검증 필요` badges. They remain personal room
+Generated answer sources appear in the same material panel under an `AI 생성 자료` group and show `AI 생성` / `검증 필요` badges. They remain personal room
 artifacts and are not automatically promoted to department notebooks.
 
 Department notebook read access is optional. Until at least one group level or
@@ -455,7 +500,7 @@ to Level 1, 2, or 3 in the same group.
 - Naver Search runs only for explicit search prompts in normal chat and is skipped whenever uploaded files or a selected department notebook are present.
 - Studio mind maps use current-room uploaded documents only and skip Naver Search and department notebook RAG. Generation uses a single-pass hierarchical LLM pipeline that evenly samples chunks across the full document and directly produces a parent-based node/edge hierarchy.
 - Department notebook knowledge graphs are separate from uploaded-document mind maps. Graph data lives under the notebook index area, can be inspected from Studio, and can be moderated from admin graph endpoints.
-- When uploaded documents are present in a room, explicit search prompts (e.g., "네이버 검색해줘") are blocked client-side before reaching the LLM; a descriptive message is shown instead.
+- When uploaded documents are present in a room, explicit web-search prompts are blocked client-side before reaching the LLM; a descriptive message is shown instead.
 - There is no per-user server account; personal data isolation is by browser AES-GCM encryption key.
 - `ADMIN_TOKEN` protects Admin Console management actions only. Use group/level or Super access passwords for notebook reads, and reverse-proxy auth/TLS/rate limits for production-like shared deployments.
 - Calendar is local-only; there is no Google Calendar, Outlook, or ICS sync.

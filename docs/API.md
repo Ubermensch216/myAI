@@ -166,7 +166,7 @@ If notebook, web-search, or analysis metadata exists, the response includes
   compliance: {            // present only when intent === department_legal_review
     ok,
     mode: "department_legal_review",
-    reviewType,            // see docs/PRD_LEGAL_COMPLIANCE_REVIEW.md
+    reviewType,            // compliance review type selected by server/compliance/complianceTypes.js
     outputStyle,           // "summary" | "detailed_report"
     title,
     disclaimer: "short",
@@ -742,17 +742,17 @@ Management UI lives under the main gear button:
 
 ```text
 Settings
-├─ Personal Settings
-└─ Admin Console        (nav grouped by purpose with a thin vertical divider)
-   ├─ Department Notebook Management
-   ├─ Access Management
-   │  ├─ Group Management
-   │  └─ Super Access
-   │      ── divider ──
-   ├─ RAG Status         (UI label: RAG 현황)
-   └─ RAG Quality        (UI label: RAG 품질)
-      ├─ 골든셋 › 실행 › 결과   (chevron-arrow workflow)
-      └─ 운영 지표              (separated by an inner divider)
+|- Personal Settings
+`- Admin Console
+   |- Department Notebook Management
+   |- Access Management
+   |  |- Group Management
+   |  `- Super Access
+   |- RAG Status
+   |- RAG Quality
+   |  |- Golden Set -> Run -> Results
+   |  `- Operations Health
+   `- Usage Statistics
 ```
 
 The Admin Console uses `ADMIN_TOKEN` for management routes. Normal notebook

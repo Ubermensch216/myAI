@@ -1,6 +1,6 @@
 # Agent Handoff
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), answer-as-room-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), Korean law/compliance workflows, answer-as-room-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, usage telemetry, and personalized UI settings.
 
 This file is intentionally short. Keep long explanations in `docs/`.
 
@@ -56,7 +56,7 @@ Server:
 - `server/notebooks.js` - department-notebook storage, access policy metadata, dual-write to Qdrant/SQLite, ingest, chunk cache.
 - `server/accessControl.js` - group/level and Super read-access passwords, signed access tokens, notebook policy checks.
 - `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → log.
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> log.
 - `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
 - `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry.
 - `server/rag/retrievalLogReader.js` - retrieval telemetry summaries for RAG Evaluation.
@@ -75,6 +75,8 @@ Server:
 - `server/mapReduce.js` - whole-document Map-Reduce analysis.
 - `server/calendarAgent.js` - natural-language calendar intent classifier.
 - `server/visualization.js` - visualization plan validation and chart data computation.
+- `server/compliance/` - department legal-review intent, review-type catalog, and prompt construction.
+- `server/law/` - Korean Law Engine routes, law.go.kr client, citation verification, research, impact map, and time-travel tools.
 - `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, retrieval-log summaries.
 - `server/parsers.js` - PDF/DOCX/XLSX/CSV/PPTX/HWPX/image parsing and chunking.
 - `server/auth.js` - `ADMIN_TOKEN` middleware.
@@ -94,11 +96,15 @@ Frontend:
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming, input source badge rendering and persistence.
+- `public/modules/messageDelete.js` - single-message and bulk chat message deletion.
+- `public/modules/customPrompts.js` - personal prompt presets, picker, and Settings subtab.
 - `public/modules/sourceWorkflow.js` - "자료로 추가" dialog, `/api/source-workflow/from-answer` call, and generated-source insertion into room materials.
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
 - `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
 - `public/modules/documentStudio.js` - Studio Document Editor tab: template selection, block editing, export.
+- `public/modules/documentStudioMarkdown.js` - Studio document visual-block/markdown conversion.
+- `public/modules/documentTemplates.js` - built-in and personal Studio document templates.
 - `public/modules/docTool.js` - Studio File Tools: client-side PDF/XLSX/TXT merge and split.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for selected department notebooks.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation UI.
@@ -120,24 +126,25 @@ Docs:
 - `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
 - `docs/DESIGN.md` - project design policies and UI styling rules.
 - `docs/KOREAN_LAW_ENGINE.md` - native Korean law engine, statute verification, and compliance tools.
+- `docs/USAGE_TELEMETRY.md` - privacy-safe usage telemetry and Admin Statistics behavior.
 
 ## Deployment Topology
 
-```
-[Personal PC — each user]                [Department Workstation — shared]
+```text
+[Personal PC - each user]                [Department Workstation - shared]
   Browser                                   Node.js/Express :3000
-  ├─ AES-GCM IndexedDB                      ├─ Ollama :11434 (GPU: DGX Spark / RTX 5090-class)
-  │   ├─ rooms + messages                   ├─ Qdrant :6333 (optional)
-  │   ├─ personal room uploads              ├─ data/notebooks/
-  │   ├─ calendar events                    ├─ data/indexes/ (SQLite FTS5, optional)
-  │   └─ app settings                       └─ uploads/ (temp only, cleaned after parse)
-  └─ fetch() → http://<dept-host>:3000/api/
+  |- AES-GCM IndexedDB                      |- Ollama :11434 (GPU: DGX Spark / RTX 5090-class)
+  |  |- rooms + messages                    |- Qdrant :6333 (optional)
+  |  |- personal room uploads               |- data/notebooks/
+  |  |- calendar events                     |- data/indexes/ (SQLite FTS5, optional)
+  |  `- app settings                        `- uploads/ (temp only, cleaned after parse)
+  `- fetch() -> http://<dept-host>:3000/api/
 ```
 
 - Personal data (uploads, calendar, settings, history) lives only in the user's browser IndexedDB.
 - Department notebooks live on the server filesystem; GPU-class hardware embeds and queries them.
-- Department notebook read restrictions are optional group/level or Super access policies. Admins manage them from Settings → Admin Console. Access Management has Group Management and Super Access tabs; existing Super password changes require the current Super password plus matching new-password confirmation. Normal users authenticate from the notebook selector when access control is active.
-- Upload temp files are deleted after the parse response — no personal data is retained server-side.
+- Department notebook read restrictions are optional group/level or Super access policies. Admins manage them from Settings -> Admin Console. Access Management has Group Management and Super Access tabs; existing Super password changes require the current Super password plus matching new-password confirmation. Normal users authenticate from the notebook selector when access control is active.
+- Upload temp files are deleted after the parse response; no personal data is retained server-side.
 - There is no per-user server account; isolation is by browser AES-GCM key.
 
 ## Core Architecture
@@ -179,7 +186,7 @@ Notebook RAG:
 
 ```text
 room.selectedNotebookId
--> server/rag/departmentRag.js#searchNotebook()
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> log.
 -> expandQuery() + embedTexts()
 -> Qdrant dense search (DEPARTMENT_VECTOR_BACKEND=qdrant)
 -> SQLite FTS5 search (DEPARTMENT_LEXICAL_BACKEND=sqlite)
@@ -245,7 +252,7 @@ unchanged.
 
 ## Key Caveats
 
-- `npm.cmd test` runs the fast app-server smoke checks. `npm.cmd run test:source-workflow` covers answer-as-source API/frontend wiring/trust metadata. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
+- `npm.cmd test` runs law unit/intent/KG checks, mind-map validation, and fast app-server smoke checks. `npm.cmd run test:source-workflow` covers answer-as-source API/frontend wiring/trust metadata. `npm.cmd run test:studio-document` covers Studio document conversion/export behavior. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
 - Department RAG uses Qdrant + SQLite FTS5 when configured; falls back to JSON/BM25. Fallback is triggered per-request if either backend is unavailable.
 - Notebook chunk cache (`NOTEBOOK_CHUNK_CACHE_MAX`) is a single in-process LRU shared across all sessions. Tune upward on high-core-count servers.
 - `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
@@ -273,4 +280,4 @@ unchanged.
 - Use `--accent` / `--accent-dark` theme tokens for new UI styling.
 - If changing visualization, preserve the plan-first contract: LLM chooses intent/columns, server validates/computes, browser renders.
 - If changing calendar, preserve the split: LLM extracts intent/fields, browser deterministic code mutates calendar state.
-- If changing RAG, preserve the fallback chain: Qdrant → SQLite → JSON/BM25.
+- If changing RAG, preserve the fallback chain: Qdrant -> SQLite -> JSON/BM25.

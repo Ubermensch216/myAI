@@ -6,22 +6,22 @@ myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server 
 
 myAI has a two-tier deployment model:
 
-```
-[Personal PC — each user]                [Department Workstation — shared]
+```text
+[Personal PC - each user]                [Department Workstation - shared]
   Browser                                   Node.js/Express :3000
-  ├─ AES-GCM IndexedDB                      ├─ Ollama :11434
-  │   ├─ rooms + messages                   │    (GPU: DGX Spark / RTX 5090-class)
-  │   ├─ personal room uploads              ├─ Qdrant :6333 (optional)
-  │   ├─ calendar events                    ├─ data/notebooks/
-  │   └─ app settings                       │   ├─ nb_<id>/manifest.json
-  └─ fetch() → http://<dept-host>:3000/api/ │   └─ nb_<id>/docs/<docId>.json
-                                            ├─ data/indexes/ (SQLite FTS5, optional)
-                                            └─ uploads/ (temp only, cleaned after parse)
+  |- AES-GCM IndexedDB                      |- Ollama :11434
+  |  |- rooms + messages                    |  (GPU: DGX Spark / RTX 5090-class)
+  |  |- personal room uploads               |- Qdrant :6333 (optional)
+  |  |- calendar events                     |- data/notebooks/
+  |  `- app settings                        |  |- nb_<id>/manifest.json
+  `- fetch() -> http://<dept-host>:3000/api/ |  `- nb_<id>/docs/<docId>.json
+                                             |- data/indexes/ (SQLite FTS5, optional)
+                                             `- uploads/ (temp only, cleaned after parse)
 ```
 
 **Department workstation** hosts the Node.js server and Ollama. It stores all department notebooks under `data/notebooks/`. GPU-class hardware enables large embedding models (e.g. `bge-m3`), fast inference, and concurrent Map-Reduce analysis shared by all connected users.
 
-**Personal PC (browser-only private state)** — each user's browser holds their private state in encrypted IndexedDB. Personal room uploads are parsed server-side (temp file only), the full content is returned in the API response, and the browser persists it in IndexedDB. The server retains no copy after the response. Calendar events, settings, and chat history never leave the browser.
+**Personal PC (browser-only private state)** - each user's browser holds their private state in encrypted IndexedDB. Personal room uploads are parsed server-side (temp file only), the full content is returned in the API response, and the browser persists it in IndexedDB. The server retains no copy after the response. Calendar events, settings, and chat history never leave the browser.
 
 ### What Lives Where
 
@@ -41,7 +41,7 @@ Both paths use the same BM25 + cosine + RRF hybrid retrieval, but differ in wher
 
 | | Personal Doc RAG | Notebook RAG |
 |---|---|---|
-| Data store | Browser IndexedDB → sent in `/api/chat` request body | Server filesystem (`data/notebooks/`) |
+| Data store | Browser IndexedDB, sent in `/api/chat` request body | Server filesystem (`data/notebooks/`) |
 | Ingest embedding | Server-side via Ollama at upload time | Server-side via Ollama at admin ingest |
 | Query embedding | Server-side per request | Server-side per request |
 | Persistence | Browser (AES-GCM encrypted) | Server JSON (ADMIN_TOKEN-protected writes) |
@@ -204,7 +204,7 @@ chat prompt + room.selectedNotebookId
 -> POST /api/chat { notebookId }
 -> if Department Notebook Access Control is active:
    -> validate Authorization: Bearer <access token>
--> server/rag/departmentRag.js#searchNotebook()
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> lazy JSON fallback -> log.
    -> query expansion (queryExpansion.js)
    -> embed query variants (embeddings.js, validated dim)
    -> Qdrant dense search   (when DEPARTMENT_VECTOR_BACKEND=qdrant)
@@ -245,8 +245,8 @@ notebook access tokens and expose only enabled nodes and edges.
 Department notebook access control is inactive until an admin configures at
 least one enabled group level password or an enabled Super password. Normal
 users authenticate from the department-notebook selector. Admins manage groups,
-level passwords, Super access, and per-notebook policies from Settings →
-Admin Console → Access Management / Department Notebook Management. Access
+level passwords, Super access, and per-notebook policies from Settings ->
+Admin Console -> Access Management / Department Notebook Management. Access
 Management has separate Group Management and Super Access tabs: the group tab
 uses a left group list and right selected-group detail pane for Level 1-3
 passwords, while the Super tab keeps emergency read access isolated. Existing
@@ -313,13 +313,15 @@ The LLM does not directly mutate calendar data.
 - `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
+- `server/law/` - Korean Law Engine API surface, law.go.kr client/cache, citation verification, research tools, impact maps, and time-travel/diff/history helpers.
+- `server/compliance/` - department legal-review intent classification, review-type catalog, and compliance prompt construction.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
 - `server/documents.js` - document serializers and `pageSections()`.
 - `server/chunking.js` - shared document section chunking policy for personal uploads and notebook ingest.
 - `server/documentAnalysis.js` - summary/topic extraction for uploaded and notebook documents.
 - `server/notebooks.js` - notebook manifests, document ingest, chunk storage, cache, all-chunk loading.
 - `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand → embed → Qdrant/SQLite → RRF → rerank → greedyFit → lazy JSON fallback → log.
+- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> lazy JSON fallback -> log.
 - `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
 - `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry, including `fallbackLoadedAllChunks`.
 - `server/rag/retrievalLogReader.js` - aggregates retrieval telemetry for the RAG Evaluation panel.
@@ -351,9 +353,13 @@ The LLM does not directly mutate calendar data.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
 - `public/modules/documentStudio.js` - Studio Document Editor tab rendering, block editing, template selection, and export handling.
+- `public/modules/documentStudioMarkdown.js` - Markdown to visual-block conversion and serialization for Studio documents.
+- `public/modules/documentTemplates.js` - built-in and personal Studio document template state.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, and chat-triggered calendar intent helpers.
 - `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
+- `public/modules/messageDelete.js` - single-message deletion, selection mode, and bulk delete orchestration.
+- `public/modules/customPrompts.js` - reusable custom prompt presets, composer picker, and Settings subtab rendering.
 - `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, file upload progress, access policy UI, admin event binding.
 - `public/modules/docTool.js` - Studio File Tool: client-side PDF/XLSX/TXT merging and splitting, drag-and-drop file queue, and reset handling.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.

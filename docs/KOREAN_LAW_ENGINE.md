@@ -96,8 +96,8 @@ Implemented pieces:
   the compliance branch in `buildLawContext` (see `buildComplianceLawContext`)
   fetches the explicit article when present, otherwise searches the focus
   laws, and for `outputStyle: "detailed_report"` additionally pulls
-  precedent / 해석례 / admin-rule / ordinance evidence. See
-  `docs/PRD_LEGAL_COMPLIANCE_REVIEW.md` for the canonical product spec.
+  precedent / 해석례 / admin-rule / ordinance evidence. Review-type behavior is
+  implemented in `server/compliance/complianceTypes.js`.
 - Per-record meta fields rendered for each citation kind (사건번호/선고법원/
   선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
   종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
@@ -556,8 +556,8 @@ compliance: {
 }
 ```
 
-See `docs/PRD_LEGAL_COMPLIANCE_REVIEW.md` for the full set of review types
-and the evidence-citation contract.
+See `server/compliance/complianceTypes.js` for the current review-type catalog
+and `server/compliance/compliancePrompt.js` for the evidence-citation contract.
 
 ## Article References
 
