@@ -352,6 +352,7 @@ export const elements = {
   adminWorkspace: document.querySelector("#adminWorkspace"),
   adminLogoutButton: document.querySelector("#adminLogoutButton"),
   adminNotebookMenuButton: document.querySelector("#adminNotebookMenuButton"),
+  adminSourcePromotionsButton: document.querySelector("#adminSourcePromotionsButton"),
   adminListPane: document.querySelector("#adminListPane"),
   adminNotebookNavSection: document.querySelector("#adminNotebookNavSection"),
   adminNewNotebookButton: document.querySelector("#adminNewNotebookButton"),
@@ -382,6 +383,9 @@ export const elements = {
   adminAccessPanel: document.querySelector("#adminAccessPanel"),
   adminAccessBody: document.querySelector("#adminAccessBody"),
   adminAccessRefreshButton: document.querySelector("#adminAccessRefreshButton"),
+  adminSourcePromotionsPanel: document.querySelector("#adminSourcePromotionsPanel"),
+  adminSourcePromotionsRefreshButton: document.querySelector("#adminSourcePromotionsRefreshButton"),
+  adminSourcePromotionsBody: document.querySelector("#adminSourcePromotionsBody"),
   adminAccessGroupsTab: document.querySelector("#adminAccessGroupsTab"),
   adminAccessSuperTab: document.querySelector("#adminAccessSuperTab"),
   adminRagEvalButton: document.querySelector("#adminRagEvalButton"),
@@ -467,12 +471,17 @@ export const elements = {
   studioDocumentTitle: document.querySelector("#studioDocumentTitle"),
   studioDocumentTemplate: document.querySelector("#studioDocumentTemplate"),
   studioDocumentRegenerateButton: document.querySelector("#studioDocumentRegenerateButton"),
+  studioSourceGuideButton: document.querySelector("#studioSourceGuideButton"),
+  studioSourceGuideEmptyButton: document.querySelector("#studioSourceGuideEmptyButton"),
+  studioDocumentSaveOutputButton: document.querySelector("#studioDocumentSaveOutputButton"),
   studioDocumentDownloadButton: document.querySelector("#studioDocumentDownloadButton"),
   studioDocumentDownloadMenu: document.querySelector("#studioDocumentDownloadMenu"),
   studioDocumentDeleteButton: document.querySelector("#studioDocumentDeleteButton"),
   studioDocumentStatus: document.querySelector("#studioDocumentStatus"),
   studioDocumentIncludeCitations: document.querySelector("#studioDocumentIncludeCitations"),
   studioDocumentWarnings: document.querySelector("#studioDocumentWarnings"),
+  studioOutputLibrary: document.querySelector("#studioOutputLibrary"),
+  studioOutputLibraryEmpty: document.querySelector("#studioOutputLibraryEmpty"),
   studioDocumentVisualModeButton: document.querySelector("#studioDocumentVisualModeButton"),
   studioDocumentRawModeButton: document.querySelector("#studioDocumentRawModeButton"),
   studioDocumentVisual: document.querySelector("#studioDocumentVisual"),
@@ -523,6 +532,7 @@ export function ensureRoomStudio(room = getActiveRoom()) {
       : "";
   }
   if (!Array.isArray(room.studio.documents)) room.studio.documents = [];
+  if (!Array.isArray(room.studio.outputs)) room.studio.outputs = [];
   if (typeof room.studio.activeDocumentId !== "string") room.studio.activeDocumentId = "";
   return room.studio;
 }

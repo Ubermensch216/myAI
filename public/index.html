@@ -588,6 +588,8 @@
           <div id="studioDocumentPanel" class="studio-tool-panel studio-document-panel" data-tool-panel="document">
             <div id="studioDocumentEmpty" class="studio-document-empty">
               <p>채팅 답변 옆의 "스튜디오&gt;문서" 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.</p>
+              <button id="studioSourceGuideEmptyButton" class="ghost-button" type="button">소스 가이드 생성</button>
+              <section id="studioOutputLibraryEmpty" class="studio-output-library" aria-label="Studio 산출물 라이브러리"></section>
             </div>
             <div id="studioDocumentEditor" class="studio-document-editor" hidden>
               <div class="studio-document-header">
@@ -602,6 +604,18 @@
                       <path d="M21 4v4h-4"/>
                       <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16"/>
                       <path d="M3 20v-4h4"/>
+                    </svg>
+                  </button>
+                  <button id="studioSourceGuideButton" class="icon-button studio-doc-icon-btn" type="button" title="소스 가이드 생성" aria-label="소스 가이드 생성">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 5h10a4 4 0 0 1 4 4v10H8a4 4 0 0 1-4-4z"/>
+                      <path d="M8 9h6M8 13h5"/>
+                    </svg>
+                  </button>
+                  <button id="studioDocumentSaveOutputButton" class="icon-button studio-doc-icon-btn" type="button" title="산출물 보관" aria-label="산출물 보관">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 4h14v16H5z"/>
+                      <path d="M8 8h8M8 12h8M8 16h5"/>
                     </svg>
                   </button>
                   <div class="studio-document-download">
@@ -631,6 +645,7 @@
 
               <div id="studioDocumentStatus" class="studio-document-status" hidden></div>
               <div id="studioDocumentWarnings" class="studio-document-warnings"></div>
+              <section id="studioOutputLibrary" class="studio-output-library" aria-label="Studio 산출물 라이브러리"></section>
 
               <div class="studio-document-modebar" role="group" aria-label="문서 편집 모드">
                 <button id="studioDocumentVisualModeButton" class="studio-document-mode-button" type="button" data-doc-mode="visual">문서 편집</button>
@@ -1099,6 +1114,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6l-7-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.5 12.3 11 13.8l3.7-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>권한 관리</span>
           </button>
+          <button id="adminSourcePromotionsButton" class="admin-console-nav-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M15 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>승인 요청</span>
+          </button>
           <span class="admin-console-nav-divider" aria-hidden="true"></span>
           <button id="adminStatusButton" class="admin-console-nav-item" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -1214,6 +1233,14 @@
               <button id="adminAccessSuperTab" class="admin-access-tab" type="button" role="tab" aria-selected="false">Super 권한</button>
             </div>
             <div id="adminAccessBody" class="admin-access-body"></div>
+          </div>
+
+          <div id="adminSourcePromotionsPanel" class="admin-status-panel admin-source-promotions-panel" hidden>
+            <div class="admin-status-panel-header">
+              <h3>부서 프로젝트 편입 승인</h3>
+              <button id="adminSourcePromotionsRefreshButton" class="ghost-button" type="button">새로고침</button>
+            </div>
+            <div id="adminSourcePromotionsBody" class="admin-source-promotions-body"></div>
           </div>
 
           <div id="adminRagEvalPanel" class="admin-status-panel admin-rag-eval-panel" hidden>

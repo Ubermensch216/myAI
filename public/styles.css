@@ -4292,8 +4292,10 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-document-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   flex: 1 1 auto;
   padding: 24px;
   text-align: center;
@@ -4566,6 +4568,78 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-document-warnings:empty {
   display: none;
+}
+
+.studio-output-library {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.studio-output-library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.studio-output-library-header h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.studio-output-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.studio-output-list {
+  display: grid;
+  gap: 6px;
+}
+
+.studio-output-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 7px;
+  background: var(--panel);
+}
+
+.studio-output-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.studio-output-meta {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.studio-output-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.studio-output-action {
+  min-height: 26px;
+  padding: 0 7px;
+  font-size: 10px;
 }
 
 .studio-document-modebar {
@@ -7686,6 +7760,56 @@ body.panel-resizing .panel-resizer::after {
   margin: 0;
   font-size: 15px;
   font-weight: 700;
+}
+
+.admin-source-promotions-body {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-source-promotion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-source-promotion-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.admin-source-promotion-card.is-reviewed {
+  opacity: 0.82;
+}
+
+.admin-source-promotion-card h4 {
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+
+.admin-source-promotion-meta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.admin-source-promotion-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-source-promotion-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.admin-source-promotion-reviewed {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .admin-rag-eval-panel .admin-status-panel-header {

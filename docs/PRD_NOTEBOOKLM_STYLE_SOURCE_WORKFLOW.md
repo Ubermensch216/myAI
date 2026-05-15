@@ -30,7 +30,22 @@ MVP 1 is implemented for assistant answers:
 - Later `/api/chat` requests include generated source text as document context.
 - `server/ollama.js` treats generated sources as secondary references and
   prefixes their chunks with `[AI 생성 참고자료]`.
-- Generated sources are not promoted to department notebooks.
+- Generated sources are not automatically promoted to department notebooks;
+  promotion requires an admin-reviewed workflow.
+
+Phase 2-5 are now implemented as incremental workflows:
+
+- Studio Document supports `문서 편집` / `원문 보기`, with Markdown as the
+  source of truth and visual editing for headings, paragraphs, lists,
+  checklists, and simple tables.
+- Source Guide generation creates room-level Studio outputs from uploaded
+  files and/or the selected department notebook.
+- Studio outputs are stored under `room.studio.outputs` and can be reopened,
+  added back to the room as generated sources, or submitted for notebook
+  promotion review.
+- Department notebook promotion uses an admin-reviewed request workflow.
+  Approved outputs are ingested into the target department notebook with
+  provenance metadata.
 
 The implementation files are:
 
@@ -94,7 +109,8 @@ MVP storage is browser-only:
 - Generated room sources persist in encrypted IndexedDB with the room.
 - The server performs conversion and returns the generated payload.
 - The server does not permanently store personal generated sources.
-- Department notebook promotion is out of scope for MVP.
+- Department notebook promotion is available through a separate admin-reviewed
+  request workflow; it is never automatic.
 
 ## Implemented API
 
@@ -127,14 +143,14 @@ Response:
 }
 ```
 
-## Remaining Product Work
+## Implemented Product Phases
 
 ### Phase 2: Studio Editor UX
 
-- Add `문서 편집` / `원문 보기` mode switch.
-- Keep Markdown as the internal source of truth.
-- Render a visual editing mode by default.
-- Support limited editing for headings, paragraphs, lists, checklists, and
+- Added `문서 편집` / `원문 보기` mode switch.
+- Markdown remains the internal source of truth.
+- Visual editing mode is rendered by default.
+- Limited editing is supported for headings, paragraphs, lists, checklists, and
   simple tables.
 
 ### Phase 3: Source Guide

@@ -145,6 +145,41 @@ await check("persistence keeps generated source metadata compatible", async () =
   assert.match(persistenceJs, /검증 필요/);
 });
 
+await check("phase 3 source guide API and UI are wired", async () => {
+  const indexJs = await fs.readFile(new URL("../server/index.js", import.meta.url), "utf8");
+  const sourceGuideJs = await fs.readFile(new URL("../server/sourceWorkflow/sourceGuide.js", import.meta.url), "utf8");
+  const documentStudioJs = await fs.readFile(new URL("../public/modules/documentStudio.js", import.meta.url), "utf8");
+  assert.match(indexJs, /\/api\/source-workflow\/source-guide/);
+  assert.match(sourceGuideJs, /recommendedQuestions/);
+  assert.match(sourceGuideJs, /possibleOutputs/);
+  assert.match(sourceGuideJs, /relatedLaws/);
+  assert.match(documentStudioJs, /createSourceGuideOutput/);
+  assert.match(documentStudioJs, /studioSourceGuideButton/);
+});
+
+await check("phase 4 Studio output library can become room sources", async () => {
+  const stateJs = await fs.readFile(new URL("../public/modules/state.js", import.meta.url), "utf8");
+  const documentStudioJs = await fs.readFile(new URL("../public/modules/documentStudio.js", import.meta.url), "utf8");
+  const indexHtml = await fs.readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  assert.match(stateJs, /room\.studio\.outputs/);
+  assert.match(documentStudioJs, /upsertStudioOutputFromDraft/);
+  assert.match(documentStudioJs, /addOutputAsRoomSource/);
+  assert.match(documentStudioJs, /\/api\/source-workflow\/from-answer/);
+  assert.match(indexHtml, /studioOutputLibrary/);
+});
+
+await check("phase 5 promotion workflow is admin reviewed", async () => {
+  const indexJs = await fs.readFile(new URL("../server/index.js", import.meta.url), "utf8");
+  const promotionsJs = await fs.readFile(new URL("../server/sourceWorkflow/sourcePromotions.js", import.meta.url), "utf8");
+  const notebookJs = await fs.readFile(new URL("../public/modules/notebook.js", import.meta.url), "utf8");
+  assert.match(indexJs, /\/api\/source-workflow\/promotions/);
+  assert.match(indexJs, /\/api\/admin\/source-promotions/);
+  assert.match(promotionsJs, /reviewSourcePromotion/);
+  assert.match(promotionsJs, /addNotebookDocument/);
+  assert.match(promotionsJs, /approvedBy/);
+  assert.match(notebookJs, /showAdminSourcePromotions/);
+});
+
 if (failures) {
   console.error(`Source Workflow API smoke failed: ${failures}`);
   process.exit(1);

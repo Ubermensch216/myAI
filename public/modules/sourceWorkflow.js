@@ -67,7 +67,7 @@ function buildAnswerMetadata(message) {
   return metadata;
 }
 
-function addGeneratedSourceToRoom(room, generatedSource) {
+export function addGeneratedSourceToRoom(room, generatedSource) {
   if (!room || !generatedSource) return;
   if (!Array.isArray(room.documents)) room.documents = [];
   room.documents.push(generatedSource);

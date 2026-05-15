@@ -19,7 +19,8 @@ export const adminUiState = {
   accessConfig: null,
   accessActiveTab: "groups",
   selectedAccessGroupId: null,
-  accessGroupSearch: ""
+  accessGroupSearch: "",
+  sourcePromotions: []
 };
 
 // ===== Notebook selector =====
@@ -465,6 +466,7 @@ export function showAdminNewNotebookForm() {
   renderAdminList();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
   hideAdminStatsPanel();
   if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
@@ -805,6 +807,7 @@ export function renderAdminDetail() {
   renderAdminConsoleNav();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
   hideAdminStatsPanel();
   const notebook = adminUiState.selectedNotebook;
@@ -952,6 +955,7 @@ function renderAdminConsoleNav() {
   elements.adminNotebookMenuButton?.classList.toggle("active", active === "notebooks");
   elements.adminStatusButton?.classList.toggle("active", active === "status");
   elements.adminAccessButton?.classList.toggle("active", active === "access");
+  elements.adminSourcePromotionsButton?.classList.toggle("active", active === "sourcePromotions");
   elements.adminRagEvalButton?.classList.toggle("active", active === "ragEval");
   elements.adminStatsButton?.classList.toggle("active", active === "stats");
   if (elements.adminRefreshStatusButton) elements.adminRefreshStatusButton.hidden = active !== "status";
@@ -993,6 +997,7 @@ export async function showAdminAccessPanel() {
   if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = true;
   hideAdminStatsPanel();
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = false;
   adminUiState.selectedId = null;
@@ -1547,6 +1552,109 @@ function normalizeClientPolicy(policy) {
   return { groups, minLevel };
 }
 
+// ===== Source promotion admin =====
+
+export function showAdminSourcePromotions() {
+  adminUiState.activePanel = "sourcePromotions";
+  renderAdminConsoleNav();
+  if (elements.adminDetailEmpty) elements.adminDetailEmpty.hidden = true;
+  if (elements.adminDetailContent) elements.adminDetailContent.hidden = true;
+  if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
+  if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
+  if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  hideAdminStatsPanel();
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = false;
+  adminUiState.selectedId = null;
+  adminUiState.selectedNotebook = null;
+  adminUiState.mobileView = "detail";
+  renderAdminList();
+  applyAdminMobileView();
+  renderAdminSourcePromotions().catch((error) => alert(`승인 요청 로드 실패: ${error.message}`));
+}
+
+async function renderAdminSourcePromotions() {
+  const body = elements.adminSourcePromotionsBody;
+  if (!body) return;
+  body.innerHTML = '<div class="admin-status-loading">불러오는 중…</div>';
+  const response = await fetch("/api/admin/source-promotions", { headers: adminAuthHeader() });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+  adminUiState.sourcePromotions = Array.isArray(result.promotions) ? result.promotions : [];
+  body.innerHTML = "";
+  if (!adminUiState.sourcePromotions.length) {
+    const empty = document.createElement("div");
+    empty.className = "admin-list-empty";
+    empty.textContent = "승인 요청이 없습니다.";
+    body.append(empty);
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "admin-source-promotion-list";
+  for (const promotion of adminUiState.sourcePromotions) list.append(renderPromotionCard(promotion));
+  body.append(list);
+}
+
+function renderPromotionCard(promotion) {
+  const card = document.createElement("article");
+  card.className = "admin-source-promotion-card";
+  if (promotion.status !== "pending") card.classList.add("is-reviewed");
+
+  const title = document.createElement("h4");
+  title.textContent = promotion.title || "AI 생성 자료";
+  const meta = document.createElement("div");
+  meta.className = "admin-source-promotion-meta";
+  meta.textContent = [
+    promotion.notebookName || promotion.notebookId,
+    promotion.status === "pending" ? "대기" : promotion.status === "approved" ? "승인" : "반려",
+    formatAdminDate(promotion.requestedAt)
+  ].filter(Boolean).join(" · ");
+  const summary = document.createElement("p");
+  summary.textContent = promotion.summary || promotion.sourceType || "요약 정보 없음";
+  card.append(title, meta, summary);
+
+  const actions = document.createElement("div");
+  actions.className = "admin-source-promotion-actions";
+  if (promotion.status === "pending") {
+    actions.append(promotionActionButton("승인", () => reviewPromotion(promotion.id, "approved")));
+    actions.append(promotionActionButton("반려", () => reviewPromotion(promotion.id, "rejected")));
+  } else {
+    const reviewed = document.createElement("span");
+    reviewed.className = "admin-source-promotion-reviewed";
+    reviewed.textContent = promotion.status === "approved"
+      ? `승인됨 ${promotion.approvedBy || ""}`
+      : `반려됨 ${promotion.rejectedBy || ""}`;
+    actions.append(reviewed);
+  }
+  card.append(actions);
+  return card;
+}
+
+function promotionActionButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = label === "승인" ? "send-button" : "ghost-button admin-danger-button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function reviewPromotion(id, status) {
+  const note = status === "rejected" ? window.prompt("반려 사유를 입력하세요", "") : "";
+  const response = await fetch(`/api/admin/source-promotions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...adminAuthHeader() },
+    body: JSON.stringify({ status, reviewNote: note || "", approvedBy: "admin" })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.ok) {
+    alert(body.error || "검토 처리에 실패했습니다.");
+    return;
+  }
+  await renderAdminSourcePromotions();
+  await loadNotebooks();
+}
+
 // ===== RAG eval panel =====
 
 export function showAdminRagEval() {
@@ -1557,6 +1665,7 @@ export function showAdminRagEval() {
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = true;
   hideAdminStatsPanel();
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
@@ -1577,6 +1686,7 @@ export function showAdminStats() {
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = true;
   adminUiState.selectedId = null;
   adminUiState.selectedNotebook = null;
   adminUiState.mobileView = "detail";
@@ -1595,6 +1705,7 @@ export function showAdminStatus() {
   if (elements.adminNewNotebookForm) elements.adminNewNotebookForm.hidden = true;
   if (elements.adminAccessPanel) elements.adminAccessPanel.hidden = true;
   if (elements.adminRagEvalPanel) elements.adminRagEvalPanel.hidden = true;
+  if (elements.adminSourcePromotionsPanel) elements.adminSourcePromotionsPanel.hidden = true;
   hideAdminStatsPanel();
   if (elements.adminStatusPanel) elements.adminStatusPanel.hidden = false;
   adminUiState.selectedId = null;
@@ -1860,6 +1971,8 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
   }
   if (elements.adminLogoutButton) elements.adminLogoutButton.addEventListener("click", adminLogout);
   if (elements.adminNotebookMenuButton) elements.adminNotebookMenuButton.addEventListener("click", showAdminNotebooksPanel);
+  if (elements.adminSourcePromotionsButton) elements.adminSourcePromotionsButton.addEventListener("click", showAdminSourcePromotions);
+  if (elements.adminSourcePromotionsRefreshButton) elements.adminSourcePromotionsRefreshButton.addEventListener("click", () => renderAdminSourcePromotions().catch((error) => alert(error.message)));
   if (elements.adminStatusButton) elements.adminStatusButton.addEventListener("click", showAdminStatus);
   if (elements.adminAccessButton) elements.adminAccessButton.addEventListener("click", () => showAdminAccessPanel().catch((error) => alert(error.message)));
   if (elements.adminRagEvalButton) elements.adminRagEvalButton.addEventListener("click", showAdminRagEval);

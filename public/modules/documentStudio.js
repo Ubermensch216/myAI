@@ -5,10 +5,11 @@
 // fragments. Drafts live in room.studio.documents and persist via the
 // room state.
 
-import { state, elements, ensureRoomStudio, getActiveRoom } from "./state.js";
+import { state, elements, ensureRoomStudio, getActiveRoom, accessAuthHeaders } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { setStudioCollapsed } from "./layout.js";
 import { parseMarkdownToVisualBlocks, serializeVisualBlocksToMarkdown } from "./documentStudioMarkdown.js";
+import { addGeneratedSourceToRoom } from "./sourceWorkflow.js";
 
 const EXPORT_FORMATS = [
   { id: "docx", label: "Word (.docx)" },
@@ -51,6 +52,15 @@ export function bindDocumentStudioEvents() {
 
   elements.studioDocumentRegenerateButton?.addEventListener("click", () => {
     regenerateActiveDraft().catch((error) => setStatus(`재구성 실패: ${error.message}`, true));
+  });
+  elements.studioSourceGuideButton?.addEventListener("click", () => {
+    createSourceGuideOutput().catch((error) => setStatus(`소스 가이드 생성 실패: ${error.message}`, true));
+  });
+  elements.studioSourceGuideEmptyButton?.addEventListener("click", () => {
+    createSourceGuideOutput().catch((error) => window.alert(error.message));
+  });
+  elements.studioDocumentSaveOutputButton?.addEventListener("click", () => {
+    saveActiveDraftAsOutput();
   });
 
   elements.studioDocumentDeleteButton?.addEventListener("click", () => {
@@ -408,6 +418,7 @@ export function renderDocumentStudio() {
     if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = false;
     if (elements.studioDocumentEditor) elements.studioDocumentEditor.hidden = true;
     if (elements.studioDocumentVisual) elements.studioDocumentVisual.innerHTML = "";
+    renderOutputLibrary(studio);
     return;
   }
   if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = true;
@@ -431,6 +442,7 @@ export function renderDocumentStudio() {
     elements.studioDocumentIncludeCitations.checked = doc.exportOptions?.includeCitations !== false;
   }
   renderWarnings(doc);
+  renderOutputLibrary(studio);
   if (doc.pending) setStatus("AI 변환 중", false, true);
   else clearStatus();
   // Editor sizing must happen after the panel is shown; defer to next frame.
@@ -481,6 +493,270 @@ function blocksToMarkdown(blocks) {
     out.push("");
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// ── Source guide / Studio output library ─────────────────────────────────
+
+async function createSourceGuideOutput() {
+  const room = getActiveRoom();
+  if (!room) throw new Error("활성 대화방이 없습니다.");
+  const documents = Array.isArray(room.documents) ? room.documents.filter((doc) => doc?.kind === "document") : [];
+  if (!documents.length && !room.selectedNotebookId) {
+    throw new Error("소스 가이드를 만들 첨부 자료나 선택된 프로젝트가 없습니다.");
+  }
+
+  setStatus("소스 가이드 생성 중", false, true);
+  const response = await fetch("/api/source-workflow/source-guide", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...accessAuthHeaders() },
+    body: JSON.stringify({
+      title: `${room.title || "자료"} 소스 가이드`,
+      documents,
+      notebookId: room.selectedNotebookId || "",
+      model: elements.modelInput?.value?.trim() || undefined
+    })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.ok) {
+    throw new Error(body.error || `status ${response.status}`);
+  }
+
+  const guide = body.guide;
+  const studio = ensureRoomStudio(room);
+  const output = upsertStudioOutput({
+    id: guide.id,
+    type: "source_guide",
+    title: guide.title || "소스 가이드",
+    markdown: guide.markdown || "",
+    source: {
+      roomId: room.id,
+      sourceType: "source_guide",
+      sourceScope: guide.sourceScope || {}
+    },
+    metadata: {
+      sourceScope: guide.sourceScope || {},
+      warnings: Array.isArray(guide.warnings) ? guide.warnings : []
+    },
+    createdAt: guide.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+  const draft = openOutputAsDraft(output, { activate: false });
+  studio.activeDocumentId = draft.id;
+  setStatus("소스 가이드를 생성했습니다.");
+  scheduleSave();
+  renderDocumentStudio();
+}
+
+function saveActiveDraftAsOutput() {
+  const doc = getActiveDraft();
+  if (!doc) return;
+  const output = upsertStudioOutputFromDraft(doc, { type: "document" });
+  setStatus(`산출물 보관됨: ${output.title}`);
+  scheduleSave();
+  renderDocumentStudio();
+}
+
+function upsertStudioOutputFromDraft(doc, { type = "document", quiet = false } = {}) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  const output = upsertStudioOutput({
+    id: doc.outputId || "",
+    type,
+    title: doc.title || "Studio 문서",
+    markdown: doc.markdown || "",
+    citations: doc.citations || {},
+    source: doc.source || { roomId: room?.id || "", sourceType: "studio_document" },
+    metadata: doc.metadata || {},
+    createdAt: doc.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+  doc.outputId = output.id;
+  if (!quiet && studio) renderOutputLibrary(studio);
+  return output;
+}
+
+function upsertStudioOutput(input) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!studio) return null;
+  if (!Array.isArray(studio.outputs)) studio.outputs = [];
+  const now = new Date().toISOString();
+  const id = input.id || `studio_output_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const output = {
+    id,
+    type: input.type || "document",
+    title: String(input.title || "Studio 산출물").trim().slice(0, 160),
+    markdown: String(input.markdown || "").trim(),
+    citations: input.citations || {},
+    source: input.source || {},
+    metadata: input.metadata || {},
+    createdAt: input.createdAt || now,
+    updatedAt: input.updatedAt || now
+  };
+  const existing = studio.outputs.findIndex((item) => item.id === id);
+  if (existing >= 0) studio.outputs.splice(existing, 1);
+  studio.outputs.unshift(output);
+  studio.outputs = studio.outputs.slice(0, 60);
+  return output;
+}
+
+function renderOutputLibrary(studio = ensureRoomStudio()) {
+  for (const root of [elements.studioOutputLibrary, elements.studioOutputLibraryEmpty]) {
+    if (!root) continue;
+    root.innerHTML = "";
+    const outputs = Array.isArray(studio?.outputs) ? studio.outputs : [];
+    const header = document.createElement("div");
+    header.className = "studio-output-library-header";
+    const title = document.createElement("h4");
+    title.textContent = `산출물 라이브러리 ${outputs.length}`;
+    header.append(title);
+    root.append(header);
+    if (!outputs.length) {
+      const empty = document.createElement("p");
+      empty.className = "studio-output-empty";
+      empty.textContent = "보관된 Studio 산출물이 없습니다.";
+      root.append(empty);
+      continue;
+    }
+    const list = document.createElement("div");
+    list.className = "studio-output-list";
+    for (const output of outputs) list.append(renderOutputItem(output));
+    root.append(list);
+  }
+}
+
+function renderOutputItem(output) {
+  const item = document.createElement("article");
+  item.className = "studio-output-item";
+  const main = document.createElement("div");
+  main.className = "studio-output-main";
+  const title = document.createElement("div");
+  title.className = "studio-output-title";
+  title.textContent = output.title || "Studio 산출물";
+  const meta = document.createElement("div");
+  meta.className = "studio-output-meta";
+  meta.textContent = `${output.type === "source_guide" ? "소스 가이드" : "문서"} · ${formatOutputDate(output.updatedAt || output.createdAt)}`;
+  main.append(title, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "studio-output-actions";
+  actions.append(outputActionButton("열기", () => {
+    openOutputAsDraft(output);
+    renderDocumentStudio();
+  }));
+  actions.append(outputActionButton("자료로 추가", () => addOutputAsRoomSource(output).catch((error) => window.alert(error.message))));
+  actions.append(outputActionButton("승인 요청", () => requestOutputPromotion(output).catch((error) => window.alert(error.message))));
+  actions.append(outputActionButton("삭제", () => deleteOutput(output.id)));
+
+  item.append(main, actions);
+  return item;
+}
+
+function outputActionButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button studio-output-action";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function openOutputAsDraft(output, { activate = true } = {}) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  const existing = studio.documents.find((doc) => doc.outputId === output.id);
+  if (existing) {
+    if (activate) studio.activeDocumentId = existing.id;
+    return existing;
+  }
+  const draft = {
+    id: `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    outputId: output.id,
+    title: output.title || "Studio 산출물",
+    templateId: null,
+    markdown: output.markdown || "",
+    citations: output.citations || {},
+    source: output.source || { roomId: room?.id || "", sourceType: output.type || "studio_output" },
+    metadata: output.metadata || {},
+    editorMode: "visual",
+    exportOptions: { includeCitations: true },
+    pending: false,
+    warnings: [],
+    createdAt: output.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  studio.documents.unshift(draft);
+  if (activate) studio.activeDocumentId = draft.id;
+  scheduleSave();
+  return draft;
+}
+
+async function addOutputAsRoomSource(output) {
+  const room = getActiveRoom();
+  if (!room) throw new Error("활성 대화방이 없습니다.");
+  if (!String(output.markdown || "").trim()) throw new Error("자료로 추가할 산출물 내용이 없습니다.");
+  const response = await fetch("/api/source-workflow/from-answer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messageId: output.source?.messageId || output.source?.sourceMessageId || "",
+      title: output.title || "Studio 산출물",
+      answerMarkdown: output.markdown,
+      format: "md",
+      metadata: output.metadata || {}
+    })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.ok) throw new Error(body.error || "자료 생성에 실패했습니다.");
+  addGeneratedSourceToRoom(room, body.generatedSource);
+  window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  window.alert("Studio 산출물을 현재 방 자료로 추가했습니다.");
+}
+
+async function requestOutputPromotion(output) {
+  const room = getActiveRoom();
+  if (!room?.selectedNotebookId) {
+    throw new Error("승인 요청 대상 프로젝트를 먼저 선택하세요.");
+  }
+  const response = await fetch("/api/source-workflow/promotions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...accessAuthHeaders() },
+    body: JSON.stringify({
+      notebookId: room.selectedNotebookId,
+      title: output.title,
+      markdown: output.markdown,
+      sourceType: output.type || "studio_output",
+      sourceRoomId: room.id,
+      sourceOutputId: output.id,
+      generatedAt: output.createdAt,
+      citations: flattenCitations(output.citations),
+      metadata: output.metadata || {}
+    })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.ok) throw new Error(body.error || "승인 요청에 실패했습니다.");
+  window.alert("관리자 승인 요청을 등록했습니다.");
+}
+
+function deleteOutput(outputId) {
+  const room = getActiveRoom();
+  const studio = ensureRoomStudio(room);
+  if (!studio) return;
+  studio.outputs = (studio.outputs || []).filter((output) => output.id !== outputId);
+  scheduleSave();
+  renderDocumentStudio();
+}
+
+function flattenCitations(citations) {
+  if (Array.isArray(citations)) return citations;
+  if (!citations || typeof citations !== "object") return [];
+  return Object.values(citations).flatMap((value) => Array.isArray(value) ? value : []);
+}
+
+function formatOutputDate(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 // ── Template management ──────────────────────────────────────────────────
@@ -684,6 +960,7 @@ async function convertDraft(draft) {
     draft.pending = false;
     draft.updatedAt = new Date().toISOString();
     delete draft.blocks;
+    upsertStudioOutputFromDraft(draft, { type: "document", quiet: true });
     setStatus("");
   } catch (error) {
     if (error.name === "AbortError") return;

@@ -50,6 +50,12 @@ import { graphAdminRouter } from "./graphAdminApi.js";
 import { graphStudioRouter } from "./graphStudioApi.js";
 import { studioDocumentRouter } from "./studioDocument/studioDocumentApi.js";
 import { generatedSourceRouter } from "./sourceWorkflow/generatedSourceApi.js";
+import { buildSourceGuide } from "./sourceWorkflow/sourceGuide.js";
+import {
+  createSourcePromotionRequest,
+  listSourcePromotions,
+  reviewSourcePromotion
+} from "./sourceWorkflow/sourcePromotions.js";
 import { statsApiRouter } from "./stats/statsApi.js";
 import { logUsageEvent } from "./stats/statsLogger.js";
 import {
@@ -871,6 +877,74 @@ app.use("/api/admin/graph", graphAdminRouter);
 app.use("/api/admin/stats", requireAdmin, statsApiRouter);
 app.use("/api/studio/graph", graphStudioRouter);
 app.use("/api/studio/document", studioDocumentRouter);
+
+app.post("/api/source-workflow/source-guide", async (request, response) => {
+  try {
+    const notebookId = String(request.body?.notebookId || "").trim();
+    if (notebookId) {
+      const notebook = await getNotebook(notebookId);
+      if (!notebook) {
+        response.status(404).json({ ok: false, error: "프로젝트를 찾을 수 없습니다." });
+        return;
+      }
+      if (!isAdminRequest(request) && await isAccessControlConfigured()) {
+        const access = await requireNotebookAccess(request, response, notebook);
+        if (!access) return;
+      }
+    }
+    const guide = await buildSourceGuide({
+      title: request.body?.title,
+      documents: request.body?.documents,
+      notebookId,
+      model: request.body?.model || DEFAULT_MODEL,
+      signal: request.signal
+    });
+    response.json({ ok: true, guide });
+  } catch (error) {
+    response.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post("/api/source-workflow/promotions", async (request, response) => {
+  try {
+    const notebookId = String(request.body?.notebookId || "").trim();
+    const notebook = notebookId ? await getNotebook(notebookId) : null;
+    if (!notebook) {
+      response.status(404).json({ ok: false, error: "프로젝트를 찾을 수 없습니다." });
+      return;
+    }
+    if (!isAdminRequest(request) && await isAccessControlConfigured()) {
+      const access = await requireNotebookAccess(request, response, notebook);
+      if (!access) return;
+    }
+    const promotion = await createSourcePromotionRequest(request.body || {});
+    response.status(201).json({ ok: true, promotion });
+  } catch (error) {
+    response.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.get("/api/admin/source-promotions", requireAdmin, async (_request, response) => {
+  try {
+    response.json({ ok: true, promotions: await listSourcePromotions() });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message, promotions: [] });
+  }
+});
+
+app.patch("/api/admin/source-promotions/:id", requireAdmin, async (request, response) => {
+  try {
+    const promotion = await reviewSourcePromotion(request.params.id, request.body || {});
+    if (!promotion) {
+      response.status(404).json({ ok: false, error: "승인 요청을 찾을 수 없습니다." });
+      return;
+    }
+    response.json({ ok: true, promotion });
+  } catch (error) {
+    response.status(400).json({ ok: false, error: error.message });
+  }
+});
+
 app.use("/api/source-workflow", generatedSourceRouter);
 app.use("/api/law", lawApiRouter);
 
