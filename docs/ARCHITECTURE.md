@@ -131,14 +131,12 @@ This feature converts AI answers into structured, template-driven public-sector 
 ```text
 right Studio panel — 마인드맵 card button
 -> public/modules/studio.js sends POST /api/studio/mindmap
--> server/mindmap.js two-pass pipeline:
-     Pass 1 — concept extraction
-       evenly samples full document via chunkDocumentSections (not just the first N chunks)
-       asks Ollama for { concepts: [{ id, label, description, category }] }
-     Pass 2 — mindmap structuring
-       sends concept list only (no raw text) to Ollama
-       asks Ollama for { title, nodes, edges, groups } relationships
--> browser renders a left-to-right collapsible SVG tree
+-> server/mindmap.js hierarchy pipeline:
+     evenly samples full document via chunkDocumentSections (not just the first N chunks)
+     asks Ollama for a parent-based hierarchy with root, branch, and leaf nodes
+     normalizes { parentId } relationships into { nodes, edges, groups }
+     falls back to a deterministic heading/bullet/topic tree if Ollama fails
+-> browser renders a left-to-right expanded SVG tree
    (expand/collapse per node, mouse-wheel zoom, click-drag pan, fullscreen toggle)
 -> selected node shows detail and source-reference panel
 ```
@@ -147,10 +145,10 @@ The left sidebar is resizable only. The right Studio panel is resizable and can
 collapse to an icon rail. Mind maps use uploaded room documents only; they do
 not invoke Naver Search or department notebook RAG.
 
-Pass 1 uses even interval sampling across all chunks so content from the middle
-and end of a document contributes to concept extraction, not just the leading
-sections. Pass 2 works from the compact concept list, so related concepts
-discovered in different parts of the document can be connected by edges.
+Mind-map generation uses even interval sampling across all chunks so content
+from the middle and end of a document contributes to the hierarchy, not just the
+leading sections. Large maps may auto-collapse deep levels, but normal maps open
+expanded and fitted to the canvas.
 
 ### File Tools
 

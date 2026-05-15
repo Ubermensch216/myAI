@@ -578,18 +578,14 @@ Body:
 }
 ```
 
-Builds a mind-map graph from the current room's uploaded documents using a
-two-pass LLM pipeline. The frontend sends the same browser-persisted document
+Builds a NotebookLM-style hierarchical mind-map graph from the current room's
+uploaded documents. The frontend sends the same browser-persisted document
 payload used by chat.
 
-**Pass 1 — concept extraction**: the server evenly samples chunks across the
-full document (not just the leading sections) and asks Ollama to return a
-structured concept list `{ concepts: [{ id, label, description, category }] }`.
-
-**Pass 2 — mindmap structuring**: the server sends the concept list only (no
-raw document text) and asks Ollama to derive node/edge relationships. Because
-Pass 2 sees all concepts regardless of where they appeared in the source
-document, cross-section relationships are not lost at chunk boundaries.
+The server evenly samples chunks across the full document and asks Ollama for a
+parent-based hierarchy with one root, several major branches, and compact leaf
+nodes. The internal `parentId` hierarchy is normalized into the stable public
+`nodes` + `edges` response shape.
 
 Web search and department notebook RAG are not used in this flow.
 
@@ -610,8 +606,9 @@ Returns:
 ```
 
 If Ollama fails after documents are supplied, the server returns a deterministic
-fallback graph from document names, summaries, and topics. Requests without
-text-bearing uploaded documents return `400`.
+fallback graph derived from document titles, headings, phases, bullets, topics,
+and high-signal PRD terms. Requests without text-bearing uploaded documents
+return `400`.
 
 ### `GET /api/studio/graph/ontology`
 

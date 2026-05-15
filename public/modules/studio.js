@@ -7,11 +7,13 @@ import { bindDocumentStudioEvents, registerDocumentStudioActivator, renderDocume
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 // Tree layout constants
-const NODE_W = 150;
+const NODE_W = 168;
 const NODE_H = 42;
-const ROOT_W = 174;
-const GAP_H = 78;  // horizontal gap between parent right edge and child left edge
-const GAP_V = 14;  // vertical gap between sibling subtrees
+const ROOT_W = 218;
+const GAP_H = 76;  // horizontal gap between parent right edge and child left edge
+const GAP_V = 18;  // vertical gap between sibling subtrees
+const AUTO_COLLAPSE_NODE_THRESHOLD = 54;
+const AUTO_COLLAPSE_DEPTH = 2;
 const REQUEST_TEXT_BUDGET_CHARS = 48000;
 const REQUEST_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -616,12 +618,23 @@ function buildTreeStructure(mindmap) {
 // Collapse all nodes that have children, except root (so root's children are visible)
 function buildInitialCollapsed(root, childrenMap) {
   const collapsed = new Set();
+  if (countTreeNodes(root, childrenMap) <= AUTO_COLLAPSE_NODE_THRESHOLD) return collapsed;
   function visit(node, depth) {
-    if (depth > 0 && (childrenMap.get(node.id) || []).length > 0) collapsed.add(node.id);
+    if (depth >= AUTO_COLLAPSE_DEPTH && (childrenMap.get(node.id) || []).length > 0) collapsed.add(node.id);
     for (const child of childrenMap.get(node.id) || []) visit(child, depth + 1);
   }
   visit(root, 0);
   return collapsed;
+}
+
+function countTreeNodes(root, childrenMap) {
+  let count = 0;
+  function visit(node) {
+    count += 1;
+    for (const child of childrenMap.get(node.id) || []) visit(child);
+  }
+  visit(root);
+  return count;
 }
 
 // ── Layout (left-to-right tree) ───────────────────────────────────
@@ -679,17 +692,15 @@ function drawMap() {
   const totalH = subtreeH(root, childrenMap, collapsed);
   assignPos(root, 0, 0, childrenMap, collapsed);
 
+  const visible = collectVisible(root, childrenMap, collapsed);
+
   if (_map.panX === null) {
-    const r = svg.getBoundingClientRect();
-    _map.panX = 24;
-    _map.panY = Math.max(20, ((r.height || 280) - totalH) / 2);
+    fitMindmapToViewport(visible, totalH);
   }
 
   const vp = svgEl("g", { class: "map-vp" });
-  vp.setAttribute("transform", `translate(${_map.panX},${_map.panY}) scale(${scale})`);
+  vp.setAttribute("transform", `translate(${_map.panX},${_map.panY}) scale(${_map.scale})`);
   svg.append(vp);
-
-  const visible = collectVisible(root, childrenMap, collapsed);
 
   // Edges first (behind nodes)
   const edgeG = svgEl("g");
@@ -737,6 +748,34 @@ function makeEdge(from, to, edge = {}) {
   return group;
 }
 
+function fitMindmapToViewport(visible, totalH = 0) {
+  const svg = elements.studioMindmapSvg;
+  if (!_map || !svg) return;
+  const rect = svg.getBoundingClientRect();
+  const width = rect.width || 760;
+  const height = rect.height || 520;
+  const bounds = getVisibleBounds(visible);
+  const mapW = Math.max(1, bounds.maxX - bounds.minX);
+  const mapH = Math.max(1, bounds.maxY - bounds.minY, totalH);
+  const fitScale = Math.min(1, (width - 64) / mapW, (height - 48) / mapH);
+  _map.scale = Math.max(0.42, Math.min(1.05, fitScale));
+  _map.panX = 24 - bounds.minX * _map.scale;
+  _map.panY = Math.max(18, (height - mapH * _map.scale) / 2 - bounds.minY * _map.scale);
+}
+
+function getVisibleBounds(visible) {
+  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const node of visible) {
+    if (!node._pos) continue;
+    bounds.minX = Math.min(bounds.minX, node._pos.x);
+    bounds.minY = Math.min(bounds.minY, node._pos.y - NODE_H / 2);
+    bounds.maxX = Math.max(bounds.maxX, node._pos.x + node._pos.w + 28);
+    bounds.maxY = Math.max(bounds.maxY, node._pos.y + NODE_H / 2);
+  }
+  if (!Number.isFinite(bounds.minX)) return { minX: 0, minY: 0, maxX: ROOT_W, maxY: NODE_H };
+  return bounds;
+}
+
 function makeNode(node, isRoot, hasChildren, isCollapsed, isSelected) {
   const { x, y, w } = node._pos;
   const h = NODE_H;
@@ -748,7 +787,7 @@ function makeNode(node, isRoot, hasChildren, isCollapsed, isSelected) {
     "data-importance": String(Math.max(1, Math.min(5, Number(node.importance) || 3)))
   });
 
-  g.append(svgEl("rect", { width: w, height: h, rx: 7, ry: 7 }));
+  g.append(svgEl("rect", { width: w, height: h, rx: 8, ry: 8 }));
 
   const lineH = 15;
   const textMid = h / 2 - ((lines.length - 1) * lineH) / 2 + 5;
@@ -1002,10 +1041,10 @@ function appendMindmapWarnings(target) {
 
   const messages = [];
   if (warnings.some((warning) => warning === "fallback_mindmap")) {
-    messages.push("기본 마인드맵을 표시 중입니다.");
+    messages.push("Ollama 생성 시간이 초과되어 문서 구조 기반 임시 마인드맵을 표시합니다.");
   }
   if (warnings.some((warning) => warning.startsWith("model_fallback:"))) {
-    messages.push("Ollama 생성에 실패해 문서 이름, 요약, 주제 기반 지도를 표시합니다.");
+    messages.push("문서 제목, 목차, 주요 항목을 기반으로 대체 지도를 구성했습니다.");
   }
   if (!messages.length) messages.push("마인드맵 생성 중 확인할 항목이 있습니다.");
 

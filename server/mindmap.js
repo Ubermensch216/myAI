@@ -7,16 +7,16 @@ loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const MINDMAP_MODEL = String(process.env.MINDMAP_MODEL || "").trim();
 
-// Pass 1 — concept extraction (wider coverage)
-const P1_MAX_CONTEXT = Number(process.env.MINDMAP_P1_MAX_CONTEXT || 18000);
-const P1_MAX_CHUNKS  = Number(process.env.MINDMAP_P1_MAX_CHUNKS  || 8);
-const P1_MAX_CONCEPTS = Number(process.env.MINDMAP_P1_MAX_CONCEPTS || 20);
-const OLLAMA_TIMEOUT_MS = clampInt(process.env.MINDMAP_OLLAMA_TIMEOUT_MS, 60000, 5000, 300000);
+const OUTLINE_MAX_CONTEXT = clampInt(process.env.MINDMAP_P1_MAX_CONTEXT, 24000, 2000, 80000);
+const OUTLINE_MAX_CHUNKS = clampInt(process.env.MINDMAP_P1_MAX_CHUNKS, 12, 3, 40);
+const OUTLINE_MAX_ITEMS = clampInt(process.env.MINDMAP_OUTLINE_MAX_ITEMS || process.env.MINDMAP_P1_MAX_CONCEPTS, 48, 12, 80);
+const OLLAMA_TIMEOUT_MS = clampInt(process.env.MINDMAP_OLLAMA_TIMEOUT_MS, 180000, 5000, 600000);
 
-// Pass 2 — mindmap structure
-const MAX_NODES = Number(process.env.MINDMAP_MAX_NODES || 16);
-const MAX_EDGES = Number(process.env.MINDMAP_MAX_EDGES || 24);
+const MAX_NODES = clampInt(process.env.MINDMAP_MAX_NODES, 42, 8, 80);
+const MAX_EDGES = clampInt(process.env.MINDMAP_MAX_EDGES, 64, 8, 120);
+const ROOT_ID = "root";
 
 export async function generateMindmap({ documents = [], model = DEFAULT_MODEL, signal } = {}) {
   throwIfAborted(signal);
@@ -26,19 +26,12 @@ export async function generateMindmap({ documents = [], model = DEFAULT_MODEL, s
   }
 
   const fallback = buildFallbackMindmap(usableDocs);
+  const effectiveModel = MINDMAP_MODEL || model || DEFAULT_MODEL;
 
   try {
     const parsed = await analysisQueue.run(async () => {
       throwIfAborted(signal);
-
-      // Pass 1: extract concepts spanning the full document
-      const concepts = await extractConcepts({ documents: usableDocs, model, signal });
-      if (!concepts.length) return null;
-
-      throwIfAborted(signal);
-
-      // Pass 2: derive relationships from concept list only
-      return buildMindmapFromConcepts({ concepts, documents: usableDocs, model, signal });
+      return buildHierarchicalMindmap({ documents: usableDocs, model: effectiveModel, signal });
     }, { signal, label: "studio_mindmap" });
 
     if (!parsed) return fallback;
@@ -56,87 +49,90 @@ export async function generateMindmap({ documents = [], model = DEFAULT_MODEL, s
   }
 }
 
-// ─── Pass 1 ─────────────────────────────────────────────────────────────────
+async function buildHierarchicalMindmap({ documents, model, signal }) {
+  const context = buildOutlineContext(documents);
+  if (!context.trim()) return null;
 
-async function extractConcepts({ documents, model, signal }) {
-  const context = buildP1Context(documents);
-  if (!context.trim()) return [];
-
-  const controller = createLinkedAbortController(signal, OLLAMA_TIMEOUT_MS, "Mind-map concept extraction timed out.");
+  const controller = createLinkedAbortController(signal, OLLAMA_TIMEOUT_MS, "Mind-map hierarchy generation timed out.");
   try {
     const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: "POST",
-    signal: controller.signal,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      format: "json",
-      messages: [
-        {
-          role: "system",
-          content: [
-            "Extract key concepts from the provided document(s).",
-            "Return JSON only.",
-            "Labels and descriptions should be Korean when possible.",
-            `Schema: {"concepts": [{"id": string, "label": string, "description": string, "category": string}]}`,
-            `Extract at most ${P1_MAX_CONCEPTS} distinct, important concepts.`,
-            "Each label should be 1–5 words. Each description should be 1–2 sentences."
-          ].join("\n")
-        },
-        {
-          role: "user",
-          content: `문서에서 핵심 개념을 추출하세요:\n\n${context}`
-        }
-      ],
-      options: { temperature: 0.1 }
-    })
-  });
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: "json",
+        messages: [
+          {
+            role: "system",
+            content: [
+              "Build a NotebookLM-style hierarchical mind map from the provided document excerpts.",
+              "Return JSON only.",
+              "Use Korean labels and summaries when the source is Korean.",
+              "Create one root node, 5 to 7 major branch nodes, and compact leaf nodes under each branch.",
+              "Prefer 25 to 45 nodes for a substantial PRD/report. Do not return a filename-only map.",
+              "Every non-root node must include parentId. Parent-child structure is more important than cross-links.",
+              `Return at most ${OUTLINE_MAX_ITEMS} candidate nodes before normalization.`,
+              `Use at most ${MAX_NODES} nodes.`,
+              `Schema: {"title": string, "groups": [{"id": string, "label": string}], "nodes": [{"id": string, "label": string, "summary": string, "group": string, "parentId": string, "importance": 1-5, "sourceRefs": [string]}], "edges": [{"from": string, "to": string, "label": string, "strength": 1-5}]}`
+            ].join("\n")
+          },
+          {
+            role: "user",
+            content: [
+              "문서 내용을 바탕으로 중심 주제에서 오른쪽으로 펼쳐지는 계층형 마인드맵을 만들어주세요.",
+              "문서의 목적, 요구사항 본질, 핵심 기능군, 구축 단계, 신규 모듈, 보안/데이터 구조를 우선적으로 구조화하세요.",
+              "각 노드는 짧은 명사구로 작성하고, leaf 노드는 실행 항목이나 구체 기능을 담아주세요.",
+              "",
+              context
+            ].join("\n")
+          }
+        ],
+        options: { temperature: 0.15 }
+      })
+    });
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(`Ollama concept extraction failed: ${response.status} ${text.slice(0, 160)}`.trim());
+      throw new Error(`Ollama mindmap hierarchy failed: ${response.status} ${text.slice(0, 160)}`.trim());
     }
 
     const payload = await response.json();
-    return parseConceptsJson(payload?.message?.content || payload?.response || "");
+    return parseMindmapJson(payload?.message?.content || payload?.response || "");
   } finally {
     controller.cleanup();
   }
 }
 
-function buildP1Context(documents) {
+function buildOutlineContext(documents) {
   const sections = [];
-  const perDocBudget = Math.max(360, Math.floor(P1_MAX_CONTEXT / Math.max(1, documents.length)));
+  const perDocBudget = Math.max(1200, Math.floor(OUTLINE_MAX_CONTEXT / Math.max(1, documents.length)));
 
   for (const [idx, doc] of documents.entries()) {
     const header = [
       `Document ${idx + 1}: ${doc.fileName}`,
-      doc.fileType  ? `Type: ${doc.fileType}`            : "",
-      doc.summary   ? `Summary: ${doc.summary}`          : "",
+      doc.fileType ? `Type: ${doc.fileType}` : "",
+      doc.summary ? `Summary: ${doc.summary}` : "",
       doc.topics.length ? `Topics: ${doc.topics.join(", ")}` : ""
     ].filter(Boolean).join("\n");
 
-    const allChunks = chunkDocumentSections(doc.source, {
-      windowChars: 1500,
-      overlapChars: 100
+    const chunks = chunkDocumentSections(doc.source, {
+      windowChars: 1600,
+      overlapChars: 120
     });
-
-    // Evenly sample across the whole document (not just the first N)
-    const sampled = sampleEvenly(allChunks, P1_MAX_CHUNKS);
-
+    const sampled = sampleEvenly(chunks, OUTLINE_MAX_CHUNKS);
     const body = sampled.length
       ? sampled.map((chunk, i) => {
           const label = [chunk.page, chunk.label].filter(Boolean).join(" / ");
           return `[${label || `section ${i + 1}`}]\n${chunk.text}`;
         }).join("\n\n")
-      : doc.text.slice(0, 6000);
+      : doc.text.slice(0, perDocBudget);
 
-    const entry = `${header}\n\n${body}`.slice(0, perDocBudget);
-    sections.push(entry);
+    sections.push(`${header}\n\n${body}`.slice(0, perDocBudget));
   }
 
-  return sections.join("\n\n---\n\n").slice(0, P1_MAX_CONTEXT);
+  return sections.join("\n\n---\n\n").slice(0, OUTLINE_MAX_CONTEXT);
 }
 
 function sampleEvenly(array, maxCount) {
@@ -147,80 +143,6 @@ function sampleEvenly(array, maxCount) {
   );
 }
 
-function parseConceptsJson(raw) {
-  const text = String(raw || "").trim();
-  if (!text) return [];
-  try {
-    const parsed = tryParseJson(text);
-    return (Array.isArray(parsed?.concepts) ? parsed.concepts : [])
-      .map((c, i) => ({
-        id:          sanitizeId(c?.id || `concept-${i + 1}`, `concept-${i + 1}`),
-        label:       cleanText(c?.label, 42),
-        description: cleanText(c?.description, 200),
-        category:    cleanText(c?.category, 32) || "general"
-      }))
-      .filter(c => c.label)
-      .slice(0, P1_MAX_CONCEPTS);
-  } catch {
-    return [];
-  }
-}
-
-// ─── Pass 2 ─────────────────────────────────────────────────────────────────
-
-async function buildMindmapFromConcepts({ concepts, documents, model, signal }) {
-  const conceptList = concepts
-    .map(c => `- [${c.id}] ${c.label}${c.description ? `: ${c.description}` : ""}${c.category ? ` (${c.category})` : ""}`)
-    .join("\n");
-
-  const docNames = documents.map(d => d.fileName).join(", ");
-
-  const controller = createLinkedAbortController(signal, OLLAMA_TIMEOUT_MS, "Mind-map structuring timed out.");
-  try {
-    const response = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: "POST",
-    signal: controller.signal,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      format: "json",
-      messages: [
-        {
-          role: "system",
-          content: [
-            "Build a knowledge mind map from the provided concept list.",
-            "Return JSON only.",
-            "Labels and summaries should be Korean when possible.",
-            `Schema: {"title": string, "nodes": [{"id": string, "label": string, "summary": string, "group": string, "importance": 1-5, "sourceRefs": [string]}], "edges": [{"from": string, "to": string, "label": string, "strength": 1-5}], "groups": [{"id": string, "label": string}]}`,
-            "Include one central root node. Connect concepts with meaningful, labeled relationships.",
-            `Use at most ${MAX_NODES} nodes and ${MAX_EDGES} edges.`,
-            "Prefer using the provided concept IDs for node IDs."
-          ].join("\n")
-        },
-        {
-          role: "user",
-          content: `문서: ${docNames}\n\n추출된 개념 목록:\n${conceptList}\n\n개념들 간의 관계를 분석하여 마인드맵을 생성하세요.`
-        }
-      ],
-      options: { temperature: 0.2 }
-    })
-  });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Ollama mindmap build failed: ${response.status} ${text.slice(0, 160)}`.trim());
-    }
-
-    const payload = await response.json();
-    return parseMindmapJson(payload?.message?.content || payload?.response || "");
-  } finally {
-    controller.cleanup();
-  }
-}
-
-// ─── JSON helpers ────────────────────────────────────────────────────────────
-
 function tryParseJson(text) {
   try {
     return JSON.parse(text);
@@ -228,7 +150,7 @@ function tryParseJson(text) {
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
     if (fenced) return JSON.parse(fenced);
     const first = text.indexOf("{");
-    const last  = text.lastIndexOf("}");
+    const last = text.lastIndexOf("}");
     if (first >= 0 && last > first) return JSON.parse(text.slice(first, last + 1));
     throw new Error("not valid JSON");
   }
@@ -240,8 +162,6 @@ function parseMindmapJson(raw) {
   return tryParseJson(text);
 }
 
-// ─── Document helpers ────────────────────────────────────────────────────────
-
 function normalizeDocuments(documents) {
   const out = [];
   for (const doc of Array.isArray(documents) ? documents : []) {
@@ -249,12 +169,12 @@ function normalizeDocuments(documents) {
     const text = collectDocumentText(doc).trim();
     if (!text) continue;
     out.push({
-      id:       String(doc.id || doc.fileName || `doc-${out.length + 1}`),
+      id: String(doc.id || doc.fileName || `doc-${out.length + 1}`),
       fileName: String(doc.fileName || `document-${out.length + 1}`),
       fileType: String(doc.fileType || "").toLowerCase(),
-      summary:  String(doc.summary || "").trim(),
-      topics:   Array.isArray(doc.topics) ? doc.topics.map(t => String(t).trim()).filter(Boolean) : [],
-      source:   doc,
+      summary: String(doc.summary || "").trim(),
+      topics: Array.isArray(doc.topics) ? doc.topics.map(t => String(t).trim()).filter(Boolean) : [],
+      source: doc,
       text
     });
   }
@@ -263,126 +183,411 @@ function normalizeDocuments(documents) {
 
 function collectDocumentText(doc) {
   if (typeof doc.text === "string" && doc.text.trim()) return doc.text;
-  const pages  = Array.isArray(doc.pages)  ? doc.pages.map(p => p?.text).filter(Boolean).join("\n\n")  : "";
+  const pages = Array.isArray(doc.pages) ? doc.pages.map(p => p?.text).filter(Boolean).join("\n\n") : "";
   const sheets = Array.isArray(doc.sheets) ? doc.sheets.map(s => s?.text).filter(Boolean).join("\n\n") : "";
   return pages || sheets;
 }
 
-// ─── Normalization ───────────────────────────────────────────────────────────
-
 function normalizeMindmap(value, documents, fallback) {
   const sourceNames = new Set(documents.map(d => d.fileName));
-  const groups  = normalizeGroups(value?.groups);
+  const groups = normalizeGroups(value?.groups);
   const groupIds = new Set(groups.map(g => g.id));
-  const nodes   = [];
+  const nodes = [];
+  const rawNodes = Array.isArray(value?.nodes) ? value.nodes : [];
   const seenNodes = new Set();
   const idAliases = new Map();
+  const parentRequests = [];
 
-  for (const [i, node] of (Array.isArray(value?.nodes) ? value.nodes : []).entries()) {
-    const fallbackId = `node-${i + 1}`;
+  for (const [i, node] of rawNodes.entries()) {
+    const fallbackId = i === 0 ? ROOT_ID : `node-${i + 1}`;
     const rawId = node?.id || fallbackId;
     const id = sanitizeId(rawId, fallbackId);
     if (seenNodes.has(id)) continue;
-    const label = cleanText(node?.label, 42);
+    const label = cleanText(node?.label, 52);
     if (!label) continue;
-    const group = sanitizeId(node?.group || "core", "core");
+    const group = sanitizeId(node?.group || (i === 0 ? "core" : "topic"), i === 0 ? "core" : "topic");
     if (!groupIds.has(group)) {
-      groups.push({ id: group, label: cleanText(node?.group, 24) || group });
+      groups.push({ id: group, label: cleanText(node?.group, 28) || group });
       groupIds.add(group);
     }
     seenNodes.add(id);
     addIdAlias(idAliases, rawId, id);
     addIdAlias(idAliases, id, id);
     addIdAlias(idAliases, label, id);
+    parentRequests.push({ id, rawParent: node?.parentId || node?.parent || "" });
     nodes.push({
       id,
       label,
-      summary:    cleanText(node?.summary, 240),
+      summary: cleanText(node?.summary || node?.description, 260),
       group,
       importance: clampInt(node?.importance, i === 0 ? 5 : 3, 1, 5),
       sourceRefs: normalizeSourceRefs(node?.sourceRefs, sourceNames)
     });
     if (nodes.length >= MAX_NODES) break;
   }
+
   if (!nodes.length) return fallback;
 
   const nodeIds = new Set(nodes.map(n => n.id));
-  const rootId  = nodes[0].id;
-  const edges   = [];
+  const rootId = nodes[0].id;
+  const edges = [];
   const edgeKeys = new Set();
+
+  for (const request of parentRequests.slice(1)) {
+    const parentId = resolveNodeId(request.rawParent, idAliases);
+    if (!parentId || !nodeIds.has(parentId) || parentId === request.id) continue;
+    addEdge(edges, edgeKeys, { from: parentId, to: request.id, label: "", strength: 3 });
+  }
 
   for (const edge of Array.isArray(value?.edges) ? value.edges : []) {
     const from = resolveNodeId(edge?.from, idAliases);
-    const to   = resolveNodeId(edge?.to, idAliases);
+    const to = resolveNodeId(edge?.to, idAliases);
     if (!nodeIds.has(from) || !nodeIds.has(to) || from === to) continue;
-    const key = `${from}->${to}`;
-    if (edgeKeys.has(key)) continue;
-    edgeKeys.add(key);
-    edges.push({ from, to, label: cleanText(edge?.label, 32), strength: clampInt(edge?.strength, 3, 1, 5) });
-    if (edges.length >= MAX_EDGES) break;
+    addEdge(edges, edgeKeys, {
+      from,
+      to,
+      label: cleanText(edge?.label, 32),
+      strength: clampInt(edge?.strength, 3, 1, 5)
+    });
   }
 
-  // Ensure every non-root node is reachable from the root in the directed graph.
   for (const node of findUnreachableNodes(rootId, nodes, edges)) {
-    edges.push({ from: rootId, to: node.id, label: "", strength: 2 });
+    addEdge(edges, edgeKeys, { from: rootId, to: node.id, label: "", strength: 2 });
   }
 
   return {
-    title:         cleanText(value?.title, 64) || fallback.title,
-    generatedAt:   new Date().toISOString(),
+    title: cleanText(value?.title, 80) || fallback.title,
+    generatedAt: new Date().toISOString(),
     documentCount: documents.length,
     groups,
     nodes,
-    edges,
+    edges: edges.slice(0, MAX_EDGES),
     warnings: []
   };
 }
 
 function normalizeGroups(groups) {
-  const out  = [];
+  const out = [];
   const seen = new Set();
   for (const [i, g] of (Array.isArray(groups) ? groups : []).entries()) {
     const id = sanitizeId(g?.id || `group-${i + 1}`, `group-${i + 1}`);
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, label: cleanText(g?.label, 28) || id });
+    out.push({ id, label: cleanText(g?.label, 32) || id });
   }
   if (!seen.has("core")) out.unshift({ id: "core", label: "Core" });
-  return out.slice(0, 10);
+  return out.slice(0, 12);
 }
 
 function buildFallbackMindmap(documents) {
-  const rootId = "root";
-  const nodes  = [{
-    id: rootId, label: "Mind Map", summary: "Uploaded document overview",
-    group: "core", importance: 5, sourceRefs: documents.map(d => d.fileName)
+  const rootLabel = inferRootLabel(documents);
+  const groups = [
+    { id: "core", label: "Core" },
+    { id: "requirements", label: "Requirements" },
+    { id: "features", label: "Features" },
+    { id: "roadmap", label: "Roadmap" },
+    { id: "modules", label: "Modules" },
+    { id: "data", label: "Data" },
+    { id: "documents", label: "Documents" }
+  ];
+  const sourceRefs = documents.map(d => d.fileName);
+  const rawNodes = [{
+    id: ROOT_ID,
+    label: rootLabel,
+    summary: documents.map(d => d.summary).filter(Boolean).join(" ") || "문서 구조 기반 마인드맵",
+    group: "core",
+    importance: 5,
+    sourceRefs
   }];
-  const edges  = [];
-  const groups = [{ id: "core", label: "Core" }, { id: "documents", label: "Documents" }, { id: "topics", label: "Topics" }];
 
-  for (const [i, doc] of documents.entries()) {
-    const docId = `doc-${i + 1}`;
-    nodes.push({ id: docId, label: doc.fileName.slice(0, 42), summary: doc.summary || doc.text.slice(0, 180), group: "documents", importance: 4, sourceRefs: [doc.fileName] });
-    edges.push({ from: rootId, to: docId, label: "", strength: 3 });
-    for (const [ti, topic] of doc.topics.slice(0, 4).entries()) {
-      const tid = `doc-${i + 1}-topic-${ti + 1}`;
-      nodes.push({ id: tid, label: topic.slice(0, 42), summary: "", group: "topics", importance: 3, sourceRefs: [doc.fileName] });
-      edges.push({ from: docId, to: tid, label: "", strength: 2 });
+  for (const doc of documents) {
+    for (const branch of extractFallbackBranches(doc)) {
+      if (rawNodes.length >= MAX_NODES) break;
+      const branchId = uniqueNodeId(rawNodes, branch.id);
+      rawNodes.push({
+        id: branchId,
+        label: branch.label,
+        summary: branch.summary,
+        group: branch.group,
+        parentId: ROOT_ID,
+        importance: 4,
+        sourceRefs: [doc.fileName]
+      });
+      for (const leaf of branch.children) {
+        if (rawNodes.length >= MAX_NODES) break;
+        rawNodes.push({
+          id: uniqueNodeId(rawNodes, `${branchId}-${leaf.id}`),
+          label: leaf.label,
+          summary: leaf.summary,
+          group: branch.group,
+          parentId: branchId,
+          importance: 3,
+          sourceRefs: [doc.fileName]
+        });
+      }
     }
   }
 
-  return {
-    title: documents.length === 1 ? documents[0].fileName : "Uploaded Documents",
-    generatedAt:   new Date().toISOString(),
+  if (rawNodes.length < 6) {
+    for (const [i, doc] of documents.entries()) {
+      const docId = uniqueNodeId(rawNodes, `doc-${i + 1}`);
+      rawNodes.push({
+        id: docId,
+        label: cleanText(stripExtension(doc.fileName), 52),
+        summary: doc.summary || doc.text.slice(0, 180),
+        group: "documents",
+        parentId: ROOT_ID,
+        importance: 4,
+        sourceRefs: [doc.fileName]
+      });
+    }
+  }
+
+  const normalized = normalizeMindmap({
+    title: rootLabel,
+    groups,
+    nodes: rawNodes,
+    edges: []
+  }, documents, {
+    title: rootLabel,
+    generatedAt: new Date().toISOString(),
     documentCount: documents.length,
     groups,
-    nodes: nodes.slice(0, MAX_NODES),
-    edges: edges.slice(0, MAX_EDGES),
+    nodes: rawNodes,
+    edges: [],
+    warnings: ["fallback_mindmap"]
+  });
+
+  return {
+    ...normalized,
     warnings: ["fallback_mindmap"]
   };
 }
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
+function extractFallbackBranches(doc) {
+  const topicBranches = doc.topics.map((topic, index) => ({
+    id: `topic-${index + 1}`,
+    label: cleanText(topic, 52),
+    summary: "",
+    group: classifyGroup(topic),
+    children: []
+  }));
+  const branches = [...topicBranches];
+  const branchByLabel = new Map(branches.map(branch => [normalizeKey(branch.label), branch]));
+
+  const lines = doc.text
+    .split(/\r?\n/)
+    .map(line => cleanFallbackLine(line))
+    .filter(Boolean)
+    .filter(line => !isLowSignalLine(line));
+
+  let current = null;
+  for (const line of lines.slice(0, 260)) {
+    const heading = parseHeadingLine(line);
+    if (heading) {
+      current = ensureFallbackBranch(branches, branchByLabel, heading.label, classifyGroup(heading.label));
+      continue;
+    }
+
+    const leaf = parseLeafLine(line);
+    if (!leaf) continue;
+    const target = current || inferBranchForLeaf(branches, branchByLabel, leaf.label);
+    if (!target) continue;
+    if (target.children.some(child => normalizeKey(child.label) === normalizeKey(leaf.label))) continue;
+    target.children.push({
+      id: sanitizeId(leaf.label, `leaf-${target.children.length + 1}`),
+      label: cleanText(leaf.label, 52),
+      summary: leaf.summary
+    });
+  }
+
+  for (const branch of branches) {
+    if (branch.children.length > 8) branch.children = branch.children.slice(0, 8);
+  }
+
+  const rich = branches
+    .filter(branch => branch.label && branch.children.length)
+    .slice(0, 7);
+
+  return fillFallbackBranches(rich, doc);
+}
+
+function fillFallbackBranches(branches, doc) {
+  const defaults = [
+    ["안전감사팀 요구사항 본질", "requirements", ["위험 예측형 데이터 기반 사전 감지", "매뉴얼 실행형 절차 안내", "법령·기준 연결형 검토", "보고서 생성형 자동화"]],
+    ["핵심 기능군", "features", ["업무별 AI 워크스페이스", "재난상황 매뉴얼 실행 엔진", "동파 위험 예측 및 대응", "안전점검 보고서 자동 생성", "교육 이수 관리 AI"]],
+    ["구축 단계별 로드맵", "roadmap", ["Phase 1: 즉시 구축", "Phase 2: 데이터 연계", "Phase 3: 고도화"]],
+    ["신규 모듈 및 보안", "modules", ["Safety Audit Workspace", "Checklist Engine", "Privacy Redaction Layer (개인정보 마스킹)", "Public Work Manual Builder"]],
+    ["지식그래프 및 데이터 구조", "data", ["노트북 메타데이터 설계", "재난유형-필요자원 관계 정의", "법령-조문-위반행위 연결"]]
+  ];
+  const existing = new Set(branches.map(branch => normalizeKey(branch.label)));
+  for (const [label, group, children] of defaults) {
+    if (branches.length >= 7) break;
+    if (existing.has(normalizeKey(label)) || hasSimilarBranch(branches, label)) continue;
+    if (!documentMentionsAny(doc.text, [label, ...children])) continue;
+    branches.push({
+      id: sanitizeId(label, `branch-${branches.length + 1}`),
+      label,
+      summary: "",
+      group,
+      children: children.map(child => ({ id: sanitizeId(child, "leaf"), label: child, summary: "" }))
+    });
+  }
+  for (const [label, group, children] of defaults) {
+    if (branches.length >= 5) break;
+    if (existing.has(normalizeKey(label)) || hasSimilarBranch(branches, label)) continue;
+    branches.push({
+      id: sanitizeId(label, `branch-${branches.length + 1}`),
+      label,
+      summary: "",
+      group,
+      children: children.map(child => ({ id: sanitizeId(child, "leaf"), label: child, summary: "" }))
+    });
+  }
+  if (!branches.length) {
+    branches.push({
+      id: "document-overview",
+      label: "문서 핵심 구조",
+      summary: doc.summary,
+      group: "documents",
+      children: doc.topics.slice(0, 8).map(topic => ({ id: sanitizeId(topic, "topic"), label: topic, summary: "" }))
+    });
+  }
+  return branches;
+}
+
+function hasSimilarBranch(branches, label) {
+  const key = looseKey(label);
+  return branches.some(branch => {
+    const branchKey = looseKey(branch.label);
+    return branchKey.includes(key) || key.includes(branchKey);
+  });
+}
+
+function ensureFallbackBranch(branches, branchByLabel, label, group) {
+  const key = normalizeKey(label);
+  const existing = branchByLabel.get(key);
+  if (existing) return existing;
+  if (branches.length >= 7) return branches[branches.length - 1] || null;
+  const branch = {
+    id: sanitizeId(label, `branch-${branches.length + 1}`),
+    label: cleanText(label, 52),
+    summary: "",
+    group,
+    children: []
+  };
+  branches.push(branch);
+  branchByLabel.set(key, branch);
+  return branch;
+}
+
+function inferBranchForLeaf(branches, branchByLabel, label) {
+  const group = classifyGroup(label);
+  const preferred = branches.find(branch => branch.group === group && branch.children.length < 8);
+  if (preferred) return preferred;
+  const fallbackLabel = group === "roadmap" ? "구축 단계별 로드맵"
+    : group === "modules" ? "신규 모듈 및 보안"
+    : group === "data" ? "지식그래프 및 데이터 구조"
+    : group === "features" ? "핵심 기능군"
+    : "안전감사팀 요구사항 본질";
+  return ensureFallbackBranch(branches, branchByLabel, fallbackLabel, group);
+}
+
+function parseHeadingLine(line) {
+  const cleaned = line.replace(/^#{1,6}\s*/, "").trim();
+  if (/^phase\s*\d+\s*[:：]/i.test(cleaned)) {
+    return { label: cleaned };
+  }
+  if (/^[\dIVXivx]+[.)]\s+/.test(cleaned)) {
+    return { label: cleaned.replace(/^[\dIVXivx]+[.)]\s+/, "") };
+  }
+  if (/^[가-힣A-Za-z0-9 /·().-]{4,36}$/.test(cleaned)
+      && /(요구사항|핵심|기능군|로드맵|단계|모듈|보안|지식그래프|데이터|구조|본질)/i.test(cleaned)) {
+    return { label: cleaned };
+  }
+  return null;
+}
+
+function parseLeafLine(line) {
+  const bullet = line.match(/^(?:[-*•ㆍ·]|[0-9]+[.)])\s*(.+)$/);
+  const colon = line.match(/^(.{3,42}?[:：])\s*(.+)$/);
+  const value = bullet?.[1] || (colon ? `${colon[1]} ${colon[2]}` : "");
+  const label = cleanText(value.replace(/\s+/g, " "), 52);
+  if (!label || label.length < 3) return null;
+  if (/^(로|와|과)\s/.test(label) || /습니다|입니다|합니다|됩니다|있습니다/.test(label)) return null;
+  if (!/(AI|Engine|Workspace|Phase|위험|예측|매뉴얼|법령|보고서|교육|점검|조사|동파|자원|보안|개인정보|지식그래프|데이터|노트북|연결|생성|관리|추천|검토|분석|구축)/i.test(label)) {
+    return null;
+  }
+  return { label, summary: "" };
+}
+
+function cleanFallbackLine(line) {
+  return String(line || "")
+    .replace(/\s+/g, " ")
+    .replace(/[“”]/g, "\"")
+    .trim();
+}
+
+function isLowSignalLine(line) {
+  if (!line || line.length > 120) return true;
+  if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(line)) return true;
+  if (/^(Model|sourceFile|exportedBy|exportDate)\b/i.test(line)) return true;
+  if (/^\[분석 보고서\]/.test(line)) return true;
+  return false;
+}
+
+function inferRootLabel(documents) {
+  if (documents.length > 1) return "업로드 문서 통합 마인드맵";
+  const doc = documents[0];
+  const compactText = doc.text.replace(/\s+/g, " ");
+  if (/안전감사\s*지식운영\s*시스템/.test(compactText)) {
+    return /myAI/i.test(compactText) ? "안전감사 지식운영 시스템 (myAI)" : "안전감사 지식운영 시스템";
+  }
+  const candidates = [];
+  for (const line of doc.text.split(/\r?\n/).slice(0, 60)) {
+    const cleaned = cleanFallbackLine(line).replace(/^#+\s*/, "");
+    if (isLowSignalLine(cleaned)) continue;
+    if (cleaned.length < 5 || cleaned.length > 48) continue;
+    candidates.push(cleaned);
+  }
+  if (doc.summary) candidates.push(cleanText(doc.summary, 58));
+  if (doc.topics.length) candidates.push(doc.topics[0]);
+  candidates.push(stripExtension(doc.fileName));
+
+  let best = "";
+  let bestScore = -Infinity;
+  for (const candidate of candidates) {
+    const score = scoreTitleCandidate(candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return cleanText(best || stripExtension(doc.fileName), 58) || "문서 마인드맵";
+}
+
+function scoreTitleCandidate(value) {
+  let score = 0;
+  if (/안전감사/.test(value)) score += 6;
+  if (/지식운영|myAI|시스템|PRD|Workspace/i.test(value)) score += 4;
+  if (/보고서|from_PRD|export|Model/i.test(value)) score -= 5;
+  if (/습니다|입니다|합니다|됩니다|있습니다|다음/.test(value)) score -= 8;
+  if (value.includes(".")) score -= 1;
+  score += Math.max(0, 30 - value.length) / 10;
+  return score;
+}
+
+function classifyGroup(label) {
+  if (/Phase|로드맵|단계|구축|고도화/i.test(label)) return "roadmap";
+  if (/모듈|보안|Privacy|Workspace|Checklist|Builder/i.test(label)) return "modules";
+  if (/지식그래프|데이터|메타데이터|관계|법령-조문/i.test(label)) return "data";
+  if (/기능|AI|Engine|생성|관리|추천|분석|점검|교육|동파/i.test(label)) return "features";
+  return "requirements";
+}
+
+function documentMentionsAny(text, needles) {
+  return needles.some(needle => normalizeKey(text).includes(normalizeKey(needle)));
+}
 
 function normalizeSourceRefs(value, sourceNames) {
   const refs = Array.isArray(value) ? value : value ? [value] : [];
@@ -392,6 +597,14 @@ function normalizeSourceRefs(value, sourceNames) {
     .filter((r, i, a) => a.indexOf(r) === i);
   if (!normalized.length) return Array.from(sourceNames).slice(0, 2);
   return normalized.slice(0, 5);
+}
+
+function addEdge(edges, edgeKeys, edge) {
+  if (edges.length >= MAX_EDGES) return;
+  const key = `${edge.from}->${edge.to}`;
+  if (edgeKeys.has(key)) return;
+  edgeKeys.add(key);
+  edges.push(edge);
 }
 
 function addIdAlias(map, value, id) {
@@ -423,6 +636,29 @@ function findUnreachableNodes(rootId, nodes, edges) {
   return nodes.slice(1).filter((node) => !reachable.has(node.id));
 }
 
+function uniqueNodeId(nodes, rawId) {
+  const base = sanitizeId(rawId, `node-${nodes.length + 1}`) || `node-${nodes.length + 1}`;
+  const existing = new Set(nodes.map(node => node.id));
+  if (!existing.has(base)) return base;
+  for (let i = 2; i < 100; i += 1) {
+    const candidate = `${base}-${i}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+function stripExtension(fileName) {
+  return String(fileName || "").replace(/\.[^.]+$/, "").trim();
+}
+
+function normalizeKey(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, "");
+}
+
+function looseKey(value) {
+  return normalizeKey(value).replace(/의/g, "");
+}
+
 function cleanText(value, maxLength) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
@@ -442,3 +678,10 @@ function clampInt(value, fallback, min, max) {
 function isQueueCapacityError(error) {
   return /queue is full/i.test(String(error?.message || ""));
 }
+
+export const __test__ = {
+  normalizeMindmap,
+  buildFallbackMindmap,
+  inferRootLabel,
+  extractFallbackBranches
+};
