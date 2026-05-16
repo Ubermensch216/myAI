@@ -548,14 +548,85 @@
           </div>
 
           <div id="studioLawPanel" class="studio-tool-panel studio-law-panel" data-tool-panel="law" hidden>
-            <div class="law-workbench-toolbar">
-              <div class="law-workbench-row">
-                <input id="lawWorkbenchQuery" class="text-input" type="search" placeholder="질문 또는 자연어 상황" />
-                <input id="lawWorkbenchLawName" class="text-input" type="text" placeholder="법령명" />
-                <input id="lawWorkbenchArticle" class="text-input" type="text" placeholder="조문 예: 제15조" />
+            <header class="law-hero">
+              <div class="law-hero-search">
+                <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="M20 20l-3.5-3.5"></path>
+                </svg>
+                <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="법령·조문·상황을 자연어로 입력하세요 (예: 공무원 음주운전 징계 기준)" />
+                <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">탐색</button>
               </div>
-              <div class="law-workbench-row">
-                <input id="lawWorkbenchRegion" class="text-input" type="text" placeholder="자치법규 지역 예: 서울특별시" />
+
+              <div class="law-hero-examples" aria-label="예시 질문">
+                <button class="law-example-chip" type="button" data-law-example="공무원 음주운전 징계 근거">공무원 음주운전 징계</button>
+                <button class="law-example-chip" type="button" data-law-example="건축법 제15조 별표">건축법 제15조 별표</button>
+                <button class="law-example-chip" type="button" data-law-example="도로교통법 최근 개정 이력">도로교통법 개정 이력</button>
+                <button class="law-example-chip" type="button" data-law-example="개인정보 보호 관련 판례">개인정보 보호 판례</button>
+                <button class="law-example-chip" type="button" data-law-example="서울특별시 자치법규">서울시 자치법규</button>
+              </div>
+
+              <details id="lawWorkbenchAdvanced" class="law-advanced">
+                <summary class="law-advanced-summary">
+                  <svg class="law-advanced-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+                  <span class="law-advanced-title">상세 조건</span>
+                  <span class="law-advanced-hint">법령명 · 조문 · 자치법규 지역</span>
+                </summary>
+                <div class="law-advanced-body">
+                  <label class="law-advanced-field">
+                    <span>법령명</span>
+                    <input id="lawWorkbenchLawName" class="text-input" type="text" placeholder="예: 도로교통법" />
+                  </label>
+                  <label class="law-advanced-field">
+                    <span>조문</span>
+                    <input id="lawWorkbenchArticle" class="text-input" type="text" placeholder="예: 제15조" />
+                  </label>
+                  <label class="law-advanced-field">
+                    <span>자치법규 지역</span>
+                    <input id="lawWorkbenchRegion" class="text-input" type="text" placeholder="예: 서울특별시" />
+                  </label>
+                </div>
+              </details>
+
+              <div id="lawWorkbenchTerms" class="law-workbench-terms"></div>
+              <div id="lawWorkbenchStatus" class="law-explorer-status"></div>
+            </header>
+
+            <div class="law-mode-tabs law-workbench-tabs" role="tablist">
+              <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="main">
+                <span class="law-tab-title">본문 · 서식</span>
+                <span class="law-tab-sub">조문 · 별표</span>
+              </button>
+              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="system">
+                <span class="law-tab-title">법체계</span>
+                <span class="law-tab-sub">상하위 · 자치법규</span>
+              </button>
+              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="decisions">
+                <span class="law-tab-title">판례 · 해석</span>
+                <span class="law-tab-sub">판례 · 해석례 · 행정규칙</span>
+              </button>
+              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="history">
+                <span class="law-tab-title">개정 · 영향</span>
+                <span class="law-tab-sub">이력 · 내부자료 영향</span>
+              </button>
+            </div>
+
+            <div id="lawWorkbenchBody" class="law-workbench-body">
+              <div class="law-explorer-empty law-empty-hero">
+                <h3>법령 탐색</h3>
+                <p>자연어 질문 한 줄이면 공식 법령·판례·자치법규·내부자료 영향까지 한 번에 정리합니다.</p>
+                <ul class="law-empty-features">
+                  <li><strong>본문·서식</strong> 조문 원문과 별표·서식 자동 매칭</li>
+                  <li><strong>법체계</strong> 상위법 / 하위법령 / 자치법규 연계</li>
+                  <li><strong>판례·해석</strong> 판례 · 해석례 · 행정규칙</li>
+                  <li><strong>개정·영향</strong> 개정 이력과 내부자료 영향 분석</li>
+                </ul>
+              </div>
+            </div>
+
+            <footer id="lawReportBar" class="law-report-bar" hidden>
+              <div class="law-report-bar-left">
+                <span class="law-report-bar-label">보고서 템플릿</span>
                 <select id="lawWorkbenchReportTemplate" class="text-input" aria-label="보고서 템플릿">
                   <option value="law_review_opinion">법령 검토의견서</option>
                   <option value="ordinance_upper_law_review">조례 상위법 적합성 검토서</option>
@@ -563,26 +634,18 @@
                   <option value="civil_reply_law_review">민원 회신 법령 검토서</option>
                   <option value="internal_compliance_checklist">내부규정 컴플라이언스 점검표</option>
                 </select>
-                <button id="lawWorkbenchRunButton" class="send-button" type="button">작업대 조회</button>
-                <button id="lawWorkbenchReportButton" class="ghost-button" type="button" disabled>검토 보고서 생성</button>
-                <button id="lawWorkbenchResetButton" class="law-explorer-reset-btn" type="button" title="결과 초기화" aria-label="결과 초기화">↺</button>
               </div>
-            </div>
-            <div id="lawWorkbenchTerms" class="law-workbench-terms"></div>
-            <div id="lawWorkbenchStatus" class="law-explorer-status"></div>
-            <div class="law-mode-tabs law-workbench-tabs" role="tablist">
-              <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="article">조문 본문</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="annexes">별표/서식</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="history">개정 이력/Diff</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="structure">법체계</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="delegated">위임/하위법령</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="ordinances">자치법규 연계</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="decisions">결정례/판례/해석례</button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="impact">내부자료 영향 분석</button>
-            </div>
-            <div id="lawWorkbenchBody" class="law-workbench-body">
-              <div class="law-explorer-empty">질문이나 법령명을 입력하고 작업대 조회를 누르면 공식 근거 묶음을 탭별로 확인할 수 있습니다.</div>
-            </div>
+              <div class="law-report-bar-right">
+                <button id="lawWorkbenchResetButton" class="ghost-button law-report-reset" type="button" title="결과 초기화" aria-label="결과 초기화">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+                  <span>초기화</span>
+                </button>
+                <button id="lawWorkbenchReportButton" class="send-button law-report-cta" type="button" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M9 14h6M9 17h4"/></svg>
+                  <span>보고서 생성</span>
+                </button>
+              </div>
+            </footer>
           </div>
 
           <div id="studioDocumentPanel" class="studio-tool-panel studio-document-panel" data-tool-panel="document">

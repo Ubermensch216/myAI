@@ -503,7 +503,10 @@ export const elements = {
   lawWorkbenchTerms: document.querySelector("#lawWorkbenchTerms"),
   lawWorkbenchStatus: document.querySelector("#lawWorkbenchStatus"),
   lawWorkbenchTabs: Array.from(document.querySelectorAll("[data-law-workbench-tab]")),
-  lawWorkbenchBody: document.querySelector("#lawWorkbenchBody")
+  lawWorkbenchBody: document.querySelector("#lawWorkbenchBody"),
+  lawWorkbenchAdvanced: document.querySelector("#lawWorkbenchAdvanced"),
+  lawReportBar: document.querySelector("#lawReportBar"),
+  lawExampleChips: Array.from(document.querySelectorAll("[data-law-example]"))
 };
 
 export function ensureRoomStudio(room = getActiveRoom()) {

@@ -1,6 +1,7 @@
 import { renderAssistantAnswer as renderAssistantContent } from "../answerRenderer.js";
 import { formatVisualizationText, renderVisualizationSpec } from "../visualizationRenderer.js";
 import { displayFileName as formatDisplayFileName } from "../fileDisplay.js";
+import { buildEvidenceSummaryItems } from "./evidenceSummary.js";
 import { state, elements, documentCacheHeaders, accessAuthHeaders, getActiveRoom, showConfirmDialog } from "./state.js";
 import { scheduleSave, persistAppState, hydrateStoredDocuments } from "./persistence.js";
 import {
@@ -515,6 +516,11 @@ export async function requestTextAssistantResponse(room) {
     if (notebookMeta?.compliance && !noEvidenceAnswer) assistantMessage.compliance = notebookMeta.compliance;
     // Source badges represent what was analyzed, not what was found — show even on no-evidence answers.
     if (!isEmptySources(finalSources)) assistantMessage.sources = finalSources;
+    renderEvidenceSummaryBar(assistant, {
+      citations: noEvidenceAnswer ? [] : allCitations,
+      sources: finalSources,
+      law: noEvidenceAnswer ? null : notebookMeta?.law
+    });
     renderSourceBadges(assistant, finalSources, { variant: "message" });
     if (!noEvidenceAnswer) {
       renderLawNoticePanel(assistant, notebookMeta?.law);
@@ -982,7 +988,16 @@ export function appendMessage(role, text, options = {}) {
     body.textContent = text;
   }
 
-  article.append(meta, body);
+  article.append(meta);
+  if (role === "assistant") {
+    const noEvidence = isNoEvidenceAnswer(text);
+    renderEvidenceSummaryBar(article, {
+      citations: noEvidence ? [] : options.citations,
+      sources: options.sources,
+      law: noEvidence ? null : options.law
+    });
+  }
+  article.append(body);
   if (getSelectionMode() && Number.isInteger(options.messageIndex) && !options.streaming) {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -1057,6 +1072,33 @@ export function renderFollowupSuggestions(article, suggestions = [], options = {
   wrapper.append(list);
   article.append(wrapper);
   maybeScrollToBottom(stickToBottom);
+}
+
+export function renderEvidenceSummaryBar(article, { citations = [], sources = null, law = null } = {}) {
+  if (!article) return;
+  article.querySelector(":scope > .evidence-summary-bar")?.remove();
+  const items = buildEvidenceSummaryItems({ citations, sources, law });
+  if (!items.length) return;
+
+  const bar = document.createElement("div");
+  bar.className = "evidence-summary-bar";
+  bar.setAttribute("aria-label", "답변 근거 요약");
+  for (const item of items) {
+    const chip = document.createElement("span");
+    chip.className = `evidence-summary-chip evidence-summary-${item.code === "!" ? "warning" : item.code.toLowerCase()} evidence-summary-${item.status}`;
+    chip.title = item.title;
+    chip.textContent = item.text;
+    bar.append(chip);
+  }
+
+  const sourceRow = article.querySelector(":scope > .source-badges");
+  if (sourceRow) {
+    sourceRow.append(bar);
+    return;
+  }
+  const meta = article.querySelector(":scope > .message-meta");
+  if (meta?.nextSibling) article.insertBefore(bar, meta.nextSibling);
+  else article.prepend(bar);
 }
 
 export function renderCitationsPanel(article, citations, law = null, compliance = null) {
@@ -2101,6 +2143,9 @@ function renderSourceBadges(host, sources, { variant }) {
       guessed: sources.lawEngine === "guessed"
     }));
   }
+
+  const evidenceBar = host.querySelector(":scope > .evidence-summary-bar");
+  if (evidenceBar) row.append(evidenceBar);
 
   if (variant === "thinking") {
     host.prepend(row);

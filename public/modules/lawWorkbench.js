@@ -4,7 +4,20 @@ import { getActiveDocuments } from "./chat.js";
 import { openWithPreparedDraft } from "./documentStudio.js";
 
 const MATERIAL_TEXT_LIMIT = 10000;
-const DEFAULT_TAB = "article";
+const DEFAULT_TAB = "main";
+const VALID_TABS = new Set(["main", "system", "decisions", "history"]);
+
+// Legacy tab → new grouped tab. Keeps room state migration painless.
+const LEGACY_TAB_MAP = {
+  article: "main",
+  annexes: "main",
+  structure: "system",
+  delegated: "system",
+  ordinances: "system",
+  decisions: "decisions",
+  history: "history",
+  impact: "history"
+};
 
 let _activeTab = DEFAULT_TAB;
 let _workbenchAbort = null;
@@ -29,6 +42,24 @@ export function bindLawWorkbenchEvents() {
     input?.addEventListener("change", syncInputs);
   }
   elements.lawWorkbenchQuery?.addEventListener("input", debounceTermsPreview);
+  elements.lawWorkbenchQuery?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (_workbenchAbort) return;
+      runLawWorkbench();
+    }
+  });
+  // Example chips: fill the search input and run.
+  for (const chip of elements.lawExampleChips || []) {
+    chip.addEventListener("click", () => {
+      const text = chip.dataset.lawExample || chip.textContent || "";
+      if (!elements.lawWorkbenchQuery) return;
+      elements.lawWorkbenchQuery.value = text;
+      elements.lawWorkbenchQuery.focus();
+      syncInputs();
+      debounceTermsPreview();
+    });
+  }
 }
 
 export function renderLawWorkbench() {
@@ -36,12 +67,11 @@ export function renderLawWorkbench() {
   const studio = ensureRoomStudio(room);
   const state = ensureWorkbenchState(studio);
   hydrateInputs(state);
+  syncAdvancedOpen(state);
   renderTabs();
   renderTerms(state);
   renderBody(state);
-  if (elements.lawWorkbenchReportButton) {
-    elements.lawWorkbenchReportButton.disabled = !state.data;
-  }
+  syncReportBar(state);
 }
 
 function ensureWorkbenchState(studio) {
@@ -63,8 +93,10 @@ function ensureWorkbenchState(studio) {
   }
   studio.lawWorkbench.input = studio.lawWorkbench.input || {};
   studio.lawWorkbench.terms = Array.isArray(studio.lawWorkbench.terms) ? studio.lawWorkbench.terms : [];
-  studio.lawWorkbench.activeTab = studio.lawWorkbench.activeTab || DEFAULT_TAB;
-  _activeTab = studio.lawWorkbench.activeTab;
+  const storedTab = studio.lawWorkbench.activeTab;
+  const normalized = VALID_TABS.has(storedTab) ? storedTab : (LEGACY_TAB_MAP[storedTab] || DEFAULT_TAB);
+  studio.lawWorkbench.activeTab = normalized;
+  _activeTab = normalized;
   return studio.lawWorkbench;
 }
 
@@ -79,6 +111,15 @@ function hydrateInputs(state) {
 function setValueIfFree(element, value) {
   if (!element || document.activeElement === element || element.value) return;
   element.value = value || "";
+}
+
+function syncAdvancedOpen(state) {
+  const advanced = elements.lawWorkbenchAdvanced;
+  if (!advanced) return;
+  const input = state?.input || {};
+  if (input.lawName || input.article || input.region) {
+    advanced.open = true;
+  }
 }
 
 function syncInputs() {
@@ -105,12 +146,13 @@ async function runLawWorkbench() {
   const input = readInputs();
   if (!input.query && !input.lawName) {
     setStatus("질문 또는 법령명을 입력하세요.", "error");
+    elements.lawWorkbenchQuery?.focus();
     return;
   }
   if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   _workbenchAbort = new AbortController();
   setBusy(true);
-  setStatus("공식 법령 근거를 탭별로 조회하는 중입니다.", "running");
+  setStatus("공식 법령 근거를 탐색하는 중입니다.", "running");
   try {
     const response = await fetch("/api/law/workbench", {
       method: "POST",
@@ -133,8 +175,8 @@ async function runLawWorkbench() {
     setStatus("", "idle");
     renderLawWorkbench();
   } catch (error) {
-    if (error?.name === "AbortError") setStatus("작업대 조회를 중단했습니다.", "idle");
-    else setStatus(error.message || "작업대 조회에 실패했습니다.", "error");
+    if (error?.name === "AbortError") setStatus("탐색을 중단했습니다.", "idle");
+    else setStatus(error.message || "탐색에 실패했습니다.", "error");
   } finally {
     _workbenchAbort = null;
     setBusy(false);
@@ -145,7 +187,7 @@ async function createLawWorkbenchReport() {
   const room = getActiveRoom();
   const studio = ensureRoomStudio(room);
   const state = ensureWorkbenchState(studio);
-  if (!state.data) throw new Error("먼저 작업대 조회를 실행하세요.");
+  if (!state.data) throw new Error("먼저 탐색을 실행하세요.");
   setStatus("검토 보고서 초안을 생성하는 중입니다.", "running");
   const templateId = elements.lawWorkbenchReportTemplate?.value || "law_review_opinion";
   const response = await fetch("/api/law/workbench/report", {
@@ -175,17 +217,19 @@ function resetLawWorkbench() {
   for (const input of [elements.lawWorkbenchQuery, elements.lawWorkbenchLawName, elements.lawWorkbenchArticle, elements.lawWorkbenchRegion]) {
     if (input) input.value = "";
   }
+  if (elements.lawWorkbenchAdvanced) elements.lawWorkbenchAdvanced.open = false;
   scheduleSave();
   setStatus("", "idle");
   renderLawWorkbench();
 }
 
 function setActiveTab(tab) {
-  _activeTab = tab || DEFAULT_TAB;
+  const next = VALID_TABS.has(tab) ? tab : (LEGACY_TAB_MAP[tab] || DEFAULT_TAB);
+  _activeTab = next;
   const room = getActiveRoom();
   const studio = ensureRoomStudio(room);
   const state = ensureWorkbenchState(studio);
-  state.activeTab = _activeTab;
+  state.activeTab = next;
   scheduleSave();
   renderLawWorkbench();
 }
@@ -212,40 +256,72 @@ function renderTerms(state) {
   }
 }
 
+function syncReportBar(state) {
+  const bar = elements.lawReportBar;
+  if (bar) bar.hidden = !state?.data;
+  if (elements.lawWorkbenchReportButton) {
+    elements.lawWorkbenchReportButton.disabled = !state?.data;
+  }
+}
+
 function renderBody(state) {
   const target = elements.lawWorkbenchBody;
   if (!target) return;
   target.innerHTML = "";
   const data = state?.data;
   if (!data) {
-    target.innerHTML = `<div class="law-explorer-empty">질문이나 법령명을 입력하고 작업대 조회를 누르면 공식 근거 묶음을 탭별로 확인할 수 있습니다.</div>`;
+    target.innerHTML = `
+      <div class="law-explorer-empty law-empty-hero">
+        <h3>법령 탐색</h3>
+        <p>자연어 질문 한 줄이면 공식 법령·판례·자치법규·내부자료 영향까지 한 번에 정리합니다.</p>
+        <ul class="law-empty-features">
+          <li><strong>본문·서식</strong> 조문 원문과 별표·서식 자동 매칭</li>
+          <li><strong>법체계</strong> 상위법 / 하위법령 / 자치법규 연계</li>
+          <li><strong>판례·해석</strong> 판례 · 해석례 · 행정규칙</li>
+          <li><strong>개정·영향</strong> 개정 이력과 내부자료 영향 분석</li>
+        </ul>
+      </div>`;
     return;
   }
-  if (_activeTab === "article") renderArticle(target, data.article);
-  else if (_activeTab === "annexes") renderListPanel(target, data.annexes?.items, "별표/서식");
-  else if (_activeTab === "history") renderHistory(target, data.history);
-  else if (_activeTab === "structure") renderStructure(target, data.structure);
-  else if (_activeTab === "delegated") renderListPanel(target, data.delegated?.items, "위임/하위법령");
-  else if (_activeTab === "ordinances") renderListPanel(target, data.ordinances?.items, "자치법규");
-  else if (_activeTab === "decisions") renderDecisions(target, data.decisions);
-  else if (_activeTab === "impact") renderImpact(target, data.internalImpact);
+  if (_activeTab === "main") {
+    renderArticle(target, data.article);
+    renderListPanel(target, data.annexes?.items, "별표 · 서식");
+  } else if (_activeTab === "system") {
+    renderStructure(target, data.structure);
+    renderListPanel(target, data.delegated?.items, "위임 / 하위법령");
+    renderListPanel(target, data.ordinances?.items, "자치법규");
+  } else if (_activeTab === "decisions") {
+    renderDecisions(target, data.decisions);
+  } else if (_activeTab === "history") {
+    renderHistory(target, data.history);
+    renderImpact(target, data.internalImpact);
+  }
   renderWarnings(target, data.warnings);
 }
 
 function renderArticle(target, article) {
-  if (!article?.ok) return renderEmpty(target, "조문 본문을 확인하지 못했습니다.");
-  const header = document.createElement("div");
+  if (!article?.ok) {
+    appendEmptySection(target, "조문 본문", "조문 본문을 확인하지 못했습니다.");
+    return;
+  }
+  const section = document.createElement("section");
+  section.className = "law-workbench-result-section";
+  const header = document.createElement("h4");
   header.className = "law-workbench-section-head";
   header.textContent = article.citation?.locator || "조문 본문";
   const body = document.createElement("pre");
   body.className = "law-snapshot-body";
   body.textContent = article.text || "(본문 없음)";
-  target.append(header, body);
+  section.append(header, body);
+  target.append(section);
 }
 
 function renderHistory(target, history) {
   const revisions = Array.isArray(history?.revisions) ? history.revisions : [];
-  if (!revisions.length) return renderEmpty(target, "개정 이력을 확인하지 못했습니다.");
+  if (!revisions.length) {
+    appendEmptySection(target, "개정 이력", "개정 이력을 확인하지 못했습니다.");
+    return;
+  }
   renderListPanel(target, revisions, "개정 이력", (item) => [
     item.effectiveDate ? `시행 ${item.effectiveDate}` : "시행일 미상",
     item.promulgationDate ? `공포 ${item.promulgationDate}` : "",
@@ -255,7 +331,10 @@ function renderHistory(target, history) {
 
 function renderStructure(target, structure) {
   const tiers = structure?.tiers;
-  if (!tiers) return renderEmpty(target, "법체계 정보를 확인하지 못했습니다.");
+  if (!tiers) {
+    appendEmptySection(target, "법체계", "법체계 정보를 확인하지 못했습니다.");
+    return;
+  }
   if (Array.isArray(tiers)) return renderListPanel(target, tiers, "법체계");
   const rows = Object.entries(tiers).map(([level, value]) => ({ title: `${level}: ${value?.lawName || "확인 안 됨"}` }));
   renderListPanel(target, rows, "법체계");
@@ -267,7 +346,9 @@ function renderDecisions(target, decisions = {}) {
     ["해석례", decisions.interpretations?.items],
     ["행정규칙", decisions.adminRules?.items]
   ];
+  let hasAny = false;
   for (const [label, items] of groups) {
+    if (Array.isArray(items) && items.length) hasAny = true;
     const section = document.createElement("section");
     section.className = "law-workbench-result-section";
     const title = document.createElement("h4");
@@ -276,16 +357,28 @@ function renderDecisions(target, decisions = {}) {
     appendItems(section, items || []);
     target.append(section);
   }
+  if (!hasAny) {
+    // sections already rendered empty placeholders via appendItems
+  }
 }
 
 function renderImpact(target, impact) {
-  if (!impact?.ok && !impact?.impactMap) return renderEmpty(target, impact?.summary || "내부자료 영향 분석 결과가 없습니다.");
+  if (!impact?.ok && !impact?.impactMap) {
+    appendEmptySection(target, "내부자료 영향", impact?.summary || "내부자료 영향 분석 결과가 없습니다.");
+    return;
+  }
+  const section = document.createElement("section");
+  section.className = "law-workbench-result-section";
+  const heading = document.createElement("h4");
+  heading.textContent = "내부자료 영향";
+  section.append(heading);
   const summary = document.createElement("p");
   summary.className = "law-workbench-summary";
   summary.textContent = impact.summary || "내부자료 영향 분석을 완료했습니다.";
-  target.append(summary);
+  section.append(summary);
   const nodes = (impact.impactMap?.nodes || []).filter((node) => node.type !== "law_article" && node.type !== "review_subject");
-  renderListPanel(target, nodes, "영향 항목", (node) => `${node.label || node.id} - ${node.summary || ""}`);
+  appendItems(section, nodes, (node) => `${node.label || node.id} - ${node.summary || ""}`);
+  target.append(section);
 }
 
 function renderListPanel(target, items, title, labelFn = itemLabel) {
@@ -295,6 +388,18 @@ function renderListPanel(target, items, title, labelFn = itemLabel) {
   heading.textContent = title;
   section.append(heading);
   appendItems(section, items || [], labelFn);
+  target.append(section);
+}
+
+function appendEmptySection(target, title, message) {
+  const section = document.createElement("section");
+  section.className = "law-workbench-result-section";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const empty = document.createElement("p");
+  empty.className = "law-explorer-empty";
+  empty.textContent = message;
+  section.append(heading, empty);
   target.append(section);
 }
 
@@ -321,14 +426,6 @@ function renderWarnings(target, warnings = []) {
   box.className = "law-workbench-warnings";
   box.textContent = warnings.map((item) => `${item.source || "source"}: ${item.message || item.marker || "확인 필요"}`).join(" / ");
   target.append(box);
-}
-
-function renderEmpty(target, message) {
-  target.innerHTML = "";
-  const empty = document.createElement("div");
-  empty.className = "law-explorer-empty";
-  empty.textContent = message;
-  target.append(empty);
 }
 
 function itemLabel(item = {}) {
@@ -380,7 +477,7 @@ async function fetchTermsPreview() {
 function setBusy(isBusy) {
   const button = elements.lawWorkbenchRunButton;
   if (!button) return;
-  button.textContent = isBusy ? "중단" : "작업대 조회";
+  button.textContent = isBusy ? "중단" : "탐색";
   button.setAttribute("aria-busy", isBusy ? "true" : "false");
 }
 
