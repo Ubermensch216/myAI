@@ -9954,7 +9954,9 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 260px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 
 .law-workbench-section-head,
