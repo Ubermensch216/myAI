@@ -88,6 +88,11 @@ await run("haengjim hub API follows documented request parameters", testHaengJim
 await run("haengjim URL env selects hub provider", testHaengJimUrlEnvSelectsHubProvider);
 await run("haengjim hub API falls back to law.go.kr on transport failure", testHaengJimHubApiFallback);
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
+await run("law workbench aggregates official law evidence groups", testLawWorkbenchAggregation);
+await run("law workbench supports natural-language-only queries", testLawWorkbenchNaturalQueryOnly);
+await run("law workbench isolates partial upstream failures", testLawWorkbenchPartialFailure);
+await run("law workbench report renders fixed review sequence", testLawWorkbenchReport);
+await run("law term KB expands citizen wording into legal terms", testLawTermKbExpansion);
 await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
 await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
 await run("annex detail selector chooses matching annex number", testAnnexDetailSelectorChoosesAnnexNo);
@@ -1282,6 +1287,215 @@ function testLawSearchModeFlags() {
     documents: []
   });
   assert.equal(web.forceWebSearch, true, "normal chat still honors non-legal explicit web-search prompts");
+}
+
+async function testLawWorkbenchAggregation() {
+  const { buildLawWorkbench } = await import("../server/law/lawWorkbench.js");
+  const calls = [];
+  const fakeClient = {
+    async getLawArticle(input) {
+      calls.push(["getLawArticle", input]);
+      return {
+        ok: true,
+        text: "Article body",
+        citation: {
+          citationId: "L1",
+          sourceType: "law",
+          lawName: input.lawName,
+          article: input.article,
+          canonical: `${input.lawName}/${input.article}`,
+          title: "Article title",
+          locator: `${input.lawName} ${input.article}`,
+          url: "https://law.test/article"
+        }
+      };
+    },
+    async searchAnnexes() {
+      calls.push(["searchAnnexes"]);
+      return { ok: true, results: [{ title: "Form A", annexNo: "1", lawName: "Test Act", mst: "10" }] };
+    },
+    async getLawHistory() {
+      calls.push(["getLawHistory"]);
+      return { ok: true, revisions: [{ effectiveDate: "2024-01-01", revisionType: "amended" }] };
+    },
+    async getThreeTier() {
+      calls.push(["getThreeTier"]);
+      return { ok: true, tiers: [{ level: "law", lawName: "Test Act" }] };
+    },
+    async getDelegatedLaws() {
+      calls.push(["getDelegatedLaws"]);
+      return { ok: true, links: [{ title: "Delegated Rule" }] };
+    },
+    async searchOrdinances() {
+      calls.push(["searchOrdinances"]);
+      return { ok: true, results: [{ title: "Seoul Ordinance", region: "서울특별시", ordinId: "O1" }] };
+    },
+    async searchPrecedents() {
+      calls.push(["searchPrecedents"]);
+      return { ok: true, results: [{ title: "Precedent", caseNumber: "2024다1", precId: "P1" }] };
+    },
+    async searchInterpretations() {
+      calls.push(["searchInterpretations"]);
+      return { ok: true, results: [{ title: "Interpretation", expcId: "I1" }] };
+    },
+    async searchAdminRules() {
+      calls.push(["searchAdminRules"]);
+      return { ok: true, results: [{ title: "Admin Rule", admrulId: "R1" }] };
+    }
+  };
+
+  const result = await buildLawWorkbench({
+    lawName: "Test Act",
+    article: "제1조",
+    query: "uploaded policy",
+    region: "서울특별시",
+    materialText: "policy says Article body",
+    includeInternalImpact: true
+  }, { client: fakeClient });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.article.text, "Article body");
+  assert.equal(result.annexes.items.length, 1);
+  assert.equal(result.history.revisions.length, 1);
+  assert.equal(result.structure.ok, true);
+  assert.equal(result.delegated.ok, true);
+  assert.equal(result.ordinances.items[0].title, "Seoul Ordinance");
+  assert.equal(result.decisions.precedents.items.length, 1);
+  assert.equal(result.decisions.interpretations.items.length, 1);
+  assert.equal(result.decisions.adminRules.items.length, 1);
+  assert.equal(result.internalImpact.impactMap.mode, "impact_map");
+  assert.ok(result.citations.some((item) => item.sourceType === "law"));
+  assert.ok(calls.some(([name]) => name === "getLawArticle"));
+}
+
+async function testLawWorkbenchNaturalQueryOnly() {
+  const { buildLawWorkbench } = await import("../server/law/lawWorkbench.js");
+  const result = await buildLawWorkbench({
+    query: "전세금 못 받음"
+  }, {
+    client: {
+      async searchAnnexes(input) {
+        assert.ok(input.query.includes("임대차보증금 반환"));
+        return { ok: true, results: [{ title: "임대차보증금 반환 안내", annexNo: "1" }] };
+      },
+      async searchOrdinances() {
+        return { ok: true, results: [] };
+      },
+      async searchPrecedents() {
+        return { ok: true, results: [{ title: "임대차보증금 반환 판례", caseNumber: "2024다1" }] };
+      },
+      async searchInterpretations() {
+        return { ok: true, results: [] };
+      },
+      async searchAdminRules() {
+        return { ok: true, results: [] };
+      }
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.article.skipped, true);
+  assert.equal(result.annexes.items.length, 1);
+  assert.equal(result.decisions.precedents.items.length, 1);
+  assert.ok(result.termMatches.some((item) => item.canonicalTerms.includes("임대차보증금 반환")));
+}
+
+async function testLawWorkbenchPartialFailure() {
+  const { buildLawWorkbench } = await import("../server/law/lawWorkbench.js");
+  const result = await buildLawWorkbench({
+    lawName: "Test Act",
+    article: "제1조",
+    query: "failure isolation"
+  }, {
+    client: {
+      async getLawArticle(input) {
+        return {
+          ok: true,
+          text: "Article body",
+          citation: {
+            citationId: "L1",
+            sourceType: "law",
+            lawName: input.lawName,
+            article: input.article,
+            canonical: `${input.lawName}/${input.article}`,
+            locator: `${input.lawName} ${input.article}`
+          }
+        };
+      },
+      async searchAnnexes() { throw new Error("annex unavailable"); },
+      async getLawHistory() { return { ok: true, revisions: [] }; },
+      async getThreeTier() { return { ok: true, tiers: [] }; },
+      async getDelegatedLaws() { return { ok: true, links: [] }; },
+      async searchOrdinances() { return { ok: true, results: [] }; },
+      async searchPrecedents() { return { ok: true, results: [] }; },
+      async searchInterpretations() { return { ok: true, results: [] }; },
+      async searchAdminRules() { return { ok: true, results: [] }; }
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.article.text, "Article body");
+  assert.equal(result.annexes.ok, false);
+  assert.ok(result.warnings.some((item) => item.source === "annexes"));
+  assert.ok(result.errors.some((item) => item.source === "annexes"));
+}
+
+async function testLawWorkbenchReport() {
+  const { buildLawWorkbenchReport } = await import("../server/law/lawWorkbench.js");
+  const report = buildLawWorkbenchReport({
+    templateId: "ordinance_upper_law_review",
+    workbench: {
+      input: { query: "ordinance review", lawName: "Test Act", article: "제1조" },
+      article: { text: "Article body", citation: { citationId: "L1", locator: "Test Act 제1조" } },
+      annexes: { items: [{ title: "Form A", annexNo: "1" }] },
+      structure: { tiers: [{ level: "law", lawName: "Test Act" }] },
+      delegated: { items: [{ title: "Delegated Rule" }] },
+      ordinances: { items: [{ title: "Seoul Ordinance" }] },
+      decisions: {
+        precedents: { items: [{ title: "Precedent" }] },
+        interpretations: { items: [{ title: "Interpretation" }] },
+        adminRules: { items: [{ title: "Admin Rule" }] }
+      },
+      internalImpact: { summary: "Internal material may conflict." },
+      citations: [{ citationId: "L1", sourceType: "law", locator: "Test Act 제1조" }],
+      warnings: [{ source: "annexes", message: "partial" }]
+    }
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.recommendedTemplateId, "ordinance_upper_law_review");
+  const sequence = [
+    "## 1. 질문/업로드 문서 요약",
+    "## 2. 관련 법령 조문",
+    "## 3. 별표/서식",
+    "## 4. 시행령/시행규칙",
+    "## 5. 자치법규",
+    "## 6. 판례/해석례/결정례",
+    "## 7. 내부자료 충돌 여부",
+    "## 8. 검토의견서 초안"
+  ];
+  let previous = -1;
+  for (const heading of sequence) {
+    const index = report.markdown.indexOf(heading);
+    assert.ok(index > previous, `missing or out of order: ${heading}`);
+    previous = index;
+  }
+  assert.deepEqual(report.citations, [{ citationId: "L1", sourceType: "law", locator: "Test Act 제1조" }]);
+  assert.ok(report.metadata.lawWorkbench);
+  assert.ok(report.warnings.length);
+}
+
+async function testLawTermKbExpansion() {
+  const { searchLawTerms, expandQueryWithLawTerms } = await import("../server/law/lawTermKb.js");
+  const matches = searchLawTerms("전세금 못 받음");
+  assert.equal(matches[0].scenario, "lease_deposit");
+  assert.ok(matches[0].canonicalTerms.includes("임대차보증금 반환"));
+  assert.ok(matches[0].canonicalTerms.includes("임차권등기명령"));
+
+  const expanded = expandQueryWithLawTerms("전세금 못 받음 어떻게 해?");
+  assert.ok(expanded.includes("임대차보증금 반환"));
+  assert.ok(expanded.includes("임차권등기명령"));
+  assert.ok(expanded.length > "전세금 못 받음 어떻게 해?".length);
 }
 
 async function testTimeTravelFullLaw() {

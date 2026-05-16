@@ -409,6 +409,47 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
   renderDocumentStudio();
 }
 
+export async function openWithPreparedDraft({ title, markdown, templateId, metadata = {}, citations = [], source = {} } = {}) {
+  const room = getActiveRoom();
+  if (!room) return;
+  const text = String(markdown || "").trim();
+  if (!text) {
+    window.alert("문서로 만들 내용이 없습니다.");
+    return;
+  }
+
+  setStudioCollapsed(false);
+  _switchToDocumentTool?.();
+  await ensureTemplatesLoaded();
+
+  const studio = ensureRoomStudio(room);
+  const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const draft = {
+    id: draftId,
+    title: title || deriveTitleFromMarkdown(text),
+    templateId: templateId || pickDefaultTemplateId(metadata),
+    markdown: text,
+    citations: { law: Array.isArray(citations) ? citations : [] },
+    source: {
+      roomId: room.id,
+      sourceType: "law_workbench_report",
+      ...source
+    },
+    metadata,
+    editorMode: "visual",
+    exportOptions: { includeCitations: true },
+    pending: false,
+    warnings: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  studio.documents.unshift(draft);
+  studio.activeDocumentId = draftId;
+  upsertStudioOutputFromDraft(draft, { type: "document", quiet: true });
+  scheduleSave();
+  renderDocumentStudio();
+}
+
 export function renderDocumentStudio() {
   const room = getActiveRoom();
   const studio = room ? ensureRoomStudio(room) : null;
@@ -829,6 +870,7 @@ function populateTemplateSelect(activeId) {
 
 function pickDefaultTemplateId(metadata) {
   if (!metadata || typeof metadata !== "object") return _templates?.[0]?.id || "planning_proposal";
+  if (metadata.lawWorkbench) return "law_review_opinion";
   if (metadata.compliance || metadata.law) return "review_report";
   return _templates?.[0]?.id || "planning_proposal";
 }

@@ -13,6 +13,7 @@ let failureCount = 0;
 await run("app shell ids exist", testAppShellIds);
 const status = await run("GET /api/status", testStatus);
 await run("GET /api/law/status", testLawStatus);
+await run("GET/POST /api/law workbench basics", testLawWorkbenchBasics);
 await run("GET /api/access/status", testAccessStatus);
 await run("GET /api/notebooks", testNotebookList);
 await run("POST /api/upload text file", testUpload);
@@ -96,6 +97,36 @@ async function testLawStatus() {
   const lawSecret = String(process.env.LAW_OC || process.env.KOREAN_LAW_API_KEY || "").trim();
   if (lawSecret) assert.equal(text.includes(lawSecret), false, "law status must not expose API key");
   return payload;
+}
+
+async function testLawWorkbenchBasics() {
+  const terms = await fetchJson("/api/law/terms?q=%EC%A0%84%EC%84%B8%EA%B8%88%20%EB%AA%BB%20%EB%B0%9B%EC%9D%8C");
+  assert.equal(terms.ok, true);
+  assert.ok(Array.isArray(terms.terms), "terms endpoint should return terms array");
+  assert.ok(terms.terms.some((item) => (item.canonicalTerms || []).includes("임대차보증금 반환")));
+
+  const emptyWorkbench = await fetch(new URL("/api/law/workbench", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+  assert.equal(emptyWorkbench.status, 400, "empty workbench request should be a client error");
+
+  const report = await fetchJson("/api/law/workbench/report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      templateId: "law_review_opinion",
+      workbench: {
+        input: { query: "smoke", lawName: "Test Act", article: "제1조" },
+        article: { ok: true, text: "Article body", citation: { citationId: "L1", locator: "Test Act 제1조" } },
+        citations: [{ citationId: "L1", sourceType: "law", locator: "Test Act 제1조" }]
+      }
+    })
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.recommendedTemplateId, "law_review_opinion");
+  assert.match(report.markdown, /질문\/업로드 문서 요약/);
 }
 
 async function testCalendarIntent(status) {

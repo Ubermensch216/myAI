@@ -95,15 +95,26 @@ await check("visual markdown serializer preserves edits and raw fallback blocks"
   }
 });
 
-await check("GET /templates returns 5 built-in templates", async () => {
+await check("GET /templates returns public-sector and law review templates", async () => {
   const { response, body } = await asJson(await fetch(`${base}/templates`));
   if (!response.ok) throw new Error(`status ${response.status}`);
   if (!body.ok) throw new Error("ok false");
-  if (!Array.isArray(body.templates) || body.templates.length !== 5) {
-    throw new Error(`expected 5 templates, got ${body.templates?.length}`);
+  if (!Array.isArray(body.templates) || body.templates.length !== 10) {
+    throw new Error(`expected 10 templates, got ${body.templates?.length}`);
   }
   const ids = body.templates.map((t) => t.id).sort();
-  const want = ["audit_checklist", "daily_report", "meeting_minutes", "planning_proposal", "review_report"];
+  const want = [
+    "administrative_disposition_basis",
+    "audit_checklist",
+    "civil_reply_law_review",
+    "daily_report",
+    "internal_compliance_checklist",
+    "law_review_opinion",
+    "meeting_minutes",
+    "ordinance_upper_law_review",
+    "planning_proposal",
+    "review_report"
+  ];
   if (JSON.stringify(ids) !== JSON.stringify(want)) {
     throw new Error(`ids mismatch: ${ids.join(",")}`);
   }

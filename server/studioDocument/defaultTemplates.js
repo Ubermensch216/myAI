@@ -88,6 +88,71 @@ const TEMPLATES = [
       { type: "section", title: "6. 개선 권고", instruction: "권고사항과 우선순위를 정리한다." },
       { type: "section", title: "7. 후속 조치 일정", instruction: "후속 조치 책임자/기한/완료 기준을 정리한다." }
     ]
+  },
+  {
+    id: "law_review_opinion",
+    name: "법령 검토의견서",
+    description: "공식 법령 근거와 내부자료 쟁점을 결합한 검토의견서",
+    blocks: [
+      { type: "section", title: "1. 검토 개요", instruction: "질문, 검토 대상, 적용 법령 범위를 간단히 정리한다." },
+      { type: "section", title: "2. 사실관계 및 자료", instruction: "업로드 문서나 내부자료에서 확인된 핵심 사실만 정리한다." },
+      { type: "section", title: "3. 관련 법령 및 하위법령", instruction: "조문, 시행령, 시행규칙, 위임법령을 인용표지와 함께 정리한다." },
+      { type: "section", title: "4. 별표·서식 및 자치법규", instruction: "별표/서식과 자치법규 확인 결과를 분리해 작성한다." },
+      { type: "table", title: "5. 쟁점별 검토", columns: ["쟁점", "관련 근거", "검토 내용", "판단"] },
+      { type: "section", title: "6. 판례·해석례·결정례", instruction: "공식 판례, 해석례, 결정례 후보와 의미를 근거 범위 내에서 정리한다." },
+      { type: "section", title: "7. 검토 의견", instruction: "적합, 보완 필요, 추가 확인 필요를 구분해 결론을 작성한다." },
+      { type: "section", title: "8. 후속 조치", instruction: "보완 문구, 추가 확인 자료, 담당 부서 조치사항을 정리한다." }
+    ]
+  },
+  {
+    id: "ordinance_upper_law_review",
+    name: "조례 상위법 적합성 검토서",
+    description: "조례·규칙안이 상위 법령과 위임 범위에 부합하는지 검토",
+    blocks: [
+      { type: "section", title: "1. 검토 대상 조례", instruction: "조례명, 조문, 개정안 또는 검토 문서를 특정한다." },
+      { type: "section", title: "2. 상위법 근거", instruction: "법률, 시행령, 시행규칙의 위임 근거를 정리한다." },
+      { type: "section", title: "3. 위임 범위 검토", instruction: "조례가 상위법 위임 범위 안에 있는지 쟁점별로 판단한다." },
+      { type: "table", title: "4. 조문별 적합성", columns: ["조례 조문", "상위법 근거", "검토 결과", "보완 의견"] },
+      { type: "section", title: "5. 관련 자치법규 비교", instruction: "연계 자치법규 또는 유사 자치법규 후보를 비교한다." },
+      { type: "section", title: "6. 종합 의견", instruction: "상위법 적합성 결론과 보완 필요 문구를 작성한다." }
+    ]
+  },
+  {
+    id: "administrative_disposition_basis",
+    name: "행정처분 근거 검토서",
+    description: "행정처분의 법적 근거, 요건, 절차 리스크 검토",
+    blocks: [
+      { type: "section", title: "1. 처분 개요", instruction: "처분 대상, 사실관계, 예정 처분을 정리한다." },
+      { type: "section", title: "2. 법적 근거", instruction: "처분 근거 법령, 하위법령, 별표 기준을 정리한다." },
+      { type: "table", title: "3. 처분 요건 충족 여부", columns: ["요건", "확인 자료", "근거", "판단"] },
+      { type: "section", title: "4. 절차 검토", instruction: "사전통지, 의견제출, 청문 등 절차 필요 여부를 검토한다." },
+      { type: "section", title: "5. 판례·해석례", instruction: "처분 관련 판례, 해석례, 결정례 후보를 정리한다." },
+      { type: "section", title: "6. 처분 의견", instruction: "처분 가능성, 보완 필요 자료, 리스크를 결론으로 작성한다." }
+    ]
+  },
+  {
+    id: "civil_reply_law_review",
+    name: "민원 회신 법령 검토서",
+    description: "민원 질의에 대한 법령 근거 중심 회신 초안",
+    blocks: [
+      { type: "section", title: "1. 민원 요지", instruction: "민원인이 묻는 내용을 자연어로 요약한다." },
+      { type: "section", title: "2. 관련 법령", instruction: "확인된 법령 조문과 별표/서식을 인용표지와 함께 정리한다." },
+      { type: "section", title: "3. 검토 내용", instruction: "민원 사실관계와 법령 요건을 연결해 설명한다." },
+      { type: "section", title: "4. 회신 초안", instruction: "공식적이고 단정적인 행정문체로 회신 문안을 작성한다." },
+      { type: "section", title: "5. 유의사항", instruction: "추가 자료 필요, 소관기관 확인, 법률자문 필요 사항을 적는다." }
+    ]
+  },
+  {
+    id: "internal_compliance_checklist",
+    name: "내부규정 컴플라이언스 점검표",
+    description: "내부규정·업무절차와 공식 법령 근거의 충돌 여부 점검",
+    blocks: [
+      { type: "section", title: "1. 점검 범위", instruction: "내부규정, 업무절차, 검토 대상 법령 범위를 정리한다." },
+      { type: "table", title: "2. 항목별 점검", columns: ["점검 항목", "내부자료 내용", "법령 근거", "결과", "조치"] },
+      { type: "section", title: "3. 주요 리스크", instruction: "위반 가능성, 근거 부족, 절차 누락을 구분해 작성한다." },
+      { type: "section", title: "4. 보완 권고", instruction: "문구 수정, 절차 추가, 증빙 확보 등 실행 가능한 권고를 작성한다." },
+      { type: "section", title: "5. 후속 점검", instruction: "재점검 일정과 담당 확인 사항을 정리한다." }
+    ]
   }
 ];
 
@@ -108,6 +173,9 @@ export function isBuiltInTemplateId(id) {
 
 // PRD §8.2: review_report is the default for compliance/legal review answers.
 export function pickDefaultTemplateId(metadata = {}) {
+  if (metadata && metadata.lawWorkbench) {
+    return "law_review_opinion";
+  }
   if (metadata && (metadata.compliance || metadata.law || metadata.lawCompliance)) {
     return "review_report";
   }

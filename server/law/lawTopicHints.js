@@ -1,3 +1,5 @@
+import { expandQueryWithLawTerms, inferLawTermArticleRefs } from "./lawTermKb.js";
+
 const TOPIC_HINTS = [
   {
     pattern: /(밀폐\s*공간|산소\s*결핍|질식\s*재해|유해\s*가스|맨홀\s*작업|탱크\s*내부\s*작업|정화조\s*작업)/u,
@@ -35,12 +37,12 @@ const TOPIC_HINTS = [
 export function buildLawTopicSearchQuery(query) {
   const text = normalizeTopicText(query);
   const hint = TOPIC_HINTS.find((item) => item.pattern.test(text));
-  return hint?.searchQuery || text || String(query || "").trim();
+  return expandQueryWithLawTerms(hint?.searchQuery || text || String(query || "").trim());
 }
 
 export function expandLawTopicQueries(query) {
   const text = normalizeTopicText(query);
-  const values = [text];
+  const values = [text, expandQueryWithLawTerms(text)];
   for (const hint of TOPIC_HINTS) {
     if (hint.pattern.test(text)) values.push(...hint.queries);
   }
@@ -49,7 +51,7 @@ export function expandLawTopicQueries(query) {
 
 export function inferLawArticleRefsForTopic(query) {
   const text = normalizeTopicText(query);
-  const refs = [];
+  const refs = [...inferLawTermArticleRefs(text)];
   for (const hint of TOPIC_HINTS) {
     if (hint.pattern.test(text)) refs.push(...hint.articleRefs);
   }

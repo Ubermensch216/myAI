@@ -21,6 +21,8 @@ import { runTimeTravel } from "./tools/timeTravel.js";
 import { executeLawTool, listLawTools } from "./tools/toolRegistry.js";
 import { getThreeTier, getDelegatedLaws, getLinkedOrdinances, getLinkedOrdinanceArticles, getLinkedLawsFromOrdinance } from "./tools/lawStructure.js";
 import { searchDecisions, getDecisionText } from "./tools/decisions.js";
+import { buildLawWorkbench, buildLawWorkbenchReport } from "./lawWorkbench.js";
+import { searchLawTerms } from "./lawTermKb.js";
 import { getDecisionsConfig } from "./lawConfig.js";
 import { createRateLimiter } from "../rateLimit.js";
 
@@ -63,6 +65,16 @@ lawApiRouter.get("/tools", async (request, response) => {
   });
 });
 
+lawApiRouter.get("/terms", async (request, response) => {
+  response.json({
+    ok: true,
+    query: String(request.query?.q || request.query?.query || ""),
+    terms: searchLawTerms(request.query?.q || request.query?.query || "", {
+      limit: Number(request.query?.limit || 5)
+    })
+  });
+});
+
 lawApiRouter.post(
   "/execute",
   createRateLimiter({ name: "law_research", keyPrefix: "law_execute:", ...lawRateLimits.research }),
@@ -74,6 +86,47 @@ lawApiRouter.post(
         params: request.body?.params || request.body?.arguments || {}
       }, { client: createLawApiClient(), signal: request.signal });
       response.status(result?.ok === false ? 400 : 200).json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/workbench",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_workbench:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      const body = request.body || {};
+      if (!String(body.lawName || body.query || "").trim()) {
+        return response.status(400).json({ ok: false, error: "lawName or query is required" });
+      }
+      assertLawAvailable(getLawConfig());
+      const result = await buildLawWorkbench({
+        query: body.query,
+        lawName: body.lawName,
+        article: body.article || body.jo,
+        region: body.region,
+        materialText: body.materialText,
+        includeInternalImpact: body.includeInternalImpact
+      }, { client: createLawApiClient(), signal: request.signal });
+      response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/workbench/report",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_workbench_report:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      const result = buildLawWorkbenchReport({
+        workbench: request.body?.workbench || request.body,
+        templateId: request.body?.templateId
+      });
+      response.json(result);
     } catch (error) {
       sendLawError(response, error);
     }

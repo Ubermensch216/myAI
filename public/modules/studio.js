@@ -3,6 +3,7 @@ import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
 import { estimateDocumentBytes, estimateJsonBytes, formatBytes, getActiveDocuments } from "./chat.js";
 import { bindStudioGraphEvents, showStudioGraphPanel, hideStudioGraphPanel } from "./graphStudio.js";
 import { bindDocumentStudioEvents, registerDocumentStudioActivator, renderDocumentStudio } from "./documentStudio.js";
+import { bindLawWorkbenchEvents, renderLawWorkbench } from "./lawWorkbench.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -75,6 +76,7 @@ export function bindStudioEvents() {
   }
   bindStudioGraphEvents();
   bindDocumentStudioEvents();
+  bindLawWorkbenchEvents();
   registerDocumentStudioActivator(() => setActiveTool("document"));
 }
 
@@ -113,7 +115,7 @@ function setActiveTool(tool) {
     showStudioGraphPanel().catch(() => { /* errors logged inside module */ });
   } else {
     hideStudioGraphPanel();
-    if (tool === "law") renderLawExplorer();
+    if (tool === "law") renderLawWorkbench();
     else if (tool === "document") renderDocumentStudio();
     else if (tool === "doctool") { /* initialized via app.js, nothing to render */ }
     else renderStudio();

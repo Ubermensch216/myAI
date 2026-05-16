@@ -9913,6 +9913,99 @@ body.panel-resizing .panel-resizer::after {
   50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 28%, transparent); }
 }
 
+.law-workbench-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.law-workbench-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.8fr);
+  gap: 8px;
+}
+
+.law-workbench-row + .law-workbench-row {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) auto auto 36px;
+}
+
+.law-workbench-tabs {
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.law-workbench-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.law-term-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.law-workbench-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 260px;
+}
+
+.law-workbench-section-head,
+.law-workbench-result-section h4 {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.law-workbench-result-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.law-workbench-result-row {
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px 0;
+}
+
+.law-workbench-result-row:first-of-type {
+  border-top: 0;
+}
+
+.law-workbench-summary {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.law-workbench-warnings {
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px;
+}
+
+@media (max-width: 720px) {
+  .law-workbench-row,
+  .law-workbench-row + .law-workbench-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ???? History list (revisions) ?????????????????????????????????????????????????????????????????????? */
 
 .law-history-body {
