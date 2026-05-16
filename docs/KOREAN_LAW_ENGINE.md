@@ -43,6 +43,9 @@ Implemented pieces:
 - `POST /api/law/ai-search`
 - `POST /api/law/research`
 - `POST /api/law/action-plan`
+- `POST /api/law/workbench` (Phase 2+ — builds a comprehensive legal workbench context including research, citations, impact maps, and report-ready metadata)
+- `POST /api/law/workbench/report` (Generates a structured legal report draft from a workbench result)
+- `GET /api/law/terms` (Searches official Korean law term KB / Knowledge Base for normalized definitions and law/article hints)
 - `POST /api/law/article`
 - `POST /api/law/verify-citations`
 - `POST /api/law/precedents/search`
@@ -255,6 +258,69 @@ or `LAW_API_ENABLED=false`, it returns structured `503` with `ok: false`.
 
 The response must not expose the API key, upstream URLs, `OC=` values, or server
 filesystem paths.
+
+### `GET /api/law/tools`
+
+Lists the MCP-compatible Korean Law Engine tool names exposed by myAI. Query
+parameters `q`/`query` and `category` filter the list.
+
+### `GET /api/law/terms`
+
+Searches the rule-based law term KB (`server/law/lawTermKb.js`). Maps natural
+language terms (e.g., "전세금 못 받음") to canonical legal terms
+("임대차보증금 반환") and law/article hints ("주택임대차보호법 제3조의3").
+Used for query expansion and intent narrowing.
+
+### `POST /api/law/execute`
+
+Request:
+
+```json
+{ "toolName": "search_all", "params": { "query": "전세금 못 받았어" } }
+```
+
+Executes the native myAI equivalent of common `korean-law-mcp` tool names,
+including `search_law`, `search_ai_law`, `search_all`, `get_law_text`,
+`verify_citations`, `search_annexes`, `get_annexes`, `get_three_tier`,
+`get_delegated_laws`, linked-ordinance tools, `search_decisions`,
+`get_decision_text`, `impact_map`, `time_travel`, `action_plan`,
+`chain_full_research`, and `chain_amendment_track`. It is a compatibility
+surface over native handlers, not an external MCP server.
+
+### `POST /api/law/workbench`
+
+Request:
+
+```json
+{
+  "query": "전세금 못 받았어",
+  "lawName": "주택임대차보호법",
+  "article": "제3조",
+  "region": "서울특별시",
+  "materialText": "...",
+  "includeInternalImpact": true
+}
+```
+
+Builds a comprehensive legal workbench context in a single call. It aggregates
+topic research, article text, history, structure links, annexes, ordinances,
+decisions, and (optionally) an internal impact map. Returns a `law_workbench`
+response object used for review dashboards and report generation.
+
+### `POST /api/law/workbench/report`
+
+Request:
+
+```json
+{
+  "workbench": { /* workbench response object */ },
+  "templateId": "law_review_opinion"
+}
+```
+
+Generates a structured legal report draft (Markdown blocks) from a workbench
+result. Template IDs are selected from `DEFAULT_REPORT_TEMPLATE` in
+`server/law/lawWorkbench.js`.
 
 ### `POST /api/law/search`
 

@@ -29,6 +29,8 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Explicit law-search mode isolates legal prompts from room documents/notebooks and grounds answers in the Korea Law Engine: law.go.kr statutes, precedents, interpretations, admin rules, ordinances, annexes, law-structure links, Constitutional Court decisions, and administrative-appeal decisions.
+- Legal research workbench aggregates research, citations, impact maps, and report-ready metadata in a single view.
+- Official law term KB (Knowledge Base) maps natural language terms to canonical legal definitions and law/article hints for query expansion.
 - Department legal-review prompts combine uploaded/notebook material with statute, precedent, interpretation, admin-rule, or ordinance evidence when configured.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Assistant answers can be saved back into the current room as AI-generated source material (`md`, `pdf`, `docx`, or `hwpx`). The generated source is stored with the room in encrypted IndexedDB, marked as AI-generated / needs verification, and treated as secondary context in later chat turns.

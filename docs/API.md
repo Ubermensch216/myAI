@@ -214,6 +214,11 @@ Searches official Korean law names.
 Lists the MCP-compatible Korean Law Engine tool names exposed by myAI. Query
 parameters `q`/`query` and `category` filter the list.
 
+### `GET /api/law/terms`
+
+Searches official Korean law term KB (Knowledge Base). Returns normalized
+definitions and related terms. Query parameters `q`/`query` and `limit` (default 5).
+
 ### `POST /api/law/execute`
 
 Body:
@@ -229,6 +234,38 @@ including `search_law`, `search_ai_law`, `search_all`, `get_law_text`,
 `get_decision_text`, `impact_map`, `time_travel`, `action_plan`,
 `chain_full_research`, and `chain_amendment_track`. It is a compatibility
 surface over native handlers, not an external MCP server.
+
+### `POST /api/law/workbench`
+
+Body:
+
+```js
+{
+  query: "전세금 못 받았어",
+  lawName: "주택임대차보호법",
+  article: "제3조",
+  region: "서울특별시",
+  materialText: "...",
+  includeInternalImpact: true
+}
+```
+
+Builds a comprehensive legal workbench context. It aggregates research,
+citations, impact maps, structure links, and report-ready metadata in a single
+response. Either `query` or `lawName` is required.
+
+### `POST /api/law/workbench/report`
+
+Body:
+
+```js
+{
+  workbench: { /* workbench response object */ },
+  templateId: "default"
+}
+```
+
+Generates a structured legal report draft (JSON blocks) from a workbench result.
 
 ### `POST /api/law/ai-search`
 

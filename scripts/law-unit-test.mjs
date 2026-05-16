@@ -1393,7 +1393,16 @@ async function testLawWorkbenchNaturalQueryOnly() {
       },
       async searchAnnexes() {
         annexCalled = true;
-        throw new Error("Law API returned invalid JSON.");
+        return { ok: true, results: [] };
+      },
+      async getLawHistory() {
+        return { ok: true, revisions: [] };
+      },
+      async getThreeTier() {
+        return { ok: true, tiers: [] };
+      },
+      async getDelegatedLaws() {
+        return { ok: true, links: [] };
       },
       async searchOrdinances() {
         return { ok: true, results: [] };
@@ -1414,9 +1423,8 @@ async function testLawWorkbenchNaturalQueryOnly() {
   assert.deepEqual(articleCall, { lawName: "주택임대차보호법", article: "제3조의3" });
   assert.equal(result.article.ok, true);
   assert.match(result.article.text, /임차권등기명령/);
-  assert.equal(result.annexes.skipped, true);
-  assert.equal(annexCalled, false);
-  assert.equal(result.warnings.some((item) => item.source === "annexes"), false);
+  assert.equal(result.input.resolvedLawName, "주택임대차보호법");
+  assert.equal(annexCalled, true);
   assert.equal(result.decisions.precedents.items.length, 1);
   assert.ok(result.termMatches.some((item) => item.canonicalTerms.includes("임대차보증금 반환")));
 }
