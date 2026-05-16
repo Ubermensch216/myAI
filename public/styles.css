@@ -1364,7 +1364,7 @@ body.panel-resizing .panel-resizer::after {
 .message-body .answer-section-title {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
   margin: 22px 0 10px;
   border-bottom: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent);
   padding-bottom: 6px;
@@ -1379,13 +1379,13 @@ body.panel-resizing .panel-resizer::after {
 .message-body .answer-section-symbol {
   display: inline-grid;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
   place-items: center;
-  border-radius: 6px;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--accent) 88%, var(--surface));
   color: #fff;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }

@@ -41,6 +41,20 @@ const STRICT_LAW_SEARCH_SYSTEM_BLOCK = [
   "If the evidence does not directly support the requested answer, say that the Korean Law Engine results are insufficient and do not answer from background knowledge."
 ].join("\n");
 
+const UNIFIED_ANSWER_READABILITY_POLICY = [
+  "[Unified answer readability policy]",
+  "Every assistant answer must follow this policy unless the route explicitly requires JSON or another machine-readable payload.",
+  "Write in Korean plain text with short, scan-friendly sections.",
+  "Use these section labels exactly when the answer has more than one idea: 핵심 요약, 주요 근거, 세부 내용, 주의사항, 다음 단계.",
+  "Omit irrelevant sections, but do not invent alternative section-label styles for normal answers.",
+  "Section labels must be plain label lines: no Markdown heading marks (#), no bold markers (**), and no leading decorative symbols.",
+  "Under each section, use short paragraphs or compact '- ' bullet lists. Use numbered lists only for ordered procedures.",
+  "Keep each paragraph to one idea. Avoid long unbroken paragraphs.",
+  "Cite evidence inline with existing citation IDs such as [N1], [L1], [P1], [D1], [I1], [R1], [O1], or [W1] whenever evidence is used.",
+  "Use Markdown tables only for comparisons, checklists with multiple columns, or table-like extraction.",
+  "Do not use emoji or decorative pictograms in answer text. The UI supplies visual styling for recognized section labels."
+].join("\n");
+
 export async function listModels() {
   const response = await fetch(`${OLLAMA_URL}/api/tags`);
   if (!response.ok) {
@@ -420,7 +434,8 @@ async function runMapReduceChat({ messages, documents, model, personalization, n
     `사용자의 호칭은 "${userTitle}"이며, 답변 첫 문장에 자연스럽게 한 번 부른다.`,
     `너의 이름은 "${aiName}"이다.`,
     "한국어로 명확하고 근거 중심으로 답한다.",
-    "내부 사고 과정 전문을 공개하지 말고, 답변에는 결론과 근거만 제공한다."
+    "내부 사고 과정 전문을 공개하지 말고, 답변에는 결론과 근거만 제공한다.",
+    UNIFIED_ANSWER_READABILITY_POLICY
   ].join("\n");
 
   try {
@@ -851,8 +866,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
     `너의 이름은 "${aiName}"이다.`,
     `사용자의 호칭은 "${userTitle}"이다.`,
     "한국어로 명확하고 근거 중심으로 답한다.",
-    "답변은 일반 문장과 짧은 단락으로 작성한다.",
-    "마크다운 제목, 굵게, 코드블록, 불릿 기호는 되도록 사용하지 않는다.",
+    UNIFIED_ANSWER_READABILITY_POLICY,
     "여러 항목 비교나 표 추출이 필요할 때만 마크다운 표 형식으로 출력한다.",
     "표는 반드시 | 열 | 열 | 형태의 헤더와 구분선을 포함한다. 앱이 보기 좋은 테이블로 변환한다.",
     "파일 내용에 근거가 있으면 파일명, 페이지/시트/슬라이드 단서를 자연스럽게 표시한다.",
@@ -907,12 +921,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
     "Do not invent web search citations. If search evidence is insufficient, state that the search results do not confirm the point.",
     "When an [공식 법령 근거] block is provided, treat it as the authoritative source for Korean statute/article existence and original article text. Cite legal claims with [L1], [L2], etc.",
     "Keep law citations [L] separate from notebook citations [N] and web citations [W]. If Korean Law Engine returns NOT_FOUND or LAW_API_ERROR, do not infer statute existence from web evidence alone.",
-    "Format answers for scanning: use short section labels such as Summary, Key points, Evidence, Caution, Next steps when helpful.",
-    "Put a simple visual symbol before section labels when it improves readability: ◆ Summary, ● Key points, ✓ Evidence, ※ Caution, -> Next steps.",
-    "Prefer compact bullet lists with '- ', numbered lists with '1. ', and clear symbols like '->' or '※' for notes.",
-    "Avoid long unbroken paragraphs. Keep each paragraph to one idea, then use bullets for details.",
-    "Do not use Markdown heading marks (#) or bold markers (**). Use plain label lines instead.",
-    "이모지(emoji)는 사용하지 마라. 😀 🎉 👍 같은 컬러 이모지 캐릭터(Unicode Emoji 표준에 정의된 문자)만 금지 대상이다. ◆ ● ✓ ※ → ★ 같은 단색 텍스트 기호·픽토그램·딩뱃은 자유롭게 써도 된다."
+    "Do not override the Unified answer readability policy above."
     );
   }
 
@@ -933,6 +942,10 @@ async function buildMessages(messages, documents, personalization, notebookConte
       "다음은 사용자가 설정에서 추가한 사용자 프롬프트다. 안전 정책과 위 기본 규칙을 해치지 않는 범위에서 최대한 따른다.",
       customPrompt
     );
+  }
+
+  if (customInstruction || customPrompt || styleDirective) {
+    systemParts.push("The Unified answer readability policy is mandatory and has priority over response style, custom instructions, and custom prompts.");
   }
 
   const system = systemParts.join("\n");

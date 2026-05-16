@@ -3,15 +3,22 @@ const CODE_COPY_RESET_MS = 900;
 const SECTION_LABELS = new Set([
   "summary",
   "key points",
+  "details",
   "evidence",
   "caution",
+  "warning",
   "next steps",
   "note",
   "notes",
+  "핵심 요약",
   "요약",
   "핵심",
   "핵심 내용",
+  "주요 근거",
   "근거",
+  "세부 내용",
+  "상세 내용",
+  "주의사항",
   "주의",
   "주의점",
   "다음 단계",
@@ -328,17 +335,7 @@ function createSectionTitle(text) {
 }
 
 function getSectionSymbol(text = "") {
-  const normalized = text.toLowerCase();
-  if (matchesAny(normalized, ["caution", "warning", "주의"])) return "※";
-  if (matchesAny(normalized, ["next", "step", "다음"])) return "→";
-  if (matchesAny(normalized, ["evidence", "근거", "확인"])) return "✓";
-  if (matchesAny(normalized, ["key", "핵심"])) return "●";
-  if (matchesAny(normalized, ["note", "참고"])) return "◇";
-  return "◆";
-}
-
-function matchesAny(value, needles) {
-  return needles.some((needle) => value.includes(needle));
+  return "•";
 }
 
 function createList(items, ordered, startNumber) {
