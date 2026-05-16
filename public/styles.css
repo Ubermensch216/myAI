@@ -3539,7 +3539,7 @@ body.panel-resizing .panel-resizer::after {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 18px 10px;
+  padding: 6px 18px 8px;
   border-top: 1px solid var(--line);
   background: var(--surface);
 }
@@ -3829,8 +3829,10 @@ body.panel-resizing .panel-resizer::after {
 .settings-form-actions {
   flex-shrink: 0;
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 0;
+  margin: 0;
+  padding: 0;
 }
 
 #settingsForm .settings-system-section .field-row {
