@@ -633,6 +633,81 @@ export function buildOrdinanceCitation(ord, citationId = "O1") {
   };
 }
 
+// ===== Annex (별표/별지/서식) =====
+
+const ANNEX_ID_KEYS = ["별표일련번호", "별표번호", "annexId", "id"];
+const ANNEX_TITLE_KEYS = ["별표명", "별표제목", "서식명", "title", "name"];
+const ANNEX_NUMBER_KEYS = ["별표번호", "별표순번", "annexNo", "no"];
+const ANNEX_BODY_KEYS = ["별표내용", "서식내용", "내용", "content", "text"];
+
+export function normalizeAnnexResults(payload) {
+  const candidates = findObjects(payload).filter((item) => {
+    const title = readFirst(item, ANNEX_TITLE_KEYS);
+    const annexNo = readFirst(item, ANNEX_NUMBER_KEYS);
+    return title || annexNo;
+  });
+  const seen = new Set();
+  const results = [];
+  for (const item of candidates) {
+    const annexId = readFirst(item, ANNEX_ID_KEYS);
+    const title = stripHtml(readFirst(item, ANNEX_TITLE_KEYS));
+    const annexNo = stripHtml(readFirst(item, ANNEX_NUMBER_KEYS));
+    if (!title && !annexNo) continue;
+    const lawName = stripHtml(readFirst(item, LAW_NAME_KEYS));
+    const lawId = readFirst(item, LAW_ID_KEYS);
+    const mst = readFirst(item, LAW_MST_KEYS);
+    const key = `${annexId}|${title}|${annexNo}|${mst}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push({
+      annexId: String(annexId || ""),
+      title,
+      annexNo,
+      lawName,
+      lawId: String(lawId || ""),
+      mst: String(mst || ""),
+      effectiveDate: normalizeDate(readFirst(item, EFFECTIVE_DATE_KEYS)),
+      raw: item
+    });
+  }
+  return results;
+}
+
+export function normalizeAnnexPayload(payload) {
+  const objects = findObjects(payload);
+  const root = objects.find((item) => readFirst(item, ANNEX_TITLE_KEYS) || readFirst(item, ANNEX_BODY_KEYS)) || payload;
+  const text = collectKeyedText(payload, ANNEX_BODY_KEYS);
+  const annexItems = normalizeAnnexResults(payload);
+  return {
+    annexId: String(deepRead(payload, ANNEX_ID_KEYS) || ""),
+    title: stripHtml(readFirst(root, ANNEX_TITLE_KEYS)) || stripHtml(deepRead(payload, ANNEX_TITLE_KEYS)),
+    annexNo: stripHtml(readFirst(root, ANNEX_NUMBER_KEYS)) || stripHtml(deepRead(payload, ANNEX_NUMBER_KEYS)),
+    lawName: stripHtml(deepRead(payload, LAW_NAME_KEYS)),
+    lawId: String(deepRead(payload, LAW_ID_KEYS) || ""),
+    mst: String(deepRead(payload, LAW_MST_KEYS) || ""),
+    effectiveDate: normalizeDate(deepRead(payload, EFFECTIVE_DATE_KEYS)),
+    text,
+    results: annexItems,
+    raw: root
+  };
+}
+
+export function buildAnnexCitation(annex, citationId = "A1") {
+  return {
+    citationId,
+    sourceType: "law_annex",
+    recordType: "annex",
+    title: annex.title,
+    lawName: annex.lawName,
+    annexNo: annex.annexNo,
+    effectiveDate: annex.effectiveDate,
+    locator: [annex.lawName, annex.title].filter(Boolean).join(" "),
+    url: annex.mst
+      ? `https://www.law.go.kr/lsInfoP.do?lsiSeq=${encodeURIComponent(annex.mst)}`
+      : "https://www.law.go.kr"
+  };
+}
+
 // ===== Law Revision History (법령 연혁) =====
 
 const HIST_EFFECTIVE_DATE_KEYS = ["시행일자", "효력일자", "시행일", "effectiveDate"];

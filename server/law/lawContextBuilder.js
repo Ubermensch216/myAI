@@ -9,6 +9,7 @@ import { searchPrecedents } from "./tools/precedents.js";
 import { searchInterpretations } from "./tools/interpretations.js";
 import { searchAdminRules } from "./tools/adminRules.js";
 import { searchOrdinances } from "./tools/ordinances.js";
+import { searchDecisions } from "./tools/decisions.js";
 import { getLawConfig } from "./lawConfig.js";
 import { buildLawTopicSearchQuery, inferLawArticleRefsForTopic } from "./lawTopicHints.js";
 import { buildCompliancePromptBlock } from "../compliance/compliancePrompt.js";
@@ -154,6 +155,9 @@ export async function buildForcedLawContext(query, options = {}) {
     mayUseWebSearch: false
   };
   const startedAt = options.startedAt ?? Date.now();
+  if (isDecisionSearchPrompt(query)) {
+    return buildDecisionSearchContext(query, forcedIntent, { ...options, startedAt });
+  }
   return buildTopicSearchContext(query, forcedIntent, { ...options, startedAt });
 }
 
@@ -353,8 +357,12 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     searchOrdinances({ query: searchQuery, display: 5 }, { signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
+  tasks.push(
+    searchDecisions({ query: searchQuery, domain: "all", subType: "kor", display: 5 }, { signal, client })
+      .catch((error) => ({ error: toLawError(error) }))
+  );
 
-  const [inferredArticleResults, aiLawResult, aiAdminResult, lawResult, admResult, precResult, interpResult, ordResult] = await Promise.all([
+  const [inferredArticleResults, aiLawResult, aiAdminResult, lawResult, admResult, precResult, interpResult, ordResult, decisionResult] = await Promise.all([
     inferredArticleTask,
     ...tasks
   ]);
@@ -435,6 +443,14 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     errors.push({ source: "ordinances", marker: ordResult.error.marker });
   }
 
+  if (decisionResult && !decisionResult.error && decisionResult.results?.length > 0) {
+    const block = formatDecisionResultsBlock(decisionResult.results, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (decisionResult?.error) {
+    errors.push({ source: "decisions", marker: decisionResult.error.marker });
+  }
+
   return {
     ok: citations.length > 0 || sections.length > 0,
     query,
@@ -450,6 +466,70 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
   };
 }
 
+async function buildDecisionSearchContext(prompt, intent, { signal, startedAt, client }) {
+  const domain = getDecisionSearchDomain(prompt);
+  const errors = [];
+  const decisionSearch = await searchDecisionCandidates(prompt, { signal, client, domain });
+  errors.push(...decisionSearch.errors);
+  const selectedResult = decisionSearch.result;
+  const selectedQuery = decisionSearch.query;
+
+  if (!selectedResult) {
+    return {
+      ok: false,
+      query: selectedQuery,
+      mode: "law_topic_search",
+      intent,
+      citations: [],
+      verification: { checked: false, failCount: 0, results: [] },
+      disclaimer: disclaimerForLawMode("law_topic_search"),
+      contextText: "",
+      error: errors.length ? LAW_ERROR_MARKERS.LAW_API_ERROR : LAW_ERROR_MARKERS.NOT_FOUND,
+      errorDetails: errors,
+      latencyMs: Date.now() - startedAt
+    };
+  }
+
+  const block = formatDecisionResultsBlock(selectedResult.results, 0);
+  return {
+    ok: block.citations.length > 0,
+    query: selectedQuery,
+    mode: "law_topic_search",
+    intent,
+    citations: block.citations,
+    verification: { checked: false, failCount: 0, results: [] },
+    disclaimer: disclaimerForLawMode("law_topic_search"),
+    contextText: fitLawContext(block.text),
+    error: "",
+    errorDetails: errors,
+    latencyMs: Date.now() - startedAt
+  };
+}
+
+async function searchDecisionCandidates(prompt, { signal, client, domain = "all" } = {}) {
+  const queries = buildDecisionSearchQueries(prompt);
+  let selectedQuery = queries[0] || String(prompt || "").trim();
+  const errors = [];
+
+  for (const query of queries) {
+    const result = await searchDecisions({
+      query,
+      domain,
+      subType: domain === "haengjim" ? "kor" : "all",
+      display: 5
+    }, { signal, client }).catch((error) => ({ error: toLawError(error) }));
+    if (result?.error) {
+      errors.push({ source: "decisions", query, marker: result.error.marker || LAW_ERROR_MARKERS.LAW_API_ERROR });
+      continue;
+    }
+    if (Array.isArray(result?.results) && result.results.length > 0) {
+      return { result, query, errors };
+    }
+  }
+
+  return { result: null, query: selectedQuery, errors };
+}
+
 async function buildResearchContext(prompt, intent, { signal, startedAt, client }) {
   const extracted = intent.extracted || {};
   const baseQuery = extracted.query || prompt;
@@ -459,6 +539,7 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
   const wantArticle = Boolean(lawName && article);
   const wantLawSources = Boolean(extracted.wantLawSources || wantArticle);
   const wantPrecedents = Boolean(extracted.wantPrecedents);
+  const wantDecisions = Boolean(extracted.wantDecisions);
   const wantInterpretations = Boolean(extracted.wantInterpretations);
   const wantAdminRules = Boolean(extracted.wantAdminRules);
   const wantOrdinances = Boolean(extracted.wantOrdinances);
@@ -496,8 +577,11 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
   tasks.push(wantOrdinances
     ? searchOrdinances({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
+  tasks.push(wantDecisions
+    ? searchDecisionCandidates(searchQuery, { signal, client, domain: getDecisionSearchDomain(prompt) })
+    : Promise.resolve(null));
 
-  const [inferredArticleResults, articleResult, aiLawResult, lawResult, precResult, expcResult, admResult, ordResult] = await Promise.all([
+  const [inferredArticleResults, articleResult, aiLawResult, lawResult, precResult, expcResult, admResult, ordResult, decisionResult] = await Promise.all([
     inferredArticleTask,
     ...tasks
   ]);
@@ -570,6 +654,22 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
     citations.push(...block.citations);
   } else if (ordResult?.error) {
     errors.push({ source: "ordinances", marker: ordResult.error.marker });
+  }
+
+  if (Array.isArray(decisionResult?.errors) && decisionResult.errors.length) {
+    errors.push(...decisionResult.errors);
+  }
+  const decisionItems = Array.isArray(decisionResult?.result?.results)
+    ? decisionResult.result.results
+    : Array.isArray(decisionResult?.results)
+      ? decisionResult.results
+      : [];
+  if (decisionItems.length > 0) {
+    const block = formatDecisionResultsBlock(decisionItems, citations.length);
+    if (block.text) sections.push(block.text);
+    citations.push(...block.citations);
+  } else if (decisionResult?.error) {
+    errors.push({ source: "decisions", marker: decisionResult.error.marker });
   }
 
   return {
@@ -746,6 +846,36 @@ function uniqueStrings(values) {
   return output;
 }
 
+function isDecisionSearchPrompt(prompt) {
+  return /(헌재|헌법재판소|결정례|결정문|행정심판\s*재결례|재결례)/u.test(String(prompt || ""));
+}
+
+function getDecisionSearchDomain(prompt) {
+  const text = String(prompt || "");
+  const wantsHunzae = /(헌재|헌법재판소|결정례|결정문)/u.test(text);
+  const wantsHaengjim = /(행정심판|재결례)/u.test(text);
+  if (wantsHunzae && !wantsHaengjim) return "hunzae";
+  if (wantsHaengjim && !wantsHunzae) return "haengjim";
+  return "all";
+}
+
+function buildDecisionSearchQueries(prompt) {
+  const raw = String(prompt || "").replace(/\s+/g, " ").trim();
+  const cleaned = raw
+    .replace(/헌법재판소|헌재|결정례|결정문|판례요지|판례|행정심판|재결례/gu, " ")
+    .replace(/관련|관한|대한|대해|찾아줘|찾아|검색해줘|검색해|검색|조회해줘|조회|알려줘|보여줘|조사해줘|조사/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const simplified = cleaned
+    .replace(/침해|위반|여부|사건|사례|쟁점/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const candidates = [cleaned, simplified, raw]
+    .map((item) => item.slice(0, 80))
+    .filter((item) => item.length >= 2);
+  return uniqueStrings(candidates);
+}
+
 function buildEvidenceFamilies(citations) {
   const families = new Set();
   for (const item of citations || []) {
@@ -754,6 +884,7 @@ function buildEvidenceFamilies(citations) {
     else if (type === "interpretation" || type === "law_interpretation") families.add("interpretation");
     else if (type === "admin_rule" || type === "law_admin_rule") families.add("admin_rule");
     else if (type === "ordinance" || type === "law_ordinance") families.add("ordinance");
+    else if (type?.startsWith("decision_")) families.add("decision");
     else families.add("law");
   }
   return Array.from(families);
@@ -911,6 +1042,33 @@ function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], star
       url: item.lawName && item.articleNo ? `https://www.law.go.kr/법령/${encodeURIComponent(item.lawName)}/${encodeURIComponent(item.articleNo)}` : ""
     });
     lines.push(`[${citationId}] ${item.lawName} ${item.articleNo}\n${item.articleTitle || ""}\n${item.snippet}`);
+  });
+  return { text: lines.join("\n\n"), citations };
+}
+
+function formatDecisionResultsBlock(items = [], startIndex = 0) {
+  const list = Array.isArray(items) ? items.slice(0, 5) : [];
+  if (!list.length) return { text: "", citations: [] };
+  const lines = [
+    "[헌법재판소 결정례]",
+    "These are official 헌법재판소 결정례 (Constitutional Court decisions). Cite them as [D*]. Use 사건번호, 결정결과, 날짜 facts only from the data below; do not invent reasoning."
+  ];
+  const citations = [];
+  list.forEach((item, index) => {
+    const citationId = `D${startIndex + index + 1}`;
+    citations.push({
+      citationId,
+      sourceType: item.sourceType || "decision_hunzae_kor",
+      recordType: "decision",
+      title: item.title,
+      caseNo: item.caseNo || item.id,
+      result: item.result,
+      date: item.date,
+      institution: item.institution || "헌법재판소",
+      locator: `${item.caseNo || item.id} (${item.date})`
+    });
+    const summary = item.summary ? `\n요지: ${item.summary.slice(0, 120)}` : "";
+    lines.push(`[${citationId}] ${item.title}\n사건번호: ${item.caseNo || item.id || "-"}\n결정결과: ${item.result || "-"}\n선고일: ${item.date || "-"}${summary}`);
   });
   return { text: lines.join("\n\n"), citations };
 }

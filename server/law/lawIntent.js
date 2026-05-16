@@ -21,7 +21,8 @@ const LEGAL_KEYWORDS = /(법령|법률|시행령|시행규칙|판례|대법원|�
 const NEWS_KEYWORDS = /(뉴스|최근\s*보도|보도|언론|기사|동향)/u;
 const ARTICLE_TOKEN_PATTERN = /제\s*\d{1,4}\s*조(?:\s*의\s*\d{1,2})?/u;
 
-const PRECEDENT_INTENT_PATTERN = /(판례|판결|대법원\s*판결|선고\s*판결)/u;
+const PRECEDENT_INTENT_PATTERN = /(판례|판결|대법원\s*판결|선고\s*판결|결정례|헌재\s*결정|헌법재판소\s*결정)/u;
+const DECISION_INTENT_PATTERN = /(헌재\s*결정|헌법재판소\s*결정|결정례|행정심판\s*재결례)/u;
 const INTERPRETATION_INTENT_PATTERN = /(법령\s*해석례|해석례|법제처\s*해석)/u;
 const ADMIN_RULE_INTENT_PATTERN = /(행정규칙|고시|예규|훈령|행정\s*지침)/u;
 const ORDINANCE_INTENT_PATTERN = /(자치법규|조례|지방자치단체\s*규칙)/u;
@@ -67,7 +68,7 @@ export function detectLawIntent(prompt, { hasNotebook = false, hasDocuments = fa
   const actionPlanArticle = articlePattern || null;
   const actionPlan = ACTION_PLAN_PATTERN.test(text)
     && (citations.length > 0 || (LEGAL_KEYWORDS.test(text) && actionPlanArticle));
-  const citizenActionPlan = !actionPlan && !hasGroundingContext && CITIZEN_ACTION_PLAN_PATTERN.test(text);
+  const citizenActionPlan = !actionPlan && !hasGroundingContext && !DECISION_INTENT_PATTERN.test(text) && CITIZEN_ACTION_PLAN_PATTERN.test(text);
   if (actionPlan) {
     return {
       isLegalQuery: true,
@@ -148,10 +149,11 @@ export function isLegalPrompt(prompt, options = {}) {
 function detectResearchIntent(text, citations, articlePattern) {
   const wantLawSources = LAW_RESEARCH_INTENT_PATTERN.test(text);
   const wantPrecedents = PRECEDENT_INTENT_PATTERN.test(text);
+  const wantDecisions = DECISION_INTENT_PATTERN.test(text);
   const wantInterpretations = INTERPRETATION_INTENT_PATTERN.test(text);
   const wantAdminRules = ADMIN_RULE_INTENT_PATTERN.test(text);
   const wantOrdinances = ORDINANCE_INTENT_PATTERN.test(text);
-  const wantsNonLawResearch = wantPrecedents || wantInterpretations || wantAdminRules || wantOrdinances;
+  const wantsNonLawResearch = wantPrecedents || wantDecisions || wantInterpretations || wantAdminRules || wantOrdinances;
   if (!wantsNonLawResearch) return null;
   // Require a research verb (찾아/검색/...) or a known law name to avoid
   // triggering on stray mentions like "판례를 만들었다" or "고시 가격" (price).
@@ -166,6 +168,7 @@ function detectResearchIntent(text, citations, articlePattern) {
       article: articlePattern?.article || (citations[0]?.article ?? ""),
       wantLawSources,
       wantPrecedents,
+      wantDecisions,
       wantInterpretations,
       wantAdminRules,
       wantOrdinances

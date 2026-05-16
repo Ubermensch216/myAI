@@ -74,6 +74,8 @@ await run("disclaimerForLawMode maps modes to disclaimer policy", testDisclaimer
 await run("buildLawContext action_plan injects non-legal-advice template", testActionPlanContext);
 await run("citizen action_plan uses topic research evidence", testCitizenActionPlanContext);
 await run("forced law search context stays official-evidence only", testForcedLawSearchContext);
+await run("forced law search context includes official decision results", testForcedLawSearchDecisionContext);
+await run("forced decision search narrows query and suppresses statute substitutes", testForcedDecisionSearchNarrowsQuery);
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
 await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
 await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
@@ -771,6 +773,135 @@ async function testForcedLawSearchContext() {
   assert.match(ctx.contextText, /do not infer/i);
 }
 
+async function testForcedLawSearchDecisionContext() {
+  const calls = [];
+  const fakeClient = {
+    async searchAiLaw(input) {
+      calls.push(["searchAiLaw", input]);
+      return { ok: true, results: [] };
+    },
+    async searchLaw(input) {
+      calls.push(["searchLaw", input]);
+      return { ok: true, query: input.query, results: [] };
+    },
+    async searchAdminRules(input) {
+      calls.push(["searchAdminRules", input]);
+      return { ok: true, results: [] };
+    },
+    async searchPrecedents(input) {
+      calls.push(["searchPrecedents", input]);
+      return { ok: true, results: [] };
+    },
+    async searchInterpretations(input) {
+      calls.push(["searchInterpretations", input]);
+      return { ok: true, results: [] };
+    },
+    async searchOrdinances(input) {
+      calls.push(["searchOrdinances", input]);
+      return { ok: true, results: [] };
+    },
+    async searchDecisions(input) {
+      calls.push(["searchDecisions", input]);
+      return {
+        ok: true,
+        domain: "hunzae",
+        results: [
+          {
+            id: "1001",
+            caseNo: "2018Hun-Ma001",
+            title: "Privacy infringement constitutional decision",
+            result: "dismissed",
+            date: "2020-01-01",
+            institution: "Constitutional Court of Korea",
+            summary: "Privacy-related decision summary.",
+            sourceType: "decision_hunzae_kor"
+          }
+        ]
+      };
+    }
+  };
+
+  const ctx = await buildForcedLawContext("privacy infringement constitutional court decisions", { client: fakeClient });
+  assert.equal(ctx.ok, true);
+  assert.ok(calls.some(([name]) => name === "searchDecisions"), "forced law search must search decisions");
+  assert.ok(ctx.citations.some((item) => item.citationId === "D1"), "must include a decision citation");
+  assert.match(ctx.contextText, /\[D1\]/);
+  assert.match(ctx.contextText, /Privacy infringement constitutional decision/);
+}
+
+async function testForcedDecisionSearchNarrowsQuery() {
+  const calls = [];
+  const fakeClient = {
+    async searchAiLaw(input) {
+      calls.push(["searchAiLaw", input]);
+      return {
+        ok: true,
+        results: [
+          {
+            lawName: "헌법재판소 개인정보 보호 규칙",
+            articleNo: "0013",
+            articleTitle: "헌법재판소지침",
+            snippet: "개인정보 보호와 관련한 절차 규정",
+            effectiveDate: "2024-01-01"
+          }
+        ]
+      };
+    },
+    async searchLaw(input) {
+      calls.push(["searchLaw", input]);
+      return { ok: true, query: input.query, results: [] };
+    },
+    async searchAdminRules(input) {
+      calls.push(["searchAdminRules", input]);
+      return { ok: true, results: [] };
+    },
+    async searchPrecedents(input) {
+      calls.push(["searchPrecedents", input]);
+      return { ok: true, results: [] };
+    },
+    async searchInterpretations(input) {
+      calls.push(["searchInterpretations", input]);
+      return { ok: true, results: [] };
+    },
+    async searchOrdinances(input) {
+      calls.push(["searchOrdinances", input]);
+      return { ok: true, results: [] };
+    },
+    async searchDecisions(input) {
+      calls.push(["searchDecisions", input]);
+      if (input.query !== "개인정보") return { ok: true, domain: input.domain, results: [], total: 0 };
+      return {
+        ok: true,
+        domain: "hunzae",
+        results: [
+          {
+            id: "2001",
+            caseNo: "2024Hun-Ma001",
+            title: "개인정보 자기결정권 침해 여부",
+            result: "인용",
+            date: "2024-02-01",
+            institution: "헌법재판소",
+            summary: "개인정보 관련 헌법재판소 결정례 요지",
+            sourceType: "decision_hunzae_outline"
+          }
+        ]
+      };
+    }
+  };
+
+  const ctx = await buildForcedLawContext("개인정보 침해 관련 헌법재판소 결정례 찾아줘", { client: fakeClient });
+  assert.equal(ctx.ok, true);
+  assert.deepEqual(
+    calls.filter(([name]) => name === "searchDecisions").map(([, input]) => input.query),
+    ["개인정보 침해", "개인정보"]
+  );
+  assert.ok(!calls.some(([name]) => name === "searchAiLaw"), "decision-specific law search must not fall back to statute AI snippets");
+  assert.ok(ctx.citations.some((item) => item.citationId === "D1"));
+  assert.ok(ctx.citations.every((item) => item.citationId.startsWith("D")), "decision prompt should expose only decision citations");
+  assert.match(ctx.contextText, /개인정보 자기결정권 침해 여부/);
+  assert.doesNotMatch(ctx.contextText, /\[AI-L/);
+}
+
 async function testResearchSurveyPrompt() {
   const prompt = "위반건축물 관련 법령이나 판례를 조사해";
   const intent = detectLawIntent(prompt);
@@ -872,7 +1003,15 @@ function testLawSearchModeFlags() {
     notebookId: null,
     documents: []
   });
-  assert.equal(normal.forceWebSearch, true, "normal chat still honors explicit web-search prompts");
+  assert.equal(normal.forceWebSearch, false, "normal chat must route legal search prompts to Korea Law Engine before web search");
+
+  const web = resolveChatModeFlags({
+    lawSearchMode: false,
+    prompt: "네이버에서 서울 날씨 검색해줘",
+    notebookId: null,
+    documents: []
+  });
+  assert.equal(web.forceWebSearch, true, "normal chat still honors non-legal explicit web-search prompts");
 }
 
 async function testTimeTravelFullLaw() {

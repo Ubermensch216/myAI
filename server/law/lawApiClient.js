@@ -1,10 +1,11 @@
 import { getLawConfig, maskLawSecrets } from "./lawConfig.js";
 import { getCachedLawResponse, setCachedLawResponse, buildLawCacheKey } from "./lawCache.js";
-import { normalizeArticleRef, normalizeEffectiveDate, normalizeLawName } from "./lawArticleRef.js";
+import { normalizeArticleRef, normalizeEffectiveDate, normalizeLawName, extractLawCitations } from "./lawArticleRef.js";
 import { LAW_ERROR_MARKERS, LawError, assertLawAvailable } from "./lawErrors.js";
 import { throwIfAborted } from "../abort.js";
 import {
   buildAdminRuleCitation,
+  buildAnnexCitation,
   buildCitation,
   buildInterpretationCitation,
   buildOrdinanceCitation,
@@ -15,6 +16,8 @@ import {
   normalizeAdminRulePayload,
   normalizeAdminRuleResults,
   normalizeAiSearchResults,
+  normalizeAnnexPayload,
+  normalizeAnnexResults,
   parseAiSearchXml,
   normalizeArticlePayload,
   normalizeComparableLawName,
@@ -38,6 +41,7 @@ const PRECEDENT_TTL_MS = 30 * 86_400_000;
 const INTERPRETATION_TTL_MS = 30 * 86_400_000;
 const ADMIN_RULE_TTL_MS = 7 * 86_400_000;
 const ORDINANCE_TTL_MS = 7 * 86_400_000;
+const ANNEX_TTL_MS = 7 * 86_400_000;
 
 export class LawApiClient {
   constructor(config = getLawConfig()) {
@@ -598,6 +602,204 @@ export class LawApiClient {
     return { ...response, cacheHit: false };
   }
 
+  async searchAnnexes({ query, display, lawName, lawId, mst } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedQuery = String(query || lawName || "").trim();
+    if (!normalizedQuery && !lawId && !mst) {
+      throw new LawError("Annex search requires query, lawName, lawId, or mst.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const normalizedInput = {
+      query: normalizedQuery,
+      display: clampInt(display, this.config.maxResults, 1, 100),
+      lawId: lawId || "",
+      mst: mst || ""
+    };
+    const cacheKey = buildLawCacheKey("search_annexes", normalizedInput);
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: ANNEX_TTL_MS });
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+
+    const params = { target: "annex", type: "JSON", display: normalizedInput.display };
+    if (normalizedQuery) params.query = normalizedQuery;
+    if (normalizedInput.mst) params.MST = normalizedInput.mst;
+    else if (normalizedInput.lawId) params.ID = normalizedInput.lawId;
+
+    const payload = await this.requestSearch(params, { signal });
+    const results = stripLawPrivateFields(normalizeAnnexResults(payload).slice(0, normalizedInput.display));
+    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: ANNEX_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getAnnexDetail({ mst, lawId, lawName, query } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    let resolvedMst = String(mst || "").trim();
+    let resolvedId = String(lawId || "").trim();
+    if (!resolvedMst && !resolvedId && (lawName || query)) {
+      const search = await this.searchAnnexes({ query: lawName || query, display: 1 }, { signal });
+      resolvedMst = search.results[0]?.mst || "";
+      resolvedId = search.results[0]?.lawId || "";
+    }
+    if (!resolvedMst && !resolvedId) {
+      throw new LawError("Annex lookup requires mst, lawId, lawName, or query.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const cacheKey = buildLawCacheKey("annex_detail", { mst: resolvedMst, lawId: resolvedId });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: ANNEX_TTL_MS });
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+
+    const params = { target: "annex", type: "JSON" };
+    if (resolvedMst) params.MST = resolvedMst;
+    else params.ID = resolvedId;
+
+    const payload = await this.requestService(params, { signal });
+    const data = normalizeAnnexPayload(payload);
+    if (!data.text && !data.title) {
+      throw new LawError(`Annex not found for ${resolvedMst || resolvedId}`, { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+    }
+    const response = {
+      ok: true,
+      citation: buildAnnexCitation(data),
+      text: data.text,
+      results: Array.isArray(data.results) ? stripLawPrivateFields(data.results) : []
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: ANNEX_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getThreeTier({ lawName } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedLawName = normalizeLawName(lawName);
+    if (!normalizedLawName) {
+      throw new LawError("lawName is required for three-tier lookup.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const cacheKey = buildLawCacheKey("three_tier", { lawName: normalizedLawName });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+
+    const [lawResult, decreeResult, ruleResult] = await Promise.all([
+      this.searchLaw({ query: normalizedLawName, display: 3 }, { signal }).catch(() => ({ results: [] })),
+      this.searchLaw({ query: `${normalizedLawName} 시행령`, display: 3 }, { signal }).catch(() => ({ results: [] })),
+      this.searchLaw({ query: `${normalizedLawName} 시행규칙`, display: 3 }, { signal }).catch(() => ({ results: [] }))
+    ]);
+
+    const pickBest = (results, expectedSuffix) => {
+      if (!results?.length) return null;
+      const exact = results.find((r) => r.lawName === normalizedLawName + (expectedSuffix || ""));
+      const fuzzy = results.find((r) => r.lawName.includes(normalizedLawName));
+      return exact || fuzzy || results[0] || null;
+    };
+
+    const law = pickBest(lawResult.results || [], "");
+    const decree = pickBest(decreeResult.results || [], " 시행령");
+    const rule = pickBest(ruleResult.results || [], " 시행규칙");
+
+    const response = {
+      ok: Boolean(law),
+      lawName: normalizedLawName,
+      tiers: {
+        law: law ? { lawName: law.lawName, lawId: law.lawId, mst: law.mst, effectiveDate: law.effectiveDate, found: true } : { found: false },
+        decree: decree ? { lawName: decree.lawName, lawId: decree.lawId, mst: decree.mst, effectiveDate: decree.effectiveDate, found: true } : { found: false },
+        rule: rule ? { lawName: rule.lawName, lawId: rule.lawId, mst: rule.mst, effectiveDate: rule.effectiveDate, found: true } : { found: false }
+      }
+    };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getDelegatedLaws({ lawName, mst, lawId } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedLawName = normalizeLawName(lawName);
+    let resolvedMst = String(mst || "").trim();
+    let resolvedId = String(lawId || "").trim();
+
+    if (!resolvedMst && !resolvedId && normalizedLawName) {
+      const search = await this.searchLaw({ query: normalizedLawName, display: 3 }, { signal });
+      const best = chooseLawSearchResult(search.results, normalizedLawName);
+      resolvedMst = best?.mst || "";
+      resolvedId = best?.lawId || "";
+    }
+
+    if (!resolvedMst && !resolvedId) {
+      throw new LawError("lawName, mst, or lawId is required for delegated law lookup.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+
+    const cacheKey = buildLawCacheKey("delegated_laws", { mst: resolvedMst, lawId: resolvedId });
+    const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
+    if (cached) return { ...stripLawPrivateFields(cached), cacheHit: true };
+
+    let results = [];
+    try {
+      const params = { target: "sublaw", type: "JSON" };
+      if (resolvedMst) params.MST = resolvedMst;
+      else params.ID = resolvedId;
+      const payload = await this.requestService(params, { signal });
+      results = stripLawPrivateFields(normalizeSearchResults(payload));
+    } catch {
+      if (normalizedLawName) {
+        const [d, r] = await Promise.all([
+          this.searchLaw({ query: `${normalizedLawName} 시행령`, display: 5 }, { signal }).catch(() => ({ results: [] })),
+          this.searchLaw({ query: `${normalizedLawName} 시행규칙`, display: 5 }, { signal }).catch(() => ({ results: [] }))
+        ]);
+        results = [...(d.results || []), ...(r.results || [])];
+      }
+    }
+
+    const response = { ok: results.length > 0, lawName: normalizedLawName, results };
+    await setCachedLawResponse(cacheKey, response, { ttlMs: LAW_SEARCH_TTL_MS });
+    return { ...response, cacheHit: false };
+  }
+
+  async getLinkedOrdinances({ lawName, region, display } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const normalizedLawName = normalizeLawName(lawName);
+    if (!normalizedLawName) {
+      throw new LawError("lawName is required for linked ordinance search.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    return this.searchOrdinances({ query: normalizedLawName, display, region }, { signal });
+  }
+
+  async getLinkedOrdinanceArticles({ ordinId, lawName, query } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const resolvedId = String(ordinId || "").trim();
+    if (!resolvedId) {
+      throw new LawError("ordinId is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const detail = await this.getOrdinanceDetail({ ordinId: resolvedId, query }, { signal });
+    const text = detail.text || "";
+    const articles = parseArticleSections(text, lawName);
+    return {
+      ok: true,
+      ordinId: resolvedId,
+      ordinTitle: detail.citation?.title || "",
+      lawName: lawName || "",
+      articles,
+      cacheHit: Boolean(detail.cacheHit)
+    };
+  }
+
+  async getLinkedLawsFromOrdinance({ ordinId, query } = {}, { signal } = {}) {
+    assertLawAvailable(this.config);
+    const resolvedId = String(ordinId || "").trim();
+    if (!resolvedId) {
+      throw new LawError("ordinId is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
+    }
+    const detail = await this.getOrdinanceDetail({ ordinId: resolvedId, query }, { signal });
+    const text = detail.text || "";
+    const citations = extractLawCitations(text);
+    const seen = new Set();
+    const laws = citations.filter((c) => {
+      if (seen.has(c.canonical)) return false;
+      seen.add(c.canonical);
+      return true;
+    });
+    return {
+      ok: true,
+      ordinId: resolvedId,
+      ordinTitle: detail.citation?.title || "",
+      laws,
+      cacheHit: Boolean(detail.cacheHit)
+    };
+  }
+
   async requestSearch(params, options) {
     return this.request(this.config.searchUrl, params, options);
   }
@@ -751,4 +953,25 @@ export function stripLawPrivateFields(value) {
 function hasStaleInterpretationSearchCache(value) {
   const results = Array.isArray(value?.results) ? value.results : [];
   return results.some((item) => /^\d{2}-\d{4}$/.test(String(item?.expcId || "")));
+}
+
+function parseArticleSections(text = "", filterLawName = "") {
+  if (!text) return [];
+  const lines = text.split("\n");
+  const articles = [];
+  let current = null;
+  for (const line of lines) {
+    const match = line.match(/^제\s*(\d+)\s*조(?:의\d+)?\s*(.*)/u);
+    if (match) {
+      if (current) articles.push(current);
+      current = { articleNo: `제${match[1]}조`, title: match[2]?.trim() || "", text: line };
+    } else if (current) {
+      current.text += "\n" + line;
+    }
+  }
+  if (current) articles.push(current);
+  const result = filterLawName
+    ? articles.filter((a) => a.text.includes(filterLawName))
+    : articles;
+  return result.slice(0, 20).map((a) => ({ ...a, text: a.text.trim() }));
 }

@@ -47,11 +47,24 @@ export function getLawConfig() {
   };
 }
 
+export function getDecisionsConfig() {
+  const sharedKey = String(process.env.DECISIONS_API_KEY || "").trim();
+  return {
+    enabled: boolEnv("LAW_DECISIONS_ENABLED", true),
+    hunzaeConfigured: Boolean(String(process.env.HUNZAE_API_KEY || sharedKey).trim()),
+    hunzaeApiUrl: String(process.env.HUNZAE_API_URL || "").trim(),
+    haengjimEnabled: true
+  };
+}
+
 export function maskLawSecrets(value) {
   let text = String(value ?? "");
   const secrets = [
     process.env.LAW_OC,
-    process.env.KOREAN_LAW_API_KEY
+    process.env.KOREAN_LAW_API_KEY,
+    process.env.DECISIONS_API_KEY,
+    process.env.HUNZAE_API_KEY,
+    process.env.HAENGJIM_API_KEY
   ].map((item) => String(item || "").trim()).filter(Boolean);
   for (const secret of secrets) {
     text = text.split(secret).join("[REDACTED_LAW_OC]");

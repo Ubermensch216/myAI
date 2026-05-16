@@ -36,7 +36,7 @@ const STRICT_LAW_SEARCH_SYSTEM_BLOCK = [
   "This request is in forced law-search mode.",
   "Use only Korean Law Engine evidence blocks included below as legal authority.",
   "Do not use model training knowledge, web search, department notebook text, uploaded files, prior assistant messages, or uncited memory as legal authority.",
-  "Every legal claim, policy recommendation, statute, case, interpretation, admin-rule, ordinance, or guideline statement must include an inline citation from the provided evidence identifiers: [L*], [AI-L*], [L-S*], [P*], [I*], [R*], or [O*].",
+  "Every legal claim, policy recommendation, statute, case, decision, interpretation, admin-rule, ordinance, or guideline statement must include an inline citation from the provided evidence identifiers: [L*], [AI-L*], [L-S*], [P*], [D*], [I*], [R*], or [O*].",
   "If the available evidence only lists law-name candidates without article, case, rule, or guideline text, summarize only those candidates and ask for a specific law/article or narrower query.",
   "If the evidence does not directly support the requested answer, say that the Korean Law Engine results are insufficient and do not answer from background knowledge."
 ].join("\n");
@@ -865,7 +865,7 @@ async function buildMessages(messages, documents, personalization, notebookConte
       "Strict law-search mode is active.",
       "Use only the Korean Law Engine evidence block as legal authority.",
       "Do not use prior assistant messages, model training knowledge, web search, uploaded files, department notebook text, or personalization instructions as legal authority.",
-      "Every legal claim or policy recommendation must cite a provided evidence identifier such as [L*], [AI-L*], [L-S*], [P*], [I*], [R*], or [O*].",
+      "Every legal claim or policy recommendation must cite a provided evidence identifier such as [L*], [AI-L*], [L-S*], [P*], [D*], [I*], [R*], or [O*].",
       "If the evidence is insufficient, say so and do not fill the gap from background knowledge."
     );
   }

@@ -6594,6 +6594,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .message-citation-item.law-citation-precedent .message-citation-marker { color: #7c3aed; }
+.message-citation-item.law-citation-decision .message-citation-marker { color: #7c3aed; }
 .message-citation-item.law-citation-interpretation .message-citation-marker { color: #2563eb; }
 .message-citation-item.law-citation-admin_rule .message-citation-marker { color: #c2410c; }
 .message-citation-item.law-citation-ordinance .message-citation-marker { color: #b45309; }

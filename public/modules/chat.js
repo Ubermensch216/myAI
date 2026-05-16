@@ -1147,6 +1147,7 @@ const LAW_BADGE_LABELS = {
   admin_rule: "행정규칙",
   ordinance: "자치법규"
 };
+LAW_BADGE_LABELS.decision = "헌재 결정례";
 
 function classifyLawCitation(citation) {
   if (!citation) return null;
@@ -1155,6 +1156,7 @@ function classifyLawCitation(citation) {
   const citationId = String(citation.citationId || "");
   if (sourceType === "law" || recordType === "statute" || /^L\d/.test(citationId)) return "statute";
   if (sourceType === "law_precedent" || recordType === "precedent" || /^P\d/.test(citationId)) return "precedent";
+  if (sourceType.startsWith("decision_") || recordType === "decision" || /^D\d/.test(citationId)) return "decision";
   if (sourceType === "law_interpretation" || recordType === "interpretation" || /^I\d/.test(citationId)) return "interpretation";
   if (sourceType === "law_admin_rule" || recordType === "admin_rule" || /^R\d/.test(citationId)) return "admin_rule";
   if (sourceType === "law_ordinance" || recordType === "ordinance" || /^O\d/.test(citationId)) return "ordinance";
@@ -1188,6 +1190,13 @@ function appendLawCitationMeta(source, citation, lawKind) {
     if (citation.court) appendMeta(source, `· ${citation.court}`);
     if (citation.date) appendMeta(source, `· 선고일 ${citation.date}`);
     if (citation.caseType) appendMeta(source, `· ${citation.caseType}`);
+    return;
+  }
+  if (lawKind === "decision") {
+    if (citation.caseNo) appendMeta(source, `· ${citation.caseNo}`);
+    if (citation.institution) appendMeta(source, `· ${citation.institution}`);
+    if (citation.result) appendMeta(source, `· ${citation.result}`);
+    if (citation.date) appendMeta(source, `· 선고일 ${citation.date}`);
     return;
   }
   if (lawKind === "interpretation") {
@@ -1265,6 +1274,7 @@ function formatCitationDocumentName(citation) {
       || "공식 법령";
   }
   if (lawKind === "precedent") return citation.title || citation.locator || "공식 판례";
+  if (lawKind === "decision") return citation.title || citation.locator || "헌재 결정례";
   if (lawKind === "interpretation") return citation.title || citation.locator || "법령해석례";
   if (lawKind === "admin_rule") return citation.title || citation.locator || "행정규칙";
   if (lawKind === "ordinance") return citation.title || citation.locator || "자치법규";
@@ -1281,6 +1291,7 @@ function groupCitationsByType(citations, compliance = null) {
     ["프로젝트", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
     ["법령", (item) => classifyLawCitation(item) === "statute"],
     ["판례", (item) => classifyLawCitation(item) === "precedent"],
+    ["헌재 결정례", (item) => classifyLawCitation(item) === "decision"],
     ["법령해석례", (item) => classifyLawCitation(item) === "interpretation"],
     ["행정규칙", (item) => classifyLawCitation(item) === "admin_rule"],
     ["자치법규", (item) => classifyLawCitation(item) === "ordinance"],

@@ -11,8 +11,11 @@ import { searchPrecedents, getPrecedentDetail } from "./precedents.js";
 import { searchInterpretations, getInterpretationDetail } from "./interpretations.js";
 import { searchAdminRules, getAdminRuleDetail } from "./adminRules.js";
 import { searchOrdinances, getOrdinanceDetail } from "./ordinances.js";
+import { searchAnnexes, getAnnexDetail } from "./annexes.js";
 import { buildImpactMap } from "./impactMap.js";
 import { runTimeTravel } from "./timeTravel.js";
+import { getThreeTier, getDelegatedLaws, getLinkedOrdinances, getLinkedOrdinanceArticles, getLinkedLawsFromOrdinance } from "./lawStructure.js";
+import { searchDecisions, getDecisionText } from "./decisions.js";
 
 const LAW_TOOLS = [
   { name: "discover_tools", category: "meta", description: "Discover Korean Law Engine tools by name, category, or keyword." },
@@ -34,11 +37,20 @@ const LAW_TOOLS = [
   { name: "get_admin_rule", category: "admin_rule", description: "Get official administrative-rule text." },
   { name: "search_ordinance", category: "ordinance", description: "Search official local ordinance records." },
   { name: "get_ordinance", category: "ordinance", description: "Get official local ordinance text." },
+  { name: "search_annexes", category: "annex", description: "Search 별표/별지/서식 (annexes and forms) by law name or keyword." },
+  { name: "get_annexes", category: "annex", description: "Get all 별표/별지/서식 (annexes and forms) for a law by MST or lawId." },
   { name: "impact_map", category: "analysis", description: "Build a structural impact map for one statute article." },
   { name: "time_travel", category: "history", description: "Compare one article or full law across two dates." },
   { name: "action_plan", category: "chain", description: "Create evidence-grounded citizen action-plan context from a natural-language situation." },
   { name: "chain_full_research", category: "chain", description: "MCP-compatible full-research chain alias." },
-  { name: "chain_amendment_track", category: "chain", description: "MCP-compatible amendment/time-travel chain alias." }
+  { name: "chain_amendment_track", category: "chain", description: "MCP-compatible amendment/time-travel chain alias." },
+  { name: "get_three_tier", category: "law_structure", description: "Get 법률-시행령-시행규칙 three-tier law structure for a given law." },
+  { name: "get_delegated_laws", category: "law_structure", description: "Get delegated (위임) sub-laws for a given law." },
+  { name: "get_linked_ordinances", category: "law_structure", description: "Search local ordinances (자치법규) linked to a given law." },
+  { name: "get_linked_ordinance_articles", category: "law_structure", description: "Get ordinance articles that reference a specific law." },
+  { name: "get_linked_laws_from_ordinance", category: "law_structure", description: "Extract law references from a local ordinance text." },
+  { name: "search_decisions", category: "decisions", description: "Search 헌재 결정례 (한글/영문판례·판례요지집) and 행정심판 재결례. params: query, domain(all|hunzae|haengjim), subType(kor|eng|outline|all), page, display." },
+  { name: "get_decision_text", category: "decisions", description: "Get full text of a 헌재 결정례. params: id(eventNum or seqNo), sourceType(decision_hunzae_eng|decision_hunzae_outline)." }
 ];
 
 export function listLawTools({ query = "", category = "" } = {}) {
@@ -113,6 +125,10 @@ export async function executeLawTool(input = {}, options = {}) {
         ordinId: params.ordinId || params.ordinSeq || params.id,
         query: params.query
       }, execOptions);
+    case "search_annexes":
+      return searchAnnexes(params, execOptions);
+    case "get_annexes":
+      return getAnnexDetail(params, execOptions);
     case "impact_map":
       return buildImpactMap(normalizeArticleAlias(params), execOptions);
     case "time_travel":
@@ -125,6 +141,20 @@ export async function executeLawTool(input = {}, options = {}) {
     case "chain_amendment_track":
       if (!params.scenario || params.scenario === "time_travel") return runTimeTravel(normalizeArticleAlias(params), execOptions);
       return getLawHistory({ lawName: params.lawName || params.query, lawId: params.lawId, mst: params.mst }, execOptions);
+    case "get_three_tier":
+      return getThreeTier(params, execOptions);
+    case "get_delegated_laws":
+      return getDelegatedLaws(params, execOptions);
+    case "get_linked_ordinances":
+      return getLinkedOrdinances(params, execOptions);
+    case "get_linked_ordinance_articles":
+      return getLinkedOrdinanceArticles(params, execOptions);
+    case "get_linked_laws_from_ordinance":
+      return getLinkedLawsFromOrdinance(params, execOptions);
+    case "search_decisions":
+      return searchDecisions(params, execOptions);
+    case "get_decision_text":
+      return getDecisionText(params, execOptions);
     default:
       return {
         ok: false,

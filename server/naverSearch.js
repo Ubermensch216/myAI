@@ -1,5 +1,6 @@
 import { loadLocalEnv } from "./env.js";
 import { throwIfAborted } from "./abort.js";
+import { isLegalPrompt } from "./law/lawIntent.js";
 
 loadLocalEnv();
 
@@ -43,8 +44,15 @@ export function shouldUseNaverSearch(prompt) {
   if (!isNaverSearchEnabled()) return false;
   const text = String(prompt || "").trim();
   if (!text) return false;
+  // 명시적 "네이버 검색" 요청은 항상 허용
+  if (/네이버.{0,12}(검색|뉴스|웹|조회|찾아|알아)/i.test(text)) return true;
+  // 법령·판례·결정례 의도가 명확하면 Korea Law Engine 우선 → Naver 강제 차단
+  try {
+    if (isLegalPrompt(text)) return false;
+  } catch {
+    // ignore intent detection errors, fall through to keyword match
+  }
   return (
-    /네이버.{0,12}(검색|뉴스|웹|조회|찾아|알아)/i.test(text) ||
     /(검색|검색해서|검색해|검색해줘|조회|찾아봐|찾아줘|알아봐|웹에서|인터넷에서|뉴스)/i.test(text) ||
     /(최신|오늘|현재|실시간).{0,20}(정보|뉴스|동향|현황|조회|검색|찾아)/i.test(text)
   );
