@@ -354,7 +354,7 @@ The LLM does not directly mutate calendar data.
 - `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
-- `server/law/` - Korean Law Engine API surface, law.go.kr client/cache, citation verification, research tools, impact maps, and time-travel/diff/history helpers.
+- `server/law/` - Korean Law Engine API surface, law.go.kr and decision API clients/cache, citation verification, research tools, annexes, law-structure links, Constitutional Court and administrative-appeal decisions, impact maps, and time-travel/diff/history helpers.
 - `server/compliance/` - department legal-review intent classification, review-type catalog, and compliance prompt construction.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
 - `server/documents.js` - document serializers and `pageSections()`.

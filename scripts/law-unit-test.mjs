@@ -20,6 +20,7 @@ const {
 const { detectLawIntent } = await import("../server/law/lawIntent.js");
 const { maskLawSecrets } = await import("../server/law/lawConfig.js");
 const { LawApiClient, stripLawPrivateFields } = await import("../server/law/lawApiClient.js");
+const { DecisionsApiClient } = await import("../server/law/decisionsApiClient.js");
 const { normalizeLawCitationForMeta, disclaimerForLawMode } = await import("../server/law/lawCitationFormatter.js");
 const { buildLawContext, buildForcedLawContext, ACTION_PLAN_TEMPLATE } = await import("../server/law/lawContextBuilder.js");
 const { resolveChatModeFlags } = await import("../server/ollama.js");
@@ -77,6 +78,9 @@ await run("forced law search context stays official-evidence only", testForcedLa
 await run("forced law search context includes official decision results", testForcedLawSearchDecisionContext);
 await run("forced decision search narrows query and suppresses statute substitutes", testForcedDecisionSearchNarrowsQuery);
 await run("forced admin appeal search narrows query and stays in haengjim domain", testForcedAdminAppealSearchNarrowsQuery);
+await run("haengjim hub API follows documented request parameters", testHaengJimHubApiDocumentedParams);
+await run("haengjim URL env selects hub provider", testHaengJimUrlEnvSelectsHubProvider);
+await run("haengjim hub API falls back to law.go.kr on transport failure", testHaengJimHubApiFallback);
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
 await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
 await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
@@ -937,13 +941,133 @@ async function testForcedAdminAppealSearchNarrowsQuery() {
   assert.equal(ctx.ok, true);
   assert.deepEqual(
     calls.filter(([name]) => name === "searchDecisions").map(([, input]) => input.query),
-    ["개인정보 사례", "개인정보"]
+    ["개인정보"]
   );
   assert.ok(!calls.some(([name]) => name === "searchAiLaw"), "admin appeal decision prompt must not fall back to statute AI snippets");
   assert.ok(ctx.citations.some((item) => item.citationId === "D1" && item.sourceType === "decision_haengjim"));
   assert.ok(ctx.citations.every((item) => item.citationId.startsWith("D")), "admin appeal prompt should expose only decision citations");
   assert.match(ctx.contextText, /정보공개 거부처분 취소청구/);
   assert.doesNotMatch(ctx.contextText, /\[AI-L/);
+}
+
+async function testHaengJimHubApiDocumentedParams() {
+  const previousProvider = process.env.HAENGJIM_API_PROVIDER;
+  const previousUrl = process.env.HAENGJIM_API_URL;
+  process.env.HAENGJIM_API_PROVIDER = "hub";
+  process.env.HAENGJIM_API_URL = "http://www.simpan.go.kr/nsph/getAdjdexeList.do";
+  try {
+    const client = new DecisionsApiClient();
+    let captured = null;
+    client.requestRaw = async (url, params) => {
+      captured = { url, params };
+      return [
+        "<simpan>",
+        "<list pageRecords=\"1\" totalRecords=\"1\">",
+        "<data index=\"1\">",
+        "<incdntNb>202500001</incdntNb>",
+        "<incdntNm><![CDATA[개인정보 관련 재결례]]></incdntNm>",
+        "<cmitNm>중앙행정심판위원회</cmitNm>",
+        "<adjdcDe>20260120</adjdcDe>",
+        "<adjdcResultNm>기각</adjdcResultNm>",
+        "<sumryCn><![CDATA[문서 표준 XML 응답]]></sumryCn>",
+        "</data>",
+        "</list>",
+        "</simpan>"
+      ].join("");
+    };
+
+    const result = await client.searchHaengJim({
+      query: "개인정보",
+      page: 2,
+      display: 7,
+      reqDate: "20260101",
+      cmitId: "100100000",
+      adjdcStartDe: "20250101",
+      adjdcEndDe: "20261231"
+    });
+
+    assert.equal(captured.url, "http://www.simpan.go.kr/nsph/getAdjdexeList.do");
+    assert.deepEqual(captured.params, {
+      page: 2,
+      row: 7,
+      init: "Y",
+      reqDate: "20260101",
+      cmitId: "100100000",
+      incdntNm: "개인정보",
+      adjdcStartDe: "20250101",
+      adjdcEndDe: "20261231"
+    });
+    assert.equal(result.results[0].title, "개인정보 관련 재결례");
+    assert.equal(result.results[0].institution, "중앙행정심판위원회");
+  } finally {
+    if (previousProvider == null) delete process.env.HAENGJIM_API_PROVIDER;
+    else process.env.HAENGJIM_API_PROVIDER = previousProvider;
+    if (previousUrl == null) delete process.env.HAENGJIM_API_URL;
+    else process.env.HAENGJIM_API_URL = previousUrl;
+  }
+}
+
+async function testHaengJimUrlEnvSelectsHubProvider() {
+  const previousProvider = process.env.HAENGJIM_API_PROVIDER;
+  const previousUrl = process.env.HAENGJIM_API_URL;
+  delete process.env.HAENGJIM_API_PROVIDER;
+  process.env.HAENGJIM_API_URL = "http://www.simpan.go.kr/nsph/getAdjdexeList.do";
+  try {
+    const client = new DecisionsApiClient();
+    assert.equal(client.haengjimProvider, "hub");
+  } finally {
+    if (previousProvider == null) delete process.env.HAENGJIM_API_PROVIDER;
+    else process.env.HAENGJIM_API_PROVIDER = previousProvider;
+    if (previousUrl == null) delete process.env.HAENGJIM_API_URL;
+    else process.env.HAENGJIM_API_URL = previousUrl;
+  }
+}
+
+async function testHaengJimHubApiFallback() {
+  const previousProvider = process.env.HAENGJIM_API_PROVIDER;
+  const previousUrl = process.env.HAENGJIM_API_URL;
+  process.env.HAENGJIM_API_PROVIDER = "hub";
+  process.env.HAENGJIM_API_URL = "http://www.simpan.go.kr/nsph/getAdjdexeList.do";
+  try {
+    const client = new DecisionsApiClient();
+    const urls = [];
+    client.requestRaw = async (url) => {
+      urls.push(url);
+      if (url.includes("simpan.go.kr")) {
+        throw Object.assign(new Error("HTTP 404 from www.simpan.go.kr"), { marker: "DECISIONS_HTTP_ERROR" });
+      }
+      return JSON.stringify({
+        Decc: {
+          totalCnt: 1,
+          page: 1,
+          decc: [
+            {
+              "행정심판재결례일련번호": "272985",
+              "사건번호": "2025-15824",
+              "사건명": "정보공개 거부처분 취소청구",
+              "의결일자": "2026.02.24",
+              "재결청": "국민권익위원회",
+              "재결요지": "개인정보 관련 정보공개 재결례"
+            }
+          ]
+        }
+      });
+    };
+
+    const result = await client.searchHaengJim({ query: "개인정보", display: 1 });
+    assert.deepEqual(urls, [
+      "http://www.simpan.go.kr/nsph/getAdjdexeList.do",
+      "https://www.law.go.kr/DRF/lawSearch.do"
+    ]);
+    assert.equal(result.provider, "law.go.kr");
+    assert.equal(result.results[0].sourceType, "decision_haengjim");
+    assert.equal(result.results[0].title, "정보공개 거부처분 취소청구");
+  } finally {
+    if (previousProvider == null) delete process.env.HAENGJIM_API_PROVIDER;
+    else process.env.HAENGJIM_API_PROVIDER = previousProvider;
+    if (previousUrl == null) delete process.env.HAENGJIM_API_URL;
+    else process.env.HAENGJIM_API_URL = previousUrl;
+  }
 }
 
 async function testResearchSurveyPrompt() {

@@ -4,12 +4,16 @@ This is the single living document for the native Korean Law Engine in myAI.
 It replaces the former PRD document and keeps only the decisions, contracts,
 current status, and remaining work that future agents need.
 
-The engine adds an official law.go.kr grounding layer to myAI. It is native
-server code under `server/law/`, not an external MCP server.
+The engine adds an official Korea Law Engine grounding layer to myAI. It uses
+law.go.kr plus decision-source APIs for Constitutional Court and
+administrative-appeal records. It is native server code under `server/law/`,
+not an external MCP server.
 
 ## Goals
 
 - Retrieve and verify Korean statute references from official law.go.kr APIs.
+- Retrieve decision evidence from Constitutional Court and administrative
+  appeal sources when prompts ask for decision records.
 - Keep official law evidence separate from department notebook, uploaded file,
   and Naver Search evidence.
 - Prevent legal hallucinations: if an article cannot be verified, myAI must not
@@ -22,6 +26,7 @@ Citation families:
 ```text
 notebook citations -> [N1], [N2]
 law citations      -> [L1], [L2]
+decision citations -> [D1], [D2]
 web citations      -> [W1], [W2]
 ```
 
@@ -48,13 +53,26 @@ Implemented pieces:
 - `POST /api/law/admin-rules/detail`
 - `POST /api/law/ordinances/search`
 - `POST /api/law/ordinances/detail`
+- `POST /api/law/annexes/search`
+- `POST /api/law/annexes/detail`
+- `POST /api/law/three-tier`
+- `POST /api/law/delegated-laws`
+- `POST /api/law/linked-ordinances`
+- `POST /api/law/linked-ordinance-articles`
+- `POST /api/law/linked-laws-from-ordinance`
+- `POST /api/law/decisions/search`
+- `POST /api/law/decisions/detail`
 - `POST /api/law/impact-map`
 - `POST /api/law/time-travel`
 - `POST /api/law/article/at`
 - `POST /api/law/article/diff`
 - `POST /api/law/history`
 - `legal_research` chat mode that combines statute, precedent, interpretation,
-  admin-rule, and ordinance results based on intent flags
+  admin-rule, ordinance, annex, law-structure, and decision results based on
+  intent flags
+- Forced composer law-search mode (`lawSearchMode: true`) that uses Korea Law
+  Engine only and excludes uploaded documents, department notebooks, and Naver
+  Search from the answer path
 - Chat integration through `server/ollama.js` and `lawContextBuilder.js`
 - `X-Notebook-Meta.law` response metadata
 - Frontend law citation grouping (법령/판례/해석례/행정규칙/자치법규/웹/프로젝트),
@@ -110,7 +128,9 @@ All roadmap phases (Phase 1 baseline, Phase 2 research, Phase 3 impact map,
 Phase 4 time-travel, Phase 5 action_plan, Knowledge Graph track) have shipped.
 The native API also exposes an MCP-compatible compatibility surface:
 `/api/law/tools` for discovery and `/api/law/execute` for names such as
-`search_all`, `time_travel`, `action_plan`, `chain_full_research`, and
+`search_all`, `search_annexes`, `get_annexes`, `get_three_tier`,
+`get_delegated_laws`, linked-ordinance tools, `search_decisions`,
+`get_decision_text`, `time_travel`, `action_plan`, `chain_full_research`, and
 `chain_amendment_track`. These call myAI native handlers; myAI still does not
 run an external MCP server in-process.
 
@@ -136,6 +156,12 @@ LAW_AUTO_DETECT=false
 LAW_VERIFY_CITATIONS=true
 LAW_IMPACT_MAP_ENABLED=true
 LAW_HISTORY_TARGET=eflaw
+LAW_DECISIONS_ENABLED=true
+DECISIONS_API_KEY=
+HUNZAE_API_KEY=
+HUNZAE_API_URL=
+HAENGJIM_API_PROVIDER=lawgo
+HAENGJIM_API_URL=
 
 RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
 RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
@@ -145,12 +171,26 @@ RATE_LIMIT_LAW_IMPACT_PER_MINUTE=4
 RATE_LIMIT_LAW_TIME_TRAVEL_PER_MINUTE=4
 ```
 
+Decision-source configuration:
+
+- Constitutional Court search/detail uses `HUNZAE_API_KEY`; when it is unset,
+  the client falls back to `DECISIONS_API_KEY`. `HUNZAE_API_URL` can override
+  the upstream base URL for local deployments.
+- Administrative appeals default to law.go.kr `target=decc` when `LAW_OC` is
+  configured. Set `HAENGJIM_API_PROVIDER=hub` or `HAENGJIM_API_URL` to use the
+  documented 행정심판허브시스템 재결례 API first.
+- The documented hub API is IP-registration based, not service-key based. The
+  request uses `page`, `row`, `init=Y`, `reqDate`, and optional filters such as
+  `cmitId`, `incdntNm`, `adjdcStartDe`, and `adjdcEndDe`. If the hub transport
+  fails and `LAW_OC` is available, the client falls back to law.go.kr.
+
 Security rules:
 
 - The API key is server-side only.
-- Never send `LAW_OC`, `KOREAN_LAW_API_KEY`, upstream `OC=` query values, full
-  upstream URLs, or server cache paths to browser JavaScript, response metadata,
-  retrieval logs, or error bodies.
+- Never send `LAW_OC`, `KOREAN_LAW_API_KEY`, `DECISIONS_API_KEY`,
+  `HUNZAE_API_KEY`, administrative-appeal service keys, upstream `OC=` query
+  values, full upstream URLs, or server cache paths to browser JavaScript,
+  response metadata, retrieval logs, or error bodies.
 - Public `/api/law/*` responses must strip internal `raw` upstream payloads
   before sending or returning cached results.
 - All formatted errors and logs must pass through masking.
@@ -168,17 +208,22 @@ server/law/lawCache.js
 server/law/lawCitationFormatter.js
 server/law/lawConfig.js
 server/law/lawContextBuilder.js
+server/law/decisionsApiClient.js
+server/law/decisionsApiParser.js
 server/law/lawDiff.js
 server/law/lawErrors.js
 server/law/lawIntent.js
 server/law/lawLogger.js
 server/law/tools/adminRules.js
+server/law/tools/annexes.js
 server/law/tools/articleAt.js
 server/law/tools/articleDetail.js
 server/law/tools/articleDiff.js
+server/law/tools/decisions.js
 server/law/tools/interpretations.js
 server/law/tools/impactMap.js
 server/law/tools/lawHistory.js
+server/law/tools/lawStructure.js
 server/law/tools/lawText.js
 server/law/tools/ordinances.js
 server/law/tools/precedents.js
@@ -189,8 +234,10 @@ server/law/tools/verifyCitations.js
 ```
 
 `lawApiParser.js` owns law.go.kr JSON normalization (search results, article
-payloads, precedent/interpretation/admin-rule/ordinance payloads, CDATA/HTML
-stripping, upstream error detection). It is exercised by
+payloads, precedent/interpretation/admin-rule/ordinance/annex/law-structure
+payloads, CDATA/HTML stripping, upstream error detection). `decisionsApiParser.js`
+normalizes Constitutional Court and administrative-appeal records, including
+the documented 행정심판허브시스템 XML shape. They are exercised by
 `scripts/law-parser-test.mjs` against fixtures in `scripts/fixtures/law/` that
 cover several statute families, branched articles, paragraphs, items, CDATA
 wrappers, HTML-encoded revision markers, and the precedent / 해석례 /
@@ -337,6 +384,72 @@ Returns the canonical ordinance record plus a `law_ordinance` citation. Either
 `ordinId` or `query` may be supplied; `query` resolves to the top hit through
 the search endpoint.
 
+### `POST /api/law/annexes/search`
+
+Request:
+
+```json
+{ "lawName": "개인정보 보호법", "query": "서식", "display": 5 }
+```
+
+Searches official annex, table, and form records for a statute.
+
+### `POST /api/law/annexes/detail`
+
+Request:
+
+```json
+{ "annexId": "ANNEX-12345" }
+```
+
+Returns official annex/table/form text plus citation metadata. `lawName` and
+`query` may be supplied when `annexId` is unknown.
+
+### Law-Structure Links
+
+Implemented endpoints:
+
+```text
+POST /api/law/three-tier
+POST /api/law/delegated-laws
+POST /api/law/linked-ordinances
+POST /api/law/linked-ordinance-articles
+POST /api/law/linked-laws-from-ordinance
+```
+
+These endpoints expose statute/enforcement-decree/enforcement-rule structure,
+delegated-law links, and national-law/local-ordinance relationships when the
+official upstream records contain the linkage.
+
+### `POST /api/law/decisions/search`
+
+Request:
+
+```json
+{ "query": "개인정보 침해", "category": "constitutional", "display": 5 }
+```
+
+Searches decision records. Prompts that mention 헌법재판소/헌재 route to
+Constitutional Court decisions; prompts that mention 행정심판/재결례 route to
+administrative-appeal decisions. Decision citations use `[D*]`.
+
+Administrative appeals default to law.go.kr `target=decc`. When
+`HAENGJIM_API_PROVIDER=hub` or `HAENGJIM_API_URL` is configured, the client
+uses the documented 행정심판허브시스템 재결례 API first and falls back to
+law.go.kr on transport/API failure when `LAW_OC` is available.
+
+### `POST /api/law/decisions/detail`
+
+Request:
+
+```json
+{ "decisionId": "2020헌마123", "category": "constitutional" }
+```
+
+Returns decision text plus `decision_constitutional` or `decision_haengjim`
+citation metadata. `query` may be supplied when the caller does not already
+have an ID.
+
 ### `POST /api/law/impact-map`
 
 Request:
@@ -435,9 +548,15 @@ is not diverted into legal lookup.
 Legal lookup runs when:
 
 - The prompt explicitly asks to find law text or verify legal citations.
+- The composer sends `lawSearchMode: true` from "법령 검색". In this forced
+  mode, uploaded documents, department notebooks, and Naver Search are excluded
+  and the answer must be grounded only in Korea Law Engine evidence.
 - The prompt contains a recognizable law-name plus article pattern.
 - The prompt asks for official precedent, legal interpretation, admin-rule, or
   ordinance research with a research verb such as find/search/show/explain.
+- The prompt asks for Constitutional Court decisions or administrative-appeal
+  decisions. Decision-only prompts stay in the decision path and must not be
+  answered from unrelated statute article snippets.
 - The prompt explicitly asks whether an uploaded document or selected department
   notebook material complies with a law.
 - The prompt asks for an `action_plan` (단계별 대응/조치 절차/이행 계획/
@@ -534,6 +653,7 @@ Phase 2 research citations may also use:
 { citationId: "I1", sourceType: "law_interpretation", recordType: "interpretation", title, agency, date, locator, url }
 { citationId: "R1", sourceType: "law_admin_rule", recordType: "admin_rule", title, agency, kind, issueDate, effectiveDate, locator, url }
 { citationId: "O1", sourceType: "law_ordinance", recordType: "ordinance", title, region, kind, promulgationDate, effectiveDate, locator, url }
+{ citationId: "D1", sourceType: "decision_constitutional" | "decision_haengjim", recordType: "decision", title, caseNumber, institution, date, locator, url }
 ```
 
 The browser stores and renders this metadata, but it must never receive API keys
@@ -623,7 +743,8 @@ itself rather than just in metadata.
 ## Privacy And Logging
 
 Law API calls send only normalized fields such as law name, article reference,
-and display count. They do not send the full user prompt.
+decision query/category, public filters, and display count. They do not send
+the full user prompt.
 
 Law retrieval logs are privacy-safe JSONL records under `data/logs/`:
 
@@ -631,7 +752,8 @@ Law retrieval logs are privacy-safe JSONL records under `data/logs/`:
 { "tool": "article_detail", "normalizedQuery": { "lawName": "...", "article": "..." }, "latencyMs": 123, "resultCount": 1, "cacheHit": false, "errorMarker": "" }
 ```
 
-Logs and errors mask `LAW_OC`, `KOREAN_LAW_API_KEY`, and any `OC=` URL
+Logs and errors mask `LAW_OC`, `KOREAN_LAW_API_KEY`, `DECISIONS_API_KEY`,
+`HUNZAE_API_KEY`, administrative-appeal service keys, and any `OC=` URL
 parameter.
 
 ## Testing
@@ -646,9 +768,12 @@ npm.cmd run test:smoke
 `test:law` runs four suites:
 
 - `scripts/law-unit-test.mjs` — intent, normalization, masking, cache,
-  action_plan template, disclaimer policy.
+  action_plan template, disclaimer policy, decision routing, administrative
+  appeal query narrowing, documented hub request parameters, provider
+  selection, and law.go.kr fallback behavior.
 - `scripts/law-parser-test.mjs` — law.go.kr JSON parsing across fixture
-  statutes plus precedent, interpretation, admin-rule, and ordinance fixtures
+  statutes plus precedent, interpretation, admin-rule, ordinance, annex,
+  law-structure, and decision fixtures
   (`scripts/fixtures/law/`). Run only this with `npm run test:law:parser`.
 - `scripts/law-intent-eval.mjs` — true-positive / false-positive evaluation
   for legal intent detection. Covers cases like "라면 끓이는 방법 알려줘",
@@ -689,8 +814,12 @@ The statute-grounding baseline is acceptable when:
 
 - A server with `LAW_OC` configured can search a Korean law by name.
 - myAI can retrieve a specific statute article.
+- myAI can retrieve Constitutional Court and administrative-appeal decision
+  results for decision-specific prompts when the relevant upstream is
+  configured.
 - Explicit legal chat prompts produce answers grounded in retrieved law text.
-- Answers include law citation metadata and the frontend displays `[L1]`.
+- Answers include law/decision citation metadata and the frontend displays
+  `[L1]` or `[D1]`.
 - Citation verification detects valid and invalid citations.
 - Missing articles are reported without invented article text.
 - Department notebook evidence and law evidence remain separate.
@@ -795,7 +924,9 @@ Knowledge graph track (complete):
 
 The engine covers every roadmap phase: Phase 1 statute search / article
 retrieval / citation verification, Phase 2 official-source research
-(precedents, legal interpretations, admin rules, ordinances), Phase 3
+(precedents, legal interpretations, admin rules, ordinances, annexes,
+law-structure links, Constitutional Court decisions, and administrative-appeal
+decisions), Phase 3
 impact maps, Phase 4 time-travel / diff (backend + Studio Law Explorer
 "조문 이력" UI), Phase 5 `action_plan` mode with mandatory non-legal-advice
 disclaimer, and Knowledge Graph integration (deterministic
@@ -819,5 +950,8 @@ Known operational caveats:
   law references but no recognizable law-name suffix won't produce Statute or
   Article nodes. Update `lawArticleRef.js` patterns if new statute families
   need coverage.
+- Administrative-appeal hub mode depends on upstream IP registration and
+  availability. If hub mode is configured but unavailable, the client falls
+  back to law.go.kr `target=decc` only when `LAW_OC` is configured.
 - KG-derived article fetches are capped (default 4 per query) and per-article
   failures are silently dropped so KG enrichment never blocks the answer.

@@ -96,7 +96,7 @@ Body:
   personalization,
   notebookId,      // optional
   mode,            // optional; "map_reduce" activates Precision Analysis / Map-Reduce
-  lawSearchMode    // optional; true → law-only context, documents and notebook excluded
+  lawSearchMode    // optional; true => Korea Law Engine only, documents/notebook/web excluded
 }
 ```
 
@@ -113,14 +113,22 @@ chat payload or when `notebookId` is selected. Those paths must stay grounded in
 the uploaded file context or department notebook RAG context.
 
 When `LAW_API_ENABLED=true` and `LAW_OC` is configured, explicit legal prompts
-add official law.go.kr context across these modes: `law_article`,
+add official Korea Law Engine context across these modes: `law_article`,
 `law_search`, `verify_citations`, `legal_research` (precedents / 해석례 /
 admin rules / ordinances), `department_legal_review`, and `action_plan`
 (structured 5-step response template with mandatory non-legal-advice
 disclaimer; gated on statute citation or law-name + article). Law citations
 use `[L1]`, `[L2]`, etc. and stay separate from notebook `[N]` and web `[W]`
 citations. If official law lookup fails, chat metadata carries a law error
-marker and the assistant must not invent statute text.
+marker and the assistant must not invent statute text. Current Korea Law Engine
+coverage also includes annexes, delegated-law and ordinance links,
+Constitutional Court decisions, and administrative-appeal decisions. Decision
+citations use `[D1]`, `[D2]`, etc. and remain separate from statute `[L]`,
+notebook `[N]`, and web `[W]` citations.
+
+When `lawSearchMode: true` is sent from the composer "법령 검색" mode, the
+server forces Korea Law Engine grounding only. Uploaded documents, department
+notebook RAG, and Naver Search are excluded from that answer path.
 
 When a department notebook is selected and its knowledge graph surfaces
 matched `Article` nodes, the chat orchestration re-fetches each article via
@@ -158,7 +166,7 @@ If notebook, web-search, or analysis metadata exists, the response includes
     disclaimer,            // null | "short" | "mandatory"
     citations: [
       { citationId, sourceType, lawName, article, canonical, title, locator,
-        effectiveDate, url, excerpt?, kgDerived? }
+        effectiveDate, url, excerpt?, kgDerived?, recordType? }
     ],
     verification: { checked, failCount, results },
     kgArticlesMerged       // count of KG-discovered articles merged as [L]
@@ -216,7 +224,9 @@ Body:
 
 Executes the native myAI equivalent of common `korean-law-mcp` tool names,
 including `search_law`, `search_ai_law`, `search_all`, `get_law_text`,
-`verify_citations`, `impact_map`, `time_travel`, `action_plan`,
+`verify_citations`, `search_annexes`, `get_annexes`, `get_three_tier`,
+`get_delegated_laws`, linked-ordinance tools, `search_decisions`,
+`get_decision_text`, `impact_map`, `time_travel`, `action_plan`,
 `chain_full_research`, and `chain_amendment_track`. It is a compatibility
 surface over native handlers, not an external MCP server.
 
@@ -241,9 +251,10 @@ Body:
 ```
 
 Natural-language topic research. The engine searches semantic law articles,
-law names, administrative rules, precedents, legal interpretations, and local
-ordinances in parallel, then returns official-source context and citation
-metadata for chat or API callers.
+law names, administrative rules, precedents, legal interpretations, local
+ordinances, annexes, law-structure links, and requested decision families in
+parallel, then returns official-source context and citation metadata for chat
+or API callers.
 
 ### `POST /api/law/action-plan`
 
@@ -367,6 +378,110 @@ Body:
 
 Returns ordinance text plus `law_ordinance` citation metadata. `query` may be
 supplied when the caller does not already have `ordinId`.
+
+### `POST /api/law/annexes/search`
+
+Body:
+
+```js
+{ lawName: "개인정보 보호법", query: "서식", display: 5 }
+```
+
+Searches official law.go.kr annex, table, and form records and returns
+normalized annex identifiers, title, type, and source-law metadata.
+
+### `POST /api/law/annexes/detail`
+
+Body:
+
+```js
+{ annexId: "ANNEX-12345" }
+```
+
+Returns the official annex/table/form text plus law citation metadata.
+`lawName` and `query` may be supplied when the caller does not already have an
+annex identifier.
+
+### `POST /api/law/three-tier`
+
+Body:
+
+```js
+{ lawName: "개인정보 보호법", article: "제15조" }
+```
+
+Returns statute, enforcement-decree, and enforcement-rule structure around the
+requested law or article when official linked records are available.
+
+### `POST /api/law/delegated-laws`
+
+Body:
+
+```js
+{ lawName: "개인정보 보호법", article: "제15조" }
+```
+
+Finds delegated or subordinate laws linked from the requested statute/article.
+
+### `POST /api/law/linked-ordinances`
+
+Body:
+
+```js
+{ lawName: "개인정보 보호법", article: "제15조", region: "서울특별시" }
+```
+
+Finds local ordinances linked to the requested statute/article.
+
+### `POST /api/law/linked-ordinance-articles`
+
+Body:
+
+```js
+{ ordinId: "ORD-SEOUL-12345", article: "제3조" }
+```
+
+Returns ordinance article links and metadata for the selected local ordinance.
+
+### `POST /api/law/linked-laws-from-ordinance`
+
+Body:
+
+```js
+{ ordinId: "ORD-SEOUL-12345" }
+```
+
+Finds national laws referenced by the selected local ordinance.
+
+### `POST /api/law/decisions/search`
+
+Body:
+
+```js
+{ query: "개인정보 침해", category: "constitutional", display: 5 }
+```
+
+Searches official decision records. `category` supports Constitutional Court
+decisions and administrative-appeal decisions; chat intent selects the category
+from prompts such as "헌법재판소 결정례" or "행정심판 재결례".
+
+Administrative appeals use the documented hub API when
+`HAENGJIM_API_PROVIDER=hub` or `HAENGJIM_API_URL` is configured; otherwise the
+engine uses law.go.kr `target=decc`. If the hub request fails and `LAW_OC` is
+available, it falls back to law.go.kr. Constitutional Court requests use
+`HUNZAE_API_KEY` or the shared `DECISIONS_API_KEY`.
+
+### `POST /api/law/decisions/detail`
+
+Body:
+
+```js
+{ decisionId: "2020헌마123", category: "constitutional" }
+```
+
+Returns decision text plus `decision_constitutional` or `decision_haengjim`
+citation metadata. `query` may be supplied when the caller does not already
+have a decision identifier.
 
 ### `POST /api/law/impact-map`
 

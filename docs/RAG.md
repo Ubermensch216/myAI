@@ -39,10 +39,13 @@ uploaded files are present or `notebookId` is selected, so file-grounded and
 department RAG-grounded answers do not silently mix in external web evidence.
 
 Korean Law Engine is a separate official grounding source, not ordinary web
-search. Explicit legal prompts may combine law.go.kr evidence with uploaded
-documents or department notebooks. Legal citations use `[L]` IDs and must stay
-separate from notebook `[N]` citations. See
-[Korean Law Engine](KOREAN_LAW_ENGINE.md).
+search. Explicit legal prompts may combine law.go.kr and decision-source
+evidence with uploaded documents or department notebooks. The composer's
+"법령 검색" mode sends `lawSearchMode: true`, which forces Korea Law Engine
+only and excludes uploaded documents, department notebooks, and Naver Search.
+Statute and law-source citations use `[L]`; Constitutional Court and
+administrative-appeal decisions use `[D]`. Both stay separate from notebook
+`[N]` citations. See [Korean Law Engine](KOREAN_LAW_ENGINE.md).
 
 `server/rag/ragConfig.js` exposes profile name constants (`PROFILE_PERSONAL`,
 `PROFILE_DEPARTMENT`) and resolves the department backend choice. The

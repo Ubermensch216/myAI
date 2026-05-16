@@ -133,7 +133,7 @@ uploaded document text
 notebook chunk text
 IP addresses exposed in Admin UI
 raw access tokens
-law.go.kr API keys or upstream OC query values
+law.go.kr API keys, decision API keys, Constitutional Court or administrative-appeal service keys, or upstream OC/query-secret values
 personal names as user identifiers
 ```
 

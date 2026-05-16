@@ -863,11 +863,12 @@ function buildDecisionSearchQueries(prompt) {
   const raw = String(prompt || "").replace(/\s+/g, " ").trim();
   const cleaned = raw
     .replace(/헌법재판소|헌재|결정례|결정문|판례요지|판례|행정심판|재결례/gu, " ")
-    .replace(/관련|관한|대한|대해|찾아줘|찾아|검색해줘|검색해|검색|조회해줘|조회|알려줘|보여줘|조사해줘|조사/gu, " ")
+    .replace(/관련|관한|대한|대해|사례|찾아줘|찾아|검색해줘|검색해|검색|조회해줘|조회|알려줘|보여줘|조사해줘|조사/gu, " ")
+    .replace(/(?:^|\s)(?:중|중에서|중에|중의)(?=\s|$)/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   const simplified = cleaned
-    .replace(/침해|위반|여부|사건|사례|쟁점/gu, " ")
+    .replace(/침해|위반|여부|사건|쟁점/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   const candidates = [cleaned, simplified, raw]
@@ -1049,9 +1050,11 @@ function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], star
 function formatDecisionResultsBlock(items = [], startIndex = 0) {
   const list = Array.isArray(items) ? items.slice(0, 5) : [];
   if (!list.length) return { text: "", citations: [] };
+  const allHaengjim = list.every((item) => item.sourceType === "decision_haengjim" || item.subType === "haengjim");
+  const anyHaengjim = list.some((item) => item.sourceType === "decision_haengjim" || item.subType === "haengjim");
   const lines = [
-    "[헌법재판소 결정례]",
-    "These are official 헌법재판소 결정례 (Constitutional Court decisions). Cite them as [D*]. Use 사건번호, 결정결과, 날짜 facts only from the data below; do not invent reasoning."
+    allHaengjim ? "[공식 행정심판 재결례]" : anyHaengjim ? "[공식 결정례·재결례 검색 결과]" : "[헌법재판소 결정례]",
+    "These are official decision or administrative appeal records. Cite them as [D*]. Use 사건번호, 결과, 날짜 facts only from the data below; do not invent reasoning."
   ];
   const citations = [];
   list.forEach((item, index) => {
@@ -1065,10 +1068,13 @@ function formatDecisionResultsBlock(items = [], startIndex = 0) {
       result: item.result,
       date: item.date,
       institution: item.institution || "헌법재판소",
-      locator: `${item.caseNo || item.id} (${item.date})`
+      locator: `${item.caseNo || item.id} (${item.date})`,
+      summary: String(item.summary || "").slice(0, 300),
+      url: item.url || ""
     });
-    const summary = item.summary ? `\n요지: ${item.summary.slice(0, 120)}` : "";
-    lines.push(`[${citationId}] ${item.title}\n사건번호: ${item.caseNo || item.id || "-"}\n결정결과: ${item.result || "-"}\n선고일: ${item.date || "-"}${summary}`);
+    const isHaengjim = item.sourceType === "decision_haengjim" || item.subType === "haengjim";
+    const summary = item.summary ? `\n요지: ${item.summary.slice(0, 180)}` : "";
+    lines.push(`[${citationId}] ${item.title}\n사건번호: ${item.caseNo || item.id || "-"}\n${isHaengjim ? "재결결과" : "결정결과"}: ${item.result || "-"}\n${isHaengjim ? "의결일" : "선고일"}: ${item.date || "-"}${summary}`);
   });
   return { text: lines.join("\n\n"), citations };
 }

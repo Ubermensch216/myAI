@@ -2139,9 +2139,10 @@ body.panel-resizing .panel-resizer::after {
 
 .copy-feedback {
   position: absolute;
-  left: 36px;
+  right: 36px;
+  left: auto;
   top: 50%;
-  transform: translateY(-50%) translateX(-3px);
+  transform: translateY(-50%) translateX(3px);
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
   border-radius: 999px;
   padding: 3px 8px;
@@ -2152,14 +2153,16 @@ body.panel-resizing .panel-resizer::after {
   line-height: 1;
   opacity: 0;
   pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
   transition:
     opacity 180ms ease,
     transform 180ms ease;
 }
 
 .message.user .copy-feedback {
-  left: auto;
   right: 36px;
+  left: auto;
   transform: translateY(-50%) translateX(3px);
 }
 
@@ -4986,9 +4989,9 @@ body.panel-resizing .panel-resizer::after {
   position: relative;
   flex: 1 1 auto;
   min-height: 220px;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, #17211d);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
   border-radius: 10px;
-  background: #050706;
+  background: var(--surface-3);
   overflow: hidden;
 }
 

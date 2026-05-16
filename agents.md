@@ -76,7 +76,7 @@ Server:
 - `server/calendarAgent.js` - natural-language calendar intent classifier.
 - `server/visualization.js` - visualization plan validation and chart data computation.
 - `server/compliance/` - department legal-review intent, review-type catalog, and prompt construction.
-- `server/law/` - Korean Law Engine routes, law.go.kr client, citation verification, research, impact map, and time-travel tools.
+- `server/law/` - Korean Law Engine routes, law.go.kr and decision API clients, citation verification, research, annexes, law-structure links, Constitutional Court/admin-appeal decisions, impact map, and time-travel tools.
 - `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, retrieval-log summaries.
 - `server/parsers.js` - PDF/DOCX/XLSX/CSV/PPTX/HWPX/image parsing and chunking.
 - `server/auth.js` - `ADMIN_TOKEN` middleware.
@@ -125,7 +125,7 @@ Docs:
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.
 - `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
 - `docs/DESIGN.md` - project design policies and UI styling rules.
-- `docs/KOREAN_LAW_ENGINE.md` - native Korean law engine, statute verification, and compliance tools.
+- `docs/KOREAN_LAW_ENGINE.md` - native Korean law engine, statute/decision verification, annexes, law-structure links, and compliance tools.
 - `docs/USAGE_TELEMETRY.md` - privacy-safe usage telemetry and Admin Statistics behavior.
 
 ## Deployment Topology

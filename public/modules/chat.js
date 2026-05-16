@@ -526,6 +526,7 @@ export async function requestTextAssistantResponse(room) {
     }
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
     room.messages.push(assistantMessage);
+    assistant.dataset.messageIndex = String(room.messages.length - 1);
     room.updatedAt = new Date().toISOString();
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
@@ -689,6 +690,7 @@ export async function requestVisualizationResponse(room) {
     const assistantMessage = { role: "assistant", content: finalAnswer, visualization, createdAt: new Date().toISOString() };
     setAssistantAnswerTime(assistant, assistantMessage.createdAt);
     room.messages.push(assistantMessage);
+    assistant.dataset.messageIndex = String(room.messages.length - 1);
     room.updatedAt = assistantMessage.createdAt;
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));

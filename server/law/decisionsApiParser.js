@@ -188,7 +188,7 @@ export function normalizeHaengJimResults(xmlText) {
     title: readCdata(item?.incdntNm) || String(item?.incdntNm || ""),
     result: String(item?.adjdcResultNm || ""),
     date: toDateStr(item?.adjdcDe || ""),
-    institution: String(item?.adjdcInsttNm || "행정심판위원회"),
+    institution: String(item?.cmitNm || item?.adjdcInsttNm || "행정심판위원회"),
     court: String(item?.dspsofcNm || ""),
     category: [item?.knwldgCl1Nm, item?.knwldgCl2Nm].filter(Boolean).join(" > "),
     summary: readCdata(item?.sumryCn) || String(item?.sumryCn || ""),
@@ -205,13 +205,15 @@ export function normalizeLawGoKrDeccResults(payload) {
     results: arr.map((item) => {
       const id = firstValue(item["행정심판재결례일련번호"], item["행정심판례일련번호"], item.ID, item.id);
       const url = firstValue(item["행정심판례상세링크"], item.url);
+      const institution = stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회");
+      const result = stripHtml(firstValue(item["재결구분명"], item.result));
       return {
         id,
         caseNo: firstValue(item["사건번호"], item.caseNo),
         title: stripHtml(firstValue(item["사건명"], item["행정심판례명"], item.title)),
-        result: stripHtml(firstValue(item["재결구분명"], item.result)),
+        result: result && result !== institution && !/위원회$/u.test(result) ? result : "",
         date: toDateStr(firstValue(item["의결일자"], item["재결일자"], item.date).replace(/\./g, "")),
-        institution: stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회"),
+        institution,
         court: stripHtml(firstValue(item["처분청"], item.court)),
         category: stripHtml(firstValue(item["재결구분코드"], item.category)),
         summary: stripHtml(firstValue(item["재결요지"], item["이유"], item.summary)).slice(0, 500),
@@ -229,6 +231,8 @@ export function normalizeLawGoKrDeccDetail(payload) {
   const item = payload?.PrecService || payload?.DeccService || payload?.Decc || payload?.decc || payload || {};
   const id = firstValue(item["행정심판례일련번호"], item["행정심판재결례일련번호"], item.ID, item.id);
   const title = stripHtml(firstValue(item["사건명"], item["행정심판례명"], item.title));
+  const institution = stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회");
+  const rawResult = stripHtml(firstValue(item["재결례유형명"], item["재결구분명"], item.result));
   const summary = stripHtml(firstValue(item["재결요지"], item.summary));
   const order = stripHtml(firstValue(item["주문"], item.order));
   const claim = stripHtml(firstValue(item["청구취지"], item.claim));
@@ -244,9 +248,9 @@ export function normalizeLawGoKrDeccDetail(payload) {
     id,
     caseNo: firstValue(item["사건번호"], item.caseNo),
     title,
-    result: stripHtml(firstValue(item["재결례유형명"], item["재결구분명"], item.result)),
+    result: rawResult && rawResult !== institution && !/위원회$/u.test(rawResult) ? rawResult : "",
     date: toDateStr(firstValue(item["의결일자"], item["재결일자"], item.date).replace(/\./g, "")),
-    institution: stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회"),
+    institution,
     court: stripHtml(firstValue(item["처분청"], item.court)),
     category: stripHtml(firstValue(item["재결례유형코드"], item["재결구분코드"], item.category)),
     summary: summary || reason.slice(0, 500),
@@ -260,9 +264,18 @@ export function normalizeLawGoKrDeccDetail(payload) {
 function makeLawGoKrUrl(value) {
   const text = String(value || "").trim();
   if (!text) return "";
-  if (/^https?:\/\//i.test(text)) return text;
-  if (text.startsWith("/")) return `https://www.law.go.kr${text}`;
-  return `https://www.law.go.kr/${text.replace(/^\/+/, "")}`;
+  const absolute = /^https?:\/\//i.test(text)
+    ? text
+    : text.startsWith("/")
+      ? `https://www.law.go.kr${text}`
+      : `https://www.law.go.kr/${text.replace(/^\/+/, "")}`;
+  try {
+    const url = new URL(absolute);
+    url.searchParams.delete("OC");
+    return url.toString();
+  } catch {
+    return absolute.replace(/([?&]OC=)[^&]+/i, "$1");
+  }
 }
 
 export function buildDecisionCitation(decision, citationId = "D1") {

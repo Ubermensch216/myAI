@@ -13,7 +13,7 @@ export async function searchDecisions(input = {}, options = {}) {
       domain: input.domain || "all",
       subType: input.subType || input.type || "kor"
     },
-    execute: (client) => client.searchDecisions(input)
+    execute: (client) => client.searchDecisions(input, options)
   });
 }
 
@@ -29,6 +29,6 @@ export async function getDecisionText(input = {}, options = {}) {
       domain: input.domain || "",
       sourceType: input.sourceType || input.subType || ""
     },
-    execute: (client) => client.getDecisionText(input)
+    execute: (client) => client.getDecisionText(input, options)
   });
 }

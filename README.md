@@ -28,7 +28,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebooks stored on the server filesystem with citation panels in chat and optional group/level access control.
 - Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
-- Explicit law-search mode can isolate legal prompts from room documents/notebooks and ground answers in official law.go.kr evidence.
+- Explicit law-search mode isolates legal prompts from room documents/notebooks and grounds answers in the Korea Law Engine: law.go.kr statutes, precedents, interpretations, admin rules, ordinances, annexes, law-structure links, Constitutional Court decisions, and administrative-appeal decisions.
 - Department legal-review prompts combine uploaded/notebook material with statute, precedent, interpretation, admin-rule, or ordinance evidence when configured.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
 - Assistant answers can be saved back into the current room as AI-generated source material (`md`, `pdf`, `docx`, or `hwpx`). The generated source is stored with the room in encrypted IndexedDB, marked as AI-generated / needs verification, and treated as secondary context in later chat turns.
@@ -293,6 +293,12 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `LAW_VERIFY_CITATIONS` | `true` | enable citation verification behavior |
 | `LAW_IMPACT_MAP_ENABLED` | `true` | enable the Korean Law Engine impact-map endpoint and Studio Law Explorer |
 | `LAW_HISTORY_TARGET` | `eflaw` | upstream target for `/api/law/history` (revision-history query); override if law.go.kr renames it |
+| `LAW_DECISIONS_ENABLED` | `true` | enable Constitutional Court and administrative-appeal decision search/detail routes |
+| `DECISIONS_API_KEY` | unset | shared decision API key fallback; server-side only |
+| `HUNZAE_API_KEY` | unset | Constitutional Court OpenAPI key; falls back to `DECISIONS_API_KEY` when unset |
+| `HUNZAE_API_URL` | unset | optional Constitutional Court OpenAPI base URL override |
+| `HAENGJIM_API_PROVIDER` | `lawgo` unless `HAENGJIM_API_URL` is set | administrative-appeal provider: `lawgo` or documented hub API |
+| `HAENGJIM_API_URL` | unset | administrative-appeal hub API URL override; when set, hub is tried before law.go.kr fallback |
 | `RATE_LIMIT_LAW_SEARCH_PER_MINUTE` | `15` | rate limit for `/api/law/search` |
 | `RATE_LIMIT_LAW_ARTICLE_PER_MINUTE` | `20` | rate limit for `/api/law/article` |
 | `RATE_LIMIT_LAW_VERIFY_PER_MINUTE` | `20` | rate limit for `/api/law/verify-citations` |
@@ -304,13 +310,15 @@ Naver Search only runs for explicit web-search prompts in normal chat. It is
 skipped when uploaded files are present or a department notebook is selected, so
 file-grounded and RAG-grounded answers stay within their provided evidence.
 Korean Law Engine is separate from Naver Search: explicit legal prompts may use
-official law.go.kr context alongside uploaded documents or department notebooks,
-and law citations render as `[L1]` separately from notebook `[N]` and web `[W]`
-citations. The engine covers article retrieval, citation verification,
-precedent / interpretation / admin-rule / ordinance research, impact maps, time-travel
-diff (`/article/at`, `/article/diff`, `/history`), `action_plan` mode with a
-mandatory non-legal-advice disclaimer, and notebook KG enrichment that
-auto-fetches articles surfaced by `graph.sqlite`.
+official law.go.kr and decision-source context alongside uploaded documents or
+department notebooks. Law citations render as `[L1]` and decision citations as
+`[D1]`, separately from notebook `[N]` and web `[W]` citations. The engine
+covers article retrieval, citation verification, precedent / interpretation /
+admin-rule / ordinance research, annexes, delegated-law and ordinance links,
+Constitutional Court decisions, administrative-appeal decisions, impact maps,
+time-travel diff (`/article/at`, `/article/diff`, `/history`), `action_plan`
+mode with a mandatory non-legal-advice disclaimer, and notebook KG enrichment
+that auto-fetches articles surfaced by `graph.sqlite`.
 When no relevant evidence is found, the UI suppresses source panels and
 follow-up suggestions for that no-evidence answer.
 
@@ -357,7 +365,7 @@ server/
   mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
-  law/                 Korean Law Engine config, law.go.kr client, citation verification, time-travel/diff/history, impact map, action_plan template, API routes
+  law/                 Korean Law Engine config, law.go.kr/decision clients, citation verification, annexes, law links, time-travel/diff/history, impact map, action_plan template, API routes
   compliance/          department legal-review intent classifier, review-type catalog, compliance prompt builder (drives `department_legal_review` mode)
   studioDocument/      Studio Document Editor: templates, answer-to-document conversion, document model validation, HWPX/DOCX/PDF/MD export
   stats/               usage telemetry logger, log reader/aggregator, and Admin Console statistics API
@@ -450,7 +458,6 @@ docs/
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
-- [Korean Law MCP Gap Analysis](docs/KOREAN_LAW_MCP_GAP_ANALYSIS.md)
 - [NotebookLM-Style Source Workflow](docs/PRD_NOTEBOOKLM_STYLE_SOURCE_WORKFLOW.md)
 - [Usage Telemetry and Admin Statistics](docs/USAGE_TELEMETRY.md)
 - [Design Guide](docs/DESIGN.md)

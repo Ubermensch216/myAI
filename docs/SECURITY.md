@@ -25,7 +25,7 @@ Browser clients
 | File Tools (Merge/Split) | Entirely client-side (browser) | No file content or metadata is sent to the server. Maximum privacy for sensitive documents. |
 | Upload temp files | Written under `uploads/`, then removed after parse | The server sees personal files during parsing. Keep the host and temp directory private. |
 | Runtime upload cache | In-memory, scoped by `X-MyAI-Document-Key`, TTL/LRU bounded | Convenience hydration cache only; not listable and not durable. |
-| Korean Law Engine | Server-side calls to law.go.kr when explicit legal prompts or `/api/law/*` routes are used | `LAW_OC` stays server-side; only normalized law names/article refs are sent upstream, not full prompts. |
+| Korean Law Engine | Server-side calls to law.go.kr, Constitutional Court OpenAPI, or administrative-appeal APIs when explicit legal prompts or `/api/law/*` routes are used | `LAW_OC`, `DECISIONS_API_KEY`, `HUNZAE_API_KEY`, and any administrative-appeal keys stay server-side; only normalized law names, article refs, decision queries, and public filter fields are sent upstream, not full prompts. Administrative-appeal hub access may also require server IP preregistration. |
 | Ollama | Server-side local HTTP API | Keep Ollama on `127.0.0.1`; do not expose port `11434` directly. |
 
 ## Recommended Network Modes
