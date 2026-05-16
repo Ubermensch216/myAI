@@ -745,6 +745,7 @@ export function createRoom() {
       documents: [],
       activeDocumentId: ""
     },
+    pinnedAt: null,
     createdAt: now,
     updatedAt: now
   };
