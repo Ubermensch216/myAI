@@ -115,14 +115,7 @@ function renderList(listMount, rootMount) {
     titleEl.className = "cprompt-list-item-title";
     titleEl.textContent = p.title || "제목 없음";
 
-    const preview = firstLine(p.content);
     body.append(titleEl);
-    if (preview) {
-      const previewEl = document.createElement("span");
-      previewEl.className = "cprompt-list-item-preview";
-      previewEl.textContent = preview;
-      body.append(previewEl);
-    }
 
     item.append(iconSpan, body);
     item.addEventListener("click", () => {

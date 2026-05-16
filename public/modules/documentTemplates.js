@@ -129,11 +129,6 @@ function renderList(listMount, rootMount) {
 
     body.append(titleRow);
 
-    const metaEl = document.createElement("span");
-    metaEl.className = "dtpl-list-item-meta";
-    metaEl.textContent = summarizeBlocks(tpl.blocks);
-    body.append(metaEl);
-
     item.append(iconSpan, body);
 
     if (tpl.isBuiltIn) {

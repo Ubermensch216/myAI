@@ -594,6 +594,8 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 .cprompt-sidebar-header {
   display: flex;
@@ -889,6 +891,8 @@ body.panel-resizing .panel-resizer::after {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 .dtpl-sidebar-header {
   display: flex;
@@ -3457,9 +3461,28 @@ body.panel-resizing .panel-resizer::after {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 18px 14px;
+  padding: 8px 18px 10px;
   border-top: 1px solid var(--line);
   background: var(--surface);
+}
+
+.settings-form-actions .icon-only-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.settings-form-actions .icon-only-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .settings-form-footer[hidden] {
