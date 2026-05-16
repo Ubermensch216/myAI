@@ -285,6 +285,7 @@ function renderMaterialContext() {
   const expanded = Boolean(room?.materialsExpanded && count);
 
   if (elements.materialToggleButton) {
+    elements.materialToggleButton.hidden = count === 0;
     elements.materialToggleButton.disabled = count === 0;
     elements.materialToggleButton.classList.toggle("has-materials", count > 0);
     elements.materialToggleButton.classList.toggle("expanded", expanded);
@@ -589,16 +590,28 @@ function closeAttachMenu() {
   elements.attachFileButton.setAttribute("aria-expanded", "false");
 }
 
-function toggleLawSearchMode() {
-  state.lawSearchMode = !state.lawSearchMode;
+function renderLawSearchMode() {
   const btn = elements.lawSearchButton;
   if (btn) btn.setAttribute("aria-pressed", String(state.lawSearchMode));
+  const activeBtn = elements.lawSearchActiveButton;
+  if (activeBtn) {
+    activeBtn.hidden = !state.lawSearchMode;
+    activeBtn.setAttribute("aria-pressed", String(state.lawSearchMode));
+    activeBtn.setAttribute("aria-label", state.lawSearchMode ? "법령검색 모드 끄기" : "법령검색 모드");
+    activeBtn.title = state.lawSearchMode ? "법령검색 모드 끄기" : "법령검색 모드";
+  }
   const ta = elements.promptInput;
   if (ta) {
+    const appName = state.settings?.appName || "myAI";
     ta.placeholder = state.lawSearchMode
       ? "법령 검색 모드: 공식 근거가 확인된 경우에만 답변합니다"
-      : "myAI에게 물어보세요 [⇧+I]";
+      : `${appName}에게 물어보세요 [Shift+I]`;
   }
+}
+
+function toggleLawSearchMode() {
+  state.lawSearchMode = !state.lawSearchMode;
+  renderLawSearchMode();
 }
 
 function toggleCustomPromptPicker() {
@@ -817,7 +830,11 @@ function bindEvents() {
 
   // Notebook
   if (elements.attachNotebookButton) {
-    elements.attachNotebookButton.addEventListener("click", (event) => { event.stopPropagation(); openNotebookSelector(); });
+    elements.attachNotebookButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openNotebookSelector();
+      closeAttachMenu();
+    });
   }
   if (elements.attachCustomPromptButton) {
     elements.attachCustomPromptButton.addEventListener("click", (event) => { event.stopPropagation(); toggleCustomPromptPicker(); });
@@ -829,6 +846,13 @@ function bindEvents() {
       closeAttachMenu();
     });
   }
+  if (elements.lawSearchActiveButton) {
+    elements.lawSearchActiveButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleLawSearchMode();
+    });
+  }
+  renderLawSearchMode();
   if (elements.deepAnalysisToggle) {
     elements.deepAnalysisToggle.addEventListener("click", (event) => {
       event.preventDefault();

@@ -233,7 +233,7 @@ export const elements = {
   bulkCount: document.querySelector("#bulkCount"),
   chatForm: document.querySelector("#chatForm"),
   promptInput: document.querySelector("#promptInput"),
-  sendButton: document.querySelector("#sendButton"),
+  lawSearchActiveButton: document.querySelector("#lawSearchActiveButton"),
   materialToggleButton: document.querySelector("#materialToggleButton"),
   materialCountBadge: document.querySelector("#materialCountBadge"),
   materialPanel: document.querySelector("#materialPanel"),

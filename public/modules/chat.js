@@ -29,9 +29,6 @@ const TRIM_BUDGET_CHARS = 400_000;
 
 export function setBusy(busy) {
   state.busy = busy;
-  elements.sendButton.disabled = false;
-  elements.sendButton.textContent = busy ? "중지" : "전송";
-  elements.sendButton.classList.toggle("stop-button", busy);
   elements.fileInput.disabled = busy;
   renderDeepAnalysisToggle();
 }

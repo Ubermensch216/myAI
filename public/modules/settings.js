@@ -22,7 +22,9 @@ export function renderBrand() {
   elements.appBannerImg.src = banner;
   elements.appBannerImg.alt = appName;
   if (elements.promptInput) {
-    elements.promptInput.placeholder = `${appName}에게 물어보세요 [⇧+I]`;
+    elements.promptInput.placeholder = state.lawSearchMode
+      ? "법령 검색 모드: 공식 근거가 확인된 경우에만 답변합니다"
+      : `${appName}에게 물어보세요 [Shift+I]`;
   }
   elements.faviconLink.href = DEFAULT_FAVICON_HREF;
 }

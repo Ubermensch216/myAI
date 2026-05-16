@@ -2572,13 +2572,13 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .composer-main-row {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  display: flex;
   gap: 8px;
   align-items: end;
 }
 
 .attach-menu-wrap {
+  order: 1;
   position: relative;
   width: 46px;
   height: 46px;
@@ -2605,6 +2605,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .material-toggle-button {
+  order: 3;
   position: relative;
   display: grid;
   width: 46px;
@@ -2616,6 +2617,10 @@ body.panel-resizing .panel-resizer::after {
   color: var(--muted);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.material-toggle-button[hidden] {
+  display: none;
 }
 
 .material-toggle-button svg {
@@ -2677,9 +2682,11 @@ body.panel-resizing .panel-resizer::after {
   bottom: calc(100% + 10px);
   z-index: 20;
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 14px;
   padding: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
@@ -2690,39 +2697,108 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .attach-menu-button {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border: 1px solid var(--line);
+  display: flex;
+  width: 100%;
+  height: 38px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  border: 0;
   border-radius: 8px;
-  background: var(--surface-2);
-  color: var(--accent-dark);
+  padding: 0 10px;
+  background: transparent;
+  color: var(--ink);
   cursor: pointer;
+  font-weight: 800;
 }
 
 .attach-menu-button:hover,
 .attach-menu-button:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent-dark);
   outline: none;
 }
 
 .attach-menu-button[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
   background: color-mix(in srgb, var(--accent) 20%, var(--surface));
   color: var(--accent-dark);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .attach-menu-button svg {
-  width: 21px;
-  height: 21px;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.attach-menu-button span {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.attach-menu-divider {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--line);
+}
+
+.attach-menu-section-label {
+  padding: 4px 10px 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.composer-mode-chip {
+  display: inline-flex;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 8px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  color: var(--accent-dark);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.composer-mode-chip[hidden] {
+  display: none;
+}
+
+.composer-mode-chip svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.composer-mode-chip:hover,
+.composer-mode-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  background: color-mix(in srgb, var(--accent) 19%, var(--surface));
+  outline: none;
+}
+
+.law-search-active-button {
+  order: 2;
+  width: 46px;
+  padding: 0;
 }
 
 .custom-prompt-picker {
@@ -2803,6 +2879,8 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .composer textarea {
+  order: 4;
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
   max-height: 180px;
