@@ -4,7 +4,7 @@ const xmlParser = new XMLParser({
   ignoreAttributes: false,
   cdataPropName: "__cdata",
   textNodeName: "__text",
-  isArray: (name) => ["item", "info"].includes(name)
+  isArray: (name) => ["item", "info", "data"].includes(name)
 });
 
 function parseXml(text) {
@@ -34,6 +34,14 @@ function stripHtml(text) {
     .replace(/<[^>]+>/g, "")
     .replace(/&[a-z#0-9]+;/gi, (m) => map[m] || m)
     .trim();
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    const text = readCdata(value) || String(value || "");
+    if (text.trim()) return text.trim();
+  }
+  return "";
 }
 
 function xmlOk(parsed) {
@@ -172,7 +180,7 @@ export function normalizeOcprOutlineDetail(xmlText) {
 // 행심 재결례 (getAdjdexeList)
 export function normalizeHaengJimResults(xmlText) {
   const parsed = parseXml(xmlText);
-  const raw = parsed?.list?.info || parsed?.info || [];
+  const raw = parsed?.simpan?.list?.data || parsed?.list?.data || parsed?.list?.info || parsed?.info || [];
   const arr = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
   return arr.map((item) => ({
     id: String(item?.incdntNb || ""),
@@ -189,6 +197,74 @@ export function normalizeHaengJimResults(xmlText) {
   }));
 }
 
+export function normalizeLawGoKrDeccResults(payload) {
+  const root = payload?.Decc || payload?.decc || payload || {};
+  const raw = root.decc || root.Decc || [];
+  const arr = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
+  return {
+    results: arr.map((item) => {
+      const id = firstValue(item["행정심판재결례일련번호"], item["행정심판례일련번호"], item.ID, item.id);
+      const url = firstValue(item["행정심판례상세링크"], item.url);
+      return {
+        id,
+        caseNo: firstValue(item["사건번호"], item.caseNo),
+        title: stripHtml(firstValue(item["사건명"], item["행정심판례명"], item.title)),
+        result: stripHtml(firstValue(item["재결구분명"], item.result)),
+        date: toDateStr(firstValue(item["의결일자"], item["재결일자"], item.date).replace(/\./g, "")),
+        institution: stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회"),
+        court: stripHtml(firstValue(item["처분청"], item.court)),
+        category: stripHtml(firstValue(item["재결구분코드"], item.category)),
+        summary: stripHtml(firstValue(item["재결요지"], item["이유"], item.summary)).slice(0, 500),
+        url: url ? makeLawGoKrUrl(url) : "",
+        sourceType: "decision_haengjim",
+        subType: "haengjim"
+      };
+    }).filter((item) => item.id || item.title),
+    total: Number(root.totalCnt || root.total || arr.length || 0),
+    page: Number(root.page || 1)
+  };
+}
+
+export function normalizeLawGoKrDeccDetail(payload) {
+  const item = payload?.PrecService || payload?.DeccService || payload?.Decc || payload?.decc || payload || {};
+  const id = firstValue(item["행정심판례일련번호"], item["행정심판재결례일련번호"], item.ID, item.id);
+  const title = stripHtml(firstValue(item["사건명"], item["행정심판례명"], item.title));
+  const summary = stripHtml(firstValue(item["재결요지"], item.summary));
+  const order = stripHtml(firstValue(item["주문"], item.order));
+  const claim = stripHtml(firstValue(item["청구취지"], item.claim));
+  const reason = stripHtml(firstValue(item["이유"], item.reason));
+  const text = [
+    title ? `사건명: ${title}` : "",
+    summary ? `재결요지: ${summary}` : "",
+    order ? `주문: ${order}` : "",
+    claim ? `청구취지: ${claim}` : "",
+    reason ? `이유: ${reason}` : ""
+  ].filter(Boolean).join("\n\n");
+  return {
+    id,
+    caseNo: firstValue(item["사건번호"], item.caseNo),
+    title,
+    result: stripHtml(firstValue(item["재결례유형명"], item["재결구분명"], item.result)),
+    date: toDateStr(firstValue(item["의결일자"], item["재결일자"], item.date).replace(/\./g, "")),
+    institution: stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회"),
+    court: stripHtml(firstValue(item["처분청"], item.court)),
+    category: stripHtml(firstValue(item["재결례유형코드"], item["재결구분코드"], item.category)),
+    summary: summary || reason.slice(0, 500),
+    text,
+    url: id ? `https://www.law.go.kr/DRF/lawService.do?target=decc&ID=${encodeURIComponent(id)}&type=HTML` : "",
+    sourceType: "decision_haengjim",
+    subType: "haengjim"
+  };
+}
+
+function makeLawGoKrUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^https?:\/\//i.test(text)) return text;
+  if (text.startsWith("/")) return `https://www.law.go.kr${text}`;
+  return `https://www.law.go.kr/${text.replace(/^\/+/, "")}`;
+}
+
 export function buildDecisionCitation(decision, citationId = "D1") {
   return {
     citationId,
@@ -200,6 +276,7 @@ export function buildDecisionCitation(decision, citationId = "D1") {
     date: decision.date,
     result: decision.result,
     locator: `${decision.caseNo || decision.id} (${decision.date})`,
-    summary: String(decision.summary || decision.text || "").slice(0, 300)
+    summary: String(decision.summary || decision.text || "").slice(0, 300),
+    url: decision.url || ""
   };
 }

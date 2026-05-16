@@ -76,6 +76,7 @@ await run("citizen action_plan uses topic research evidence", testCitizenActionP
 await run("forced law search context stays official-evidence only", testForcedLawSearchContext);
 await run("forced law search context includes official decision results", testForcedLawSearchDecisionContext);
 await run("forced decision search narrows query and suppresses statute substitutes", testForcedDecisionSearchNarrowsQuery);
+await run("forced admin appeal search narrows query and stays in haengjim domain", testForcedAdminAppealSearchNarrowsQuery);
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
 await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
 await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
@@ -899,6 +900,49 @@ async function testForcedDecisionSearchNarrowsQuery() {
   assert.ok(ctx.citations.some((item) => item.citationId === "D1"));
   assert.ok(ctx.citations.every((item) => item.citationId.startsWith("D")), "decision prompt should expose only decision citations");
   assert.match(ctx.contextText, /개인정보 자기결정권 침해 여부/);
+  assert.doesNotMatch(ctx.contextText, /\[AI-L/);
+}
+
+async function testForcedAdminAppealSearchNarrowsQuery() {
+  const calls = [];
+  const fakeClient = {
+    async searchAiLaw(input) {
+      calls.push(["searchAiLaw", input]);
+      return { ok: true, results: [{ lawName: "행정심판법", articleNo: "0001", snippet: "대체 조문" }] };
+    },
+    async searchDecisions(input) {
+      calls.push(["searchDecisions", input]);
+      assert.equal(input.domain, "haengjim");
+      if (input.query !== "개인정보") return { ok: true, domain: input.domain, results: [], total: 0 };
+      return {
+        ok: true,
+        domain: "haengjim",
+        results: [
+          {
+            id: "272985",
+            caseNo: "2025-15824",
+            title: "정보공개 거부처분 취소청구",
+            result: "인용",
+            date: "2026-02-24",
+            institution: "국민권익위원회",
+            summary: "개인정보가 포함된 행정심판 재결례 요지",
+            sourceType: "decision_haengjim"
+          }
+        ]
+      };
+    }
+  };
+
+  const ctx = await buildForcedLawContext("행정심판 재결례 중 개인정보 관련 사례 찾아줘", { client: fakeClient });
+  assert.equal(ctx.ok, true);
+  assert.deepEqual(
+    calls.filter(([name]) => name === "searchDecisions").map(([, input]) => input.query),
+    ["개인정보 사례", "개인정보"]
+  );
+  assert.ok(!calls.some(([name]) => name === "searchAiLaw"), "admin appeal decision prompt must not fall back to statute AI snippets");
+  assert.ok(ctx.citations.some((item) => item.citationId === "D1" && item.sourceType === "decision_haengjim"));
+  assert.ok(ctx.citations.every((item) => item.citationId.startsWith("D")), "admin appeal prompt should expose only decision citations");
+  assert.match(ctx.contextText, /정보공개 거부처분 취소청구/);
   assert.doesNotMatch(ctx.contextText, /\[AI-L/);
 }
 
