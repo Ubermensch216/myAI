@@ -238,7 +238,7 @@ body.panel-resizing .panel-resizer::after {
 
 .room-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
   width: 100%;
@@ -313,6 +313,51 @@ body.panel-resizing .panel-resizer::after {
   stroke-width: 1.9;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.room-pin {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  cursor: pointer;
+}
+
+.room-pin svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.room-item:hover .room-pin,
+.room-item:focus-within .room-pin {
+  opacity: 1;
+}
+
+.room-pin:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-dark);
+}
+
+.room-item.pinned {
+  border-left: 2px solid var(--accent);
+}
+
+.room-item.pinned .room-pin {
+  opacity: 1;
+  color: var(--accent-dark);
+}
+
+.room-item.pinned .room-pin svg {
+  fill: currentColor;
 }
 
 .field-label {
@@ -9420,8 +9465,8 @@ body.panel-resizing .panel-resizer::after {
 /* ???? Law Explorer Panel ?????????????????????????????????????????????????????????????????????????????? */
 
 .studio-law-panel {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   gap: 10px;
   min-height: 0;
   padding: 10px 12px 12px;
@@ -9955,8 +10000,10 @@ body.panel-resizing .panel-resizer::after {
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  flex: 1 1 auto;
+  height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .law-workbench-section-head,
@@ -10139,6 +10186,9 @@ body.panel-resizing .panel-resizer::after {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: keep-all;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
 }
 
 /* ???? Diff viewer (added / removed / modified / unchanged) ???????????????? */

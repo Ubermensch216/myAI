@@ -33,7 +33,9 @@ let dragDepth = 0;
 
 const ROOM_FILE_SVG = {
   paperclip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"></path></svg>',
-  notebook: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"></path><path d="M5 17a3 3 0 0 1 3-3h11"></path></svg>'
+  notebook: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"></path><path d="M5 17a3 3 0 0 1 3-3h11"></path></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3l7 7-4 1-4 4-1 5-3-3-5 5 5-5-3-3 5-1 4-4z"></path></svg>',
+  pinFilled: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="currentColor"><path d="M14 3l7 7-4 1-4 4-1 5-3-3-5 5 5-5-3-3 5-1 4-4z"></path></svg>'
 };
 
 // ===== Boot =====
@@ -167,13 +169,33 @@ function applyActiveView(view) {
   if (next === "calendar") renderCalendar();
 }
 
+function sortRoomsForRender(rooms) {
+  const indexed = rooms.map((room, originalIndex) => ({ room, originalIndex }));
+  indexed.sort((a, b) => {
+    const aPin = a.room.pinnedAt || null;
+    const bPin = b.room.pinnedAt || null;
+    if (aPin && !bPin) return -1;
+    if (!aPin && bPin) return 1;
+    if (aPin && bPin) {
+      if (aPin > bPin) return -1;
+      if (aPin < bPin) return 1;
+      return 0;
+    }
+    return a.originalIndex - b.originalIndex;
+  });
+  return indexed.map(({ room }) => room);
+}
+
 function renderRooms() {
   elements.roomList.innerHTML = "";
 
-  for (const room of state.rooms) {
+  const sortedRooms = sortRoomsForRender(state.rooms);
+
+  for (const room of sortedRooms) {
+    const isPinned = Boolean(room.pinnedAt);
     const item = document.createElement("button");
     item.type = "button";
-    item.className = `room-item${room.id === state.activeRoomId ? " active" : ""}`;
+    item.className = `room-item${room.id === state.activeRoomId ? " active" : ""}${isPinned ? " pinned" : ""}`;
     item.addEventListener("click", () => {
       if (state.activeRoomId === room.id) return;
       state.activeRoomId = room.id;
@@ -211,12 +233,33 @@ function renderRooms() {
     }
     indicators.hidden = !indicators.childElementCount;
 
+    const pinButton = document.createElement("span");
+    pinButton.className = "room-pin";
+    pinButton.setAttribute("role", "button");
+    pinButton.setAttribute("tabindex", "0");
+    pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
+    pinButton.title = isPinned ? "고정 해제" : "고정";
+    pinButton.innerHTML = isPinned ? ROOM_FILE_SVG.pinFilled : ROOM_FILE_SVG.pin;
+    const togglePin = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      room.pinnedAt = room.pinnedAt ? null : new Date().toISOString();
+      scheduleSave();
+      renderRooms();
+    };
+    pinButton.addEventListener("click", togglePin);
+    pinButton.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        togglePin(event);
+      }
+    });
+
     const deleteButton = document.createElement("span");
     deleteButton.className = "room-delete";
     deleteButton.title = "대화방 삭제";
     deleteButton.textContent = "×";
     deleteButton.addEventListener("click", async (event) => { event.stopPropagation(); await deleteRoom(room.id); });
-    item.append(title, indicators, deleteButton);
+    item.append(title, indicators, pinButton, deleteButton);
     elements.roomList.append(item);
   }
 }
