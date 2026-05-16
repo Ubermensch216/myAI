@@ -463,6 +463,13 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     const block = formatDecisionResultsBlock(decisionResult.results, citations.length);
     if (block.text) sections.push(block.text);
     citations.push(...block.citations);
+    if (decisionResult.domains) {
+      for (const [name, info] of Object.entries(decisionResult.domains)) {
+        if (info && info.ok === false && info.error) {
+          errors.push({ source: `decisions.${name}`, marker: info.marker || LAW_ERROR_MARKERS.LAW_API_ERROR, error: info.error });
+        }
+      }
+    }
   } else if (decisionResult?.error) {
     errors.push({ source: "decisions", marker: decisionResult.error.marker });
   }
@@ -478,6 +485,8 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
     contextText: fitLawContext(sections.filter(Boolean).join("\n\n")),
     error: errors.length && citations.length === 0 ? LAW_ERROR_MARKERS.LAW_API_ERROR : "",
     errorDetails: errors,
+    decisionDomains: decisionResult?.domains || null,
+    warnings: Array.isArray(decisionResult?.warnings) ? decisionResult.warnings : [],
     latencyMs: Date.now() - startedAt
   };
 }
@@ -485,8 +494,9 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
 async function buildDecisionSearchContext(prompt, intent, { signal, startedAt, client }) {
   const domain = getDecisionSearchDomain(prompt);
   const errors = [];
+  const warnings = [];
 
-  if (domain === "hunzae" || domain === "all") {
+  if (domain === "hunzae") {
     const dc = createDecisionsApiClient();
     if (!dc.isHunzaeConfigured()) {
       return {
@@ -504,10 +514,21 @@ async function buildDecisionSearchContext(prompt, intent, { signal, startedAt, c
         latencyMs: Date.now() - startedAt
       };
     }
+  } else if (domain === "all") {
+    const dc = createDecisionsApiClient();
+    if (!dc.isHunzaeConfigured()) {
+      errors.push({
+        source: "decisions.hunzae",
+        marker: "DECISIONS_CONFIG_ERROR",
+        error: "HUNZAE_API_KEY_OR_URL_NOT_CONFIGURED"
+      });
+      warnings.push("HUNZAE_API_KEY_NOT_CONFIGURED");
+    }
   }
 
   const decisionSearch = await searchDecisionCandidates(prompt, { signal, client, domain });
   errors.push(...decisionSearch.errors);
+  warnings.push(...decisionSearch.warnings);
   const selectedResult = decisionSearch.result;
   const selectedQuery = decisionSearch.query;
 
@@ -523,11 +544,14 @@ async function buildDecisionSearchContext(prompt, intent, { signal, startedAt, c
       contextText: "",
       error: errors.length ? LAW_ERROR_MARKERS.LAW_API_ERROR : LAW_ERROR_MARKERS.NOT_FOUND,
       errorDetails: errors,
+      decisionDomains: decisionSearch.decisionDomains || null,
+      warnings: uniqueStrings(warnings),
       latencyMs: Date.now() - startedAt
     };
   }
 
   const block = formatDecisionResultsBlock(selectedResult.results, 0);
+  const decisionDomains = selectedResult.domains || decisionSearch.decisionDomains || null;
   return {
     ok: block.citations.length > 0,
     query: selectedQuery,
@@ -539,6 +563,11 @@ async function buildDecisionSearchContext(prompt, intent, { signal, startedAt, c
     contextText: fitLawContext(block.text),
     error: "",
     errorDetails: errors,
+    decisionDomains,
+    warnings: uniqueStrings([
+      ...warnings,
+      ...(Array.isArray(selectedResult.warnings) ? selectedResult.warnings : [])
+    ]),
     latencyMs: Date.now() - startedAt
   };
 }
@@ -547,6 +576,8 @@ async function searchDecisionCandidates(prompt, { signal, client, domain = "all"
   const queries = buildDecisionSearchQueries(prompt);
   let selectedQuery = queries[0] || String(prompt || "").trim();
   const errors = [];
+  const warnings = [];
+  let decisionDomains = null;
 
   for (const query of queries) {
     const result = await searchDecisions({
@@ -559,12 +590,21 @@ async function searchDecisionCandidates(prompt, { signal, client, domain = "all"
       errors.push({ source: "decisions", query, marker: result.error.marker || LAW_ERROR_MARKERS.LAW_API_ERROR });
       continue;
     }
+    if (result?.domains) {
+      decisionDomains = result.domains;
+      for (const [name, info] of Object.entries(result.domains)) {
+        if (info && info.ok === false && info.error) {
+          errors.push({ source: `decisions.${name}`, query, marker: info.marker || LAW_ERROR_MARKERS.LAW_API_ERROR, error: info.error });
+        }
+      }
+    }
+    if (Array.isArray(result?.warnings)) warnings.push(...result.warnings);
     if (Array.isArray(result?.results) && result.results.length > 0) {
-      return { result, query, errors };
+      return { result, query, errors, warnings: uniqueStrings(warnings), decisionDomains };
     }
   }
 
-  return { result: null, query: selectedQuery, errors };
+  return { result: null, query: selectedQuery, errors, warnings: uniqueStrings(warnings), decisionDomains };
 }
 
 async function buildResearchContext(prompt, intent, { signal, startedAt, client }) {
@@ -1095,9 +1135,13 @@ function formatDecisionResultsBlock(items = [], startIndex = 0) {
     allHaengjim ? "[공식 행정심판 재결례]" : anyHaengjim ? "[공식 결정례·재결례 검색 결과]" : "[헌법재판소 결정례]",
     "These are official decision or administrative appeal records. Cite them as [D*]. Use 사건번호, 결과, 날짜 facts only from the data below; do not invent reasoning."
   ];
+  lines.push("For Korean Constitutional Court list records, Korean full text is unsupported here; use only list/outline evidence and do not quote full reasoning.");
   const citations = [];
   list.forEach((item, index) => {
     const citationId = `D${startIndex + index + 1}`;
+    const detailAvailable = getDecisionDetailAvailable(item);
+    const detailKind = getDecisionDetailKind(item);
+    const detailNotice = getDecisionDetailNotice(item);
     citations.push({
       citationId,
       sourceType: item.sourceType || "decision_hunzae_kor",
@@ -1109,7 +1153,10 @@ function formatDecisionResultsBlock(items = [], startIndex = 0) {
       institution: item.institution || "헌법재판소",
       locator: `${item.caseNo || item.id} (${item.date})`,
       summary: String(item.summary || "").slice(0, 300),
-      url: item.url || ""
+      url: item.url || "",
+      detailAvailable,
+      detailKind,
+      detailNotice
     });
     const isHaengjim = item.sourceType === "decision_haengjim" || item.subType === "haengjim";
     const summary = item.summary ? `\n요지: ${item.summary.slice(0, 180)}` : "";
@@ -1155,4 +1202,25 @@ function formatVerificationContext(verification) {
     lines.push(`[V${index + 1}] ${item.citation} -> ${item.valid ? "valid" : "invalid"} (${item.reason})`);
   });
   return lines.join("\n");
+}
+
+function getDecisionDetailAvailable(item = {}) {
+  if (typeof item.detailAvailable === "boolean") return item.detailAvailable;
+  if (item.sourceType === "decision_hunzae_kor" || item.subType === "kor") return false;
+  return true;
+}
+
+function getDecisionDetailKind(item = {}) {
+  if (item.detailKind) return item.detailKind;
+  if (item.sourceType === "decision_hunzae_kor" || item.subType === "kor") return "list_only";
+  if (item.sourceType === "decision_hunzae_outline" || item.subType === "outline") return "outline";
+  return "full_text";
+}
+
+function getDecisionDetailNotice(item = {}) {
+  if (item.detailNotice) return item.detailNotice;
+  if (item.sourceType === "decision_hunzae_kor" || item.subType === "kor") {
+    return "Korean full text for Constitutional Court list records is not available from the configured detail API; use list or outline evidence only.";
+  }
+  return "";
 }

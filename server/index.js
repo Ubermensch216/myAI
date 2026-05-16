@@ -470,6 +470,9 @@ app.post("/api/chat", async (request, response) => {
                     result: item.result,
                     institution: item.institution,
                     summary: item.summary,
+                    detailAvailable: item.detailAvailable,
+                    detailKind: item.detailKind,
+                    detailNotice: item.detailNotice,
                     caseType: item.caseType,
                     agency: item.agency,
                     kind: item.kind,
@@ -477,7 +480,9 @@ app.post("/api/chat", async (request, response) => {
                     region: item.region,
                     promulgationDate: item.promulgationDate
                   })),
-                  verification: meta.law.verification || { checked: false, failCount: 0, results: [] }
+                  verification: meta.law.verification || { checked: false, failCount: 0, results: [] },
+                  decisionDomains: meta.law.decisionDomains || null,
+                  warnings: Array.isArray(meta.law.warnings) ? meta.law.warnings : []
                 }
               : null,
             compliance: meta.compliance

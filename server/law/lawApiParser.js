@@ -640,6 +640,8 @@ const ANNEX_TITLE_KEYS = ["별표명", "별표제목", "서식명", "title", "na
 const ANNEX_NUMBER_KEYS = ["별표번호", "별표순번", "annexNo", "no"];
 const ANNEX_BODY_KEYS = ["별표내용", "서식내용", "내용", "content", "text"];
 
+const ANNEX_TYPE_KEYS = ["annexType", "type", "kind"];
+
 export function normalizeAnnexResults(payload) {
   const candidates = findObjects(payload).filter((item) => {
     const title = readFirst(item, ANNEX_TITLE_KEYS);
@@ -663,6 +665,7 @@ export function normalizeAnnexResults(payload) {
       annexId: String(annexId || ""),
       title,
       annexNo,
+      annexType: stripHtml(readFirst(item, ANNEX_TYPE_KEYS)),
       lawName,
       lawId: String(lawId || ""),
       mst: String(mst || ""),
@@ -682,6 +685,7 @@ export function normalizeAnnexPayload(payload) {
     annexId: String(deepRead(payload, ANNEX_ID_KEYS) || ""),
     title: stripHtml(readFirst(root, ANNEX_TITLE_KEYS)) || stripHtml(deepRead(payload, ANNEX_TITLE_KEYS)),
     annexNo: stripHtml(readFirst(root, ANNEX_NUMBER_KEYS)) || stripHtml(deepRead(payload, ANNEX_NUMBER_KEYS)),
+    annexType: stripHtml(readFirst(root, ANNEX_TYPE_KEYS)) || stripHtml(deepRead(payload, ANNEX_TYPE_KEYS)),
     lawName: stripHtml(deepRead(payload, LAW_NAME_KEYS)),
     lawId: String(deepRead(payload, LAW_ID_KEYS) || ""),
     mst: String(deepRead(payload, LAW_MST_KEYS) || ""),
@@ -700,6 +704,7 @@ export function buildAnnexCitation(annex, citationId = "A1") {
     title: annex.title,
     lawName: annex.lawName,
     annexNo: annex.annexNo,
+    annexType: annex.annexType,
     effectiveDate: annex.effectiveDate,
     locator: [annex.lawName, annex.title].filter(Boolean).join(" "),
     url: annex.mst

@@ -460,6 +460,11 @@ lawApiRouter.post(
         lawName: request.body?.lawName,
         lawId: request.body?.lawId,
         mst: request.body?.mst,
+        annexId: request.body?.annexId,
+        annexNo: request.body?.annexNo,
+        annexTitle: request.body?.annexTitle,
+        formNo: request.body?.formNo,
+        annexType: request.body?.annexType,
         display: request.body?.display
       }, { client: createLawApiClient(), signal: request.signal });
       response.json(result);
@@ -479,7 +484,12 @@ lawApiRouter.post(
         mst: request.body?.mst,
         lawId: request.body?.lawId,
         lawName: request.body?.lawName,
-        query: request.body?.query
+        query: request.body?.query,
+        annexId: request.body?.annexId,
+        annexNo: request.body?.annexNo,
+        annexTitle: request.body?.annexTitle,
+        formNo: request.body?.formNo,
+        annexType: request.body?.annexType
       }, { client: createLawApiClient(), signal: request.signal });
       response.json(result);
     } catch (error) {
@@ -637,7 +647,9 @@ lawApiRouter.post(
       }
       const result = await getDecisionText({
         id: request.body?.id || request.body?.caseNo,
-        domain: request.body?.domain
+        domain: request.body?.domain,
+        sourceType: request.body?.sourceType,
+        subType: request.body?.subType
       }, { signal: request.signal });
       response.json(result);
     } catch (error) {

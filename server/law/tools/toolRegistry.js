@@ -39,6 +39,7 @@ const LAW_TOOLS = [
   { name: "get_ordinance", category: "ordinance", description: "Get official local ordinance text." },
   { name: "search_annexes", category: "annex", description: "Search 별표/별지/서식 (annexes and forms) by law name or keyword." },
   { name: "get_annexes", category: "annex", description: "Get all 별표/별지/서식 (annexes and forms) for a law by MST or lawId." },
+  { name: "get_annex_detail", category: "annex", description: "Get one annex/form detail by MST/lawId or by lawName/query plus annexId, annexNo, annexTitle, formNo, or annexType selectors." },
   { name: "impact_map", category: "analysis", description: "Build a structural impact map for one statute article." },
   { name: "time_travel", category: "history", description: "Compare one article or full law across two dates." },
   { name: "action_plan", category: "chain", description: "Create evidence-grounded citizen action-plan context from a natural-language situation." },
@@ -127,6 +128,8 @@ export async function executeLawTool(input = {}, options = {}) {
       }, execOptions);
     case "search_annexes":
       return searchAnnexes(params, execOptions);
+    case "get_annex_detail":
+      return getAnnexDetail(params, execOptions);
     case "get_annexes":
       return getAnnexDetail(params, execOptions);
     case "impact_map":

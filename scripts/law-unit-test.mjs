@@ -42,6 +42,9 @@ const {
   findUpstreamError
 } = await import("../server/law/lawApiParser.js");
 const {
+  normalizeKorPrcdntResults
+} = await import("../server/law/decisionsApiParser.js");
+const {
   buildLawTopicSearchQuery,
   inferLawArticleRefsForTopic
 } = await import("../server/law/lawTopicHints.js");
@@ -76,6 +79,9 @@ await run("buildLawContext action_plan injects non-legal-advice template", testA
 await run("citizen action_plan uses topic research evidence", testCitizenActionPlanContext);
 await run("forced law search context stays official-evidence only", testForcedLawSearchContext);
 await run("forced law search context includes official decision results", testForcedLawSearchDecisionContext);
+await run("constitutional Korean decision search marks detail unsupported", testKorHunzaeSearchDetailUnsupported);
+await run("constitutional Korean decision detail does not fall through to English detail", testKorHunzaeDetailUnsupported);
+await run("forced all-domain decision search keeps haengjim when hunzae is unconfigured", testAllDecisionSearchPartialHunzaeConfig);
 await run("forced decision search narrows query and suppresses statute substitutes", testForcedDecisionSearchNarrowsQuery);
 await run("forced admin appeal search narrows query and stays in haengjim domain", testForcedAdminAppealSearchNarrowsQuery);
 await run("haengjim hub API follows documented request parameters", testHaengJimHubApiDocumentedParams);
@@ -84,6 +90,8 @@ await run("haengjim hub API falls back to law.go.kr on transport failure", testH
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
 await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
 await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
+await run("annex detail selector chooses matching annex number", testAnnexDetailSelectorChoosesAnnexNo);
+await run("annex detail selector reports ambiguous matches", testAnnexDetailSelectorAmbiguous);
 await run("law search mode overrides web/search context flags", testLawSearchModeFlags);
 await run("law name alias resolution (산안법 → 산업안전보건법)", testLawAliasResolution);
 await run("law_topic_search intent mode detection", testTopicSearchIntent);
@@ -834,6 +842,100 @@ async function testForcedLawSearchDecisionContext() {
   assert.match(ctx.contextText, /Privacy infringement constitutional decision/);
 }
 
+function testKorHunzaeSearchDetailUnsupported() {
+  const xml = [
+    "<response>",
+    "<header><resultCode>0</resultCode><resultMsg>OK</resultMsg></header>",
+    "<body><items><item>",
+    "<eventNum>1001</eventNum>",
+    "<eventNo>2024Hun-Ma1</eventNo>",
+    "<eventNm>Korean constitutional decision</eventNm>",
+    "<rstaRsta>dismissed</rstaRsta>",
+    "<rstaDate>20240102</rstaDate>",
+    "</item></items><totalCount>1</totalCount><pageNo>1</pageNo></body>",
+    "</response>"
+  ].join("");
+  const result = normalizeKorPrcdntResults(xml);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].sourceType, "decision_hunzae_kor");
+  assert.equal(result.results[0].detailAvailable, false);
+  assert.equal(result.results[0].detailKind, "list_only");
+  assert.match(result.results[0].detailNotice, /Korean full text/i);
+}
+
+async function testKorHunzaeDetailUnsupported() {
+  const client = new DecisionsApiClient();
+  client.hunzaeApiKey = "TEST-HUNZAE";
+  client.hunzaeBaseUrl = "https://example.test/hunzae";
+  client.requestRaw = async () => {
+    throw new Error("Korean detail must not call English or outline detail APIs");
+  };
+  const result = await client.getDecisionText({
+    id: "1001",
+    sourceType: "decision_hunzae_kor"
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, "HUNZAE_KOR_FULL_TEXT_UNSUPPORTED");
+  assert.equal(result.detailAvailable, false);
+  assert.equal(result.detailKind, "list_only");
+}
+
+async function testAllDecisionSearchPartialHunzaeConfig() {
+  const previousKey = process.env.HUNZAE_API_KEY;
+  const previousShared = process.env.DECISIONS_API_KEY;
+  const previousUrl = process.env.HUNZAE_API_URL;
+  delete process.env.HUNZAE_API_KEY;
+  delete process.env.DECISIONS_API_KEY;
+  delete process.env.HUNZAE_API_URL;
+  const calls = [];
+  const fakeClient = {
+    async searchDecisions(input) {
+      calls.push(["searchDecisions", input]);
+      assert.equal(input.domain, "all");
+      return {
+        ok: true,
+        domain: "all",
+        results: [
+          {
+            id: "HA-1",
+            caseNo: "2026-1",
+            title: "Administrative appeal decision",
+            result: "accepted",
+            date: "2026-01-01",
+            institution: "Central Administrative Appeals Commission",
+            summary: "Administrative appeal summary.",
+            sourceType: "decision_haengjim",
+            subType: "haengjim",
+            detailAvailable: true,
+            detailKind: "full_text"
+          }
+        ],
+        domains: {
+          hunzae: { ok: false, total: 0, error: "HUNZAE_API_KEY_NOT_CONFIGURED" },
+          haengjim: { ok: true, total: 1, error: "" }
+        },
+        warnings: ["HUNZAE_API_KEY_NOT_CONFIGURED"]
+      };
+    }
+  };
+  try {
+    const ctx = await buildForcedLawContext("?뚯옱 ?됱젙?ы뙋 ?ш껐濡 privacy infringement decisions", { client: fakeClient });
+    assert.equal(ctx.ok, true);
+    assert.ok(calls.some(([name]) => name === "searchDecisions"));
+    assert.equal(ctx.decisionDomains.hunzae.error, "HUNZAE_API_KEY_NOT_CONFIGURED");
+    assert.equal(ctx.decisionDomains.haengjim.ok, true);
+    assert.ok(ctx.warnings.includes("HUNZAE_API_KEY_NOT_CONFIGURED"));
+    assert.ok(ctx.citations.some((item) => item.sourceType === "decision_haengjim"));
+  } finally {
+    if (previousKey == null) delete process.env.HUNZAE_API_KEY;
+    else process.env.HUNZAE_API_KEY = previousKey;
+    if (previousShared == null) delete process.env.DECISIONS_API_KEY;
+    else process.env.DECISIONS_API_KEY = previousShared;
+    if (previousUrl == null) delete process.env.HUNZAE_API_URL;
+    else process.env.HUNZAE_API_URL = previousUrl;
+  }
+}
+
 async function testForcedDecisionSearchNarrowsQuery() {
   const calls = [];
   const fakeClient = {
@@ -1256,6 +1358,78 @@ async function testLawToolRegistry() {
   const unknown = await executeLawTool({ toolName: "no_such_tool", params: {} }, {});
   assert.equal(unknown.ok, false);
   assert.equal(unknown.error, "UNKNOWN_LAW_TOOL");
+}
+
+function createTestLawApiClient() {
+  return new LawApiClient({
+    enabled: true,
+    configured: true,
+    apiKey: "TEST-LAW",
+    apiProvider: "test",
+    searchUrl: "https://example.test/search",
+    serviceUrl: "https://example.test/service",
+    timeoutMs: 1000,
+    userAgent: "myai-test",
+    maxResults: 10
+  });
+}
+
+async function testAnnexDetailSelectorChoosesAnnexNo() {
+  const client = createTestLawApiClient();
+  const calls = [];
+  client.requestSearch = async (params) => {
+    calls.push(["search", params]);
+    return {
+      items: [
+        { title: "Schedule 1", annexNo: "1", lawName: "Test Act", lawId: "LAW1", mst: "100" },
+        { title: "Schedule 3", annexNo: "3", lawName: "Test Act", lawId: "LAW1", mst: "300" }
+      ]
+    };
+  };
+  client.requestService = async (params) => {
+    calls.push(["detail", params]);
+    assert.equal(params.MST, "300");
+    return {
+      title: "Schedule 3",
+      annexNo: "3",
+      lawName: "Test Act",
+      mst: "300",
+      content: "selected schedule 3 text"
+    };
+  };
+
+  const result = await client.getAnnexDetail({
+    lawName: "Test Act",
+    annexNo: "Schedule 3"
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.citation.title, "Schedule 3");
+  assert.equal(result.selection.method, "selector");
+  assert.equal(result.selection.ambiguous, false);
+  assert.match(result.text, /selected schedule 3 text/);
+  assert.ok(calls.some(([name]) => name === "search"));
+}
+
+async function testAnnexDetailSelectorAmbiguous() {
+  const client = createTestLawApiClient();
+  client.requestSearch = async () => ({
+    items: [
+      { title: "Schedule 3 Safety", annexNo: "3", lawName: "Test Act", lawId: "LAW1", mst: "300" },
+      { title: "Schedule 3 Health", annexNo: "3", lawName: "Test Act", lawId: "LAW1", mst: "301" }
+    ]
+  });
+  client.requestService = async () => {
+    throw new Error("Ambiguous annex selection must not fetch detail");
+  };
+
+  await assert.rejects(
+    () => client.getAnnexDetail({ lawName: "Test Act", annexNo: "3" }),
+    (error) => {
+      assert.equal(error.marker, "ANNEX_AMBIGUOUS");
+      assert.equal(error.candidates.length, 2);
+      return true;
+    }
+  );
 }
 
 async function testLawCache() {

@@ -602,9 +602,21 @@ export class LawApiClient {
     return { ...response, cacheHit: false };
   }
 
-  async searchAnnexes({ query, display, lawName, lawId, mst } = {}, { signal } = {}) {
+  async searchAnnexes({
+    query,
+    display,
+    lawName,
+    lawId,
+    mst,
+    annexId,
+    annexNo,
+    annexTitle,
+    formNo,
+    annexType
+  } = {}, { signal } = {}) {
     assertLawAvailable(this.config);
     const normalizedQuery = String(query || lawName || "").trim();
+    const selector = normalizeAnnexSelector({ annexId, annexNo, annexTitle, formNo, annexType });
     if (!normalizedQuery && !lawId && !mst) {
       throw new LawError("Annex search requires query, lawName, lawId, or mst.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
     }
@@ -612,7 +624,8 @@ export class LawApiClient {
       query: normalizedQuery,
       display: clampInt(display, this.config.maxResults, 1, 100),
       lawId: lawId || "",
-      mst: mst || ""
+      mst: mst || "",
+      selector
     };
     const cacheKey = buildLawCacheKey("search_annexes", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: ANNEX_TTL_MS });
@@ -624,20 +637,60 @@ export class LawApiClient {
     else if (normalizedInput.lawId) params.ID = normalizedInput.lawId;
 
     const payload = await this.requestSearch(params, { signal });
-    const results = stripLawPrivateFields(normalizeAnnexResults(payload).slice(0, normalizedInput.display));
-    const response = { ok: results.length > 0, query: normalizedQuery, results };
+    const ranked = rankAnnexResults(normalizeAnnexResults(payload), selector);
+    const results = stripLawPrivateFields(ranked.slice(0, normalizedInput.display));
+    const response = { ok: results.length > 0, query: normalizedQuery, results, selector };
     await setCachedLawResponse(cacheKey, response, { ttlMs: ANNEX_TTL_MS });
     return { ...response, cacheHit: false };
   }
 
-  async getAnnexDetail({ mst, lawId, lawName, query } = {}, { signal } = {}) {
+  async getAnnexDetail({
+    mst,
+    lawId,
+    lawName,
+    query,
+    annexId,
+    annexNo,
+    annexTitle,
+    formNo,
+    annexType
+  } = {}, { signal } = {}) {
     assertLawAvailable(this.config);
     let resolvedMst = String(mst || "").trim();
     let resolvedId = String(lawId || "").trim();
+    let selection = null;
+    const selector = normalizeAnnexSelector({ annexId, annexNo, annexTitle, formNo, annexType });
     if (!resolvedMst && !resolvedId && (lawName || query)) {
-      const search = await this.searchAnnexes({ query: lawName || query, display: 1 }, { signal });
-      resolvedMst = search.results[0]?.mst || "";
-      resolvedId = search.results[0]?.lawId || "";
+      const search = await this.searchAnnexes({
+        query: lawName || query,
+        display: hasAnnexSelector(selector) ? 20 : 2,
+        annexId,
+        annexNo,
+        annexTitle,
+        formNo,
+        annexType
+      }, { signal });
+      const ranked = rankAnnexResults(search.results || [], selector);
+      if (hasAnnexSelector(selector)) {
+        const topScore = ranked[0]?.selectionScore || 0;
+        const top = ranked.filter((item) => item.selectionScore === topScore && topScore > 0);
+        if (top.length > 1) {
+          throw Object.assign(
+            new LawError("Annex selector matched multiple records.", { marker: "ANNEX_AMBIGUOUS", statusCode: 409 }),
+            { candidates: top.map((item) => stripLawPrivateFields(item)) }
+          );
+        }
+        if (!top.length) {
+          throw new LawError("No annex matched the requested selector.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 404 });
+        }
+        resolvedMst = top[0]?.mst || "";
+        resolvedId = top[0]?.lawId || "";
+        selection = { method: "selector", ambiguous: false, selector, selected: stripLawPrivateFields(top[0]) };
+      } else {
+        resolvedMst = ranked[0]?.mst || "";
+        resolvedId = ranked[0]?.lawId || "";
+        selection = { method: "first_result", ambiguous: ranked.length > 1, selector };
+      }
     }
     if (!resolvedMst && !resolvedId) {
       throw new LawError("Annex lookup requires mst, lawId, lawName, or query.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
@@ -659,7 +712,8 @@ export class LawApiClient {
       ok: true,
       citation: buildAnnexCitation(data),
       text: data.text,
-      results: Array.isArray(data.results) ? stripLawPrivateFields(data.results) : []
+      results: Array.isArray(data.results) ? stripLawPrivateFields(data.results) : [],
+      selection: selection || { method: resolvedMst || resolvedId ? "direct" : "unknown", ambiguous: false, selector }
     };
     await setCachedLawResponse(cacheKey, response, { ttlMs: ANNEX_TTL_MS });
     return { ...response, cacheHit: false };
@@ -893,6 +947,77 @@ export class LawApiClient {
 
 export function createLawApiClient() {
   return new LawApiClient();
+}
+
+function normalizeAnnexSelector(input = {}) {
+  return {
+    annexId: String(input.annexId || "").trim(),
+    annexNo: String(input.annexNo || "").trim(),
+    annexTitle: String(input.annexTitle || "").trim(),
+    formNo: String(input.formNo || "").trim(),
+    annexType: String(input.annexType || "").trim()
+  };
+}
+
+function hasAnnexSelector(selector = {}) {
+  return Boolean(selector.annexId || selector.annexNo || selector.annexTitle || selector.formNo || selector.annexType);
+}
+
+function rankAnnexResults(results = [], selector = {}) {
+  const list = Array.isArray(results) ? results : [];
+  if (!hasAnnexSelector(selector)) {
+    return list.map((item) => ({ ...item, selectionScore: 0 }));
+  }
+  return list
+    .map((item) => ({ ...item, selectionScore: scoreAnnexResult(item, selector) }))
+    .filter((item) => item.selectionScore > 0)
+    .sort((a, b) => b.selectionScore - a.selectionScore || String(a.title || "").localeCompare(String(b.title || "")));
+}
+
+function scoreAnnexResult(item = {}, selector = {}) {
+  let score = 0;
+  if (selector.annexId) {
+    if (normalizeSelectorText(item.annexId) !== normalizeSelectorText(selector.annexId)) return 0;
+    score += 100;
+  }
+  if (selector.annexNo || selector.formNo) {
+    const wanted = selector.annexNo || selector.formNo;
+    if (!annexNumberMatches(item, wanted)) return 0;
+    score += 60;
+  }
+  if (selector.annexTitle) {
+    const title = normalizeSelectorText(item.title);
+    const wantedTitle = normalizeSelectorText(selector.annexTitle);
+    if (!title.includes(wantedTitle)) return 0;
+    score += title === wantedTitle ? 50 : 30;
+  }
+  if (selector.annexType) {
+    const type = normalizeSelectorText(item.annexType || item.title);
+    const wantedType = normalizeSelectorText(selector.annexType);
+    if (!type.includes(wantedType)) return 0;
+    score += 10;
+  }
+  return score;
+}
+
+function annexNumberMatches(item = {}, wanted = "") {
+  const wantedNumbers = extractSelectorNumbers(wanted);
+  const candidateText = [item.annexNo, item.title].filter(Boolean).join(" ");
+  const candidateNumbers = extractSelectorNumbers(candidateText);
+  if (wantedNumbers.length && candidateNumbers.length) {
+    return wantedNumbers.some((number) => candidateNumbers.includes(number));
+  }
+  const wantedText = normalizeSelectorText(wanted);
+  const candidate = normalizeSelectorText(candidateText);
+  return Boolean(wantedText && candidate.includes(wantedText));
+}
+
+function extractSelectorNumbers(value = "") {
+  return Array.from(String(value || "").matchAll(/\d+/g)).map((match) => String(Number(match[0])));
+}
+
+function normalizeSelectorText(value = "") {
+  return String(value || "").toLowerCase().replace(/\s+/g, "");
 }
 
 function chooseRevisionForDate(revisions = [], isoDate = "") {

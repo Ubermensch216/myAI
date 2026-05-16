@@ -241,7 +241,9 @@ export async function streamChat({
             disclaimer: lawContext.disclaimer || null,
             error: lawContext.error || "",
             errorMessage: lawContext.errorMessage || "",
-            kgArticlesMerged: lawContext.kgArticlesMerged || 0
+            kgArticlesMerged: lawContext.kgArticlesMerged || 0,
+            decisionDomains: lawContext.decisionDomains || null,
+            warnings: Array.isArray(lawContext.warnings) ? lawContext.warnings : []
           }
         : null,
       compliance,

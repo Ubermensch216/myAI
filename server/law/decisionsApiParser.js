@@ -7,6 +7,8 @@ const xmlParser = new XMLParser({
   isArray: (name) => ["item", "info", "data"].includes(name)
 });
 
+const HUNZAE_KOR_DETAIL_NOTICE = "Korean full text for Constitutional Court list records is not available from the configured detail API; use list or outline evidence only.";
+
 function parseXml(text) {
   try {
     return xmlParser.parse(String(text || ""));
@@ -80,7 +82,10 @@ export function normalizeKorPrcdntResults(xmlText) {
       panreType: String(item.panreType || ""),
       summary: "",
       sourceType: "decision_hunzae_kor",
-      subType: "kor"
+      subType: "kor",
+      detailAvailable: false,
+      detailKind: "list_only",
+      detailNotice: HUNZAE_KOR_DETAIL_NOTICE
     })),
     total,
     page
@@ -104,7 +109,9 @@ export function normalizeEngPrcdntResults(xmlText) {
       category: String(item.eventType || ""),
       summary: "",
       sourceType: "decision_hunzae_eng",
-      subType: "eng"
+      subType: "eng",
+      detailAvailable: true,
+      detailKind: "full_text"
     })),
     total,
     page
@@ -129,7 +136,9 @@ export function normalizeEngPrcdntDetail(xmlText) {
     volume: String(item.volumeInfo || ""),
     text: readCdata(item.xmlContent),
     sourceType: "decision_hunzae_eng",
-    subType: "eng"
+    subType: "eng",
+    detailAvailable: true,
+    detailKind: "full_text"
   };
 }
 
@@ -150,7 +159,9 @@ export function normalizeOcprOutlineResults(xmlText) {
       category: String(item.cntntpth || ""),
       summary: "",
       sourceType: "decision_hunzae_outline",
-      subType: "outline"
+      subType: "outline",
+      detailAvailable: true,
+      detailKind: "outline"
     })),
     total,
     page
@@ -173,7 +184,9 @@ export function normalizeOcprOutlineDetail(xmlText) {
     category: String(item.cntntpth || ""),
     text: stripHtml(readCdata(item.content)),
     sourceType: "decision_hunzae_outline",
-    subType: "outline"
+    subType: "outline",
+    detailAvailable: true,
+    detailKind: "outline"
   };
 }
 
@@ -193,7 +206,9 @@ export function normalizeHaengJimResults(xmlText) {
     category: [item?.knwldgCl1Nm, item?.knwldgCl2Nm].filter(Boolean).join(" > "),
     summary: readCdata(item?.sumryCn) || String(item?.sumryCn || ""),
     sourceType: "decision_haengjim",
-    subType: "haengjim"
+    subType: "haengjim",
+    detailAvailable: true,
+    detailKind: "full_text"
   }));
 }
 
@@ -219,7 +234,9 @@ export function normalizeLawGoKrDeccResults(payload) {
         summary: stripHtml(firstValue(item["재결요지"], item["이유"], item.summary)).slice(0, 500),
         url: url ? makeLawGoKrUrl(url) : "",
         sourceType: "decision_haengjim",
-        subType: "haengjim"
+        subType: "haengjim",
+        detailAvailable: true,
+        detailKind: "full_text"
       };
     }).filter((item) => item.id || item.title),
     total: Number(root.totalCnt || root.total || arr.length || 0),
@@ -257,7 +274,9 @@ export function normalizeLawGoKrDeccDetail(payload) {
     text,
     url: id ? `https://www.law.go.kr/DRF/lawService.do?target=decc&ID=${encodeURIComponent(id)}&type=HTML` : "",
     sourceType: "decision_haengjim",
-    subType: "haengjim"
+    subType: "haengjim",
+    detailAvailable: true,
+    detailKind: "full_text"
   };
 }
 

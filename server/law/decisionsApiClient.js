@@ -16,6 +16,7 @@ import {
 
 const DECISIONS_TTL_MS = 30 * 86_400_000;
 const HAENGJIM_URL_DEFAULT = "http://www.simpan.go.kr/nsph/getAdjdexeList.do";
+const HUNZAE_KOR_UNSUPPORTED_NOTICE = "Korean full text for Constitutional Court list records is not available from the configured detail API. Use the Korean list record or outline evidence only.";
 
 let instance = null;
 
@@ -351,9 +352,24 @@ export class DecisionsApiClient {
       this.searchKorPrcdnt({ query, page, display, eventType, rstaRsta }, { signal }),
       this.searchHaengJim({ query, page, display, reqDate, cmitId, adjdcStartDe, adjdcEndDe }, { signal })
     ]);
-    const hunzae = hunzaeRes.status === "fulfilled" ? hunzaeRes.value : { ok: false, error: hunzaeRes.reason?.message, results: [], total: 0 };
-    const haengjim = haengjimRes.status === "fulfilled" ? haengjimRes.value : { ok: false, error: haengjimRes.reason?.message, results: [], total: 0 };
+    const hunzae = hunzaeRes.status === "fulfilled" ? hunzaeRes.value : {
+      ok: false,
+      error: hunzaeRes.reason?.message,
+      marker: hunzaeRes.reason?.marker,
+      results: [],
+      total: 0
+    };
+    const haengjim = haengjimRes.status === "fulfilled" ? haengjimRes.value : {
+      ok: false,
+      error: haengjimRes.reason?.message,
+      marker: haengjimRes.reason?.marker,
+      results: [],
+      total: 0
+    };
     const results = [...(hunzae.results || []), ...(haengjim.results || [])].sort((a, b) => b.date.localeCompare(a.date));
+    const warnings = [];
+    if (!hunzae.ok && hunzae.error) warnings.push(hunzae.error);
+    if (!haengjim.ok && haengjim.error) warnings.push(haengjim.error);
     return {
       ok: results.length > 0,
       domain: "all",
@@ -361,9 +377,10 @@ export class DecisionsApiClient {
       total: results.length,
       page: Number(page),
       domains: {
-        hunzae: { ok: hunzae.ok, total: hunzae.total ?? 0, error: hunzae.error },
-        haengjim: { ok: haengjim.ok, total: haengjim.total ?? 0, error: haengjim.error }
+        hunzae: { ok: Boolean(hunzae.ok), total: hunzae.total ?? 0, error: hunzae.error || "", marker: hunzae.marker || "" },
+        haengjim: { ok: Boolean(haengjim.ok), total: haengjim.total ?? 0, error: haengjim.error || "", marker: haengjim.marker || "" }
       },
+      warnings,
       cacheHit: false
     };
   }
@@ -378,6 +395,21 @@ export class DecisionsApiClient {
 
     if (d === "haengjim" || st === "decision_haengjim" || st === "haengjim") {
       return this.getHaengJimDecisionText({ id }, { signal });
+    }
+
+    if (st === "decision_hunzae_kor" || st === "kor") {
+      if (!id) return { ok: false, error: "id_required" };
+      return {
+        ok: false,
+        domain: "hunzae",
+        subType: "kor",
+        id,
+        error: "HUNZAE_KOR_FULL_TEXT_UNSUPPORTED",
+        errorMessage: HUNZAE_KOR_UNSUPPORTED_NOTICE,
+        detailAvailable: false,
+        detailKind: "list_only",
+        detailNotice: HUNZAE_KOR_UNSUPPORTED_NOTICE
+      };
     }
 
     this._hunzaeCheck();
@@ -396,7 +428,7 @@ export class DecisionsApiClient {
       const detail = normalizeOcprOutlineDetail(xml);
       if (!detail) return { ok: false, error: "DECISION_NOT_FOUND", id };
       const citation = buildDecisionCitation(detail, "D1");
-      const out = { ok: true, domain: "hunzae", subType: "outline", citation, text: detail.text, cacheHit: false };
+      const out = { ok: true, domain: "hunzae", subType: "outline", citation, text: detail.text, detailAvailable: true, detailKind: "outline", cacheHit: false };
       await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
       return out;
     }
@@ -413,7 +445,7 @@ export class DecisionsApiClient {
     const detail = normalizeEngPrcdntDetail(xml);
     if (!detail) return { ok: false, error: "DECISION_NOT_FOUND", id };
     const citation = buildDecisionCitation(detail, "D1");
-    const out = { ok: true, domain: "hunzae", subType: "eng", citation, text: detail.text, cacheHit: false };
+    const out = { ok: true, domain: "hunzae", subType: "eng", citation, text: detail.text, detailAvailable: true, detailKind: "full_text", cacheHit: false };
     await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
     return out;
   }
@@ -443,7 +475,7 @@ export class DecisionsApiClient {
     const detail = normalizeLawGoKrDeccDetail(payload);
     if (!detail.id && !detail.title) return { ok: false, error: "DECISION_NOT_FOUND", id };
     const citation = buildDecisionCitation(detail, "D1");
-    const out = { ok: true, domain: "haengjim", subType: "haengjim", citation, text: detail.text, detail, cacheHit: false };
+    const out = { ok: true, domain: "haengjim", subType: "haengjim", citation, text: detail.text, detail, detailAvailable: true, detailKind: "full_text", cacheHit: false };
     await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
     return out;
   }

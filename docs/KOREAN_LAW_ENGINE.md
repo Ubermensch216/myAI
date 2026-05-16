@@ -399,11 +399,15 @@ Searches official annex, table, and form records for a statute.
 Request:
 
 ```json
-{ "annexId": "ANNEX-12345" }
+{ "lawName": "개인정보 보호법", "annexNo": "별표 3" }
 ```
 
 Returns official annex/table/form text plus citation metadata. `lawName` and
-`query` may be supplied when `annexId` is unknown.
+`query` may be supplied when `annexId` is unknown. New callers should use
+`get_annex_detail` and pass `annexId`, `annexNo`, `annexTitle`, `formNo`, or
+`annexType` when a specific annex/form is intended. Ambiguous selector matches
+return `ANNEX_AMBIGUOUS` with candidates; `get_annexes` remains a compatibility
+alias.
 
 ### Law-Structure Links
 
@@ -438,6 +442,14 @@ Administrative appeals default to law.go.kr `target=decc`. When
 uses the documented 행정심판허브시스템 재결례 API first and falls back to
 law.go.kr on transport/API failure when `LAW_OC` is available.
 
+Decision results expose `detailAvailable`, `detailKind`, and optional
+`detailNotice`. Korean Constitutional Court list records
+(`decision_hunzae_kor`) are list-only in this integration; detail lookup returns
+`HUNZAE_KOR_FULL_TEXT_UNSUPPORTED` instead of falling through to English detail.
+When `domain=all`, a missing Constitutional Court API configuration is reported
+under `domains.hunzae` / chat `decisionDomains` while administrative-appeal
+search can still succeed.
+
 ### `POST /api/law/decisions/detail`
 
 Request:
@@ -449,6 +461,10 @@ Request:
 Returns decision text plus `decision_constitutional` or `decision_haengjim`
 citation metadata. `query` may be supplied when the caller does not already
 have an ID.
+
+Pass `sourceType` or `subType` with the selected search result. Supported detail
+families are `decision_hunzae_eng`, `decision_hunzae_outline`, and
+`decision_haengjim`; `decision_hunzae_kor` is marked `detailAvailable: false`.
 
 ### `POST /api/law/impact-map`
 
