@@ -5,7 +5,8 @@ const TERM_ENTRIES = [
     naturalTerms: ["전세금 못 받음", "전세 보증금 못 받음", "보증금 안 돌려줌", "전세금 반환"],
     canonicalTerms: ["임대차보증금 반환", "임차권등기명령"],
     lawHints: [
-      { lawName: "주택임대차보호법" },
+      { lawName: "주택임대차보호법", article: "제3조의3" },
+      { lawName: "주택임대차보호법", article: "제3조의2" },
       { lawName: "민법" }
     ],
     queryBoosts: ["주택임대차보호법 임대차보증금 반환", "임차권등기명령 신청"]

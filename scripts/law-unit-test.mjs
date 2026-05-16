@@ -1370,13 +1370,30 @@ async function testLawWorkbenchAggregation() {
 
 async function testLawWorkbenchNaturalQueryOnly() {
   const { buildLawWorkbench } = await import("../server/law/lawWorkbench.js");
+  let annexCalled = false;
+  let articleCall = null;
   const result = await buildLawWorkbench({
     query: "전세금 못 받음"
   }, {
     client: {
-      async searchAnnexes(input) {
-        assert.ok(input.query.includes("임대차보증금 반환"));
-        return { ok: true, results: [{ title: "임대차보증금 반환 안내", annexNo: "1" }] };
+      async getLawArticle(input) {
+        articleCall = input;
+        return {
+          ok: true,
+          text: "임대차가 종료된 후 보증금을 반환받지 못한 임차인은 임차권등기명령을 신청할 수 있다.",
+          citation: {
+            citationId: "L1",
+            sourceType: "law",
+            lawName: input.lawName,
+            article: input.article,
+            canonical: `${input.lawName}/${input.article}`,
+            locator: `${input.lawName} ${input.article}`
+          }
+        };
+      },
+      async searchAnnexes() {
+        annexCalled = true;
+        throw new Error("Law API returned invalid JSON.");
       },
       async searchOrdinances() {
         return { ok: true, results: [] };
@@ -1394,8 +1411,12 @@ async function testLawWorkbenchNaturalQueryOnly() {
   });
 
   assert.equal(result.ok, true);
-  assert.equal(result.article.skipped, true);
-  assert.equal(result.annexes.items.length, 1);
+  assert.deepEqual(articleCall, { lawName: "주택임대차보호법", article: "제3조의3" });
+  assert.equal(result.article.ok, true);
+  assert.match(result.article.text, /임차권등기명령/);
+  assert.equal(result.annexes.skipped, true);
+  assert.equal(annexCalled, false);
+  assert.equal(result.warnings.some((item) => item.source === "annexes"), false);
   assert.equal(result.decisions.precedents.items.length, 1);
   assert.ok(result.termMatches.some((item) => item.canonicalTerms.includes("임대차보증금 반환")));
 }

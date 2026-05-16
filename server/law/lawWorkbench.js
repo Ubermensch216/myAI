@@ -1,7 +1,7 @@
 import { normalizeLawCitationForMeta } from "./lawCitationFormatter.js";
 import { toLawError, LAW_ERROR_MARKERS } from "./lawErrors.js";
 import { createDeterministicImpactMap } from "./tools/impactMap.js";
-import { expandQueryWithLawTerms, searchLawTerms } from "./lawTermKb.js";
+import { expandQueryWithLawTerms, inferLawTermArticleRefs, searchLawTerms } from "./lawTermKb.js";
 
 const DEFAULT_REPORT_TEMPLATE = "law_review_opinion";
 
@@ -23,13 +23,15 @@ export async function buildLawWorkbench(input = {}, options = {}) {
   }
 
   const expandedQuery = expandQueryWithLawTerms(query || lawName);
+  const inferredArticleRef = !lawName && !article ? inferLawTermArticleRefs(query)[0] : null;
+  const articleLookup = lawName && article ? { lawName, article } : inferredArticleRef;
   const inputMeta = { query, expandedQuery, lawName, article, region };
   const citations = [];
   const warnings = [];
   const errors = [];
 
-  const articleResult = article && lawName
-    ? await capture("article", () => client.getLawArticle({ lawName, article }, { signal }), { warnings, errors })
+  const articleResult = articleLookup
+    ? await capture("article", () => client.getLawArticle(articleLookup, { signal }), { warnings, errors })
     : { ok: false, skipped: true };
   const articleBlock = articleResult.ok
     ? {
@@ -53,7 +55,9 @@ export async function buildLawWorkbench(input = {}, options = {}) {
     interpretationsResult,
     adminRulesResult
   ] = await Promise.all([
-    capture("annexes", () => client.searchAnnexes({ lawName, query: expandedQuery, display: 8 }, { signal }), { warnings, errors }),
+    lawName
+      ? capture("annexes", () => client.searchAnnexes({ lawName, query: lawName, display: 8 }, { signal }), { warnings, errors })
+      : Promise.resolve({ ok: false, skipped: true }),
     lawName
       ? capture("history", () => client.getLawHistory({ lawName }, { signal }), { warnings, errors })
       : Promise.resolve({ ok: false, skipped: true }),
