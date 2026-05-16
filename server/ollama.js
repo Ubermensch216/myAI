@@ -31,6 +31,8 @@ const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const MAX_CONTEXT_CHARS = Number(process.env.MAX_CONTEXT_CHARS || 24000);
 const LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE =
   "법령검색 모드에서 관련 법령 정보를 찾을 수 없습니다. Korea Law Engine(law.go.kr)에서 해당 질의에 맞는 법령·판례·해석례·행정규칙 근거가 확인되지 않았습니다. 근거 없이 답변할 수 없으므로, 구체적인 법령명·조문 번호·사건번호·지침명을 포함하여 다시 질의해 주세요.";
+const LAW_SEARCH_MODE_HUNZAE_CONFIG_ERROR_MESSAGE =
+  "헌법재판소·행정심판 결정례 검색 API가 서버에 설정되지 않았습니다. 관리자에게 HUNZAE_API_KEY 및 HUNZAE_API_URL 환경변수 설정을 요청하거나, 법령검색 모드를 해제하고 일반 모드로 다시 시도하세요.";
 const STRICT_LAW_SEARCH_SYSTEM_BLOCK = [
   "[Strict Law Search Mode]",
   "This request is in forced law-search mode.",
@@ -177,7 +179,10 @@ export async function streamChat({
         }
       });
     }
-    onChunk(LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE);
+    const noEvidenceMsg = lawContext?.error === "DECISIONS_CONFIG_ERROR"
+      ? LAW_SEARCH_MODE_HUNZAE_CONFIG_ERROR_MESSAGE
+      : LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE;
+    onChunk(noEvidenceMsg);
     return;
   }
   if (isLawSearchMode && lawContext?.ok) {

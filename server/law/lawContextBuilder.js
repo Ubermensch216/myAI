@@ -10,6 +10,7 @@ import { searchInterpretations } from "./tools/interpretations.js";
 import { searchAdminRules } from "./tools/adminRules.js";
 import { searchOrdinances } from "./tools/ordinances.js";
 import { searchDecisions } from "./tools/decisions.js";
+import { createDecisionsApiClient } from "./decisionsApiClient.js";
 import { getLawConfig } from "./lawConfig.js";
 import { buildLawTopicSearchQuery, inferLawArticleRefsForTopic } from "./lawTopicHints.js";
 import { buildCompliancePromptBlock } from "../compliance/compliancePrompt.js";
@@ -156,7 +157,22 @@ export async function buildForcedLawContext(query, options = {}) {
   };
   const startedAt = options.startedAt ?? Date.now();
   if (isDecisionSearchPrompt(query)) {
-    return buildDecisionSearchContext(query, forcedIntent, { ...options, startedAt });
+    const decisionContext = await buildDecisionSearchContext(query, forcedIntent, { ...options, startedAt });
+    if (decisionContext?.ok && Array.isArray(decisionContext.citations) && decisionContext.citations.length > 0) {
+      return decisionContext;
+    }
+    const fallbackContext = await buildTopicSearchContext(query, forcedIntent, { ...options, startedAt });
+    if (fallbackContext?.ok && Array.isArray(fallbackContext.citations) && fallbackContext.citations.length > 0) {
+      return {
+        ...fallbackContext,
+        decisionFallback: {
+          attempted: true,
+          decisionError: decisionContext?.error || "",
+          decisionErrorMessage: decisionContext?.errorMessage || ""
+        }
+      };
+    }
+    return decisionContext;
   }
   return buildTopicSearchContext(query, forcedIntent, { ...options, startedAt });
 }
@@ -469,6 +485,27 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
 async function buildDecisionSearchContext(prompt, intent, { signal, startedAt, client }) {
   const domain = getDecisionSearchDomain(prompt);
   const errors = [];
+
+  if (domain === "hunzae" || domain === "all") {
+    const dc = createDecisionsApiClient();
+    if (!dc.isHunzaeConfigured()) {
+      return {
+        ok: false,
+        query: String(prompt || "").trim(),
+        mode: "law_topic_search",
+        intent,
+        citations: [],
+        verification: { checked: false, failCount: 0, results: [] },
+        disclaimer: disclaimerForLawMode("law_topic_search"),
+        contextText: "",
+        error: "DECISIONS_CONFIG_ERROR",
+        errorMessage: "HUNZAE_API_KEY 및 HUNZAE_API_URL 환경변수가 서버에 설정되지 않았습니다.",
+        errorDetails: [],
+        latencyMs: Date.now() - startedAt
+      };
+    }
+  }
+
   const decisionSearch = await searchDecisionCandidates(prompt, { signal, client, domain });
   errors.push(...decisionSearch.errors);
   const selectedResult = decisionSearch.result;
@@ -865,13 +902,15 @@ function buildDecisionSearchQueries(prompt) {
     .replace(/헌법재판소|헌재|결정례|결정문|판례요지|판례|행정심판|재결례/gu, " ")
     .replace(/관련|관한|대한|대해|사례|찾아줘|찾아|검색해줘|검색해|검색|조회해줘|조회|알려줘|보여줘|조사해줘|조사/gu, " ")
     .replace(/(?:^|\s)(?:중|중에서|중에|중의)(?=\s|$)/gu, " ")
+    .replace(/\s+(?:을|를|이|가|은|는|의|에|에서|로|으로|와|과|도|만|에게|한테|부터|까지|보다|처럼|으로서|이란|란|이라는|라는|이라고|라고|이라면|라면|에서는|에서도|에서만|에게는|에게도|에서부터|로부터)(?=\s|$)/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   const simplified = cleaned
     .replace(/침해|위반|여부|사건|쟁점/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const candidates = [cleaned, simplified, raw]
+  const headToken = (cleaned.split(/\s+/).filter((t) => t.length >= 2)[0]) || "";
+  const candidates = [cleaned, simplified, headToken, raw]
     .map((item) => item.slice(0, 80))
     .filter((item) => item.length >= 2);
   return uniqueStrings(candidates);

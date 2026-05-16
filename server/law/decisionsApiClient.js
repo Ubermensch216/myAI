@@ -44,6 +44,10 @@ export class DecisionsApiClient {
     return `${this.hunzaeBaseUrl}/${operation}`;
   }
 
+  isHunzaeConfigured() {
+    return Boolean(this.hunzaeApiKey && this.hunzaeBaseUrl);
+  }
+
   _hunzaeCheck() {
     if (!this.hunzaeApiKey) throw Object.assign(
       new Error("HUNZAE_API_KEY_NOT_CONFIGURED"), { marker: "DECISIONS_CONFIG_ERROR" }
@@ -93,7 +97,9 @@ export class DecisionsApiClient {
 
     const parsed = normalizeKorPrcdntResults(xml);
     const out = { ok: !parsed.error, domain: "hunzae", ...parsed, cacheHit: false };
-    if (!parsed.error) await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    if (!parsed.error && Array.isArray(parsed.results) && parsed.results.length > 0) {
+      await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    }
     return out;
   }
 
@@ -114,7 +120,9 @@ export class DecisionsApiClient {
 
     const parsed = normalizeEngPrcdntResults(xml);
     const out = { ok: !parsed.error, domain: "hunzae", ...parsed, cacheHit: false };
-    if (!parsed.error) await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    if (!parsed.error && Array.isArray(parsed.results) && parsed.results.length > 0) {
+      await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    }
     return out;
   }
 
@@ -134,7 +142,9 @@ export class DecisionsApiClient {
 
     const parsed = normalizeOcprOutlineResults(xml);
     const out = { ok: !parsed.error, domain: "hunzae", ...parsed, cacheHit: false };
-    if (!parsed.error) await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    if (!parsed.error && Array.isArray(parsed.results) && parsed.results.length > 0) {
+      await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    }
     return out;
   }
 
@@ -199,7 +209,9 @@ export class DecisionsApiClient {
       ...parsed,
       cacheHit: false
     };
-    await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    if (parsed.results.length > 0) {
+      await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    }
     return out;
   }
 
@@ -274,7 +286,9 @@ export class DecisionsApiClient {
       ...(note ? { note } : {}),
       cacheHit: false
     };
-    await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    if (results.length > 0) {
+      await setCachedLawResponse(cacheKey, out, { ttlMs: DECISIONS_TTL_MS });
+    }
     return out;
   }
 
