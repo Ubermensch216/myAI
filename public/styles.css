@@ -10504,6 +10504,44 @@ body.panel-resizing .panel-resizer::after {
   border-top: 0;
 }
 
+.law-candidate-row {
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  width: 100%;
+}
+
+.law-candidate-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.law-workbench-tab-hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.law-workbench-tab-hint {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.law-workbench-tab-hint:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
 .law-workbench-summary {
   color: var(--text);
   font-size: 13px;

@@ -2077,6 +2077,16 @@ function renderSourceBadges(host, sources, { variant }) {
   const row = document.createElement("div");
   row.className = `source-badges ${variant === "thinking" ? "thinking-sources" : "message-sources"}`;
 
+  const attachmentCount =
+    (Array.isArray(sources.documents) ? sources.documents.length : 0) +
+    (Array.isArray(sources.images) ? sources.images.length : 0);
+  sources = {
+    ...sources,
+    notebook: sources.notebook ? { ...sources.notebook, name: "프로젝트" } : null,
+    documents: attachmentCount ? [{ id: "attachments", displayName: "첨부 파일" }] : [],
+    images: []
+  };
+
   if (sources.notebook) {
     row.append(buildSourceBadge({
       kind: "notebook",

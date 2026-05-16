@@ -41,6 +41,29 @@ const TERM_ENTRIES = [
       { lawName: "개인정보 보호법" }
     ],
     queryBoosts: ["개인정보 보호법 개인정보 수집 이용 동의", "개인정보 보호법 정보주체 동의"]
+  },
+  {
+    id: "public_official_discipline",
+    scenario: "discipline",
+    naturalTerms: ["공무원 징계", "공무원 음주운전 징계", "공무원 비위", "지방공무원 징계", "공무원 징계 근거"],
+    canonicalTerms: ["징계사유", "징계처분"],
+    lawHints: [
+      { lawName: "국가공무원법", article: "제78조" },
+      { lawName: "지방공무원법", article: "제69조" },
+      { lawName: "공무원 징계령" }
+    ],
+    queryBoosts: ["국가공무원법 징계사유", "지방공무원법 징계", "공무원 징계령 징계처분"]
+  },
+  {
+    id: "drunk_driving",
+    scenario: "traffic",
+    naturalTerms: ["음주운전", "음주운전 처벌", "음주운전 단속", "혈중알코올농도"],
+    canonicalTerms: ["주취운전", "음주운전 처벌"],
+    lawHints: [
+      { lawName: "도로교통법", article: "제44조" },
+      { lawName: "도로교통법", article: "제148조의2" }
+    ],
+    queryBoosts: ["도로교통법 음주운전 처벌", "도로교통법 주취운전"]
   }
 ];
 

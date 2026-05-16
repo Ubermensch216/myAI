@@ -24,11 +24,41 @@ export async function buildLawWorkbench(input = {}, options = {}) {
 
   const expandedQuery = expandQueryWithLawTerms(query || lawName);
   const inferredArticleRef = !lawName && !article ? inferLawTermArticleRefs(query)[0] : null;
-  const articleLookup = lawName && article ? { lawName, article } : inferredArticleRef;
-  const inputMeta = { query, expandedQuery, lawName, article, region };
+  let articleLookup = lawName && article ? { lawName, article } : inferredArticleRef;
   const citations = [];
   const warnings = [];
   const errors = [];
+
+  let aiCandidatesBlock = { ok: false, skipped: true, items: [] };
+  let resolvedLawName = "";
+
+  if (!articleLookup && !lawName && typeof client.searchAiLaw === "function") {
+    const aiResult = await capture(
+      "aiSearch",
+      () => client.searchAiLaw({ query: expandedQuery || query, searchType: 0, display: 5 }, { signal }),
+      { warnings, errors }
+    );
+    if (aiResult.ok && Array.isArray(aiResult.value?.results) && aiResult.value.results.length) {
+      const items = aiResult.value.results.slice(0, 5).map((row) => ({
+        lawName: row.lawName || "",
+        articleNo: row.articleNo || "",
+        articleTitle: row.articleTitle || "",
+        snippet: row.snippet || ""
+      }));
+      aiCandidatesBlock = { ok: true, items, cacheHit: Boolean(aiResult.value.cacheHit) };
+      const top = items.find((item) => item.lawName && item.articleNo);
+      if (top) {
+        resolvedLawName = top.lawName;
+        articleLookup = { lawName: top.lawName, article: top.articleNo };
+      }
+    }
+  }
+
+  if (!lawName && !resolvedLawName && articleLookup?.lawName) {
+    resolvedLawName = articleLookup.lawName;
+  }
+  const effectiveLawName = lawName || resolvedLawName;
+  const inputMeta = { query, expandedQuery, lawName, article, region, resolvedLawName };
 
   const articleResult = articleLookup
     ? await capture("article", () => client.getLawArticle(articleLookup, { signal }), { warnings, errors })
@@ -55,23 +85,23 @@ export async function buildLawWorkbench(input = {}, options = {}) {
     interpretationsResult,
     adminRulesResult
   ] = await Promise.all([
-    lawName
-      ? capture("annexes", () => client.searchAnnexes({ lawName, query: lawName, display: 8 }, { signal }), { warnings, errors })
+    effectiveLawName
+      ? capture("annexes", () => client.searchAnnexes({ lawName: effectiveLawName, query: effectiveLawName, display: 8 }, { signal }), { warnings, errors })
       : Promise.resolve({ ok: false, skipped: true }),
-    lawName
-      ? capture("history", () => client.getLawHistory({ lawName }, { signal }), { warnings, errors })
+    effectiveLawName
+      ? capture("history", () => client.getLawHistory({ lawName: effectiveLawName }, { signal }), { warnings, errors })
       : Promise.resolve({ ok: false, skipped: true }),
-    lawName
-      ? capture("structure", () => client.getThreeTier({ lawName }, { signal }), { warnings, errors })
+    effectiveLawName
+      ? capture("structure", () => client.getThreeTier({ lawName: effectiveLawName }, { signal }), { warnings, errors })
       : Promise.resolve({ ok: false, skipped: true }),
-    lawName
-      ? capture("delegated", () => client.getDelegatedLaws({ lawName }, { signal }), { warnings, errors })
+    effectiveLawName
+      ? capture("delegated", () => client.getDelegatedLaws({ lawName: effectiveLawName }, { signal }), { warnings, errors })
       : Promise.resolve({ ok: false, skipped: true }),
     capture("ordinances", () => {
-      if (typeof client.getLinkedOrdinances === "function" && lawName) {
-        return client.getLinkedOrdinances({ lawName, region, display: 8 }, { signal });
+      if (typeof client.getLinkedOrdinances === "function" && effectiveLawName) {
+        return client.getLinkedOrdinances({ lawName: effectiveLawName, region, display: 8 }, { signal });
       }
-      return client.searchOrdinances({ query: expandedQuery || lawName, region, display: 8 }, { signal });
+      return client.searchOrdinances({ query: expandedQuery || effectiveLawName, region, display: 8 }, { signal });
     }, { warnings, errors }),
     capture("precedents", () => client.searchPrecedents({ query: expandedQuery, display: 5 }, { signal }), { warnings, errors }),
     capture("interpretations", () => client.searchInterpretations({ query: expandedQuery, display: 5 }, { signal }), { warnings, errors }),
@@ -81,7 +111,7 @@ export async function buildLawWorkbench(input = {}, options = {}) {
   const internalImpact = buildInternalImpact({
     enabled: includeInternalImpact,
     articleBlock,
-    lawName,
+    lawName: effectiveLawName,
     article,
     query,
     materialText,
@@ -89,12 +119,13 @@ export async function buildLawWorkbench(input = {}, options = {}) {
   });
 
   return {
-    ok: Boolean(articleBlock.ok || annexesResult.ok || structureResult.ok || delegatedResult.ok || ordinancesResult.ok),
+    ok: Boolean(articleBlock.ok || annexesResult.ok || structureResult.ok || delegatedResult.ok || ordinancesResult.ok || aiCandidatesBlock.ok),
     mode: "law_workbench",
     generatedAt: new Date().toISOString(),
     input: inputMeta,
-    termMatches: searchLawTerms(query || lawName),
+    termMatches: searchLawTerms(query || effectiveLawName),
     article: articleBlock,
+    aiCandidates: aiCandidatesBlock,
     annexes: resultListBlock(annexesResult, "annexes"),
     history: historyBlock(historyResult),
     structure: structureBlock(structureResult),

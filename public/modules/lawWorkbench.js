@@ -285,7 +285,9 @@ function renderBody(state) {
   }
   if (_activeTab === "main") {
     renderArticle(target, data.article);
+    renderAiCandidates(target, data.aiCandidates);
     renderListPanel(target, data.annexes?.items, "별표 · 서식");
+    renderTabHints(target, data);
   } else if (_activeTab === "system") {
     renderStructure(target, data.structure);
     renderListPanel(target, data.delegated?.items, "위임 / 하위법령");
@@ -297,6 +299,88 @@ function renderBody(state) {
     renderImpact(target, data.internalImpact);
   }
   renderWarnings(target, data.warnings);
+}
+
+function renderAiCandidates(target, aiCandidates) {
+  const items = Array.isArray(aiCandidates?.items) ? aiCandidates.items : [];
+  if (!items.length) return;
+  const section = document.createElement("section");
+  section.className = "law-workbench-result-section";
+  const heading = document.createElement("h4");
+  heading.className = "law-workbench-section-head";
+  heading.textContent = "관련 조문 후보";
+  section.append(heading);
+  const hint = document.createElement("p");
+  hint.className = "law-explorer-empty";
+  hint.textContent = "후보를 선택하면 해당 조문 본문으로 다시 탐색합니다.";
+  section.append(hint);
+  for (const item of items.slice(0, 5)) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "law-workbench-result-row law-candidate-row";
+    const articleLabel = item.articleNo ? formatArticleLabel(item.articleNo) : "";
+    const heads = [item.lawName, articleLabel, item.articleTitle].filter(Boolean).join(" · ");
+    row.textContent = item.snippet ? `${heads}\n${item.snippet}` : heads;
+    row.addEventListener("click", () => fillAndRun(item.lawName, articleLabel));
+    section.append(row);
+  }
+  target.append(section);
+}
+
+function formatArticleLabel(articleNo) {
+  const raw = String(articleNo || "").trim();
+  if (!raw) return "";
+  if (/^제.*조/.test(raw)) return raw;
+  const numMatch = raw.match(/^0*(\d+)(?:[\s_-]*의[\s_-]*0*(\d+))?$/);
+  if (numMatch) {
+    return `제${Number(numMatch[1])}조${numMatch[2] ? `의${Number(numMatch[2])}` : ""}`;
+  }
+  return raw;
+}
+
+function fillAndRun(lawName, articleLabel) {
+  if (elements.lawWorkbenchLawName) elements.lawWorkbenchLawName.value = lawName || "";
+  if (elements.lawWorkbenchArticle) elements.lawWorkbenchArticle.value = articleLabel || "";
+  if (elements.lawWorkbenchAdvanced) elements.lawWorkbenchAdvanced.open = true;
+  syncInputs();
+  if (_workbenchAbort) return;
+  runLawWorkbench();
+}
+
+function renderTabHints(target, data) {
+  if (data?.article?.ok) return;
+  const aiCount = Array.isArray(data?.aiCandidates?.items) ? data.aiCandidates.items.length : 0;
+  if (aiCount) return;
+  const summary = countOtherTabResults(data);
+  const hints = [];
+  if (summary.decisions) hints.push({ tab: "decisions", label: `판례·해석례 ${summary.decisions}건` });
+  if (summary.system) hints.push({ tab: "system", label: `법체계·자치법규 ${summary.system}건` });
+  if (summary.history) hints.push({ tab: "history", label: `개정 이력 ${summary.history}건` });
+  if (!hints.length) return;
+  const box = document.createElement("div");
+  box.className = "law-workbench-tab-hints";
+  const lead = document.createElement("p");
+  lead.className = "law-explorer-empty";
+  lead.textContent = "공식 조문 자동 매칭에 실패했습니다. 다른 탭 결과를 확인하세요:";
+  box.append(lead);
+  for (const hint of hints) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "law-workbench-tab-hint";
+    button.textContent = hint.label;
+    button.addEventListener("click", () => setActiveTab(hint.tab));
+    box.append(button);
+  }
+  target.append(box);
+}
+
+function countOtherTabResults(data) {
+  const len = (items) => (Array.isArray(items) ? items.length : 0);
+  return {
+    decisions: len(data?.decisions?.precedents?.items) + len(data?.decisions?.interpretations?.items) + len(data?.decisions?.adminRules?.items),
+    system: (data?.structure?.tiers ? 1 : 0) + len(data?.delegated?.items) + len(data?.ordinances?.items),
+    history: len(data?.history?.revisions)
+  };
 }
 
 function renderArticle(target, article) {
