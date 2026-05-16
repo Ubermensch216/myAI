@@ -5036,7 +5036,7 @@ body.panel-resizing .panel-resizer::after {
   min-height: 220px;
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
   border-radius: 10px;
-  background: #050706;
+  background: color-mix(in srgb, var(--surface) 82%, var(--surface-2));
   overflow: hidden;
 }
 

@@ -99,7 +99,7 @@ assert.match(studioJs, /function setMindmapDetailsMessage/);
 assert.match(studioJs, /clearSvg\(\);\s+_map = null;\s+setMindmapDetailsMessage\("마인드맵을 새로 생성하는 중입니다\."\)/);
 
 const stylesCss = await fs.readFile(new URL("../public/styles.css", import.meta.url), "utf8");
-assert.match(stylesCss, /\.studio-mindmap-canvas[\s\S]*background:\s*#050706/);
+assert.match(stylesCss, /\.studio-mindmap-canvas[\s\S]*background:\s*color-mix\(in srgb, var\(--surface\) 82%, var\(--surface-2\)\)/);
 assert.match(stylesCss, /\.map-node rect[\s\S]*rx:\s*8/);
 assert.match(stylesCss, /\.map-edge[\s\S]*stroke-linecap:\s*round/);
 
