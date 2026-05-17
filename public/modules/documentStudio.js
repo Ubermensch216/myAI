@@ -654,7 +654,7 @@ function upsertStudioOutput(input) {
 function renderOutputLibrary(studio = ensureRoomStudio()) {
   const outputs = Array.isArray(studio?.outputs) ? studio.outputs : [];
   const libraryButton = elements.studioDocumentLibraryModeButton;
-  if (libraryButton) libraryButton.textContent = `산출물 라이브러리 ${outputs.length}`;
+  if (libraryButton) libraryButton.textContent = `산출물 ${outputs.length}`;
   for (const root of [elements.studioOutputLibrary, elements.studioOutputLibraryEmpty]) {
     if (!root) continue;
     root.innerHTML = "";
@@ -663,7 +663,7 @@ function renderOutputLibrary(studio = ensureRoomStudio()) {
       const header = document.createElement("div");
       header.className = "studio-output-library-header";
       const title = document.createElement("h4");
-      title.textContent = `산출물 라이브러리 ${outputs.length}`;
+      title.textContent = `산출물 ${outputs.length}`;
       header.append(title);
       root.append(header);
     }
@@ -697,7 +697,11 @@ function renderOutputItem(output) {
   const actions = document.createElement("div");
   actions.className = "studio-output-actions";
   actions.append(outputActionButton("열기", () => {
-    openOutputAsDraft(output);
+    const draft = openOutputAsDraft(output);
+    if (draft && draft.editorMode !== "visual") {
+      draft.editorMode = "visual";
+      markDirty(draft);
+    }
     renderDocumentStudio();
   }));
   actions.append(outputActionButton("자료로 추가", () => addOutputAsRoomSource(output).catch((error) => window.alert(error.message))));
