@@ -70,23 +70,27 @@ export function normalizeKorPrcdntResults(xmlText) {
   if (!xmlOk(parsed)) return { results: [], total: 0, page: 1, error: xmlError(parsed) };
   const { total, page } = getMeta(parsed);
   return {
-    results: getItems(parsed).map((item) => ({
-      id: String(item.eventNum || ""),
-      caseNo: String(item.eventNo || ""),
-      title: String(item.eventNm || "").trim(),
-      result: String(item.rstaRsta || ""),
-      date: toDateStr(item.rstaDate || ""),
-      institution: "헌법재판소",
-      court: String(item.jgdmtCort || ""),
-      category: String(item.eventType || ""),
-      panreType: String(item.panreType || ""),
-      summary: "",
-      sourceType: "decision_hunzae_kor",
-      subType: "kor",
-      detailAvailable: false,
-      detailKind: "list_only",
-      detailNotice: HUNZAE_KOR_DETAIL_NOTICE
-    })),
+    results: getItems(parsed).map((item) => {
+      const id = String(item.eventNum || "");
+      return {
+        id,
+        caseNo: String(item.eventNo || ""),
+        title: String(item.eventNm || "").trim(),
+        result: String(item.rstaRsta || ""),
+        date: toDateStr(item.rstaDate || ""),
+        institution: "헌법재판소",
+        court: String(item.jgdmtCort || ""),
+        category: String(item.eventType || ""),
+        panreType: String(item.panreType || ""),
+        summary: "",
+        url: id ? `https://www.law.go.kr/DRF/lawService.do?target=kcprec&ID=${encodeURIComponent(id)}&type=HTML` : "",
+        sourceType: "decision_hunzae_kor",
+        subType: "kor",
+        detailAvailable: false,
+        detailKind: "list_only",
+        detailNotice: HUNZAE_KOR_DETAIL_NOTICE
+      };
+    }),
     total,
     page
   };
@@ -98,21 +102,25 @@ export function normalizeEngPrcdntResults(xmlText) {
   if (!xmlOk(parsed)) return { results: [], total: 0, page: 1, error: xmlError(parsed) };
   const { total, page } = getMeta(parsed);
   return {
-    results: getItems(parsed).map((item) => ({
-      id: String(item.eventNum || ""),
-      caseNo: String(item.engEventNo || item.eventNo || ""),
-      title: String(item.engEventName || item.eventNm || "").trim(),
-      result: String(item.rstaRsta || ""),
-      date: String(item.rstaDate || ""),
-      institution: "Constitutional Court of Korea",
-      court: String(item.jgdmtCort || ""),
-      category: String(item.eventType || ""),
-      summary: "",
-      sourceType: "decision_hunzae_eng",
-      subType: "eng",
-      detailAvailable: true,
-      detailKind: "full_text"
-    })),
+    results: getItems(parsed).map((item) => {
+      const id = String(item.eventNum || "");
+      return {
+        id,
+        caseNo: String(item.engEventNo || item.eventNo || ""),
+        title: String(item.engEventName || item.eventNm || "").trim(),
+        result: String(item.rstaRsta || ""),
+        date: String(item.rstaDate || ""),
+        institution: "Constitutional Court of Korea",
+        court: String(item.jgdmtCort || ""),
+        category: String(item.eventType || ""),
+        summary: "",
+        url: id ? `https://www.law.go.kr/DRF/lawService.do?target=kcprec&ID=${encodeURIComponent(id)}&type=HTML` : "",
+        sourceType: "decision_hunzae_eng",
+        subType: "eng",
+        detailAvailable: true,
+        detailKind: "full_text"
+      };
+    }),
     total,
     page
   };
@@ -124,8 +132,9 @@ export function normalizeEngPrcdntDetail(xmlText) {
   if (!xmlOk(parsed)) return null;
   const item = getItems(parsed)[0];
   if (!item) return null;
+  const id = String(item.eventNum || "");
   return {
-    id: String(item.eventNum || ""),
+    id,
     caseNo: String(item.engEventNo || item.eventNo || ""),
     title: String(item.engEventName || item.eventNm || "").trim(),
     result: String(item.rstaRsta || ""),
@@ -135,6 +144,7 @@ export function normalizeEngPrcdntDetail(xmlText) {
     pages: String(item.pages || ""),
     volume: String(item.volumeInfo || ""),
     text: readCdata(item.xmlContent),
+    url: id ? `https://www.law.go.kr/DRF/lawService.do?target=kcprec&ID=${encodeURIComponent(id)}&type=HTML` : "",
     sourceType: "decision_hunzae_eng",
     subType: "eng",
     detailAvailable: true,
@@ -195,21 +205,25 @@ export function normalizeHaengJimResults(xmlText) {
   const parsed = parseXml(xmlText);
   const raw = parsed?.simpan?.list?.data || parsed?.list?.data || parsed?.list?.info || parsed?.info || [];
   const arr = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
-  return arr.map((item) => ({
-    id: String(item?.incdntNb || ""),
-    caseNo: String(item?.incdntNb || ""),
-    title: readCdata(item?.incdntNm) || String(item?.incdntNm || ""),
-    result: String(item?.adjdcResultNm || ""),
-    date: toDateStr(item?.adjdcDe || ""),
-    institution: String(item?.cmitNm || item?.adjdcInsttNm || "행정심판위원회"),
-    court: String(item?.dspsofcNm || ""),
-    category: [item?.knwldgCl1Nm, item?.knwldgCl2Nm].filter(Boolean).join(" > "),
-    summary: readCdata(item?.sumryCn) || String(item?.sumryCn || ""),
-    sourceType: "decision_haengjim",
-    subType: "haengjim",
-    detailAvailable: true,
-    detailKind: "full_text"
-  }));
+  return arr.map((item) => {
+    const id = String(item?.incdntNb || "");
+    return {
+      id,
+      caseNo: id,
+      title: readCdata(item?.incdntNm) || String(item?.incdntNm || ""),
+      result: String(item?.adjdcResultNm || ""),
+      date: toDateStr(item?.adjdcDe || ""),
+      institution: String(item?.cmitNm || item?.adjdcInsttNm || "행정심판위원회"),
+      court: String(item?.dspsofcNm || ""),
+      category: [item?.knwldgCl1Nm, item?.knwldgCl2Nm].filter(Boolean).join(" > "),
+      summary: readCdata(item?.sumryCn) || String(item?.sumryCn || ""),
+      url: id ? `https://www.law.go.kr/DRF/lawService.do?target=decc&ID=${encodeURIComponent(id)}&type=HTML` : "",
+      sourceType: "decision_haengjim",
+      subType: "haengjim",
+      detailAvailable: true,
+      detailKind: "full_text"
+    };
+  });
 }
 
 export function normalizeLawGoKrDeccResults(payload) {

@@ -425,6 +425,8 @@ public/
     ragEval.js         Admin RAG Evaluation panel
     adminStats.js      Admin Console usage statistics panel (KPI / groups / notebooks / sessions)
     adminApi.js        small Admin Console fetch helpers
+    evidenceSummary.js classification and formatting of citations
+    lawWorkbench.js    Law Workbench UI for Korean legal research and impact mapping
     studio.js          Studio panel UI and mind-map SVG renderer
     documentStudio.js  Studio Document Editor tab: template selection, markdown editing, source guides, output library, export
     documentStudioMarkdown.js  markdown <-> visual block conversion for Studio documents

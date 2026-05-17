@@ -405,6 +405,11 @@ The LLM does not directly mutate calendar data.
 - `public/modules/docTool.js` - Studio File Tool: client-side PDF/XLSX/TXT merging and splitting, drag-and-drop file queue, and reset handling.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.
 - `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI cards, per-group/per-notebook activity, recent sessions).
+- `public/modules/adminApi.js` - small Admin Console fetch helpers.
+- `public/modules/evidenceSummary.js` - classification and formatting of citations (official law, precedents, decisions, attachments, web, internal).
+- `public/modules/html.js` - DOM escaping/sanitizing helpers.
+- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research and impact mapping.
+- `public/modules/sourceWorkflow.js` - assistant answer -> room source dialog and client orchestration.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.
 

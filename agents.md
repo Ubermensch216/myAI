@@ -109,6 +109,10 @@ Frontend:
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for selected department notebooks.
 - `public/modules/ragEval.js` - Admin Console RAG Evaluation UI.
 - `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI / groups / notebooks / sessions).
+- `public/modules/adminApi.js` - small Admin Console fetch helpers.
+- `public/modules/evidenceSummary.js` - classification and formatting of citations (official law, precedents, decisions, attachments, web, internal).
+- `public/modules/html.js` - DOM escaping/sanitizing helpers.
+- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research and impact mapping.
 - `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color-theme/avatar/banner.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
