@@ -419,7 +419,7 @@ Object store: keys, record id: local-aes-gcm-key
 ```
 
 Stored browser state includes rooms, messages, settings, active room files,
-per-room Studio mind-map caches, Studio document drafts and outputs, selected
+pinned room metadata (`pinnedAt`), per-room Studio mind-map caches, Studio document drafts and outputs, selected
 notebook IDs, active view, panel layout settings, and calendar events. It is
 encrypted with WebCrypto AES-GCM.
 

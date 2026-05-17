@@ -1,6 +1,6 @@
 # Agent Handoff
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), Korean law/compliance workflows, answer-as-room-source workflows, whole-document Map-Reduce analysis, encrypted browser persistence, usage telemetry, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), Korean law/compliance workflows, answer-as-room-source workflows, whole-document Map-Reduce analysis, room pin toggle, encrypted browser persistence, usage telemetry, and personalized UI settings.
 
 This file is intentionally short. Keep long explanations in `docs/`.
 
