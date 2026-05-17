@@ -83,7 +83,7 @@ export function normalizeKorPrcdntResults(xmlText) {
         category: String(item.eventType || ""),
         panreType: String(item.panreType || ""),
         summary: "",
-        url: id ? `https://www.law.go.kr/DRF/lawService.do?target=kcprec&ID=${encodeURIComponent(id)}&type=HTML` : "",
+        url: id ? `https://www.law.go.kr/detcInfoP.do?detcSeq=${encodeURIComponent(id)}` : "",
         sourceType: "decision_hunzae_kor",
         subType: "kor",
         detailAvailable: false,
@@ -114,7 +114,7 @@ export function normalizeEngPrcdntResults(xmlText) {
         court: String(item.jgdmtCort || ""),
         category: String(item.eventType || ""),
         summary: "",
-        url: id ? `https://www.law.go.kr/DRF/lawService.do?target=kcprec&ID=${encodeURIComponent(id)}&type=HTML` : "",
+        url: id ? `https://www.law.go.kr/detcInfoP.do?detcSeq=${encodeURIComponent(id)}` : "",
         sourceType: "decision_hunzae_eng",
         subType: "eng",
         detailAvailable: true,
@@ -144,7 +144,7 @@ export function normalizeEngPrcdntDetail(xmlText) {
     pages: String(item.pages || ""),
     volume: String(item.volumeInfo || ""),
     text: readCdata(item.xmlContent),
-    url: id ? `https://www.law.go.kr/DRF/lawService.do?target=kcprec&ID=${encodeURIComponent(id)}&type=HTML` : "",
+    url: id ? `https://www.law.go.kr/detcInfoP.do?detcSeq=${encodeURIComponent(id)}` : "",
     sourceType: "decision_hunzae_eng",
     subType: "eng",
     detailAvailable: true,
@@ -217,7 +217,7 @@ export function normalizeHaengJimResults(xmlText) {
       court: String(item?.dspsofcNm || ""),
       category: [item?.knwldgCl1Nm, item?.knwldgCl2Nm].filter(Boolean).join(" > "),
       summary: readCdata(item?.sumryCn) || String(item?.sumryCn || ""),
-      url: id ? `https://www.law.go.kr/DRF/lawService.do?target=decc&ID=${encodeURIComponent(id)}&type=HTML` : "",
+      url: "",
       sourceType: "decision_haengjim",
       subType: "haengjim",
       detailAvailable: true,
@@ -233,7 +233,6 @@ export function normalizeLawGoKrDeccResults(payload) {
   return {
     results: arr.map((item) => {
       const id = firstValue(item["행정심판재결례일련번호"], item["행정심판례일련번호"], item.ID, item.id);
-      const url = firstValue(item["행정심판례상세링크"], item.url);
       const institution = stripHtml(firstValue(item["재결청"], item.institution) || "행정심판위원회");
       const result = stripHtml(firstValue(item["재결구분명"], item.result));
       return {
@@ -246,7 +245,7 @@ export function normalizeLawGoKrDeccResults(payload) {
         court: stripHtml(firstValue(item["처분청"], item.court)),
         category: stripHtml(firstValue(item["재결구분코드"], item.category)),
         summary: stripHtml(firstValue(item["재결요지"], item["이유"], item.summary)).slice(0, 500),
-        url: url ? makeLawGoKrUrl(url) : "",
+        url: id ? `https://www.law.go.kr/deccInfoP.do?deccSeq=${encodeURIComponent(id)}` : "",
         sourceType: "decision_haengjim",
         subType: "haengjim",
         detailAvailable: true,
@@ -286,29 +285,12 @@ export function normalizeLawGoKrDeccDetail(payload) {
     category: stripHtml(firstValue(item["재결례유형코드"], item["재결구분코드"], item.category)),
     summary: summary || reason.slice(0, 500),
     text,
-    url: id ? `https://www.law.go.kr/DRF/lawService.do?target=decc&ID=${encodeURIComponent(id)}&type=HTML` : "",
+    url: id ? `https://www.law.go.kr/deccInfoP.do?deccSeq=${encodeURIComponent(id)}` : "",
     sourceType: "decision_haengjim",
     subType: "haengjim",
     detailAvailable: true,
     detailKind: "full_text"
   };
-}
-
-function makeLawGoKrUrl(value) {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const absolute = /^https?:\/\//i.test(text)
-    ? text
-    : text.startsWith("/")
-      ? `https://www.law.go.kr${text}`
-      : `https://www.law.go.kr/${text.replace(/^\/+/, "")}`;
-  try {
-    const url = new URL(absolute);
-    url.searchParams.delete("OC");
-    return url.toString();
-  } catch {
-    return absolute.replace(/([?&]OC=)[^&]+/i, "$1");
-  }
 }
 
 export function buildDecisionCitation(decision, citationId = "D1") {

@@ -83,7 +83,7 @@ export class DecisionsApiClient {
   // 한글판례 목록 검색
   async searchKorPrcdnt({ query = "", page = 1, display = 10, eventType = "", rstaRsta = "" } = {}, { signal } = {}) {
     this._hunzaeCheck();
-    const cacheKey = buildLawCacheKey("hunzae_kor_search", { query, page, display, eventType, rstaRsta });
+    const cacheKey = buildLawCacheKey("hunzae_kor_search_v2", { query, page, display, eventType, rstaRsta });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: DECISIONS_TTL_MS });
     if (cached) return { ...cached, cacheHit: true };
 
@@ -107,7 +107,7 @@ export class DecisionsApiClient {
   // 영문판례 목록 검색
   async searchEngPrcdnt({ query = "", page = 1, display = 10, rstaRsta = "" } = {}, { signal } = {}) {
     this._hunzaeCheck();
-    const cacheKey = buildLawCacheKey("hunzae_eng_search", { query, page, display, rstaRsta });
+    const cacheKey = buildLawCacheKey("hunzae_eng_search_v2", { query, page, display, rstaRsta });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: DECISIONS_TTL_MS });
     if (cached) return { ...cached, cacheHit: true };
 
@@ -175,7 +175,7 @@ export class DecisionsApiClient {
       page: Number(page) || 1,
       display: Math.max(1, Math.min(Number(display) || 10, 100))
     };
-    const cacheKey = buildLawCacheKey("decisions_haengjim_lawgo_search_v4", normalizedInput);
+    const cacheKey = buildLawCacheKey("decisions_haengjim_lawgo_search_v5", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: DECISIONS_TTL_MS });
     if (cached) return { ...cached, cacheHit: true };
 
@@ -434,7 +434,7 @@ export class DecisionsApiClient {
     }
 
     // 영문판례 상세 (기본 — eventNum 기반)
-    const cacheKey = buildLawCacheKey("hunzae_eng_detail", { id });
+    const cacheKey = buildLawCacheKey("hunzae_eng_detail_v2", { id });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: DECISIONS_TTL_MS });
     if (cached) return { ...cached, cacheHit: true };
 
@@ -453,7 +453,7 @@ export class DecisionsApiClient {
   async getHaengJimDecisionText({ id = "" } = {}, { signal } = {}) {
     if (!this.lawApiKey) throw Object.assign(new Error("LAW_OC_NOT_CONFIGURED"), { marker: "DECISIONS_CONFIG_ERROR" });
     if (!id) return { ok: false, error: "id_required" };
-    const cacheKey = buildLawCacheKey("decisions_haengjim_lawgo_detail_v2", { id });
+    const cacheKey = buildLawCacheKey("decisions_haengjim_lawgo_detail_v3", { id });
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: DECISIONS_TTL_MS });
     if (cached) return { ...cached, cacheHit: true };
 
