@@ -2,6 +2,7 @@ import { normalizeLawCitationForMeta } from "./lawCitationFormatter.js";
 import { toLawError, LAW_ERROR_MARKERS } from "./lawErrors.js";
 import { createDeterministicImpactMap } from "./tools/impactMap.js";
 import { expandQueryWithLawTerms, inferLawTermArticleRefs, searchLawTerms } from "./lawTermKb.js";
+import { buildPublicLawUrl } from "./lawApiParser.js";
 
 const DEFAULT_REPORT_TEMPLATE = "law_review_opinion";
 
@@ -313,7 +314,7 @@ function resultListBlock(result, source) {
   const value = result.value || {};
   return {
     ok: value.ok !== false,
-    items: normalizeItems(value),
+    items: enrichItemsWithUrl(normalizeItems(value), source),
     rawCount: countItems(value),
     cacheHit: Boolean(value.cacheHit)
   };
@@ -322,12 +323,21 @@ function resultListBlock(result, source) {
 function historyBlock(result) {
   if (!result?.ok) return { ...emptyBlock(result, "history"), revisions: [] };
   const value = result.value || {};
-  const revisions = Array.isArray(value.revisions) ? value.revisions : [];
+  const rawRevisions = Array.isArray(value.revisions) ? value.revisions : [];
+  const lawName = value.lawName || "";
+  const lawMst = value.mst || "";
+  const revisions = rawRevisions.map((rev) => {
+    if (rev && typeof rev === "object" && !rev.url) {
+      const url = buildPublicLawUrl(rev.lawName || lawName, "", rev.mst || lawMst);
+      return url ? { ...rev, url } : rev;
+    }
+    return rev;
+  });
   return {
     ok: value.ok !== false,
-    lawName: value.lawName || "",
+    lawName,
     lawId: value.lawId || "",
-    mst: value.mst || "",
+    mst: lawMst,
     revisions,
     diffCandidates: revisions.map((rev) => rev.effectiveDate).filter(Boolean).slice(0, 20),
     cacheHit: Boolean(value.cacheHit)
@@ -340,9 +350,67 @@ function structureBlock(result) {
   return {
     ok: value.ok !== false,
     lawName: value.lawName || "",
-    tiers: value.tiers || [],
+    tiers: enrichStructureTiers(value.tiers || []),
     cacheHit: Boolean(value.cacheHit)
   };
+}
+
+function enrichStructureTiers(tiers) {
+  if (Array.isArray(tiers)) return enrichItemsWithUrl(tiers, "structure");
+  if (tiers && typeof tiers === "object") {
+    const result = {};
+    for (const [key, value] of Object.entries(tiers)) {
+      if (value && typeof value === "object" && !value.url) {
+        const url = buildPublicLawUrl(value.lawName || value.title || key, "", value.mst || value.lsiSeq || "");
+        result[key] = url ? { ...value, url } : value;
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+  return tiers;
+}
+
+function enrichItemsWithUrl(items, source) {
+  if (!Array.isArray(items)) return items;
+  return items.map((item) => {
+    if (!item || typeof item !== "object" || item.url) return item;
+    const url = buildItemUrl(item, source);
+    return url ? { ...item, url } : item;
+  });
+}
+
+function buildItemUrl(item, source) {
+  if (!item) return "";
+  switch (source) {
+    case "precedents":
+    case "precedent":
+      return item.precId
+        ? `https://www.law.go.kr/precInfoP.do?precSeq=${encodeURIComponent(item.precId)}`
+        : "";
+    case "interpretations":
+    case "interpretation":
+      return item.expcId
+        ? `https://www.law.go.kr/expcInfoP.do?expcSeq=${encodeURIComponent(item.expcId)}`
+        : "";
+    case "adminRules":
+    case "adminRule":
+      return item.admrulId
+        ? `https://www.law.go.kr/admRulInfoP.do?admRulSeq=${encodeURIComponent(item.admrulId)}`
+        : "";
+    case "ordinances":
+      return item.ordinId
+        ? `https://www.law.go.kr/ordinInfoP.do?ordinSeq=${encodeURIComponent(item.ordinId)}`
+        : buildPublicLawUrl(item.lawName || item.title, "", item.mst || item.lsiSeq || "");
+    case "structure":
+    case "delegated":
+    case "annexes":
+    case "history":
+      return buildPublicLawUrl(item.lawName || item.title, "", item.mst || item.lsiSeq || "");
+    default:
+      return "";
+  }
 }
 
 function normalizeItems(value) {

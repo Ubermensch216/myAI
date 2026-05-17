@@ -404,7 +404,10 @@ function renderStructure(target, structure) {
     return;
   }
   if (Array.isArray(tiers)) return renderListPanel(target, tiers, "법체계");
-  const rows = Object.entries(tiers).map(([level, value]) => ({ title: `${level}: ${value?.lawName || "확인 안 됨"}` }));
+  const rows = Object.entries(tiers).map(([level, value]) => ({
+    title: `${level}: ${value?.lawName || "확인 안 됨"}`,
+    url: value?.url || ""
+  }));
   renderListPanel(target, rows, "법체계");
 }
 
@@ -483,7 +486,19 @@ function appendItems(target, items, labelFn = itemLabel) {
   for (const item of list.slice(0, 20)) {
     const row = document.createElement("div");
     row.className = "law-workbench-result-row";
-    row.textContent = labelFn(item);
+    const label = labelFn(item);
+    const url = item && typeof item === "object" ? item.url : "";
+    if (url) {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.className = "law-workbench-result-link";
+      anchor.textContent = label;
+      row.append(anchor);
+    } else {
+      row.textContent = label;
+    }
     target.append(row);
   }
 }
