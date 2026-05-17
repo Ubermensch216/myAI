@@ -116,6 +116,12 @@ Settings/Admin Console use the existing `.settings-dialog` and
 `.admin-dialog` structure. Keep admin views dense, table-friendly, and
 optimized for repeated operations.
 
+## Main Legal Review View
+
+`법령검토` is a primary app view beside Chat and Calendar. Keep its central
+workbench in the main grid column and keep its saved review list in the left
+sidebar, separate from chat rooms.
+
 ## Studio Tools
 
 The Studio panel is a tool workspace, not a marketing area. New tools should
@@ -163,7 +169,6 @@ Current Studio tools:
 | Tool key | Panel | Purpose |
 |---|---|---|
 | `document` | `studioDocumentPanel` | answer-to-document drafting and export |
-| `law` | `studioLawPanel` | impact maps and article history/diff |
 | `doctool` | `studioDocToolPanel` | client-side PDF/XLSX/TXT merge/split |
 | `mindmap` | `studioMindmapPanel` | uploaded-document mind maps |
 | `graph` | `studioGraphPanel` | department notebook knowledge graphs |

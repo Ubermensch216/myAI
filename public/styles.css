@@ -4195,7 +4195,7 @@ body.panel-resizing .panel-resizer::after {
 /* ===== Primary navigation (Chat / Calendar) ===== */
 .primary-nav {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -4254,8 +4254,29 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .app-shell[data-view="chat"] .calendar-area,
-.app-shell[data-view="calendar"] .chat-area {
+.app-shell[data-view="chat"] .law-area,
+.app-shell[data-view="law"] .chat-area,
+.app-shell[data-view="law"] .calendar-area,
+.app-shell[data-view="calendar"] .chat-area,
+.app-shell[data-view="calendar"] .law-area {
   display: none;
+}
+
+.law-review-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.law-review-item-meta,
+.law-review-list-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.law-review-list-empty {
+  padding: 12px 4px;
 }
 
 /* ===== Studio panel ===== */
@@ -5463,6 +5484,15 @@ body.panel-resizing .panel-resizer::after {
 }
 
 /* ===== Calendar main area ===== */
+.law-area {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+
 .calendar-area {
   grid-column: 3;
   grid-row: 1;
@@ -9608,7 +9638,7 @@ body.panel-resizing .panel-resizer::after {
 /* ==== Studio Law Explorer ==== */
 /* ???? Law Explorer Panel ?????????????????????????????????????????????????????????????????????????????? */
 
-.studio-law-panel {
+.law-area {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 12px;
@@ -10564,7 +10594,7 @@ body.panel-resizing .panel-resizer::after {
     grid-template-columns: 1fr;
   }
 
-  .studio-law-panel {
+  .law-area {
     overflow-y: auto;
   }
 

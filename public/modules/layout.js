@@ -17,7 +17,6 @@ export function bindLayoutEvents() {
     setStudioCollapsed(!layout.rightPanelCollapsed);
   });
   elements.studioMindmapRailButton?.addEventListener("click", () => setStudioCollapsed(false));
-  elements.studioLawRailButton?.addEventListener("click", () => setStudioCollapsed(false));
   elements.studioGraphRailButton?.addEventListener("click", () => setStudioCollapsed(false));
   document.getElementById("studioDocToolRailButton")?.addEventListener("click", () => setStudioCollapsed(false));
   window.addEventListener("resize", applyLayoutState);

@@ -396,7 +396,7 @@ export async function sendMessage(prompt) {
     if (!isExplicitChat && hasCalendarKeyword(prompt) && isLikelyCalendarActionPrompt(prompt)) {
       await handleCalendarStatusMessage(
         room,
-        "일정 요청으로 보이지만 날짜, 시간, 제목을 확정하지 못했습니다. 실제 캘린더에는 아직 반영하지 않았습니다. 예: \"5월 4일 오후 12시에 월클라우드 점심 식사 추가해줘\"처럼 다시 말씀해주세요."
+        "일정 요청으로 보이지만 날짜, 시간, 제목을 확정하지 못했습니다. 실제 일정에는 아직 반영하지 않았습니다. 예: \"5월 4일 오후 12시에 월클라우드 점심 식사 추가해줘\"처럼 다시 말씀해주세요."
       );
       return;
     }
@@ -725,9 +725,9 @@ export async function requestVisualizationResponse(room) {
 // ===== Calendar message handlers (need chat rendering + calendar logic) =====
 
 const CALENDAR_PROCESSING_LABELS = {
-  "calendar.create": { text: "일정 등록 중...", status: "캘린더에 새 일정을 추가하고 있습니다." },
+  "calendar.create": { text: "일정 등록 중...", status: "일정 목록에 새 일정을 추가하고 있습니다." },
   "calendar.update": { text: "일정 수정 중...", status: "기존 일정을 업데이트하고 있습니다." },
-  "calendar.delete": { text: "일정 삭제 중...", status: "캘린더에서 일정을 제거하고 있습니다." },
+  "calendar.delete": { text: "일정 삭제 중...", status: "일정 목록에서 일정을 제거하고 있습니다." },
   "calendar.list": { text: "일정 조회 중...", status: "등록된 일정을 확인하고 있습니다." },
   "calendar.propose": { text: "일정 후보 확인 중...", status: "일정 후보와 일정 충돌 여부를 확인하고 있습니다." }
 };
@@ -1773,7 +1773,7 @@ export function appendThinking(options = {}) {
   } else if (options.calendarProcessing) {
     const status = document.createElement("div");
     status.className = "thinking-law-status";
-    status.textContent = options.calendarStatus || "캘린더를 업데이트하고 있습니다.";
+    status.textContent = options.calendarStatus || "일정을 업데이트하고 있습니다.";
     wrapper.append(status);
   }
   wrapper.dataset.completedSteps = "0";

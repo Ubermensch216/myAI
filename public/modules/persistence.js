@@ -4,7 +4,8 @@ import {
   documentCacheHeaders, ensureDocumentCacheKey,
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
   normalizeCustomColorTheme, normalizeLayout, normalizeResponseStyle,
-  ensureRoomStudio, ensureDocumentTemplatesState, ensureCustomPromptsState
+  ensureRoomStudio, ensureDocumentTemplatesState, ensureCustomPromptsState,
+  ensureLawReviewsState, createLawReview
 } from "./state.js";
 
 let saveTimer = null;
@@ -114,8 +115,16 @@ export async function loadAppState() {
     }
     ensureRoomStudio(room);
   }
+  state.lawReviews = stored.lawReviews && typeof stored.lawReviews === "object"
+    ? {
+        items: Array.isArray(stored.lawReviews.items) ? stored.lawReviews.items : [],
+        activeId: typeof stored.lawReviews.activeId === "string" ? stored.lawReviews.activeId : ""
+      }
+    : { items: [], activeId: "" };
+  ensureLawReviewsState();
+  migrateLegacyLawWorkbenchFromRooms();
   state.activeRoomId = stored.activeRoomId || null;
-  state.activeView = stored.activeView === "calendar" ? "calendar" : "chat";
+  state.activeView = ["chat", "law", "calendar"].includes(stored.activeView) ? stored.activeView : "chat";
   state.client = {
     documentCacheKey: typeof stored.client?.documentCacheKey === "string" && stored.client.documentCacheKey
       ? stored.client.documentCacheKey
@@ -159,11 +168,60 @@ export async function loadAppState() {
   ensureCustomPromptsState();
 }
 
+function migrateLegacyLawWorkbenchFromRooms() {
+  const reviews = ensureLawReviewsState();
+  const existingRoomIds = new Set(
+    reviews.items
+      .filter((item) => item.migratedFromRoomStudio && item.sourceRoomId)
+      .map((item) => item.sourceRoomId)
+  );
+  for (const room of state.rooms) {
+    const workbench = room?.studio?.lawWorkbench;
+    if (!hasLegacyLawWorkbench(workbench) || existingRoomIds.has(room.id)) continue;
+    const input = workbench.input && typeof workbench.input === "object" ? workbench.input : {};
+    const title = deriveLegacyLawReviewTitle(input, room);
+    reviews.items.push(createLawReview({
+      id: `law_review_${room.id}`,
+      title,
+      input,
+      data: workbench.data || null,
+      terms: Array.isArray(workbench.terms) ? workbench.terms : [],
+      activeTab: typeof workbench.activeTab === "string" ? workbench.activeTab : "main",
+      sourceRoomId: room.id,
+      migratedFromRoomStudio: true,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt
+    }));
+    existingRoomIds.add(room.id);
+  }
+  ensureLawReviewsState();
+}
+
+function hasLegacyLawWorkbench(workbench) {
+  if (!workbench || typeof workbench !== "object") return false;
+  const input = workbench.input && typeof workbench.input === "object" ? workbench.input : {};
+  return Boolean(
+    workbench.data ||
+    (Array.isArray(workbench.terms) && workbench.terms.length) ||
+    input.query ||
+    input.lawName ||
+    input.article ||
+    input.region
+  );
+}
+
+function deriveLegacyLawReviewTitle(input, room) {
+  const fromInput = input.query || [input.lawName, input.article].filter(Boolean).join(" ");
+  const base = String(fromInput || room?.title || "법령검토").trim();
+  return base.slice(0, 80) || "법령검토";
+}
+
 export async function saveAppState() {
   await saveEncryptedRecord(APP_STATE_KEY, {
     rooms: state.rooms,
     activeRoomId: state.activeRoomId,
     activeView: state.activeView,
+    lawReviews: ensureLawReviewsState(),
     layout: normalizeLayout(state.layout),
     client: {
       documentCacheKey: ensureDocumentCacheKey()

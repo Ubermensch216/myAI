@@ -1,5 +1,8 @@
 import { displayFileName as formatDisplayFileName, fileTypeIcon as getFileTypeIcon } from "./fileDisplay.js";
-import { state, elements, getActiveRoom, createRoom, showConfirmDialog, documentCacheHeaders } from "./modules/state.js";
+import {
+  state, elements, getActiveRoom, createRoom, showConfirmDialog, documentCacheHeaders,
+  ensureLawReviewsState, createLawReview
+} from "./modules/state.js";
 import { initializeEncryptedStorage, loadAppState, scheduleSave, persistAppState } from "./modules/persistence.js";
 import {
   renderCalendar, shiftCalendarMonth, jumpCalendarToToday, setCalendarViewMode,
@@ -25,6 +28,7 @@ import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settin
 import { renderCustomPromptPicker } from "./modules/customPrompts.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
 import { bindStudioEvents, renderStudio } from "./modules/studio.js";
+import { bindLawWorkbenchEvents, renderLawWorkbench } from "./modules/lawWorkbench.js";
 import { initDocTool } from "./modules/docTool.js";
 import { toggleSelectionMode, exitSelectionMode, requestDeleteMessages, getSelectedIndicesSnapshot, refreshBulkBar } from "./modules/messageDelete.js";
 
@@ -44,6 +48,7 @@ async function init() {
   await initializeEncryptedStorage();
   await loadAppState();
   ensureRoom();
+  if (state.activeView === "law") ensureLawReview();
   bindEvents();
   renderAll();
   startReminderWatcher();
@@ -60,12 +65,13 @@ init();
 // Modules avoid importing app.js to prevent circular deps; they signal via events instead.
 
 window.addEventListener("myai:renderrooms", () => { renderRooms(); renderMaterialContext(); renderStudio(); });
+window.addEventListener("myai:renderlawreviews", () => renderLawReviews());
 window.addEventListener("myai:rendermessages", () => renderMessages());
 window.addEventListener("myai:renderall", () => renderAll());
 window.addEventListener("myai:closeattachmenu", () => closeAttachMenu());
 window.addEventListener("myai:closesettings", () => closeSettings());
 window.addEventListener("myai:setview", (event) => {
-  applyActiveView(event.detail === "calendar" ? "calendar" : "chat");
+  applyActiveView(normalizeView(event.detail));
 });
 
 // ===== Room management =====
@@ -91,6 +97,28 @@ function createNewRoom() {
   renderAll();
   window.dispatchEvent(new CustomEvent("myai:roomchange", { detail: { roomId: room.id } }));
   elements.promptInput.focus();
+}
+
+function ensureLawReview() {
+  const reviews = ensureLawReviewsState();
+  if (!reviews.items.length) {
+    const review = createLawReview();
+    reviews.items.unshift(review);
+    reviews.activeId = review.id;
+    scheduleSave();
+  }
+  return reviews.items.find((item) => item.id === reviews.activeId) || null;
+}
+
+function createNewLawReview() {
+  const reviews = ensureLawReviewsState();
+  const review = createLawReview();
+  reviews.items.unshift(review);
+  reviews.activeId = review.id;
+  state.activeView = "law";
+  scheduleSave();
+  renderAll();
+  elements.lawWorkbenchQuery?.focus();
 }
 
 async function deleteRoom(roomId) {
@@ -129,9 +157,11 @@ export function renderAll() {
   renderBrand();
   renderPrimaryNav();
   renderRooms();
+  renderLawReviews();
   renderHeader();
   renderMessages();
   renderCalendar();
+  renderLawWorkbench();
   renderActiveNotebookUi();
   renderMaterialContext();
   applyLayoutState();
@@ -139,7 +169,8 @@ export function renderAll() {
 }
 
 function renderPrimaryNav() {
-  const view = state.activeView === "calendar" ? "calendar" : "chat";
+  const view = normalizeView(state.activeView);
+  state.activeView = view;
   if (elements.appShell) elements.appShell.dataset.view = view;
   for (const item of elements.primaryNavItems) {
     const isActive = item.dataset.viewTarget === view;
@@ -152,6 +183,7 @@ function renderPrimaryNav() {
   }
   if (elements.calendarArea) elements.calendarArea.hidden = view !== "calendar";
   if (elements.chatArea) elements.chatArea.hidden = view !== "chat";
+  if (elements.lawArea) elements.lawArea.hidden = view !== "law";
 }
 
 function updatePrimaryNavTooltip(item) {
@@ -161,12 +193,22 @@ function updatePrimaryNavTooltip(item) {
 }
 
 function applyActiveView(view) {
-  const next = view === "calendar" ? "calendar" : "chat";
+  const next = normalizeView(view);
   if (state.activeView === next) return;
+  if (next === "law") ensureLawReview();
   state.activeView = next;
   scheduleSave();
   renderPrimaryNav();
   if (next === "calendar") renderCalendar();
+  if (next === "law") {
+    renderLawReviews();
+    renderLawWorkbench();
+    elements.lawWorkbenchQuery?.focus();
+  }
+}
+
+function normalizeView(view) {
+  return view === "calendar" || view === "law" ? view : "chat";
 }
 
 function sortRoomsForRender(rooms) {
@@ -262,6 +304,120 @@ function renderRooms() {
     item.append(title, indicators, pinButton, deleteButton);
     elements.roomList.append(item);
   }
+}
+
+function sortLawReviewsForRender(reviewsList) {
+  const indexed = reviewsList.map((review, originalIndex) => ({ review, originalIndex }));
+  indexed.sort((a, b) => {
+    const aPin = a.review.pinnedAt || null;
+    const bPin = b.review.pinnedAt || null;
+    if (aPin && !bPin) return -1;
+    if (!aPin && bPin) return 1;
+    if (aPin && bPin) {
+      if (aPin > bPin) return -1;
+      if (aPin < bPin) return 1;
+    }
+    const aUpdated = String(a.review.updatedAt || "");
+    const bUpdated = String(b.review.updatedAt || "");
+    if (aUpdated !== bUpdated) return bUpdated.localeCompare(aUpdated);
+    return a.originalIndex - b.originalIndex;
+  });
+  return indexed.map(({ review }) => review);
+}
+
+async function deleteLawReview(reviewId) {
+  const confirmed = await showConfirmDialog({
+    title: "법령검토 삭제",
+    body: "이 법령검토 항목을 삭제할까요? 검토 결과와 입력 내용이 모두 삭제됩니다.",
+    okText: "삭제",
+    cancelText: "취소",
+    danger: true
+  });
+  if (!confirmed) return;
+  const reviews = ensureLawReviewsState();
+  const wasActive = reviews.activeId === reviewId;
+  reviews.items = reviews.items.filter((item) => item.id !== reviewId);
+  if (wasActive) reviews.activeId = reviews.items[0]?.id || "";
+  scheduleSave();
+  renderAll();
+}
+
+function renderLawReviews() {
+  if (!elements.lawReviewList) return;
+  const reviews = ensureLawReviewsState();
+  elements.lawReviewList.innerHTML = "";
+  const sortedReviews = sortLawReviewsForRender(reviews.items);
+
+  if (!sortedReviews.length) {
+    const empty = document.createElement("div");
+    empty.className = "law-review-list-empty";
+    empty.textContent = "아직 검토 목록이 없습니다.";
+    elements.lawReviewList.append(empty);
+    return;
+  }
+
+  for (const review of sortedReviews) {
+    const isPinned = Boolean(review.pinnedAt);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `room-item law-review-item${review.id === reviews.activeId ? " active" : ""}${isPinned ? " pinned" : ""}`;
+    item.addEventListener("click", () => {
+      if (reviews.activeId === review.id) return;
+      reviews.activeId = review.id;
+      state.activeView = "law";
+      scheduleSave();
+      renderAll();
+      elements.lawWorkbenchQuery?.focus();
+    });
+
+    const title = document.createElement("span");
+    title.className = "room-item-title";
+    title.textContent = review.title || "새 법령검토";
+
+    const meta = document.createElement("span");
+    meta.className = "law-review-item-meta";
+    meta.textContent = formatLawReviewDate(review.updatedAt || review.createdAt);
+
+    const pinButton = document.createElement("span");
+    pinButton.className = "room-pin";
+    pinButton.setAttribute("role", "button");
+    pinButton.setAttribute("tabindex", "0");
+    pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
+    pinButton.title = isPinned ? "고정 해제" : "고정";
+    pinButton.innerHTML = isPinned ? ROOM_FILE_SVG.pinFilled : ROOM_FILE_SVG.pin;
+    const togglePin = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      review.pinnedAt = review.pinnedAt ? null : new Date().toISOString();
+      scheduleSave();
+      renderLawReviews();
+    };
+    pinButton.addEventListener("click", togglePin);
+    pinButton.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        togglePin(event);
+      }
+    });
+
+    const deleteButton = document.createElement("span");
+    deleteButton.className = "room-delete";
+    deleteButton.title = "법령검토 삭제";
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await deleteLawReview(review.id);
+    });
+
+    item.append(title, meta, pinButton, deleteButton);
+    elements.lawReviewList.append(item);
+  }
+}
+
+function formatLawReviewDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
 function getActiveMaterials(room = getActiveRoom()) {
@@ -700,6 +856,7 @@ function handleGlobalShortcut(key) {
   if (key === "n") {
     if (!state.busy) {
       if (state.activeView === "calendar") openEventDialogForCreate(state.calendar.cursorISO);
+      else if (state.activeView === "law") createNewLawReview();
       else createNewRoom();
     }
     return true;
@@ -763,6 +920,7 @@ function bindEvents() {
 
   // Rooms
   elements.newRoomButton.addEventListener("click", createNewRoom);
+  elements.newLawReviewButton?.addEventListener("click", createNewLawReview);
   elements.roomTitleInput.addEventListener("input", () => {
     const room = getActiveRoom();
     if (!room) return;
@@ -776,6 +934,7 @@ function bindEvents() {
   bindSettingsEvents();
   bindLayoutEvents();
   bindStudioEvents();
+  bindLawWorkbenchEvents();
   initDocTool();
 
   // File input / attach menu

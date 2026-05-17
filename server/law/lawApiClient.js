@@ -1048,6 +1048,7 @@ function buildLawTextCitation(data, effectiveDate = "", citationId = "L1") {
 }
 
 function parseJson(text) {
+  if (!text || !String(text).trim()) return {};
   try {
     return JSON.parse(text);
   } catch {

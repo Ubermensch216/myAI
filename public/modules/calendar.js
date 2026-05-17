@@ -950,7 +950,7 @@ export function buildCalendarProposalText(payload, conflicts) {
       "그래도 이 일정으로 추가할까요?"
     ].join("\n");
   }
-  return `일정 후보를 확인했습니다: ${summary}\n이 일정으로 캘린더에 추가할까요?`;
+  return `일정 후보를 확인했습니다: ${summary}\n이 일정으로 추가할까요?`;
 }
 
 // ===== Calendar rendering =====
@@ -1262,7 +1262,7 @@ export function renderEventCardList(events) {
     card.type = "button";
     card.className = "message-event-card";
     card.dataset.color = event.color || "accent";
-    card.title = "캘린더에서 편집";
+    card.title = "일정에서 편집";
     card.addEventListener("click", () => {
       const targetId = event.masterEventId || event.id;
       const exists = state.calendar.events.some((item) => item.id === targetId);

@@ -25,6 +25,8 @@ export async function buildLawWorkbench(input = {}, options = {}) {
   const expandedQuery = expandQueryWithLawTerms(query || lawName);
   const inferredArticleRef = !lawName && !article ? inferLawTermArticleRefs(query)[0] : null;
   let articleLookup = lawName && article ? { lawName, article } : inferredArticleRef;
+  const termMatches = searchLawTerms(query || lawName);
+  const decisionQueries = buildDecisionSearchQueries(query || lawName, termMatches);
   const citations = [];
   const warnings = [];
   const errors = [];
@@ -103,9 +105,9 @@ export async function buildLawWorkbench(input = {}, options = {}) {
       }
       return client.searchOrdinances({ query: expandedQuery || effectiveLawName, region, display: 8 }, { signal });
     }, { warnings, errors }),
-    capture("precedents", () => client.searchPrecedents({ query: expandedQuery, display: 5 }, { signal }), { warnings, errors }),
-    capture("interpretations", () => client.searchInterpretations({ query: expandedQuery, display: 5 }, { signal }), { warnings, errors }),
-    capture("adminRules", () => client.searchAdminRules({ query: expandedQuery, display: 5 }, { signal }), { warnings, errors })
+    runDecisionSearch("precedents", (q) => client.searchPrecedents({ query: q, display: 5 }, { signal }), decisionQueries, { warnings, errors }),
+    runDecisionSearch("interpretations", (q) => client.searchInterpretations({ query: q, display: 5 }, { signal }), decisionQueries, { warnings, errors }),
+    runDecisionSearch("adminRules", (q) => client.searchAdminRules({ query: q, display: 5 }, { signal }), decisionQueries, { warnings, errors })
   ]);
 
   const internalImpact = buildInternalImpact({
@@ -123,7 +125,7 @@ export async function buildLawWorkbench(input = {}, options = {}) {
     mode: "law_workbench",
     generatedAt: new Date().toISOString(),
     input: inputMeta,
-    termMatches: searchLawTerms(query || effectiveLawName),
+    termMatches,
     article: articleBlock,
     aiCandidates: aiCandidatesBlock,
     annexes: resultListBlock(annexesResult, "annexes"),
@@ -221,6 +223,68 @@ function buildInternalImpact({ enabled, articleBlock, lawName, article, query, m
     citation,
     impactMap
   };
+}
+
+const DECISION_FILLER_TAIL = /\s+(근거|요건|방법|방안|기준|적용|관련|관해|여부|사례|검토)$/u;
+
+export function buildDecisionSearchQueries(query, termMatches = []) {
+  const base = String(query || "").replace(/\s+/g, " ").trim();
+  const trimmed = base.replace(DECISION_FILLER_TAIL, "").trim();
+  const tokens = trimmed.split(/\s+/).filter((token) => token.length >= 2);
+  const candidates = [];
+  const push = (value) => {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (text && !candidates.includes(text)) candidates.push(text);
+  };
+  if (tokens.length >= 2) push(`${tokens[0]} ${tokens[tokens.length - 1]}`);
+  if (tokens.length >= 2) push(`${tokens[0]} ${tokens[1]}`);
+  if (trimmed) push(trimmed);
+  for (const match of (Array.isArray(termMatches) ? termMatches : []).slice(0, 2)) {
+    const canonical = match?.canonicalTerms?.[0];
+    if (canonical) push(canonical);
+    const hint = match?.lawHints?.[0]?.lawName;
+    if (hint && tokens[0] && hint !== tokens[0]) push(`${hint} ${tokens[0]}`);
+  }
+  if (!candidates.length && base) push(base);
+  return candidates.slice(0, 4);
+}
+
+async function runDecisionSearch(source, runQuery, queries, { warnings, errors }) {
+  const list = Array.isArray(queries) && queries.length ? queries : [""];
+  const seen = new Set();
+  const merged = [];
+  let lastError = null;
+  let cacheHit = false;
+  for (const q of list) {
+    if (!q) continue;
+    try {
+      const value = await runQuery(q);
+      cacheHit = cacheHit || Boolean(value?.cacheHit);
+      const items = Array.isArray(value?.results) ? value.results : Array.isArray(value?.items) ? value.items : [];
+      for (const item of items) {
+        const key = item?.caseNumber || item?.precId || item?.expcId || item?.admrulId || item?.title || JSON.stringify(item).slice(0, 80);
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          merged.push(item);
+        }
+      }
+      if (merged.length >= 5) break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (merged.length === 0 && lastError) {
+    const lawError = toLawError(lastError);
+    const item = {
+      source,
+      marker: lawError.marker || LAW_ERROR_MARKERS.LAW_API_ERROR,
+      message: lawError.message || lastError.message || "Law lookup failed."
+    };
+    warnings.push(item);
+    errors.push(item);
+    return { ok: false, error: item };
+  }
+  return { ok: true, value: { ok: merged.length > 0, results: merged.slice(0, 5), cacheHit } };
 }
 
 async function capture(source, fn, { warnings, errors }) {

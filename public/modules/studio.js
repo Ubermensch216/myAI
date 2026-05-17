@@ -3,7 +3,6 @@ import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
 import { estimateDocumentBytes, estimateJsonBytes, formatBytes, getActiveDocuments } from "./chat.js";
 import { bindStudioGraphEvents, showStudioGraphPanel, hideStudioGraphPanel } from "./graphStudio.js";
 import { bindDocumentStudioEvents, registerDocumentStudioActivator, renderDocumentStudio } from "./documentStudio.js";
-import { bindLawWorkbenchEvents, renderLawWorkbench } from "./lawWorkbench.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -41,8 +40,6 @@ export function bindStudioEvents() {
   elements.studioMindmapRailButton?.addEventListener("click", () => setActiveTool("mindmap"));
   elements.studioGraphButton?.addEventListener("click", () => setActiveTool("graph"));
   elements.studioGraphRailButton?.addEventListener("click", () => setActiveTool("graph"));
-  elements.studioLawButton?.addEventListener("click", () => setActiveTool("law"));
-  elements.studioLawRailButton?.addEventListener("click", () => setActiveTool("law"));
   elements.studioDocumentButton?.addEventListener("click", () => setActiveTool("document"));
   elements.studioDocumentRailButton?.addEventListener("click", () => setActiveTool("document"));
   document.getElementById("studioDocToolButton")?.addEventListener("click", () => setActiveTool("doctool"));
@@ -76,7 +73,6 @@ export function bindStudioEvents() {
   }
   bindStudioGraphEvents();
   bindDocumentStudioEvents();
-  bindLawWorkbenchEvents();
   registerDocumentStudioActivator(() => setActiveTool("document"));
 }
 
@@ -95,18 +91,16 @@ function syncLawHistoryInput(field) {
 }
 
 function setActiveTool(tool) {
-  if (tool !== "mindmap" && tool !== "graph" && tool !== "law" && tool !== "document" && tool !== "doctool") return;
+  if (tool !== "mindmap" && tool !== "graph" && tool !== "document" && tool !== "doctool") return;
   _activeTool = tool;
   if (elements.studioContent) elements.studioContent.dataset.activeTool = tool;
   elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
   elements.studioGraphButton?.classList.toggle("is-active", tool === "graph");
-  elements.studioLawButton?.classList.toggle("is-active", tool === "law");
   elements.studioDocumentButton?.classList.toggle("is-active", tool === "document");
   document.getElementById("studioDocToolButton")?.classList.toggle("is-active", tool === "doctool");
   
   if (elements.studioMindmapPanel) elements.studioMindmapPanel.hidden = tool !== "mindmap";
   if (elements.studioGraphPanel) elements.studioGraphPanel.hidden = tool !== "graph";
-  if (elements.studioLawPanel) elements.studioLawPanel.hidden = tool !== "law";
   if (elements.studioDocumentPanel) elements.studioDocumentPanel.hidden = tool !== "document";
   const docToolPanel = document.getElementById("studioDocToolPanel");
   if (docToolPanel) docToolPanel.hidden = tool !== "doctool";
@@ -115,8 +109,7 @@ function setActiveTool(tool) {
     showStudioGraphPanel().catch(() => { /* errors logged inside module */ });
   } else {
     hideStudioGraphPanel();
-    if (tool === "law") renderLawWorkbench();
-    else if (tool === "document") renderDocumentStudio();
+    if (tool === "document") renderDocumentStudio();
     else if (tool === "doctool") { /* initialized via app.js, nothing to render */ }
     else renderStudio();
   }

@@ -136,6 +136,10 @@ export const state = {
     holidayRequests: new Set(),
     reminderTimer: null
   },
+  lawReviews: {
+    items: [],
+    activeId: ""
+  },
   settings: {
     userTitle: "사용자님",
     aiName: "myAI",
@@ -455,16 +459,13 @@ export const elements = {
   studioToggleButton: document.querySelector("#studioToggleButton"),
   studioMindmapRailButton: document.querySelector("#studioMindmapRailButton"),
   studioGraphRailButton: document.querySelector("#studioGraphRailButton"),
-  studioLawRailButton: document.querySelector("#studioLawRailButton"),
   studioDocumentRailButton: document.querySelector("#studioDocumentRailButton"),
   studioContent: document.querySelector("#studioContent"),
   studioMindmapButton: document.querySelector("#studioMindmapButton"),
   studioGraphButton: document.querySelector("#studioGraphButton"),
-  studioLawButton: document.querySelector("#studioLawButton"),
   studioDocumentButton: document.querySelector("#studioDocumentButton"),
   studioMindmapPanel: document.querySelector("#studioMindmapPanel"),
   studioGraphPanel: document.querySelector("#studioGraphPanel"),
-  studioLawPanel: document.querySelector("#studioLawPanel"),
   studioDocumentPanel: document.querySelector("#studioDocumentPanel"),
   studioDocumentEmpty: document.querySelector("#studioDocumentEmpty"),
   studioDocumentEditor: document.querySelector("#studioDocumentEditor"),
@@ -492,6 +493,9 @@ export const elements = {
   studioMindmapSvg: document.querySelector("#studioMindmapSvg"),
   studioMindmapEmpty: document.querySelector("#studioMindmapEmpty"),
   studioMindmapDetails: document.querySelector("#studioMindmapDetails"),
+  lawArea: document.querySelector(".law-area"),
+  newLawReviewButton: document.querySelector("#newLawReviewButton"),
+  lawReviewList: document.querySelector("#lawReviewList"),
   lawWorkbenchQuery: document.querySelector("#lawWorkbenchQuery"),
   lawWorkbenchLawName: document.querySelector("#lawWorkbenchLawName"),
   lawWorkbenchArticle: document.querySelector("#lawWorkbenchArticle"),
@@ -529,6 +533,58 @@ export function ensureRoomStudio(room = getActiveRoom()) {
   if (!Array.isArray(room.studio.outputs)) room.studio.outputs = [];
   if (typeof room.studio.activeDocumentId !== "string") room.studio.activeDocumentId = "";
   return room.studio;
+}
+
+export function ensureLawReviewsState() {
+  if (!state.lawReviews || typeof state.lawReviews !== "object") {
+    state.lawReviews = { items: [], activeId: "" };
+  }
+  if (!Array.isArray(state.lawReviews.items)) state.lawReviews.items = [];
+  state.lawReviews.items = state.lawReviews.items
+    .filter((item) => item && typeof item === "object")
+    .map(normalizeLawReview);
+  if (!state.lawReviews.items.some((item) => item.id === state.lawReviews.activeId)) {
+    state.lawReviews.activeId = state.lawReviews.items[0]?.id || "";
+  }
+  return state.lawReviews;
+}
+
+export function createLawReview(seed = {}) {
+  const now = new Date().toISOString();
+  return normalizeLawReview({
+    id: seed.id || crypto.randomUUID(),
+    title: seed.title || "새 법령검토",
+    input: seed.input || {},
+    data: seed.data || null,
+    terms: seed.terms || [],
+    activeTab: seed.activeTab || "main",
+    sourceRoomId: seed.sourceRoomId || "",
+    migratedFromRoomStudio: seed.migratedFromRoomStudio === true,
+    createdAt: seed.createdAt || now,
+    updatedAt: seed.updatedAt || now
+  });
+}
+
+export function getActiveLawReview() {
+  const reviews = ensureLawReviewsState();
+  return reviews.items.find((item) => item.id === reviews.activeId) || null;
+}
+
+function normalizeLawReview(review) {
+  const now = new Date().toISOString();
+  return {
+    id: typeof review.id === "string" && review.id ? review.id : crypto.randomUUID(),
+    title: typeof review.title === "string" && review.title.trim() ? review.title.trim() : "새 법령검토",
+    input: review.input && typeof review.input === "object" ? review.input : {},
+    data: review.data || null,
+    terms: Array.isArray(review.terms) ? review.terms : [],
+    activeTab: typeof review.activeTab === "string" ? review.activeTab : "main",
+    sourceRoomId: typeof review.sourceRoomId === "string" ? review.sourceRoomId : "",
+    migratedFromRoomStudio: review.migratedFromRoomStudio === true,
+    pinnedAt: typeof review.pinnedAt === "string" && review.pinnedAt ? review.pinnedAt : null,
+    createdAt: typeof review.createdAt === "string" ? review.createdAt : now,
+    updatedAt: typeof review.updatedAt === "string" ? review.updatedAt : now
+  };
 }
 
 export function ensureDocumentTemplatesState() {

@@ -1,4 +1,4 @@
-import { elements, ensureRoomStudio, getActiveRoom } from "./state.js";
+import { elements, getActiveLawReview } from "./state.js";
 import { hydrateStoredDocuments, scheduleSave } from "./persistence.js";
 import { getActiveDocuments } from "./chat.js";
 import { openWithPreparedDraft } from "./documentStudio.js";
@@ -63,9 +63,7 @@ export function bindLawWorkbenchEvents() {
 }
 
 export function renderLawWorkbench() {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  const state = ensureWorkbenchState(studio);
+  const state = ensureWorkbenchState(getActiveLawReview());
   hydrateInputs(state);
   syncAdvancedOpen(state);
   renderTabs();
@@ -76,28 +74,13 @@ export function renderLawWorkbench() {
 
 function ensureWorkbenchState(studio) {
   if (!studio) return { input: {}, data: null, terms: [], activeTab: DEFAULT_TAB };
-  if (!studio.lawWorkbench || typeof studio.lawWorkbench !== "object") {
-    studio.lawWorkbench = { input: {}, data: null, terms: [], activeTab: DEFAULT_TAB };
-  }
-  if (!studio.lawWorkbench.data && studio.lawExplorer?.data) {
-    studio.lawWorkbench.data = {
-      input: studio.lawExplorer.input || {},
-      article: { ok: true, citation: studio.lawExplorer.data.citation, text: studio.lawExplorer.data.text || "" },
-      internalImpact: { ok: true, impactMap: studio.lawExplorer.data.impactMap },
-      citations: studio.lawExplorer.data.citation ? [studio.lawExplorer.data.citation] : [],
-      warnings: []
-    };
-  }
-  if (!studio.lawWorkbench.history && studio.lawHistory) {
-    studio.lawWorkbench.history = studio.lawHistory;
-  }
-  studio.lawWorkbench.input = studio.lawWorkbench.input || {};
-  studio.lawWorkbench.terms = Array.isArray(studio.lawWorkbench.terms) ? studio.lawWorkbench.terms : [];
-  const storedTab = studio.lawWorkbench.activeTab;
+  studio.input = studio.input && typeof studio.input === "object" ? studio.input : {};
+  studio.terms = Array.isArray(studio.terms) ? studio.terms : [];
+  const storedTab = studio.activeTab;
   const normalized = VALID_TABS.has(storedTab) ? storedTab : (LEGACY_TAB_MAP[storedTab] || DEFAULT_TAB);
-  studio.lawWorkbench.activeTab = normalized;
+  studio.activeTab = normalized;
   _activeTab = normalized;
-  return studio.lawWorkbench;
+  return studio;
 }
 
 function hydrateInputs(state) {
@@ -109,7 +92,7 @@ function hydrateInputs(state) {
 }
 
 function setValueIfFree(element, value) {
-  if (!element || document.activeElement === element || element.value) return;
+  if (!element || document.activeElement === element) return;
   element.value = value || "";
 }
 
@@ -123,10 +106,9 @@ function syncAdvancedOpen(state) {
 }
 
 function syncInputs() {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  const state = ensureWorkbenchState(studio);
+  const state = ensureWorkbenchState(getActiveLawReview());
   state.input = readInputs();
+  touchReviewState(state);
   scheduleSave();
 }
 
@@ -140,9 +122,7 @@ function readInputs() {
 }
 
 async function runLawWorkbench() {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  const state = ensureWorkbenchState(studio);
+  const state = ensureWorkbenchState(getActiveLawReview());
   const input = readInputs();
   if (!input.query && !input.lawName) {
     setStatus("질문 또는 법령명을 입력하세요.", "error");
@@ -152,7 +132,7 @@ async function runLawWorkbench() {
   if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   _workbenchAbort = new AbortController();
   setBusy(true);
-  setStatus("공식 법령 근거를 탐색하는 중입니다.", "running");
+  setStatus("공식 법령 근거를 검토하는 중입니다.", "running");
   try {
     const response = await fetch("/api/law/workbench", {
       method: "POST",
@@ -170,13 +150,15 @@ async function runLawWorkbench() {
     state.data = payload;
     state.terms = Array.isArray(payload.termMatches) ? payload.termMatches : state.terms;
     state.activeTab = _activeTab;
-    room.updatedAt = new Date().toISOString();
+    state.title = deriveReviewTitle(input);
+    touchReviewState(state);
     scheduleSave();
+    window.dispatchEvent(new CustomEvent("myai:renderlawreviews"));
     setStatus("", "idle");
     renderLawWorkbench();
   } catch (error) {
-    if (error?.name === "AbortError") setStatus("탐색을 중단했습니다.", "idle");
-    else setStatus(error.message || "탐색에 실패했습니다.", "error");
+    if (error?.name === "AbortError") setStatus("검토를 중단했습니다.", "idle");
+    else setStatus(error.message || "검토에 실패했습니다.", "error");
   } finally {
     _workbenchAbort = null;
     setBusy(false);
@@ -184,10 +166,8 @@ async function runLawWorkbench() {
 }
 
 async function createLawWorkbenchReport() {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  const state = ensureWorkbenchState(studio);
-  if (!state.data) throw new Error("먼저 탐색을 실행하세요.");
+  const state = ensureWorkbenchState(getActiveLawReview());
+  if (!state.data) throw new Error("먼저 검토를 실행하세요.");
   setStatus("검토 보고서 초안을 생성하는 중입니다.", "running");
   const templateId = elements.lawWorkbenchReportTemplate?.value || "law_review_opinion";
   const response = await fetch("/api/law/workbench/report", {
@@ -203,22 +183,27 @@ async function createLawWorkbenchReport() {
     templateId: payload.recommendedTemplateId || templateId,
     metadata: payload.metadata || { lawWorkbench: true },
     citations: payload.citations || [],
-    source: { sourceType: "law_workbench_report" }
+    source: { sourceType: "law_workbench_report", sourceLawReviewId: state.id || "" }
   });
   setStatus("검토 보고서 초안을 문서 편집기에 생성했습니다.", "idle");
 }
 
 function resetLawWorkbench() {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  if (!studio) return;
-  studio.lawWorkbench = { input: {}, data: null, terms: [], activeTab: DEFAULT_TAB };
+  const state = ensureWorkbenchState(getActiveLawReview());
+  if (!state) return;
+  state.input = {};
+  state.data = null;
+  state.terms = [];
+  state.activeTab = DEFAULT_TAB;
+  state.title = "새 법령검토";
+  touchReviewState(state);
   _activeTab = DEFAULT_TAB;
   for (const input of [elements.lawWorkbenchQuery, elements.lawWorkbenchLawName, elements.lawWorkbenchArticle, elements.lawWorkbenchRegion]) {
     if (input) input.value = "";
   }
   if (elements.lawWorkbenchAdvanced) elements.lawWorkbenchAdvanced.open = false;
   scheduleSave();
+  window.dispatchEvent(new CustomEvent("myai:renderlawreviews"));
   setStatus("", "idle");
   renderLawWorkbench();
 }
@@ -226,10 +211,9 @@ function resetLawWorkbench() {
 function setActiveTab(tab) {
   const next = VALID_TABS.has(tab) ? tab : (LEGACY_TAB_MAP[tab] || DEFAULT_TAB);
   _activeTab = next;
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  const state = ensureWorkbenchState(studio);
+  const state = ensureWorkbenchState(getActiveLawReview());
   state.activeTab = next;
+  touchReviewState(state);
   scheduleSave();
   renderLawWorkbench();
 }
@@ -272,7 +256,7 @@ function renderBody(state) {
   if (!data) {
     target.innerHTML = `
       <div class="law-explorer-empty law-empty-hero">
-        <h3>법령 탐색</h3>
+        <h3>법령검토</h3>
         <p>자연어 질문 한 줄이면 공식 법령·판례·자치법규·내부자료 영향까지 한 번에 정리합니다.</p>
         <ul class="law-empty-features">
           <li><strong>본문·서식</strong> 조문 원문과 별표·서식 자동 매칭</li>
@@ -312,7 +296,7 @@ function renderAiCandidates(target, aiCandidates) {
   section.append(heading);
   const hint = document.createElement("p");
   hint.className = "law-explorer-empty";
-  hint.textContent = "후보를 선택하면 해당 조문 본문으로 다시 탐색합니다.";
+  hint.textContent = "후보를 선택하면 해당 조문 본문으로 다시 검토합니다.";
   section.append(hint);
   for (const item of items.slice(0, 5)) {
     const row = document.createElement("button");
@@ -545,10 +529,10 @@ async function fetchTermsPreview() {
   try {
     const response = await fetch(`/api/law/terms?q=${encodeURIComponent(query)}`, { signal: _termsAbort.signal });
     const payload = await response.json().catch(() => ({}));
-    const room = getActiveRoom();
-    const studio = ensureRoomStudio(room);
-    const state = ensureWorkbenchState(studio);
+    const state = ensureWorkbenchState(getActiveLawReview());
     state.terms = Array.isArray(payload.terms) ? payload.terms : [];
+    state.input = readInputs();
+    touchReviewState(state);
     scheduleSave();
     renderTerms(state);
   } catch {
@@ -561,7 +545,7 @@ async function fetchTermsPreview() {
 function setBusy(isBusy) {
   const button = elements.lawWorkbenchRunButton;
   if (!button) return;
-  button.textContent = isBusy ? "중단" : "탐색";
+  button.textContent = isBusy ? "중단" : "검토";
   button.setAttribute("aria-busy", isBusy ? "true" : "false");
 }
 
@@ -569,4 +553,14 @@ function setStatus(message, mode = "idle") {
   if (!elements.lawWorkbenchStatus) return;
   elements.lawWorkbenchStatus.textContent = message || "";
   elements.lawWorkbenchStatus.dataset.mode = mode;
+}
+
+function touchReviewState(state) {
+  if (!state || !state.id) return;
+  state.updatedAt = new Date().toISOString();
+}
+
+function deriveReviewTitle(input = {}) {
+  const title = input.query || [input.lawName, input.article].filter(Boolean).join(" ");
+  return String(title || "법령검토").trim().slice(0, 80) || "법령검토";
 }

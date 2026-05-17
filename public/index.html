@@ -22,14 +22,24 @@
             </svg>
             <span>대화</span>
           </button>
-          <button class="primary-nav-item" type="button" data-view-target="calendar" data-nav-label="캘린더" data-shortcut-key="C" aria-pressed="false">
+          <button class="primary-nav-item" type="button" data-view-target="law" data-nav-label="법령검토" data-shortcut-key="L" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v18"></path>
+              <path d="M5 21h14"></path>
+              <path d="M6 7h12"></path>
+              <path d="M6 7l-3 6a3 3 0 0 0 6 0z"></path>
+              <path d="M18 7l-3 6a3 3 0 0 0 6 0z"></path>
+            </svg>
+            <span>법령검토</span>
+          </button>
+          <button class="primary-nav-item" type="button" data-view-target="calendar" data-nav-label="일정" data-shortcut-key="C" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="4" width="18" height="17" rx="2"></rect>
               <path d="M16 2v4"></path>
               <path d="M8 2v4"></path>
               <path d="M3 10h18"></path>
             </svg>
-            <span>캘린더</span>
+            <span>일정</span>
           </button>
         </nav>
 
@@ -44,6 +54,20 @@
               <h2>대화방</h2>
             </div>
             <div id="roomList" class="room-list"></div>
+          </section>
+        </div>
+
+        <div class="sidebar-content" data-view-content="law" hidden>
+          <button id="newLawReviewButton" class="new-room-button" type="button" title="새 법령검토 (shift+N)">
+            <span class="new-room-label">새 법령검토</span>
+            <span class="shortcut-hint" aria-hidden="true">shift+N</span>
+          </button>
+
+          <section class="panel law-review-panel">
+            <div class="panel-heading">
+              <h2>법령검토 목록</h2>
+            </div>
+            <div id="lawReviewList" class="room-list law-review-list"></div>
           </section>
         </div>
 
@@ -211,7 +235,7 @@
         </div>
       </section>
 
-      <section class="calendar-area" aria-label="캘린더" hidden>
+      <section class="calendar-area" aria-label="일정" hidden>
         <div class="calendar-header">
           <div class="calendar-toolbar">
             <button id="calendarPrevButton" class="icon-button calendar-nav-button" type="button" aria-label="이전 달" title="이전 달">‹</button>
@@ -220,26 +244,26 @@
             <h2 id="calendarMonthLabel" class="calendar-month-label">2026년 5월</h2>
           </div>
           <div class="calendar-header-trailing">
-            <div id="calendarViewToggle" class="calendar-view-toggle" role="group" aria-label="캘린더 보기">
+            <div id="calendarViewToggle" class="calendar-view-toggle" role="group" aria-label="일정 보기">
               <button class="calendar-view-option active" type="button" data-calendar-view="month" aria-pressed="true">월</button>
               <button class="calendar-view-option" type="button" data-calendar-view="week" aria-pressed="false">주</button>
               <button class="calendar-view-option" type="button" data-calendar-view="day" aria-pressed="false">일</button>
             </div>
             <div class="calendar-settings-wrap">
-              <button id="calendarSettingsButton" class="icon-button calendar-settings-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="캘린더 설정" title="캘린더 설정">
+              <button id="calendarSettingsButton" class="icon-button calendar-settings-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="일정 설정" title="일정 설정">
                 <svg class="calendar-settings-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
                 </svg>
               </button>
-              <div id="calendarSettingsMenu" class="calendar-settings-menu" hidden role="menu" aria-label="캘린더 설정">
+              <div id="calendarSettingsMenu" class="calendar-settings-menu" hidden role="menu" aria-label="일정 설정">
                 <button id="calendarImportButton" class="calendar-settings-item" type="button" role="menuitem">
                   <span class="calendar-settings-item-title">ICS 가져오기</span>
-                  <span class="calendar-settings-item-desc">.ics 파일에서 일정을 읽어와 이 캘린더에 추가합니다. Google 캘린더, Outlook, 네이버 캘린더 등 다른 앱에서 내보낸 일정 파일을 불러올 때 사용하세요. 가져오기 전 미리보기로 확인합니다.</span>
+                  <span class="calendar-settings-item-desc">.ics 파일에서 일정을 읽어와 현재 일정 목록에 추가합니다. Google 캘린더, Outlook, 네이버 캘린더 등 다른 앱에서 내보낸 일정 파일을 불러올 때 사용하세요. 가져오기 전 미리보기로 확인합니다.</span>
                 </button>
                 <button id="calendarExportButton" class="calendar-settings-item" type="button" role="menuitem">
                   <span class="calendar-settings-item-title">ICS 내보내기</span>
-                  <span class="calendar-settings-item-desc">현재 캘린더의 모든 일정을 .ics 파일로 저장합니다. 다른 캘린더 앱(Google, Outlook 등)으로 옮기거나 백업할 때 사용하세요. 시간대는 Asia/Seoul로 기록됩니다.</span>
+                  <span class="calendar-settings-item-desc">현재 일정 목록 전체를 .ics 파일로 저장합니다. 다른 캘린더 앱(Google, Outlook 등)으로 옮기거나 백업할 때 사용하세요. 시간대는 Asia/Seoul로 기록됩니다.</span>
                 </button>
               </div>
             </div>
@@ -253,6 +277,107 @@
           </div>
           <div id="calendarGrid" class="calendar-grid"></div>
         </div>
+      </section>
+
+      <section class="law-area" aria-label="법령검토" hidden>
+        <header class="law-hero">
+          <div class="law-hero-search">
+            <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="M20 20l-3.5-3.5"></path>
+            </svg>
+            <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="법령·조문·상황을 자연어로 입력하세요 (예: 공무원 음주운전 징계 기준)" />
+            <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">검토</button>
+          </div>
+
+          <div class="law-hero-examples" aria-label="예시 질문">
+            <button class="law-example-chip" type="button" data-law-example="공무원 음주운전 징계 근거">공무원 음주운전 징계</button>
+            <button class="law-example-chip" type="button" data-law-example="건축법 제15조 별표">건축법 제15조 별표</button>
+            <button class="law-example-chip" type="button" data-law-example="도로교통법 최근 개정 이력">도로교통법 개정 이력</button>
+            <button class="law-example-chip" type="button" data-law-example="개인정보 보호 관련 판례">개인정보 보호 판례</button>
+            <button class="law-example-chip" type="button" data-law-example="서울특별시 자치법규">서울시 자치법규</button>
+          </div>
+
+          <details id="lawWorkbenchAdvanced" class="law-advanced">
+            <summary class="law-advanced-summary">
+              <svg class="law-advanced-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+              <span class="law-advanced-title">상세 조건</span>
+              <span class="law-advanced-hint">법령명 · 조문 · 자치법규 지역</span>
+            </summary>
+            <div class="law-advanced-body">
+              <label class="law-advanced-field">
+                <span>법령명</span>
+                <input id="lawWorkbenchLawName" class="text-input" type="text" placeholder="예: 도로교통법" />
+              </label>
+              <label class="law-advanced-field">
+                <span>조문</span>
+                <input id="lawWorkbenchArticle" class="text-input" type="text" placeholder="예: 제15조" />
+              </label>
+              <label class="law-advanced-field">
+                <span>자치법규 지역</span>
+                <input id="lawWorkbenchRegion" class="text-input" type="text" placeholder="예: 서울특별시" />
+              </label>
+            </div>
+          </details>
+
+          <div id="lawWorkbenchTerms" class="law-workbench-terms"></div>
+          <div id="lawWorkbenchStatus" class="law-explorer-status"></div>
+        </header>
+
+        <div class="law-mode-tabs law-workbench-tabs" role="tablist">
+          <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="main">
+            <span class="law-tab-title">본문 · 서식</span>
+            <span class="law-tab-sub">조문 · 별표</span>
+          </button>
+          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="system">
+            <span class="law-tab-title">법체계</span>
+            <span class="law-tab-sub">상하위 · 자치법규</span>
+          </button>
+          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="decisions">
+            <span class="law-tab-title">판례 · 해석</span>
+            <span class="law-tab-sub">판례 · 해석례 · 행정규칙</span>
+          </button>
+          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="history">
+            <span class="law-tab-title">개정 · 영향</span>
+            <span class="law-tab-sub">이력 · 내부자료 영향</span>
+          </button>
+        </div>
+
+        <div id="lawWorkbenchBody" class="law-workbench-body">
+          <div class="law-explorer-empty law-empty-hero">
+            <h3>법령검토</h3>
+            <p>자연어 질문 한 줄이면 공식 법령·판례·자치법규·내부자료 영향까지 한 번에 정리합니다.</p>
+            <ul class="law-empty-features">
+              <li><strong>본문·서식</strong> 조문 원문과 별표·서식 자동 매칭</li>
+              <li><strong>법체계</strong> 상위법 / 하위법령 / 자치법규 연계</li>
+              <li><strong>판례·해석</strong> 판례 · 해석례 · 행정규칙</li>
+              <li><strong>개정·영향</strong> 개정 이력과 내부자료 영향 분석</li>
+            </ul>
+          </div>
+        </div>
+
+        <footer id="lawReportBar" class="law-report-bar" hidden>
+          <div class="law-report-bar-left">
+            <span class="law-report-bar-label">보고서 템플릿</span>
+            <select id="lawWorkbenchReportTemplate" class="text-input" aria-label="보고서 템플릿">
+              <option value="law_review_opinion">법령 검토의견서</option>
+              <option value="ordinance_upper_law_review">조례 상위법 적합성 검토서</option>
+              <option value="administrative_disposition_basis">행정처분 근거 검토서</option>
+              <option value="civil_reply_law_review">민원 회신 법령 검토서</option>
+              <option value="internal_compliance_checklist">내부규정 컴플라이언스 점검표</option>
+            </select>
+          </div>
+          <div class="law-report-bar-right">
+            <button id="lawWorkbenchResetButton" class="ghost-button law-report-reset" type="button" title="결과 초기화" aria-label="결과 초기화">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+              <span>초기화</span>
+            </button>
+            <button id="lawWorkbenchReportButton" class="send-button law-report-cta" type="button" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M9 14h6M9 17h4"/></svg>
+              <span>보고서 생성</span>
+            </button>
+          </div>
+        </footer>
       </section>
 
       <div
@@ -283,15 +408,6 @@
               <path d="M7 3h8l4 4v14H7z"></path>
               <path d="M15 3v4h4"></path>
               <path d="M9 12h8M9 16h8M9 8h4"></path>
-            </svg>
-          </button>
-          <button id="studioLawRailButton" class="studio-rail-button" type="button" title="Law explorer" aria-label="Law explorer">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v18"></path>
-              <path d="M5 21h14"></path>
-              <path d="M6 7h12"></path>
-              <path d="M6 7l-3 6a3 3 0 0 0 6 0z"></path>
-              <path d="M18 7l-3 6a3 3 0 0 0 6 0z"></path>
             </svg>
           </button>
           <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="파일도구" aria-label="파일도구">
@@ -332,16 +448,6 @@
                 <path d="M9 12h8M9 16h8M9 8h4"></path>
               </svg>
               <span class="studio-tool-label">&#xBB38;&#xC11C;</span>
-            </button>
-            <button id="studioLawButton" class="studio-tool-card" type="button" data-tool="law" aria-label="Law explorer">
-              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3v18"></path>
-                <path d="M5 21h14"></path>
-                <path d="M6 7h12"></path>
-                <path d="M6 7l-3 6a3 3 0 0 0 6 0z"></path>
-                <path d="M18 7l-3 6a3 3 0 0 0 6 0z"></path>
-              </svg>
-              <span class="studio-tool-label">&#xBC95;&#xB839;&#xD0D0;&#xC0C9;</span>
             </button>
             <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="파일도구">
               <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -545,107 +651,6 @@
                 <div id="kgDetailBody" class="kg-detail-body" hidden></div>
               </aside>
             </div>
-          </div>
-
-          <div id="studioLawPanel" class="studio-tool-panel studio-law-panel" data-tool-panel="law" hidden>
-            <header class="law-hero">
-              <div class="law-hero-search">
-                <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7"></circle>
-                  <path d="M20 20l-3.5-3.5"></path>
-                </svg>
-                <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="법령·조문·상황을 자연어로 입력하세요 (예: 공무원 음주운전 징계 기준)" />
-                <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">탐색</button>
-              </div>
-
-              <div class="law-hero-examples" aria-label="예시 질문">
-                <button class="law-example-chip" type="button" data-law-example="공무원 음주운전 징계 근거">공무원 음주운전 징계</button>
-                <button class="law-example-chip" type="button" data-law-example="건축법 제15조 별표">건축법 제15조 별표</button>
-                <button class="law-example-chip" type="button" data-law-example="도로교통법 최근 개정 이력">도로교통법 개정 이력</button>
-                <button class="law-example-chip" type="button" data-law-example="개인정보 보호 관련 판례">개인정보 보호 판례</button>
-                <button class="law-example-chip" type="button" data-law-example="서울특별시 자치법규">서울시 자치법규</button>
-              </div>
-
-              <details id="lawWorkbenchAdvanced" class="law-advanced">
-                <summary class="law-advanced-summary">
-                  <svg class="law-advanced-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-                  <span class="law-advanced-title">상세 조건</span>
-                  <span class="law-advanced-hint">법령명 · 조문 · 자치법규 지역</span>
-                </summary>
-                <div class="law-advanced-body">
-                  <label class="law-advanced-field">
-                    <span>법령명</span>
-                    <input id="lawWorkbenchLawName" class="text-input" type="text" placeholder="예: 도로교통법" />
-                  </label>
-                  <label class="law-advanced-field">
-                    <span>조문</span>
-                    <input id="lawWorkbenchArticle" class="text-input" type="text" placeholder="예: 제15조" />
-                  </label>
-                  <label class="law-advanced-field">
-                    <span>자치법규 지역</span>
-                    <input id="lawWorkbenchRegion" class="text-input" type="text" placeholder="예: 서울특별시" />
-                  </label>
-                </div>
-              </details>
-
-              <div id="lawWorkbenchTerms" class="law-workbench-terms"></div>
-              <div id="lawWorkbenchStatus" class="law-explorer-status"></div>
-            </header>
-
-            <div class="law-mode-tabs law-workbench-tabs" role="tablist">
-              <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="main">
-                <span class="law-tab-title">본문 · 서식</span>
-                <span class="law-tab-sub">조문 · 별표</span>
-              </button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="system">
-                <span class="law-tab-title">법체계</span>
-                <span class="law-tab-sub">상하위 · 자치법규</span>
-              </button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="decisions">
-                <span class="law-tab-title">판례 · 해석</span>
-                <span class="law-tab-sub">판례 · 해석례 · 행정규칙</span>
-              </button>
-              <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="history">
-                <span class="law-tab-title">개정 · 영향</span>
-                <span class="law-tab-sub">이력 · 내부자료 영향</span>
-              </button>
-            </div>
-
-            <div id="lawWorkbenchBody" class="law-workbench-body">
-              <div class="law-explorer-empty law-empty-hero">
-                <h3>법령 탐색</h3>
-                <p>자연어 질문 한 줄이면 공식 법령·판례·자치법규·내부자료 영향까지 한 번에 정리합니다.</p>
-                <ul class="law-empty-features">
-                  <li><strong>본문·서식</strong> 조문 원문과 별표·서식 자동 매칭</li>
-                  <li><strong>법체계</strong> 상위법 / 하위법령 / 자치법규 연계</li>
-                  <li><strong>판례·해석</strong> 판례 · 해석례 · 행정규칙</li>
-                  <li><strong>개정·영향</strong> 개정 이력과 내부자료 영향 분석</li>
-                </ul>
-              </div>
-            </div>
-
-            <footer id="lawReportBar" class="law-report-bar" hidden>
-              <div class="law-report-bar-left">
-                <span class="law-report-bar-label">보고서 템플릿</span>
-                <select id="lawWorkbenchReportTemplate" class="text-input" aria-label="보고서 템플릿">
-                  <option value="law_review_opinion">법령 검토의견서</option>
-                  <option value="ordinance_upper_law_review">조례 상위법 적합성 검토서</option>
-                  <option value="administrative_disposition_basis">행정처분 근거 검토서</option>
-                  <option value="civil_reply_law_review">민원 회신 법령 검토서</option>
-                  <option value="internal_compliance_checklist">내부규정 컴플라이언스 점검표</option>
-                </select>
-              </div>
-              <div class="law-report-bar-right">
-                <button id="lawWorkbenchResetButton" class="ghost-button law-report-reset" type="button" title="결과 초기화" aria-label="결과 초기화">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
-                  <span>초기화</span>
-                </button>
-                <button id="lawWorkbenchReportButton" class="send-button law-report-cta" type="button" disabled>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M9 14h6M9 17h4"/></svg>
-                  <span>보고서 생성</span>
-                </button>
-              </div>
-            </footer>
           </div>
 
           <div id="studioDocumentPanel" class="studio-tool-panel studio-document-panel" data-tool-panel="document">
