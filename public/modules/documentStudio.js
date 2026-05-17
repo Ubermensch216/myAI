@@ -102,6 +102,10 @@ export function bindDocumentStudioEvents() {
     setDocumentEditorMode("raw");
   });
 
+  elements.studioDocumentLibraryModeButton?.addEventListener("click", () => {
+    setDocumentEditorMode("library");
+  });
+
   initEditor();
 
   elements.studioDocumentToolbar?.addEventListener("click", (event) => {
@@ -152,13 +156,15 @@ function setEditorValue(text) {
 function resizeEditor() { /* textarea sizes itself via flex; nothing to do */ }
 
 function getDocumentEditorMode(doc) {
-  return doc?.editorMode === "raw" ? "raw" : "visual";
+  if (doc?.editorMode === "raw") return "raw";
+  if (doc?.editorMode === "library") return "library";
+  return "visual";
 }
 
 function setDocumentEditorMode(mode) {
   const doc = getActiveDraft();
   if (!doc) return;
-  const next = mode === "raw" ? "raw" : "visual";
+  const next = mode === "raw" ? "raw" : mode === "library" ? "library" : "visual";
   if (getDocumentEditorMode(doc) === next) return;
   doc.editorMode = next;
   markDirty(doc);
@@ -168,10 +174,14 @@ function setDocumentEditorMode(mode) {
 function renderEditorMode(doc) {
   const mode = getDocumentEditorMode(doc);
   const visualActive = mode === "visual";
+  const rawActive = mode === "raw";
+  const libraryActive = mode === "library";
   if (elements.studioDocumentVisual) elements.studioDocumentVisual.hidden = !visualActive;
-  if (elements.studioDocumentRaw) elements.studioDocumentRaw.hidden = visualActive;
+  if (elements.studioDocumentRaw) elements.studioDocumentRaw.hidden = !rawActive;
+  if (elements.studioOutputLibrary) elements.studioOutputLibrary.hidden = !libraryActive;
   updateModeButton(elements.studioDocumentVisualModeButton, visualActive);
-  updateModeButton(elements.studioDocumentRawModeButton, !visualActive);
+  updateModeButton(elements.studioDocumentRawModeButton, rawActive);
+  updateModeButton(elements.studioDocumentLibraryModeButton, libraryActive);
   if (visualActive) renderVisualEditor(doc);
 }
 
@@ -642,16 +652,21 @@ function upsertStudioOutput(input) {
 }
 
 function renderOutputLibrary(studio = ensureRoomStudio()) {
+  const outputs = Array.isArray(studio?.outputs) ? studio.outputs : [];
+  const libraryButton = elements.studioDocumentLibraryModeButton;
+  if (libraryButton) libraryButton.textContent = `산출물 라이브러리 ${outputs.length}`;
   for (const root of [elements.studioOutputLibrary, elements.studioOutputLibraryEmpty]) {
     if (!root) continue;
     root.innerHTML = "";
-    const outputs = Array.isArray(studio?.outputs) ? studio.outputs : [];
-    const header = document.createElement("div");
-    header.className = "studio-output-library-header";
-    const title = document.createElement("h4");
-    title.textContent = `산출물 라이브러리 ${outputs.length}`;
-    header.append(title);
-    root.append(header);
+    const isTabPane = root === elements.studioOutputLibrary;
+    if (!isTabPane) {
+      const header = document.createElement("div");
+      header.className = "studio-output-library-header";
+      const title = document.createElement("h4");
+      title.textContent = `산출물 라이브러리 ${outputs.length}`;
+      header.append(title);
+      root.append(header);
+    }
     if (!outputs.length) {
       const empty = document.createElement("p");
       empty.className = "studio-output-empty";

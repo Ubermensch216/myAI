@@ -4860,8 +4860,45 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .studio-document-visual[hidden],
-.studio-document-raw[hidden] {
+.studio-document-raw[hidden],
+.studio-document-library[hidden] {
   display: none !important;
+}
+
+.studio-document-library {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 320px;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px;
+}
+
+.studio-document-library .studio-output-list {
+  gap: 8px;
+}
+
+.studio-document-library .studio-output-item {
+  padding: 10px;
+}
+
+.studio-document-library .studio-output-title {
+  font-size: 13px;
+  white-space: normal;
+}
+
+.studio-document-library .studio-output-meta {
+  font-size: 11px;
+}
+
+.studio-document-library .studio-output-action {
+  min-height: 28px;
+  font-size: 11px;
+  padding: 0 9px;
 }
 
 .studio-document-visual {

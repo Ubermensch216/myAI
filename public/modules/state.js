@@ -485,6 +485,7 @@ export const elements = {
   studioOutputLibraryEmpty: document.querySelector("#studioOutputLibraryEmpty"),
   studioDocumentVisualModeButton: document.querySelector("#studioDocumentVisualModeButton"),
   studioDocumentRawModeButton: document.querySelector("#studioDocumentRawModeButton"),
+  studioDocumentLibraryModeButton: document.querySelector("#studioDocumentLibraryModeButton"),
   studioDocumentVisual: document.querySelector("#studioDocumentVisual"),
   studioDocumentRaw: document.querySelector("#studioDocumentRaw"),
   studioDocumentToolbar: document.querySelector("#studioDocumentToolbar"),
