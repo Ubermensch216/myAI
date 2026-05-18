@@ -113,7 +113,7 @@ Typical usage event shape:
     calendar: false,
     documentStudio: false
   },
-  model: "gemma4:e2b",
+  model: "gemma4:e4b",
   latencyMs: 1240,
   success: true,
   errorType: ""

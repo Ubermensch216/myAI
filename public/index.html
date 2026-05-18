@@ -302,7 +302,7 @@
             <summary class="law-advanced-summary">
               <svg class="law-advanced-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
               <span class="law-advanced-title">상세 조건</span>
-              <span class="law-advanced-hint">법령명 · 조문 · 자치법규 지역</span>
+              <span class="law-advanced-hint">범위 · 산출물 · 중점사항</span>
             </summary>
             <div class="law-advanced-body">
               <label class="law-advanced-field">
@@ -349,26 +349,22 @@
           <div id="lawWorkbenchStatus" class="law-explorer-status"></div>
         </header>
 
-        <div class="law-mode-tabs law-workbench-tabs" role="tablist">
+        <div class="law-mode-tabs law-workbench-tabs" role="tablist" aria-label="법령검토 업무 단계">
           <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="review">
-            <span class="law-tab-title">검토결과</span>
-            <span class="law-tab-sub">의견 · 리스크</span>
+            <span class="law-tab-title">검토 초안</span>
+            <span class="law-tab-sub">결론 · 쟁점 · 리스크</span>
           </button>
-          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="main">
-            <span class="law-tab-title">본문 · 서식</span>
-            <span class="law-tab-sub">조문 · 별표</span>
-          </button>
-          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="system">
-            <span class="law-tab-title">법체계</span>
-            <span class="law-tab-sub">상하위 · 자치법규</span>
-          </button>
-          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="decisions">
-            <span class="law-tab-title">판례 · 해석</span>
-            <span class="law-tab-sub">판례 · 해석례 · 행정규칙</span>
+          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="evidence">
+            <span class="law-tab-title">근거</span>
+            <span class="law-tab-sub">조문 · 판례 · 법체계</span>
           </button>
           <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="history">
-            <span class="law-tab-title">개정 · 영향</span>
+            <span class="law-tab-title">개정/영향</span>
             <span class="law-tab-sub">이력 · 내부자료 영향</span>
+          </button>
+          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="report">
+            <span class="law-tab-title">보고서</span>
+            <span class="law-tab-sub">템플릿 · 문서 생성</span>
           </button>
         </div>
 

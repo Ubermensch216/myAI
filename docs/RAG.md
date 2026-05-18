@@ -60,11 +60,11 @@ The target vectorDB architecture and migration units live in
 Recommended local settings:
 
 ```env
-OLLAMA_MODEL=gemma4:e2b
+OLLAMA_MODEL=gemma4:e4b
 EMBED_MODEL=bge-m3
 ```
 
-`bge-m3` is a good default for Korean semantic retrieval. On 2026-05-05, local direct checks confirmed `bge-m3:latest` is installed and returns 1024-dimensional vectors through `/api/embed`.
+`bge-m3` is a good default for Korean semantic retrieval. On 2026-05-05, local direct checks confirmed `bge-m3:latest` is installed and returns 1024-dimensional vectors through `/api/embed`. The current workstation `.env` uses `gemma4:e4b`; container examples may keep `gemma4:e2b` when GPU memory is tighter.
 
 ## Uploaded Room Documents
 

@@ -16,8 +16,8 @@ Example shape:
 {
   "ok": true,
   "ollamaUrl": "http://127.0.0.1:11434",
-  "defaultModel": "gemma4:e2b",
-  "models": ["bge-m3:latest", "gemma4:e2b"],
+  "defaultModel": "gemma4:e4b",
+  "models": ["bge-m3:latest", "gemma4:e4b"],
   "rag": {
     "department": {
       "backend": { "vector": "qdrant", "lexical": "sqlite" },
@@ -254,6 +254,53 @@ Builds a comprehensive legal workbench context. It aggregates research,
 citations, impact maps, structure links, and report-ready metadata in a single
 response. Either `query` or `lawName` is required.
 
+### `POST /api/law/workbench/review`
+
+Body:
+
+```js
+{
+  query: "개인정보 수집·이용 동의서 양식에서 필수 동의와 선택 동의를 구분하지 않은 경우 개인정보보호법상 문제가 있는지 검토",
+  conditions: {
+    reviewType: "privacy",
+    outputType: "law_review_opinion",
+    detail: "상세조건: 개인정보 적법성 검토"
+  },
+  workbench: { /* /api/law/workbench response object */ },
+  documents: []
+}
+```
+
+Runs the LLM review-draft step from the official Law Workbench evidence. The
+server builds a JSON-only prompt from `query`, `conditions`, `workbench`, and
+the supplied Law Workbench `documents`, then returns:
+
+```js
+{
+  ok: true,
+  reviewResult: {
+    summary,
+    issues,
+    facts,
+    legalGrounds,
+    analysis,
+    risks,
+    recommendations,
+    missingEvidence,
+    draftOpinion,
+    disclaimer
+  }
+}
+```
+
+This endpoint does not discover or attach active chat-room documents. The
+caller must pass any Law Workbench dedicated documents explicitly; the current
+frontend has no dedicated upload UI, so normal requests send `documents: []`.
+Server diagnostics are logged as `[law-workbench-review]` without prompt text
+or document body. Logs include `promptChars`, `estimatedTokens`,
+`documentCount`, evidence counts, `elapsedMs`, `prompt_eval_count`, and
+`eval_count`.
+
 ### `POST /api/law/workbench/report`
 
 Body:
@@ -261,11 +308,14 @@ Body:
 ```js
 {
   workbench: { /* workbench response object */ },
-  templateId: "default"
+  reviewResult: { /* optional /api/law/workbench/review result */ },
+  templateId: "law_review_opinion"
 }
 ```
 
-Generates a structured legal report draft (JSON blocks) from a workbench result.
+Generates a structured legal report draft from a workbench result and, when
+provided, the LLM review result. The frontend opens the returned markdown as a
+Studio Document draft.
 
 ### `POST /api/law/ai-search`
 
@@ -710,7 +760,7 @@ Body:
   title: "감사자료 소스 가이드",
   documents: [/* current room document payloads */],
   notebookId: "nb_...", // optional selected department notebook
-  model: "gemma4:e2b"
+  model: "gemma4:e4b"
 }
 ```
 
@@ -814,7 +864,7 @@ Body:
   templateId: "review_report",
   template: {},
   metadata: {},
-  model: "gemma4:e2b"
+  model: "gemma4:e4b"
 }
 ```
 
@@ -1297,7 +1347,7 @@ enablement.
 Starts a background rebuild of one notebook knowledge graph and returns `202`:
 
 ```js
-{ model: "gemma4:e2b", concurrency: 1 }
+{ model: "gemma4:e4b", concurrency: 1 }
 ```
 
 `model` is optional and falls back to `KG_EXTRACT_MODEL` or the graph

@@ -24,7 +24,14 @@ assert.match(html, /<section class="law-area"[^>]*>/, "law review main area exis
 assert.match(html, /id="lawWorkbenchReviewType"/, "law review has review type condition");
 assert.match(html, /id="lawWorkbenchOutputType"/, "law review has output type condition");
 assert.match(html, /data-law-workbench-tab="review"/, "law review has review result tab");
-assert.match(html, /검토결과/, "law review result tab label exists");
+assert.match(html, /data-law-workbench-tab="evidence"/, "law review has grouped evidence tab");
+assert.match(html, /data-law-workbench-tab="history"/, "law review has revision and impact tab");
+assert.match(html, /data-law-workbench-tab="report"/, "law review has report tab");
+assert.match(html, /검토 초안/, "law review draft-first tab label exists");
+assert.match(html, /근거/, "law review evidence tab label exists");
+assert.doesNotMatch(html, /data-law-workbench-tab="main"/, "law review hides source-family tabs from primary workflow");
+assert.doesNotMatch(html, /data-law-workbench-tab="system"/, "law review groups law hierarchy under evidence");
+assert.doesNotMatch(html, /data-law-workbench-tab="decisions"/, "law review groups decisions under evidence");
 assert.match(html, /법령검토/, "law review label is used");
 
 assert.doesNotMatch(html, /id="studioLawButton"/, "Studio law tool card is removed");
@@ -34,11 +41,17 @@ assert.doesNotMatch(lawJs, /getActiveDocuments/, "law review must not auto-inclu
 assert.match(lawJs, /const\s+reviewDocuments\s*=\s*getLawReviewDocuments\(state\)/, "law review scopes documents to dedicated law review state");
 assert.match(lawJs, /documents:\s*reviewDocuments/, "law review sends only dedicated law review documents");
 assert.match(lawJs, /reviewError/, "law review stores exact LLM failure reason for the UI");
+assert.match(lawJs, /function\s+renderWorkflowSteps/, "law review renders progress as workflow steps");
+assert.match(lawJs, /function\s+renderEvidenceDashboard/, "law review summarizes collected evidence before raw source lists");
+assert.match(lawJs, /function\s+renderReportPanel/, "law review has a dedicated report workflow panel");
+assert.match(lawJs, /main:\s*"evidence"/, "legacy main tab maps to grouped evidence tab");
+assert.match(lawJs, /decisions:\s*"evidence"/, "legacy decisions tab maps to grouped evidence tab");
 assert.match(reviewServerJs, /\[law-workbench-review\]/, "law review diagnostics log is present");
 assert.match(reviewServerJs, /prompt_eval_count/, "law review diagnostics logs Ollama prompt eval count");
 assert.match(reviewServerJs, /eval_count/, "law review diagnostics logs Ollama eval count");
 assert.doesNotMatch(reviewServerJs, /promptEvalCount|evalCount:/, "law review diagnostics use Ollama field names");
 assert.match(stateJs, /Object\.assign\(review,\s*normalized\)/, "law review normalization preserves object identity during async review rendering");
+assert.match(stateJs, /reportCreatedAt/, "law review report creation state is persisted");
 
 const lawWorkbenchIds = findAll(/id="(lawWorkbench[^"]+)"/g, html);
 assert.equal(new Set(lawWorkbenchIds).size, lawWorkbenchIds.length, "law workbench DOM ids are unique");
@@ -49,3 +62,6 @@ assert.match(
   "primary nav uses three equal columns"
 );
 assert.match(css, /\.law-area\s*{/, "law-area styles exist");
+assert.match(css, /\.law-workflow-steps\s*{/, "law review workflow step styles exist");
+assert.match(css, /\.law-evidence-dashboard\s*{/, "law review evidence dashboard styles exist");
+assert.match(css, /\.law-report-panel\s*{/, "law review report panel styles exist");

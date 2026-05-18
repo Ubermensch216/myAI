@@ -43,8 +43,9 @@ Implemented pieces:
 - `POST /api/law/ai-search`
 - `POST /api/law/research`
 - `POST /api/law/action-plan`
-- `POST /api/law/workbench` (Phase 2+ — builds a comprehensive legal workbench context including research, citations, impact maps, and report-ready metadata)
-- `POST /api/law/workbench/report` (Generates a structured legal report draft from a workbench result)
+- `POST /api/law/workbench` (builds a comprehensive legal workbench context including research, citations, impact maps, and report-ready metadata)
+- `POST /api/law/workbench/review` (runs the LLM review-draft step from official Workbench evidence plus Law Workbench dedicated documents)
+- `POST /api/law/workbench/report` (generates a structured legal report draft from a workbench result and optional LLM review result)
 - `GET /api/law/terms` (Searches official Korean law term KB / Knowledge Base for normalized definitions and law/article hints)
 - `POST /api/law/article`
 - `POST /api/law/verify-citations`
@@ -165,6 +166,11 @@ HUNZAE_API_KEY=
 HUNZAE_API_URL=
 HAENGJIM_API_PROVIDER=lawgo
 HAENGJIM_API_URL=
+
+LAW_WORKBENCH_REVIEW_TIMEOUT_MS=600000
+LAW_WORKBENCH_REVIEW_NUM_CTX=8192
+LAW_WORKBENCH_REVIEW_MAX_PROMPT_CHARS=90000
+LAW_WORKBENCH_REVIEW_DOCUMENT_CHARS=16000
 
 RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
 RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
@@ -307,6 +313,55 @@ topic research, article text, history, structure links, annexes, ordinances,
 decisions, and (optionally) an internal impact map. Returns a `law_workbench`
 response object used for review dashboards and report generation.
 
+### `POST /api/law/workbench/review`
+
+Request:
+
+```json
+{
+  "query": "개인정보 수집·이용 동의서 양식에서 필수 동의와 선택 동의를 구분하지 않은 경우 개인정보보호법상 문제가 있는지 검토",
+  "conditions": {
+    "reviewType": "privacy",
+    "outputType": "law_review_opinion",
+    "detail": "상세조건: 개인정보 적법성 검토"
+  },
+  "workbench": { "type": "law_workbench" },
+  "documents": []
+}
+```
+
+Runs the LLM review-draft step. The prompt is built from the user's request,
+review conditions, the official evidence gathered by `/api/law/workbench`, and
+only documents explicitly attached to the Law Workbench review state. It must
+not auto-include active chat-room attachments. Until a dedicated Law Workbench
+upload/list UI exists, `documents` is normally empty and server diagnostics
+should show `documentCount: 0`.
+
+Response:
+
+```json
+{
+  "ok": true,
+  "reviewResult": {
+    "summary": "string",
+    "issues": ["string"],
+    "facts": ["string"],
+    "legalGrounds": ["string"],
+    "analysis": ["string"],
+    "risks": ["string"],
+    "recommendations": ["string"],
+    "missingEvidence": ["string"],
+    "draftOpinion": "string",
+    "disclaimer": "string"
+  }
+}
+```
+
+The server logs `[law-workbench-review]` request/response/error/timeout events
+without prompt text or document body. Logs include `promptChars`,
+`estimatedTokens`, `documentCount`, official-evidence counts, `elapsedMs`, and
+Ollama `prompt_eval_count` / `eval_count` values when available.
+
 ### `POST /api/law/workbench/report`
 
 Request:
@@ -314,13 +369,14 @@ Request:
 ```json
 {
   "workbench": { /* workbench response object */ },
+  "reviewResult": { /* optional reviewResult from /workbench/review */ },
   "templateId": "law_review_opinion"
 }
 ```
 
 Generates a structured legal report draft (Markdown blocks) from a workbench
-result. Template IDs are selected from `DEFAULT_REPORT_TEMPLATE` in
-`server/law/lawWorkbench.js`.
+result and optional LLM review result. Template IDs are selected from
+`DEFAULT_REPORT_TEMPLATE` in `server/law/lawWorkbench.js`.
 
 ### `POST /api/law/search`
 

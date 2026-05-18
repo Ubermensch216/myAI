@@ -31,6 +31,7 @@ myAI has a two-tier deployment model:
 | Personal room uploads (documents, images) | Browser IndexedDB (AES-GCM) | Private per-user; server is parse-only |
 | Room-generated sources from assistant answers | Browser IndexedDB (AES-GCM) | Personal working artifacts; server converts but does not persist |
 | Studio outputs and source guides | Browser IndexedDB (AES-GCM), inside `room.studio.outputs` | Room-level work products that can be reopened, added as generated sources, or submitted for admin promotion review |
+| Law Workbench reviews | Browser IndexedDB (AES-GCM), inside `state.lawReviews` | Saved legal-review working state, conditions, official evidence snapshot, LLM draft result, and failure message |
 | Source promotion requests | Server filesystem (`data/source-promotions/promotions.json`) | Admin-reviewed queue before any AI-generated output enters a department notebook |
 | Chat and message history | Browser IndexedDB | Per-user private |
 | Calendar events | Browser IndexedDB | Per-user private, no server sync |
@@ -136,6 +137,28 @@ Studio output "승인 요청"
 -> server/sourceWorkflow/sourcePromotions.js ingests reviewed markdown
 -> addNotebookDocument() writes target notebook document and updates indexes
 ```
+
+### Law Workbench Review
+
+```text
+user prompt + review conditions
+-> public/modules/lawWorkbench.js sends POST /api/law/workbench
+-> server/law/lawWorkbench.js gathers official statutes, decisions, ordinances,
+   law-structure links, revision history, and optional impact metadata
+-> browser stores the official evidence snapshot in state.lawReviews
+-> public/modules/lawWorkbench.js sends POST /api/law/workbench/review
+   with query, conditions, workbench payload, and Law Workbench dedicated documents
+-> server/law/lawWorkbenchReview.js builds a JSON-only review prompt and calls Ollama
+-> browser stores reviewResult or reviewError in the same law-review object
+-> optional POST /api/law/workbench/report creates a Studio Document draft
+```
+
+The review request does not read active chat-room attachments. Law Workbench has
+its own `documents` array in `state.lawReviews`; until a dedicated upload/list
+UI is added that array is normally empty and server logs should show
+`documentCount: 0`. Diagnostics are logged as `[law-workbench-review]` without
+prompt text or document body and include prompt size, estimated tokens, evidence
+counts, elapsed time, and Ollama token counters.
 
 Promotion is never automatic. A generated output enters a department notebook
 only after an admin approves it. The promoted document includes provenance such
@@ -354,7 +377,7 @@ The LLM does not directly mutate calendar data.
 - `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
 - `server/ollama.js` - model calls, streaming chat, prompt assembly, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
-- `server/law/` - Korean Law Engine API surface, law.go.kr and decision API clients/cache, citation verification, research tools, annexes, law-structure links, Constitutional Court and administrative-appeal decisions, impact maps, and time-travel/diff/history helpers.
+- `server/law/` - Korean Law Engine API surface, law.go.kr and decision API clients/cache, citation verification, research tools, annexes, law-structure links, Constitutional Court and administrative-appeal decisions, impact maps, time-travel/diff/history helpers, and Law Workbench review/report generation.
 - `server/compliance/` - department legal-review intent classification, review-type catalog, and compliance prompt construction.
 - `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
 - `server/documents.js` - document serializers and `pageSections()`.
@@ -408,7 +431,7 @@ The LLM does not directly mutate calendar data.
 - `public/modules/adminApi.js` - small Admin Console fetch helpers.
 - `public/modules/evidenceSummary.js` - classification and formatting of citations (official law, precedents, decisions, attachments, web, internal).
 - `public/modules/html.js` - DOM escaping/sanitizing helpers.
-- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research and impact mapping.
+- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research, dedicated review-document scope, LLM review result/error rendering, report draft creation, and impact mapping.
 - `public/modules/sourceWorkflow.js` - assistant answer -> room source dialog and client orchestration.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - chart/spec rendering.

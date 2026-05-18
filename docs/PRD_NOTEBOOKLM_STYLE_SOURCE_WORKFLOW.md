@@ -156,7 +156,7 @@ Request:
   title: "소스 가이드",
   documents: [],
   notebookId: "nb_...",
-  model: "gemma4:e2b"
+  model: "gemma4:e4b"
 }
 ```
 

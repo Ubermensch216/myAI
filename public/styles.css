@@ -10545,6 +10545,60 @@ body.panel-resizing .panel-resizer::after {
   padding-right: 2px;
 }
 
+.law-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.law-workflow-step {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.law-workflow-step span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.law-workflow-step-dot {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  height: 9px;
+  width: 9px;
+}
+
+.law-workflow-step.is-done {
+  color: var(--accent-dark, #3a52cc);
+}
+
+.law-workflow-step.is-done .law-workflow-step-dot {
+  background: currentColor;
+}
+
+.law-workflow-step.is-active {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.law-workflow-step.is-active .law-workflow-step-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #4b6bff) 16%, transparent);
+}
+
+.law-workflow-step.is-error {
+  color: var(--danger, #d04545);
+}
+
 .law-workbench-section-head,
 .law-workbench-result-section h4 {
   color: var(--text);
@@ -10643,6 +10697,82 @@ body.panel-resizing .panel-resizer::after {
   padding: 8px;
 }
 
+.law-evidence-dashboard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.law-report-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.law-evidence-dashboard-head {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.law-evidence-dashboard-head h3,
+.law-report-panel h3 {
+  color: var(--text);
+  font-size: 15px;
+  margin: 0;
+}
+
+.law-evidence-dashboard-head p,
+.law-report-panel p {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.law-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.law-evidence-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.law-evidence-card.has-data {
+  border-color: color-mix(in srgb, var(--accent, #4b6bff) 35%, var(--line));
+  background: color-mix(in srgb, var(--accent, #4b6bff) 5%, transparent);
+}
+
+.law-evidence-count {
+  color: var(--accent-dark, #3a52cc);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.law-evidence-label {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.law-evidence-detail {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .law-review-result-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -10678,6 +10808,26 @@ body.panel-resizing .panel-resizer::after {
   margin: 0;
 }
 
+.law-report-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.law-report-panel-controls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.law-report-panel-controls .text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.law-report-panel-cta {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 720px) {
   .law-workbench-row,
   .law-workbench-row + .law-workbench-row {
@@ -10691,6 +10841,16 @@ body.panel-resizing .panel-resizer::after {
   .law-workbench-body {
     min-height: 260px;
     flex: 0 0 auto;
+  }
+
+  .law-workflow-steps,
+  .law-evidence-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .law-report-panel-controls {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

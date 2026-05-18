@@ -6,16 +6,16 @@ myAI is a local Ollama-based AI secretary web app. It provides chat, document an
 
 - App URL: <http://localhost:3000>
 - Ollama URL: <http://127.0.0.1:11434>
-- Recommended chat model: `gemma4:e2b`
+- Recommended local chat/review model: `gemma4:e4b`
 - Recommended embedding model: `bge-m3`
 - Current local `.env` should use:
 
 ```env
-OLLAMA_MODEL=gemma4:e2b
+OLLAMA_MODEL=gemma4:e4b
 EMBED_MODEL=bge-m3
 ```
 
-On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `/api/embed` returns 1024-dimensional vectors. If `/api/status` fails, start the app server first.
+On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `/api/embed` returns 1024-dimensional vectors. The portable fallback remains `gemma3n:e2b` in `.env.example`; the current local `.env` uses `gemma4:e4b` for stronger law-review output. If `/api/status` fails, start the app server first.
 
 ## Features
 
@@ -29,7 +29,9 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Department notebook knowledge graphs for graph-assisted retrieval and a Studio graph viewer.
 - Explicit web-search prompts can use Naver Search API context in normal chat.
 - Explicit law-search mode isolates legal prompts from room documents/notebooks and grounds answers in the Korea Law Engine: law.go.kr statutes, precedents, interpretations, admin rules, ordinances, annexes, law-structure links, Constitutional Court decisions, and administrative-appeal decisions.
-- Legal research workbench aggregates research, citations, impact maps, and report-ready metadata in a single view.
+- Legal research workbench aggregates official statutes, precedents, interpretations, admin rules, ordinances, law-structure links, revision history, and impact-map metadata, then runs a separate LLM review draft step.
+- Law Workbench review requests use only the user prompt, selected review conditions, official evidence gathered by `/api/law/workbench`, and Law Workbench dedicated documents. Active chat-room attachments are not automatically included; until a dedicated upload UI exists, document count is normally `0`.
+- Law Workbench review diagnostics are logged as `[law-workbench-review]` without prompt/body text and include prompt size, estimated tokens, document count, evidence counts, elapsed time, and Ollama `prompt_eval_count` / `eval_count`.
 - Official law term KB (Knowledge Base) maps natural language terms to canonical legal definitions and law/article hints for query expansion.
 - Department legal-review prompts combine uploaded/notebook material with statute, precedent, interpretation, admin-rule, or ordinance evidence when configured.
 - Assistant answers can be exported from the message action menu as MD, XLSX, PDF, HWPX, or DOCX.
@@ -56,7 +58,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Required local models:
 
 ```bash
-ollama pull gemma4:e2b
+ollama pull gemma4:e4b
 ollama pull bge-m3
 ```
 
@@ -109,7 +111,10 @@ docker compose exec ollama ollama pull gemma4:e2b
 docker compose exec ollama ollama pull bge-m3
 ```
 
-Open <http://localhost:3000>. Check the stack:
+`deploy/container.env.example` keeps the lighter `gemma4:e2b` default for
+portable Docker deployments. Edit `OLLAMA_MODEL=gemma4:e4b` and pull that model
+instead if the container host has enough GPU memory. Open
+<http://localhost:3000>. Check the stack:
 
 ```bash
 docker compose ps
@@ -271,7 +276,7 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `KG_EXPAND_REFS` | `4` | max source references collected per graph node |
 | `KG_EXPAND_MAX` | `12` | max graph-derived chunk supplements added before RRF fusion |
 | `KG_FUSION_WEIGHT` | `0.3` | RRF weight applied to graph-derived ranking list when fused with vector/lexical lists |
-| `KG_EXTRACT_MODEL` | `gemma4:e2b` | Ollama model used for notebook graph extraction during rebuild |
+| `KG_EXTRACT_MODEL` | `gemma4:e4b` | Ollama model used for notebook graph extraction during rebuild |
 | `KG_EXTRACT_TIMEOUT_MS` | `180000` | per-chunk extraction timeout for graph rebuild |
 | `KG_EXTRACT_MAX_CHARS` | `4000` | max chunk text length passed to the extractor |
 | `KG_CONFIDENCE_THRESHOLD` | `0.6` | confidence cutoff used when auto-enabling new graph nodes/edges |
@@ -296,6 +301,10 @@ The XLSX regression test covers Excel date serial conversion, cached formula val
 | `LAW_IMPACT_MAP_ENABLED` | `true` | enable the Korean Law Engine impact-map endpoint and Studio Law Explorer |
 | `LAW_HISTORY_TARGET` | `eflaw` | upstream target for `/api/law/history` (revision-history query); override if law.go.kr renames it |
 | `LAW_DECISIONS_ENABLED` | `true` | enable Constitutional Court and administrative-appeal decision search/detail routes |
+| `LAW_WORKBENCH_REVIEW_TIMEOUT_MS` | `600000` | timeout for the Law Workbench LLM review-draft step |
+| `LAW_WORKBENCH_REVIEW_NUM_CTX` | `8192` | Ollama `num_ctx` used for the Law Workbench review-draft prompt |
+| `LAW_WORKBENCH_REVIEW_MAX_PROMPT_CHARS` | `90000` | max complete review prompt length after official evidence formatting |
+| `LAW_WORKBENCH_REVIEW_DOCUMENT_CHARS` | `16000` | max text budget for explicitly supplied Law Workbench review documents |
 | `DECISIONS_API_KEY` | unset | shared decision API key fallback; server-side only |
 | `HUNZAE_API_KEY` | unset | Constitutional Court OpenAPI key; falls back to `DECISIONS_API_KEY` when unset |
 | `HUNZAE_API_URL` | unset | optional Constitutional Court OpenAPI base URL override |
@@ -367,7 +376,7 @@ server/
   mindmap.js           Studio mind-map graph generation from uploaded documents
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
-  law/                 Korean Law Engine config, law.go.kr/decision clients, citation verification, annexes, law links, time-travel/diff/history, impact map, action_plan template, API routes
+  law/                 Korean Law Engine config, law.go.kr/decision clients, citation verification, annexes, law links, time-travel/diff/history, impact map, Law Workbench review/report APIs
   compliance/          department legal-review intent classifier, review-type catalog, compliance prompt builder (drives `department_legal_review` mode)
   studioDocument/      Studio Document Editor: templates, answer-to-document conversion, document model validation, HWPX/DOCX/PDF/MD export
   stats/               usage telemetry logger, log reader/aggregator, and Admin Console statistics API
@@ -426,7 +435,7 @@ public/
     adminStats.js      Admin Console usage statistics panel (KPI / groups / notebooks / sessions)
     adminApi.js        small Admin Console fetch helpers
     evidenceSummary.js classification and formatting of citations
-    lawWorkbench.js    Law Workbench UI for Korean legal research and impact mapping
+    lawWorkbench.js    Law Workbench UI for Korean legal research, dedicated review documents, LLM review results, and impact mapping
     studio.js          Studio panel UI and mind-map SVG renderer
     documentStudio.js  Studio Document Editor tab: template selection, markdown editing, source guides, output library, export
     documentStudioMarkdown.js  markdown <-> visual block conversion for Studio documents
@@ -448,6 +457,7 @@ docs/
   RAG.md
   CALENDAR.md
   KOREAN_LAW_ENGINE.md
+  PRD_NOTEBOOKLM_STYLE_SOURCE_WORKFLOW.md
   USAGE_TELEMETRY.md
   DESIGN.md
   SECURITY.md

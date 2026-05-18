@@ -30,11 +30,12 @@ npm.cmd run test:live
 
 ## Current Local Model Notes
 
-- `.env` should use `OLLAMA_MODEL=gemma4:e2b`.
+- `.env` should use `OLLAMA_MODEL=gemma4:e4b`.
 - `.env` should use `EMBED_MODEL=bge-m3`.
 - On 2026-05-05, direct Ollama checks showed:
   - `bge-m3:latest` is installed.
   - `gemma4:e2b` is installed.
+  - `gemma4:e4b` is installed and is the current local `.env` model for chat and Law Workbench review testing.
   - `POST /api/embed` with `bge-m3` returns 1024-dimensional vectors.
 - `/api/status` requires the app server to be running on port 3000.
 - Code fallback model in `server/ollama.js`: `gemma3n:e2b`.
@@ -76,7 +77,7 @@ Server:
 - `server/calendarAgent.js` - natural-language calendar intent classifier.
 - `server/visualization.js` - visualization plan validation and chart data computation.
 - `server/compliance/` - department legal-review intent, review-type catalog, and prompt construction.
-- `server/law/` - Korean Law Engine routes, law.go.kr and decision API clients, citation verification, research, annexes, law-structure links, Constitutional Court/admin-appeal decisions, impact map, and time-travel tools.
+- `server/law/` - Korean Law Engine routes, law.go.kr and decision API clients, citation verification, research, annexes, law-structure links, Constitutional Court/admin-appeal decisions, impact map, time-travel tools, and Law Workbench review/report APIs.
 - `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, retrieval-log summaries.
 - `server/parsers.js` - PDF/DOCX/XLSX/CSV/PPTX/HWPX/image parsing and chunking.
 - `server/auth.js` - `ADMIN_TOKEN` middleware.
@@ -112,7 +113,7 @@ Frontend:
 - `public/modules/adminApi.js` - small Admin Console fetch helpers.
 - `public/modules/evidenceSummary.js` - classification and formatting of citations (official law, precedents, decisions, attachments, web, internal).
 - `public/modules/html.js` - DOM escaping/sanitizing helpers.
-- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research and impact mapping.
+- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research, dedicated review-document state, LLM review results/errors, and impact mapping.
 - `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color-theme/avatar/banner.
 - `public/answerRenderer.js` - markdown-lite answer rendering.
 - `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
@@ -179,6 +180,13 @@ assistant message "자료로 추가"
 Naver Search is skipped when uploaded files are present or a department
 notebook is selected. No-evidence answers should not render source panels or
 follow-up suggestions.
+
+Law Workbench review is intentionally scoped separately from normal chat
+materials. `/api/law/workbench/review` receives only the prompt, selected
+review conditions, the official workbench evidence payload, and Law Workbench
+dedicated documents. Do not auto-include active room attachments; until a
+dedicated Law Workbench upload UI exists, `documentCount` should normally be
+`0`.
 
 Input source badges on each assistant message show which sources were active
 (notebook, uploaded files, generated room sources, web search, law engine). Guessed badges are shown
