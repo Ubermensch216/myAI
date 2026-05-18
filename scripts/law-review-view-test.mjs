@@ -18,6 +18,10 @@ assert.match(html, /data-view-content="law"/, "law review sidebar content exists
 assert.match(html, /id="newLawReviewButton"/, "new law review button exists");
 assert.match(html, /id="lawReviewList"/, "law review list exists");
 assert.match(html, /<section class="law-area"[^>]*>/, "law review main area exists");
+assert.match(html, /id="lawWorkbenchReviewType"/, "law review has review type condition");
+assert.match(html, /id="lawWorkbenchOutputType"/, "law review has output type condition");
+assert.match(html, /data-law-workbench-tab="review"/, "law review has review result tab");
+assert.match(html, /검토결과/, "law review result tab label exists");
 assert.match(html, /법령검토/, "law review label is used");
 
 assert.doesNotMatch(html, /id="studioLawButton"/, "Studio law tool card is removed");

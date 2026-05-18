@@ -317,6 +317,31 @@
                 <span>자치법규 지역</span>
                 <input id="lawWorkbenchRegion" class="text-input" type="text" placeholder="예: 서울특별시" />
               </label>
+              <label class="law-advanced-field">
+                <span>검토 유형</span>
+                <select id="lawWorkbenchReviewType" class="text-input">
+                  <option value="general">일반 법령 검토</option>
+                  <option value="internal_rule">내부 규정/지침 검토</option>
+                  <option value="ordinance">조례 상위법 검토</option>
+                  <option value="administrative_disposition">행정처분 근거 검토</option>
+                  <option value="civil_reply">민원 회신 근거 검토</option>
+                  <option value="privacy">개인정보 적법성 검토</option>
+                </select>
+              </label>
+              <label class="law-advanced-field">
+                <span>산출물 유형</span>
+                <select id="lawWorkbenchOutputType" class="text-input">
+                  <option value="law_review_opinion">법령 검토의견서</option>
+                  <option value="ordinance_upper_law_review">조례 상위법 적합성 검토서</option>
+                  <option value="administrative_disposition_basis">행정처분 근거 검토서</option>
+                  <option value="civil_reply_law_review">민원 회신 법령 검토서</option>
+                  <option value="internal_compliance_checklist">내부규정 컴플라이언스 점검표</option>
+                </select>
+              </label>
+              <label class="law-advanced-field law-advanced-field-wide">
+                <span>상세 조건</span>
+                <textarea id="lawWorkbenchConditionText" class="text-input" rows="3" placeholder="검토 관점, 제외 범위, 중점 확인사항을 입력하세요."></textarea>
+              </label>
             </div>
           </details>
 
@@ -325,7 +350,11 @@
         </header>
 
         <div class="law-mode-tabs law-workbench-tabs" role="tablist">
-          <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="main">
+          <button class="law-mode-tab is-active" type="button" role="tab" aria-selected="true" data-law-workbench-tab="review">
+            <span class="law-tab-title">검토결과</span>
+            <span class="law-tab-sub">의견 · 리스크</span>
+          </button>
+          <button class="law-mode-tab" type="button" role="tab" aria-selected="false" data-law-workbench-tab="main">
             <span class="law-tab-title">본문 · 서식</span>
             <span class="law-tab-sub">조문 · 별표</span>
           </button>

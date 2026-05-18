@@ -146,11 +146,13 @@ export async function buildLawWorkbench(input = {}, options = {}) {
   };
 }
 
-export function buildLawWorkbenchReport({ workbench, templateId = DEFAULT_REPORT_TEMPLATE } = {}) {
+export function buildLawWorkbenchReport({ workbench, reviewResult = null, templateId = DEFAULT_REPORT_TEMPLATE } = {}) {
   const wb = workbench && typeof workbench === "object" ? workbench : {};
   const selectedTemplate = clean(templateId) || DEFAULT_REPORT_TEMPLATE;
   const input = wb.input || {};
-  const markdown = [
+  const markdown = reviewResult && typeof reviewResult === "object"
+    ? reviewResultMarkdown({ reviewResult, input, warnings: wb.warnings })
+    : [
     "# 법령 검토 보고서 초안",
     "",
     "## 1. 질문/업로드 문서 요약",
@@ -178,7 +180,7 @@ export function buildLawWorkbenchReport({ workbench, templateId = DEFAULT_REPORT
     draftOpinion(wb),
     "",
     warningSummary(wb.warnings)
-  ].filter((part) => part !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    ].filter((part) => part !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
 
   return {
     ok: true,
@@ -189,12 +191,61 @@ export function buildLawWorkbenchReport({ workbench, templateId = DEFAULT_REPORT
       lawWorkbench: {
         generatedAt: wb.generatedAt || "",
         input,
-        warningCount: Array.isArray(wb.warnings) ? wb.warnings.length : 0
+        warningCount: Array.isArray(wb.warnings) ? wb.warnings.length : 0,
+        reviewResult: Boolean(reviewResult)
       }
     },
     recommendedTemplateId: selectedTemplate,
     warnings: Array.isArray(wb.warnings) ? wb.warnings : []
   };
+}
+
+function reviewResultMarkdown({ reviewResult, input, warnings = [] }) {
+  const result = reviewResult && typeof reviewResult === "object" ? reviewResult : {};
+  return [
+    "# 법령 검토 보고서 초안",
+    "",
+    "## 1. 검토 요청",
+    paragraph(input.query || [input.lawName, input.article].filter(Boolean).join(" ") || "작성 필요"),
+    "",
+    "## 2. 검토요약",
+    paragraph(result.summary || "작성 필요"),
+    "",
+    "## 3. 핵심 쟁점",
+    listSummaryFromStrings(result.issues),
+    "",
+    "## 4. 확인된 사실",
+    listSummaryFromStrings(result.facts),
+    "",
+    "## 5. 적용 법령 및 근거",
+    listSummaryFromStrings(result.legalGrounds),
+    "",
+    "## 6. 검토 의견",
+    listSummaryFromStrings(result.analysis),
+    "",
+    "## 7. 리스크",
+    listSummaryFromStrings(result.risks),
+    "",
+    "## 8. 보완 권고",
+    listSummaryFromStrings(result.recommendations),
+    "",
+    "## 9. 추가 확인 필요",
+    listSummaryFromStrings(result.missingEvidence),
+    "",
+    "## 10. 검토의견 초안",
+    paragraph(result.draftOpinion || "작성 필요"),
+    "",
+    "## 고지",
+    paragraph(result.disclaimer || "이 검토는 업무 참고용 초안입니다."),
+    "",
+    warningSummary(warnings)
+  ].filter((part) => part !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function listSummaryFromStrings(value) {
+  const list = Array.isArray(value) ? value : (value ? [value] : []);
+  if (!list.length) return "확인된 항목이 없습니다.";
+  return list.slice(0, 12).map((item) => `- ${String(item || "").trim() || "작성 필요"}`).join("\n");
 }
 
 function buildInternalImpact({ enabled, articleBlock, lawName, article, query, materialText, citations }) {

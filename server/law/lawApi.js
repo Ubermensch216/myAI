@@ -22,6 +22,7 @@ import { executeLawTool, listLawTools } from "./tools/toolRegistry.js";
 import { getThreeTier, getDelegatedLaws, getLinkedOrdinances, getLinkedOrdinanceArticles, getLinkedLawsFromOrdinance } from "./tools/lawStructure.js";
 import { searchDecisions, getDecisionText } from "./tools/decisions.js";
 import { buildLawWorkbench, buildLawWorkbenchReport } from "./lawWorkbench.js";
+import { runLawWorkbenchReview } from "./lawWorkbenchReview.js";
 import { searchLawTerms } from "./lawTermKb.js";
 import { getDecisionsConfig } from "./lawConfig.js";
 import { createRateLimiter } from "../rateLimit.js";
@@ -124,9 +125,34 @@ lawApiRouter.post(
     try {
       const result = buildLawWorkbenchReport({
         workbench: request.body?.workbench || request.body,
+        reviewResult: request.body?.reviewResult,
         templateId: request.body?.templateId
       });
       response.json(result);
+    } catch (error) {
+      sendLawError(response, error);
+    }
+  }
+);
+
+lawApiRouter.post(
+  "/workbench/review",
+  createRateLimiter({ name: "law_research", keyPrefix: "law_workbench_review:", ...lawRateLimits.research }),
+  async (request, response) => {
+    try {
+      const body = request.body || {};
+      const query = String(body.query || body.prompt || body.workbench?.input?.query || "").trim();
+      if (!query && !body.workbench) {
+        return response.status(400).json({ ok: false, error: "query or workbench is required" });
+      }
+      const reviewResult = await runLawWorkbenchReview({
+        query,
+        conditions: body.conditions,
+        workbench: body.workbench,
+        documents: body.documents,
+        model: body.model
+      }, { signal: request.signal });
+      response.json({ ok: true, reviewResult });
     } catch (error) {
       sendLawError(response, error);
     }

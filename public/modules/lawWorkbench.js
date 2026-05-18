@@ -4,8 +4,8 @@ import { getActiveDocuments } from "./chat.js";
 import { openWithPreparedDraft } from "./documentStudio.js";
 
 const MATERIAL_TEXT_LIMIT = 10000;
-const DEFAULT_TAB = "main";
-const VALID_TABS = new Set(["main", "system", "decisions", "history"]);
+const DEFAULT_TAB = "review";
+const VALID_TABS = new Set(["review", "main", "system", "decisions", "history"]);
 
 // Legacy tab → new grouped tab. Keeps room state migration painless.
 const LEGACY_TAB_MAP = {
@@ -38,9 +38,22 @@ export function bindLawWorkbenchEvents() {
   elements.lawWorkbenchTabs?.forEach((button) => {
     button.addEventListener("click", () => setActiveTab(button.dataset.lawWorkbenchTab || DEFAULT_TAB));
   });
-  for (const input of [elements.lawWorkbenchQuery, elements.lawWorkbenchLawName, elements.lawWorkbenchArticle, elements.lawWorkbenchRegion]) {
+  for (const input of [
+    elements.lawWorkbenchQuery,
+    elements.lawWorkbenchLawName,
+    elements.lawWorkbenchArticle,
+    elements.lawWorkbenchRegion,
+    elements.lawWorkbenchReviewType,
+    elements.lawWorkbenchOutputType,
+    elements.lawWorkbenchConditionText
+  ]) {
     input?.addEventListener("change", syncInputs);
   }
+  elements.lawWorkbenchOutputType?.addEventListener("change", () => {
+    if (elements.lawWorkbenchReportTemplate) {
+      elements.lawWorkbenchReportTemplate.value = elements.lawWorkbenchOutputType.value || "law_review_opinion";
+    }
+  });
   elements.lawWorkbenchQuery?.addEventListener("input", debounceTermsPreview);
   elements.lawWorkbenchQuery?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -73,8 +86,10 @@ export function renderLawWorkbench() {
 }
 
 function ensureWorkbenchState(studio) {
-  if (!studio) return { input: {}, data: null, terms: [], activeTab: DEFAULT_TAB };
+  if (!studio) return { input: {}, conditions: {}, data: null, reviewResult: null, terms: [], activeTab: DEFAULT_TAB };
   studio.input = studio.input && typeof studio.input === "object" ? studio.input : {};
+  studio.conditions = studio.conditions && typeof studio.conditions === "object" ? studio.conditions : {};
+  studio.reviewResult = studio.reviewResult && typeof studio.reviewResult === "object" ? studio.reviewResult : null;
   studio.terms = Array.isArray(studio.terms) ? studio.terms : [];
   const storedTab = studio.activeTab;
   const normalized = VALID_TABS.has(storedTab) ? storedTab : (LEGACY_TAB_MAP[storedTab] || DEFAULT_TAB);
@@ -85,10 +100,17 @@ function ensureWorkbenchState(studio) {
 
 function hydrateInputs(state) {
   const input = state?.input || {};
+  const conditions = state?.conditions || {};
   setValueIfFree(elements.lawWorkbenchQuery, input.query || "");
   setValueIfFree(elements.lawWorkbenchLawName, input.lawName || "");
   setValueIfFree(elements.lawWorkbenchArticle, input.article || "");
   setValueIfFree(elements.lawWorkbenchRegion, input.region || "");
+  setValueIfFree(elements.lawWorkbenchReviewType, conditions.reviewType || "general");
+  setValueIfFree(elements.lawWorkbenchOutputType, conditions.outputType || "law_review_opinion");
+  setValueIfFree(elements.lawWorkbenchConditionText, conditions.detail || "");
+  if (elements.lawWorkbenchReportTemplate && elements.lawWorkbenchOutputType) {
+    elements.lawWorkbenchReportTemplate.value = elements.lawWorkbenchOutputType.value || "law_review_opinion";
+  }
 }
 
 function setValueIfFree(element, value) {
@@ -100,7 +122,8 @@ function syncAdvancedOpen(state) {
   const advanced = elements.lawWorkbenchAdvanced;
   if (!advanced) return;
   const input = state?.input || {};
-  if (input.lawName || input.article || input.region) {
+  const conditions = state?.conditions || {};
+  if (input.lawName || input.article || input.region || conditions.reviewType || conditions.outputType || conditions.detail) {
     advanced.open = true;
   }
 }
@@ -108,6 +131,7 @@ function syncAdvancedOpen(state) {
 function syncInputs() {
   const state = ensureWorkbenchState(getActiveLawReview());
   state.input = readInputs();
+  state.conditions = readConditions();
   touchReviewState(state);
   scheduleSave();
 }
@@ -121,9 +145,18 @@ function readInputs() {
   };
 }
 
+function readConditions() {
+  return {
+    reviewType: elements.lawWorkbenchReviewType?.value?.trim() || "general",
+    outputType: elements.lawWorkbenchOutputType?.value?.trim() || "law_review_opinion",
+    detail: elements.lawWorkbenchConditionText?.value?.trim() || ""
+  };
+}
+
 async function runLawWorkbench() {
   const state = ensureWorkbenchState(getActiveLawReview());
   const input = readInputs();
+  const conditions = readConditions();
   if (!input.query && !input.lawName) {
     setStatus("질문 또는 법령명을 입력하세요.", "error");
     elements.lawWorkbenchQuery?.focus();
@@ -147,13 +180,36 @@ async function runLawWorkbench() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `status ${response.status}`);
     state.input = input;
+    state.conditions = conditions;
     state.data = payload;
     state.terms = Array.isArray(payload.termMatches) ? payload.termMatches : state.terms;
-    state.activeTab = _activeTab;
+    state.activeTab = "review";
+    _activeTab = "review";
     state.title = deriveReviewTitle(input);
     touchReviewState(state);
     scheduleSave();
     window.dispatchEvent(new CustomEvent("myai:renderlawreviews"));
+    renderLawWorkbench();
+    setStatus("공식근거를 바탕으로 LLM 검토 결과를 작성하는 중입니다.", "running");
+
+    const reviewResponse = await fetch("/api/law/workbench/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: _workbenchAbort.signal,
+      body: JSON.stringify({
+        query: input.query || [input.lawName, input.article].filter(Boolean).join(" "),
+        conditions,
+        workbench: payload,
+        documents: getActiveDocuments()
+      })
+    });
+    const reviewPayload = await reviewResponse.json().catch(() => ({}));
+    if (!reviewResponse.ok || reviewPayload.ok === false) {
+      throw new Error(reviewPayload.error || `status ${reviewResponse.status}`);
+    }
+    state.reviewResult = reviewPayload.reviewResult || reviewPayload.result || null;
+    touchReviewState(state);
+    scheduleSave();
     setStatus("", "idle");
     renderLawWorkbench();
   } catch (error) {
@@ -167,13 +223,13 @@ async function runLawWorkbench() {
 
 async function createLawWorkbenchReport() {
   const state = ensureWorkbenchState(getActiveLawReview());
-  if (!state.data) throw new Error("먼저 검토를 실행하세요.");
+  if (!state.data && !state.reviewResult) throw new Error("먼저 검토를 실행하세요.");
   setStatus("검토 보고서 초안을 생성하는 중입니다.", "running");
   const templateId = elements.lawWorkbenchReportTemplate?.value || "law_review_opinion";
   const response = await fetch("/api/law/workbench/report", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workbench: state.data, templateId })
+    body: JSON.stringify({ workbench: state.data, reviewResult: state.reviewResult, templateId })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.ok === false) throw new Error(payload.error || `status ${response.status}`);
@@ -192,15 +248,19 @@ function resetLawWorkbench() {
   const state = ensureWorkbenchState(getActiveLawReview());
   if (!state) return;
   state.input = {};
+  state.conditions = {};
   state.data = null;
+  state.reviewResult = null;
   state.terms = [];
   state.activeTab = DEFAULT_TAB;
   state.title = "새 법령검토";
   touchReviewState(state);
   _activeTab = DEFAULT_TAB;
-  for (const input of [elements.lawWorkbenchQuery, elements.lawWorkbenchLawName, elements.lawWorkbenchArticle, elements.lawWorkbenchRegion]) {
+  for (const input of [elements.lawWorkbenchQuery, elements.lawWorkbenchLawName, elements.lawWorkbenchArticle, elements.lawWorkbenchRegion, elements.lawWorkbenchConditionText]) {
     if (input) input.value = "";
   }
+  if (elements.lawWorkbenchReviewType) elements.lawWorkbenchReviewType.value = "general";
+  if (elements.lawWorkbenchOutputType) elements.lawWorkbenchOutputType.value = "law_review_opinion";
   if (elements.lawWorkbenchAdvanced) elements.lawWorkbenchAdvanced.open = false;
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:renderlawreviews"));
@@ -242,9 +302,10 @@ function renderTerms(state) {
 
 function syncReportBar(state) {
   const bar = elements.lawReportBar;
-  if (bar) bar.hidden = !state?.data;
+  const hasResult = Boolean(state?.data || state?.reviewResult);
+  if (bar) bar.hidden = !hasResult;
   if (elements.lawWorkbenchReportButton) {
-    elements.lawWorkbenchReportButton.disabled = !state?.data;
+    elements.lawWorkbenchReportButton.disabled = !hasResult;
   }
 }
 
@@ -253,7 +314,7 @@ function renderBody(state) {
   if (!target) return;
   target.innerHTML = "";
   const data = state?.data;
-  if (!data) {
+  if (!data && !state?.reviewResult) {
     target.innerHTML = `
       <div class="law-explorer-empty law-empty-hero">
         <h3>법령검토</h3>
@@ -267,7 +328,9 @@ function renderBody(state) {
       </div>`;
     return;
   }
-  if (_activeTab === "main") {
+  if (_activeTab === "review") {
+    renderReviewResult(target, state);
+  } else if (_activeTab === "main") {
     renderArticle(target, data.article);
     renderAiCandidates(target, data.aiCandidates);
     renderListPanel(target, data.annexes?.items, "별표 · 서식");
@@ -282,7 +345,75 @@ function renderBody(state) {
     renderHistory(target, data.history);
     renderImpact(target, data.internalImpact);
   }
-  renderWarnings(target, data.warnings);
+  renderWarnings(target, data?.warnings);
+}
+
+function renderReviewResult(target, state) {
+  const result = state?.reviewResult;
+  const card = document.createElement("section");
+  card.className = "law-review-result-card";
+  const head = document.createElement("div");
+  head.className = "law-review-result-head";
+  const title = document.createElement("h3");
+  title.textContent = "검토결과";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "send-button law-review-result-cta";
+  button.textContent = "검토보고서 초안 만들기";
+  button.disabled = !state?.data && !state?.reviewResult;
+  button.addEventListener("click", () => createLawWorkbenchReport().catch((error) => setStatus(error.message || "보고서 생성에 실패했습니다.", "error")));
+  head.append(title, button);
+  card.append(head);
+  if (!result) {
+    const empty = document.createElement("p");
+    empty.className = "law-explorer-empty";
+    empty.textContent = state?.data
+      ? "공식근거는 수집되었습니다. LLM 검토 결과가 아직 없거나 생성에 실패했습니다. 근거 조문, 법체계, 판례 탭에서 수집된 근거를 확인할 수 있습니다."
+      : "검토를 실행하면 공식근거와 LLM 검토 결과가 표시됩니다.";
+    card.append(empty);
+    target.append(card);
+    return;
+  }
+  appendResultSection(card, "요약", result.summary);
+  appendResultList(card, "핵심 쟁점", result.issues);
+  appendResultList(card, "확인된 사실", result.facts);
+  appendResultList(card, "적용 법령 및 근거", result.legalGrounds);
+  appendResultList(card, "검토 의견", result.analysis);
+  appendResultList(card, "리스크", result.risks);
+  appendResultList(card, "보완 권고", result.recommendations);
+  appendResultList(card, "추가 확인 필요", result.missingEvidence);
+  appendResultSection(card, "검토의견 초안", result.draftOpinion);
+  appendResultSection(card, "고지", result.disclaimer);
+  target.append(card);
+}
+
+function appendResultSection(target, title, value) {
+  if (!value) return;
+  const section = document.createElement("section");
+  section.className = "law-review-result-section";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const body = document.createElement("p");
+  body.textContent = String(value);
+  section.append(heading, body);
+  target.append(section);
+}
+
+function appendResultList(target, title, value) {
+  const items = Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
+  if (!items.length) return;
+  const section = document.createElement("section");
+  section.className = "law-review-result-section";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const list = document.createElement("ul");
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.textContent = typeof item === "string" ? item : itemLabel(item);
+    list.append(li);
+  }
+  section.append(heading, list);
+  target.append(section);
 }
 
 function renderAiCandidates(target, aiCandidates) {

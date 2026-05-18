@@ -92,6 +92,9 @@ await run("law workbench aggregates official law evidence groups", testLawWorkbe
 await run("law workbench supports natural-language-only queries", testLawWorkbenchNaturalQueryOnly);
 await run("law workbench isolates partial upstream failures", testLawWorkbenchPartialFailure);
 await run("law workbench report renders fixed review sequence", testLawWorkbenchReport);
+await run("law workbench review payload includes official evidence and review documents", testLawWorkbenchReviewPayload);
+await run("law workbench review normalizes Korean-keyed LLM JSON", testLawWorkbenchReviewNormalizesKoreanKeys);
+await run("law workbench report prefers LLM review result", testLawWorkbenchReportUsesReviewResult);
 await run("law term KB expands citizen wording into legal terms", testLawTermKbExpansion);
 await run("time_travel compares full law text when no article is provided", testTimeTravelFullLaw);
 await run("MCP-compatible law tool registry executes aliases", testLawToolRegistry);
@@ -1512,6 +1515,92 @@ async function testLawWorkbenchReport() {
   assert.deepEqual(report.citations, [{ citationId: "L1", sourceType: "law", locator: "Test Act 제1조" }]);
   assert.ok(report.metadata.lawWorkbench);
   assert.ok(report.warnings.length);
+}
+
+async function testLawWorkbenchReviewPayload() {
+  const { buildLawWorkbenchReviewPrompt } = await import("../server/law/lawWorkbenchReview.js");
+  const payload = buildLawWorkbenchReviewPrompt({
+    query: "Check policy",
+    conditions: {
+      reviewType: "privacy",
+      outputType: "law_review_opinion",
+      detail: "Focus on consent"
+    },
+    workbench: {
+      article: { ok: true, text: "Article body", citation: { citationId: "L1", locator: "Test Act Article 1" } },
+      decisions: { precedents: { items: [{ title: "Case A" }] } }
+    },
+    documents: [
+      { fileName: "policy.txt", summary: "Policy summary", text: "The policy text mentions consent." }
+    ]
+  });
+
+  assert.match(payload, /Check policy/);
+  assert.match(payload, /Focus on consent/);
+  assert.match(payload, /Test Act Article 1/);
+  assert.match(payload, /Article body/);
+  assert.match(payload, /Case A/);
+  assert.match(payload, /policy.txt/);
+  assert.match(payload, /The policy text mentions consent/);
+}
+
+async function testLawWorkbenchReviewNormalizesKoreanKeys() {
+  const { normalizeReviewResult } = await import("../server/law/lawWorkbenchReview.js");
+  const result = normalizeReviewResult({
+    reviewResult: {
+      "요약": "검토 요약 A",
+      "핵심 쟁점": ["쟁점 A"],
+      "확인된 사실": ["사실 A"],
+      "적용 법령 및 근거": ["근거 A [L1]"],
+      "검토 의견": ["의견 A"],
+      "리스크": ["리스크 A"],
+      "보완 권고": ["권고 A"],
+      "추가 확인 필요": ["추가확인 A"],
+      "검토의견 초안": "초안 A",
+      "고지": "고지 A"
+    }
+  });
+
+  assert.equal(result.summary, "검토 요약 A");
+  assert.deepEqual(result.issues, ["쟁점 A"]);
+  assert.deepEqual(result.facts, ["사실 A"]);
+  assert.deepEqual(result.legalGrounds, ["근거 A [L1]"]);
+  assert.deepEqual(result.analysis, ["의견 A"]);
+  assert.deepEqual(result.risks, ["리스크 A"]);
+  assert.deepEqual(result.recommendations, ["권고 A"]);
+  assert.deepEqual(result.missingEvidence, ["추가확인 A"]);
+  assert.equal(result.draftOpinion, "초안 A");
+  assert.equal(result.disclaimer, "고지 A");
+}
+
+async function testLawWorkbenchReportUsesReviewResult() {
+  const { buildLawWorkbenchReport } = await import("../server/law/lawWorkbench.js");
+  const report = buildLawWorkbenchReport({
+    templateId: "law_review_opinion",
+    reviewResult: {
+      summary: "LLM summary",
+      issues: ["Issue A"],
+      facts: ["Fact A"],
+      legalGrounds: ["Ground A [L1]"],
+      analysis: ["Analysis A"],
+      risks: ["Risk A"],
+      recommendations: ["Recommendation A"],
+      missingEvidence: ["Missing A"],
+      draftOpinion: "Draft opinion A",
+      disclaimer: "Working draft only"
+    },
+    workbench: {
+      input: { query: "report from review result" },
+      citations: [{ citationId: "L1", sourceType: "law", locator: "Test Act Article 1" }]
+    }
+  });
+
+  assert.equal(report.ok, true);
+  assert.match(report.markdown, /LLM summary/);
+  assert.match(report.markdown, /Issue A/);
+  assert.match(report.markdown, /Draft opinion A/);
+  assert.match(report.markdown, /Working draft only/);
+  assert.deepEqual(report.citations, [{ citationId: "L1", sourceType: "law", locator: "Test Act Article 1" }]);
 }
 
 async function testLawTermKbExpansion() {

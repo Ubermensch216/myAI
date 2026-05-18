@@ -10643,6 +10643,41 @@ body.panel-resizing .panel-resizer::after {
   padding: 8px;
 }
 
+.law-review-result-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.law-review-result-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.law-review-result-head h3,
+.law-review-result-section h4 {
+  margin: 0;
+}
+
+.law-review-result-section {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.law-review-result-section p,
+.law-review-result-section ul {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
 @media (max-width: 720px) {
   .law-workbench-row,
   .law-workbench-row + .law-workbench-row {
