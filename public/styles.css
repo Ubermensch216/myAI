@@ -10897,6 +10897,115 @@ body.panel-resizing .panel-resizer::after {
   margin: 0;
 }
 
+.law-impact-brief {
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  display: grid;
+  gap: 12px;
+}
+
+.law-impact-summary-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.law-impact-metric {
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.law-impact-metric strong {
+  color: var(--accent-dark, #3a52cc);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.law-impact-metric span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.law-impact-metric small {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.law-impact-group {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.law-impact-signal-list {
+  border-top-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+}
+
+.law-impact-law-list {
+  border-top-style: dashed;
+}
+
+.law-impact-group-head {
+  display: grid;
+  gap: 3px;
+}
+
+.law-impact-group-head h5 {
+  color: var(--text);
+  font-size: 13px;
+  margin: 0;
+}
+
+.law-impact-group-head p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.law-impact-row {
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  display: grid;
+  font-size: 13px;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  line-height: 1.5;
+  padding: 8px 10px;
+}
+
+.law-impact-type {
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.law-impact-type-material_signal {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.law-impact-type-obligation,
+.law-impact-type-condition,
+.law-impact-type-risk,
+.law-impact-type-item {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--muted);
+}
+
 .law-workbench-warnings {
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
   border-radius: 8px;
@@ -11053,8 +11162,13 @@ body.panel-resizing .panel-resizer::after {
   }
 
   .law-workflow-steps,
+  .law-impact-summary-grid,
   .law-evidence-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .law-impact-row {
+    grid-template-columns: 1fr;
   }
 
   .law-report-panel-controls {

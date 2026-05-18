@@ -474,8 +474,8 @@ function renderBody(state) {
     renderListPanel(target, data.ordinances?.items, "자치법규");
     renderDecisions(target, data.decisions);
   } else if (_activeTab === "history") {
-    renderHistory(target, data.history);
     renderImpact(target, data.internalImpact);
+    renderHistory(target, data.history);
   }
   renderWarnings(target, data?.warnings);
 }
@@ -541,13 +541,14 @@ function renderReviewResult(target, state) {
 
 function renderEvidenceDashboard(target, state) {
   const data = state?.data || {};
+  const impactNodes = splitImpactNodes(data.internalImpact);
   const counts = [
     { label: "조문", value: data.article?.ok ? 1 : 0, detail: data.article?.citation?.locator || "본문 미확인" },
     { label: "별표/서식", value: countItems(data.annexes?.items), detail: "첨부 서식 후보" },
     { label: "법체계", value: countSystemEvidence(data), detail: "상하위 법령/자치법규" },
     { label: "판례/해석", value: countDecisionEvidence(data.decisions), detail: "판례·해석례·행정규칙" },
     { label: "개정 이력", value: countItems(data.history?.revisions), detail: "시행일자별 이력" },
-    { label: "내부자료 영향", value: countItems(data.internalImpact?.impactMap?.nodes), detail: countItems(state?.documents) ? "첨부 검토 반영" : "전용 자료 없음" }
+    { label: "내부자료 영향", value: impactNodes.signals.length, detail: countItems(state?.documents) ? "조문과 직접 맞닿은 문장" : "전용 자료 없음" }
   ];
   const section = document.createElement("section");
   section.className = "law-evidence-dashboard";
@@ -774,18 +775,108 @@ function renderImpact(target, impact) {
     appendEmptySection(target, "내부자료 영향", impact?.summary || "내부자료 영향 분석 결과가 없습니다.");
     return;
   }
+  const { signals, lawNodes } = splitImpactNodes(impact);
   const section = document.createElement("section");
-  section.className = "law-workbench-result-section";
+  section.className = "law-workbench-result-section law-impact-brief";
   const heading = document.createElement("h4");
   heading.textContent = "내부자료 영향";
   section.append(heading);
-  const summary = document.createElement("p");
-  summary.className = "law-workbench-summary";
-  summary.textContent = impact.summary || "내부자료 영향 분석을 완료했습니다.";
-  section.append(summary);
-  const nodes = (impact.impactMap?.nodes || []).filter((node) => node.type !== "law_article" && node.type !== "review_subject");
-  appendItems(section, nodes, (node) => `${node.label || node.id} - ${node.summary || ""}`);
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "law-impact-summary-grid";
+  summaryGrid.append(
+    createImpactMetric("내부자료 신호", signals.length, "첨부자료에서 조문 키워드와 직접 맞닿은 문장"),
+    createImpactMetric("조문 점검 항목", lawNodes.length, "조문에서 추출한 의무·조건·리스크")
+  );
+  section.append(summaryGrid);
+
+  const lead = document.createElement("p");
+  lead.className = "law-workbench-summary";
+  lead.textContent = signals.length
+    ? `첨부자료에서 조문과 연결되는 문장 ${signals.length}건을 아래에 따로 표시했습니다.`
+    : "첨부자료에서 조문과 직접 맞닿은 문장은 찾지 못했습니다.";
+  section.append(lead);
+
+  appendImpactGroup(section, {
+    title: "내부자료에서 발견된 신호",
+    description: "아래 문장들이 실제 첨부자료에서 잡힌 부분입니다. 이 항목을 먼저 확인하세요.",
+    items: signals,
+    className: "law-impact-signal-list",
+    empty: "첨부자료 안에서 조문 키워드와 직접 맞닿은 문장을 찾지 못했습니다."
+  });
+  appendImpactGroup(section, {
+    title: "조문에서 뽑은 점검 항목",
+    description: "내부자료와 대조할 때 기준으로 쓴 조문 항목입니다. 내부자료 신호와는 다른 목록입니다.",
+    items: lawNodes,
+    className: "law-impact-law-list",
+    empty: "조문에서 별도 점검 항목을 추출하지 못했습니다."
+  });
   target.append(section);
+}
+
+function splitImpactNodes(impact) {
+  const nodes = Array.isArray(impact?.impactMap?.nodes) ? impact.impactMap.nodes : [];
+  return {
+    signals: nodes.filter((node) => node.type === "material_signal"),
+    lawNodes: nodes.filter((node) => !["law_article", "review_subject", "material_signal"].includes(node.type))
+  };
+}
+
+function createImpactMetric(label, value, detail) {
+  const item = document.createElement("div");
+  item.className = "law-impact-metric";
+  const count = document.createElement("strong");
+  count.textContent = String(value);
+  const name = document.createElement("span");
+  name.textContent = label;
+  const note = document.createElement("small");
+  note.textContent = detail;
+  item.append(count, name, note);
+  return item;
+}
+
+function appendImpactGroup(target, { title, description, items, className, empty }) {
+  const group = document.createElement("div");
+  group.className = `law-impact-group ${className}`;
+  const head = document.createElement("div");
+  head.className = "law-impact-group-head";
+  const heading = document.createElement("h5");
+  heading.textContent = title;
+  const body = document.createElement("p");
+  body.textContent = description;
+  head.append(heading, body);
+  group.append(head);
+
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    const emptyText = document.createElement("p");
+    emptyText.className = "law-explorer-empty";
+    emptyText.textContent = empty;
+    group.append(emptyText);
+    target.append(group);
+    return;
+  }
+
+  for (const node of list.slice(0, 12)) {
+    const row = document.createElement("div");
+    row.className = "law-impact-row";
+    const badge = document.createElement("span");
+    badge.className = `law-impact-type law-impact-type-${node.type || "item"}`;
+    badge.textContent = impactNodeTypeLabel(node.type);
+    const text = document.createElement("span");
+    text.textContent = node.summary || node.label || node.id || "확인 필요";
+    row.append(badge, text);
+    group.append(row);
+  }
+  target.append(group);
+}
+
+function impactNodeTypeLabel(type) {
+  if (type === "material_signal") return "자료";
+  if (type === "obligation") return "의무";
+  if (type === "condition") return "조건";
+  if (type === "risk") return "리스크";
+  return "항목";
 }
 
 function renderListPanel(target, items, title, labelFn = itemLabel) {

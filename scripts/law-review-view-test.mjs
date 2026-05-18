@@ -26,7 +26,7 @@ assert.match(html, /id="lawWorkbenchOutputType"/, "law review has output type co
 assert.match(html, /data-law-workbench-tab="review"/, "law review has review result tab");
 assert.match(html, /data-law-workbench-tab="evidence"/, "law review has grouped evidence tab");
 assert.match(html, /data-law-workbench-tab="history"/, "law review has revision and impact tab");
-assert.match(html, /data-law-workbench-tab="report"/, "law review has report tab");
+assert.doesNotMatch(html, /data-law-workbench-tab="report"/, "law review keeps report generation inside the review tab");
 assert.match(html, /검토 초안/, "law review draft-first tab label exists");
 assert.match(html, /근거/, "law review evidence tab label exists");
 assert.doesNotMatch(html, /data-law-workbench-tab="main"/, "law review hides source-family tabs from primary workflow");
@@ -41,9 +41,15 @@ assert.doesNotMatch(lawJs, /getActiveDocuments/, "law review must not auto-inclu
 assert.match(lawJs, /const\s+reviewDocuments\s*=\s*getLawReviewDocuments\(state\)/, "law review scopes documents to dedicated law review state");
 assert.match(lawJs, /documents:\s*reviewDocuments/, "law review sends only dedicated law review documents");
 assert.match(lawJs, /reviewError/, "law review stores exact LLM failure reason for the UI");
-assert.match(lawJs, /function\s+renderWorkflowSteps/, "law review renders progress as workflow steps");
 assert.match(lawJs, /function\s+renderEvidenceDashboard/, "law review summarizes collected evidence before raw source lists");
-assert.match(lawJs, /function\s+renderReportPanel/, "law review has a dedicated report workflow panel");
+assert.match(lawJs, /function\s+renderEvidenceSection/, "law review evidence details use status-aware sections");
+assert.match(lawJs, /function\s+renderDecisionEvidenceSection/, "law review decision evidence is grouped by source type");
+assert.match(lawJs, /law-evidence-detail-section/, "law review evidence details have dedicated section markup");
+assert.match(lawJs, /law-evidence-source-badge/, "law review evidence details show source status badges");
+assert.match(lawJs, /renderImpact\(target,\s*data\.internalImpact\);\s*renderHistory\(target,\s*data\.history\);/, "law review shows impact before revision history");
+assert.match(lawJs, /function\s+splitImpactNodes/, "law review separates internal material signals from law-derived nodes");
+assert.match(lawJs, /law-impact-brief/, "law review renders a clear internal impact brief");
+assert.match(lawJs, /law-impact-signal-list/, "law review renders internal material signals as their own list");
 assert.match(lawJs, /main:\s*"evidence"/, "legacy main tab maps to grouped evidence tab");
 assert.match(lawJs, /decisions:\s*"evidence"/, "legacy decisions tab maps to grouped evidence tab");
 assert.match(reviewServerJs, /\[law-workbench-review\]/, "law review diagnostics log is present");
@@ -64,4 +70,8 @@ assert.match(
 assert.match(css, /\.law-area\s*{/, "law-area styles exist");
 assert.match(css, /\.law-workflow-steps\s*{/, "law review workflow step styles exist");
 assert.match(css, /\.law-evidence-dashboard\s*{/, "law review evidence dashboard styles exist");
+assert.match(css, /\.law-evidence-detail-section\s*{/, "law review evidence detail section styles exist");
+assert.match(css, /\.law-evidence-source-badge\s*{/, "law review evidence status badge styles exist");
 assert.match(css, /\.law-report-panel\s*{/, "law review report panel styles exist");
+assert.match(css, /\.law-impact-brief\s*{/, "law review impact brief styles exist");
+assert.match(css, /\.law-impact-signal-list\s*{/, "law review impact signal list styles exist");
