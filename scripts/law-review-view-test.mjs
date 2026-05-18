@@ -69,9 +69,19 @@ assert.match(
 );
 assert.match(css, /\.law-area\s*{/, "law-area styles exist");
 assert.match(css, /\.law-workflow-steps\s*{/, "law review workflow step styles exist");
+assert.match(
+  css,
+  /\.law-workbench-body\s*>\s*\*\s*{[\s\S]*?flex:\s*0\s+0\s+auto;/,
+  "law review result sections do not shrink and overlap in the scroll body"
+);
 assert.match(css, /\.law-evidence-dashboard\s*{/, "law review evidence dashboard styles exist");
 assert.match(css, /\.law-evidence-detail-section\s*{/, "law review evidence detail section styles exist");
 assert.match(css, /\.law-evidence-source-badge\s*{/, "law review evidence status badge styles exist");
+assert.match(
+  css,
+  /\.law-evidence-detail-section\s+\.law-explorer-empty\s*,[\s\S]*?height:\s*auto;[\s\S]*?min-height:\s*0;/,
+  "law review nested empty states reset the full-panel empty height"
+);
 assert.match(css, /\.law-report-panel\s*{/, "law review report panel styles exist");
 assert.match(css, /\.law-impact-brief\s*{/, "law review impact brief styles exist");
 assert.match(css, /\.law-impact-signal-list\s*{/, "law review impact signal list styles exist");

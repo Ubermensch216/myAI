@@ -1313,8 +1313,8 @@ async function testLawWorkbenchAggregation() {
         }
       };
     },
-    async searchAnnexes() {
-      calls.push(["searchAnnexes"]);
+    async searchAnnexes(input) {
+      calls.push(["searchAnnexes", input]);
       return { ok: true, results: [{ title: "Form A", annexNo: "1", lawName: "Test Act", mst: "10" }] };
     },
     async getLawHistory() {
@@ -1333,16 +1333,16 @@ async function testLawWorkbenchAggregation() {
       calls.push(["searchOrdinances"]);
       return { ok: true, results: [{ title: "Seoul Ordinance", region: "서울특별시", ordinId: "O1" }] };
     },
-    async searchPrecedents() {
-      calls.push(["searchPrecedents"]);
+    async searchPrecedents(input) {
+      calls.push(["searchPrecedents", input]);
       return { ok: true, results: [{ title: "Precedent", caseNumber: "2024다1", precId: "P1" }] };
     },
-    async searchInterpretations() {
-      calls.push(["searchInterpretations"]);
+    async searchInterpretations(input) {
+      calls.push(["searchInterpretations", input]);
       return { ok: true, results: [{ title: "Interpretation", expcId: "I1" }] };
     },
-    async searchAdminRules() {
-      calls.push(["searchAdminRules"]);
+    async searchAdminRules(input) {
+      calls.push(["searchAdminRules", input]);
       return { ok: true, results: [{ title: "Admin Rule", admrulId: "R1" }] };
     }
   };
@@ -1366,9 +1366,26 @@ async function testLawWorkbenchAggregation() {
   assert.equal(result.decisions.precedents.items.length, 1);
   assert.equal(result.decisions.interpretations.items.length, 1);
   assert.equal(result.decisions.adminRules.items.length, 1);
+  assert.equal(result.decisions.precedents.items[0].title, "Precedent");
+  assert.equal(result.decisions.precedents.items[0].precId, "P1");
+  assert.match(result.decisions.precedents.items[0].url, /precInfoP\.do/);
+  assert.equal(result.decisions.interpretations.items[0].title, "Interpretation");
+  assert.equal(result.decisions.interpretations.items[0].expcId, "I1");
+  assert.match(result.decisions.interpretations.items[0].url, /expcInfoP\.do/);
+  assert.equal(result.decisions.adminRules.items[0].title, "Admin Rule");
+  assert.equal(result.decisions.adminRules.items[0].admrulId, "R1");
+  assert.match(result.decisions.adminRules.items[0].url, /admRulInfoP\.do/);
   assert.equal(result.internalImpact.impactMap.mode, "impact_map");
   assert.ok(result.citations.some((item) => item.sourceType === "law"));
   assert.ok(calls.some(([name]) => name === "getLawArticle"));
+  const annexCall = calls.find(([name]) => name === "searchAnnexes");
+  assert.deepEqual(annexCall[1], { lawName: "Test Act", query: "Test Act", display: 8 });
+  for (const source of ["searchPrecedents", "searchInterpretations", "searchAdminRules"]) {
+    const call = calls.find(([name]) => name === source);
+    assert.ok(call, `${source} must be called`);
+    assert.equal(call[1].display, 5);
+    assert.ok(String(call[1].query || "").trim(), `${source} must receive a concrete query`);
+  }
 }
 
 async function testLawWorkbenchNaturalQueryOnly() {

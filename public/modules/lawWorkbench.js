@@ -468,11 +468,24 @@ function renderBody(state) {
     renderEvidenceDashboard(target, state);
     renderArticle(target, data.article);
     renderAiCandidates(target, data.aiCandidates);
-    renderListPanel(target, data.annexes?.items, "별표 · 서식");
+    renderEvidenceSection(target, {
+      title: "별표/서식",
+      block: data.annexes,
+      description: "법령에 연결된 별표, 별지, 서식 후보입니다.",
+      labelFn: annexEvidenceLabel
+    });
     renderStructure(target, data.structure);
-    renderListPanel(target, data.delegated?.items, "위임 / 하위법령");
-    renderListPanel(target, data.ordinances?.items, "자치법규");
-    renderDecisions(target, data.decisions);
+    renderEvidenceSection(target, {
+      title: "위임/하위법령",
+      block: data.delegated,
+      description: "검토 조문과 함께 확인해야 할 위임·하위 법령입니다."
+    });
+    renderEvidenceSection(target, {
+      title: "자치법규",
+      block: data.ordinances,
+      description: "지역 조건과 질의어로 함께 조회한 자치법규 후보입니다."
+    });
+    renderDecisionEvidenceSection(target, data.decisions);
   } else if (_activeTab === "history") {
     renderImpact(target, data.internalImpact);
     renderHistory(target, data.history);
@@ -736,6 +749,23 @@ function renderHistory(target, history) {
 
 function renderStructure(target, structure) {
   const tiers = structure?.tiers;
+  const items = Array.isArray(tiers)
+    ? tiers
+    : tiers && typeof tiers === "object"
+      ? Object.entries(tiers).map(([level, value]) => ({
+          title: `${level}: ${value?.lawName || value?.title || "확인 필요"}`,
+          url: value?.url || "",
+          level,
+          lawName: value?.lawName || value?.title || ""
+        }))
+      : [];
+  renderEvidenceSection(target, {
+    title: "법체계",
+    block: { ok: Boolean(structure?.ok), skipped: structure?.skipped, error: structure?.error, cacheHit: structure?.cacheHit, items },
+    description: "상위 법령, 하위 법령, 관련 법령 체계를 확인합니다.",
+    labelFn: evidenceItemLabel
+  });
+  return;
   if (!tiers) {
     appendEmptySection(target, "법체계", "법체계 정보를 확인하지 못했습니다.");
     return;
@@ -768,6 +798,36 @@ function renderDecisions(target, decisions = {}) {
   if (!hasAny) {
     // sections already rendered empty placeholders via appendItems
   }
+}
+
+function renderDecisionEvidenceSection(target, decisions = {}) {
+  const groups = [
+    { title: "판례", block: decisions.precedents, description: "공식 판례 검색 결과입니다." },
+    { title: "해석례", block: decisions.interpretations, description: "법령해석례 검색 결과입니다." },
+    { title: "행정규칙", block: decisions.adminRules, description: "관련 고시·예규·행정규칙 후보입니다." }
+  ];
+  const total = groups.reduce((sum, group) => sum + countItems(group.block?.items), 0);
+  const section = document.createElement("section");
+  section.className = "law-workbench-result-section law-evidence-detail-section law-decision-evidence-section";
+  section.append(createEvidenceSectionHead({
+    title: "판례/해석",
+    status: total ? { kind: "ok", label: "조회됨" } : { kind: "empty", label: "결과 없음" },
+    count: total,
+    description: "판례, 법령해석례, 행정규칙을 출처별로 나눠 확인합니다."
+  }));
+  for (const group of groups) {
+    const sub = document.createElement("div");
+    sub.className = "law-evidence-source-group";
+    sub.append(createEvidenceSectionHead({
+      title: group.title,
+      status: evidenceStatus(group.block, group.block?.items),
+      count: countItems(group.block?.items),
+      description: group.description
+    }));
+    appendEvidenceItems(sub, group.block?.items, evidenceItemLabel);
+    section.append(sub);
+  }
+  target.append(section);
 }
 
 function renderImpact(target, impact) {
@@ -812,6 +872,77 @@ function renderImpact(target, impact) {
     empty: "조문에서 별도 점검 항목을 추출하지 못했습니다."
   });
   target.append(section);
+}
+
+function renderEvidenceSection(target, { title, block, description = "", labelFn = evidenceItemLabel } = {}) {
+  const items = Array.isArray(block?.items) ? block.items : [];
+  const section = document.createElement("section");
+  section.className = "law-workbench-result-section law-evidence-detail-section";
+  section.append(createEvidenceSectionHead({
+    title,
+    status: evidenceStatus(block, items),
+    count: items.length,
+    description
+  }));
+  appendEvidenceItems(section, items, labelFn);
+  target.append(section);
+}
+
+function createEvidenceSectionHead({ title, status, count, description }) {
+  const head = document.createElement("div");
+  head.className = "law-evidence-detail-head";
+  const titleBox = document.createElement("div");
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const desc = document.createElement("p");
+  desc.textContent = description;
+  titleBox.append(heading, desc);
+  const badge = document.createElement("span");
+  badge.className = `law-evidence-source-badge is-${status.kind}`;
+  badge.textContent = status.label;
+  const countBadge = document.createElement("span");
+  countBadge.className = "law-evidence-source-count";
+  countBadge.textContent = `${count}건`;
+  head.append(titleBox, badge, countBadge);
+  return head;
+}
+
+function evidenceStatus(block, items) {
+  if (block?.error) return { kind: "error", label: "조회 실패" };
+  if (block?.skipped) return { kind: "skipped", label: "조회 생략" };
+  if (Array.isArray(items) && items.length) return { kind: "ok", label: block?.cacheHit ? "캐시 조회" : "조회됨" };
+  if (block && typeof block === "object") return { kind: "empty", label: "결과 없음" };
+  return { kind: "empty", label: "미확인" };
+}
+
+function appendEvidenceItems(target, items, labelFn = evidenceItemLabel) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    const empty = document.createElement("p");
+    empty.className = "law-explorer-empty";
+    empty.textContent = "조회된 항목이 없습니다.";
+    target.append(empty);
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "law-evidence-item-list";
+  for (const item of list.slice(0, 12)) {
+    const row = document.createElement(item?.url ? "a" : "div");
+    row.className = "law-evidence-item";
+    if (item?.url) {
+      row.href = item.url;
+      row.target = "_blank";
+      row.rel = "noopener noreferrer";
+    }
+    const title = document.createElement("strong");
+    title.textContent = labelFn(item);
+    const meta = document.createElement("span");
+    meta.textContent = evidenceItemMeta(item);
+    row.append(title);
+    if (meta.textContent) row.append(meta);
+    wrap.append(row);
+  }
+  target.append(wrap);
 }
 
 function splitImpactNodes(impact) {
@@ -940,6 +1071,30 @@ function renderWarnings(target, warnings = []) {
 
 function itemLabel(item = {}) {
   return item.title || item.lawName || item.name || item.caseNumber || item.locator || item.effectiveDate || JSON.stringify(item).slice(0, 160);
+}
+
+function evidenceItemLabel(item = {}) {
+  return item.title || item.caseNumber || item.lawName || item.name || item.locator || item.effectiveDate || JSON.stringify(item).slice(0, 120);
+}
+
+function annexEvidenceLabel(item = {}) {
+  return [item.title, item.annexNo || item.formNo].filter(Boolean).join(" / ") || evidenceItemLabel(item);
+}
+
+function evidenceItemMeta(item = {}) {
+  return [
+    item.caseNumber,
+    item.lawName,
+    item.region,
+    item.effectiveDate,
+    item.promulgationDate,
+    item.revisionType,
+    item.annexType,
+    item.mst ? `MST ${item.mst}` : "",
+    item.precId ? `판례ID ${item.precId}` : "",
+    item.expcId ? `해석ID ${item.expcId}` : "",
+    item.admrulId ? `행정규칙ID ${item.admrulId}` : ""
+  ].filter(Boolean).join(" · ");
 }
 
 async function parseReviewResponse(response) {

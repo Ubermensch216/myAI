@@ -10754,6 +10754,10 @@ body.panel-resizing .panel-resizer::after {
   padding-right: 2px;
 }
 
+.law-workbench-body > * {
+  flex: 0 0 auto;
+}
+
 .law-workflow-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -11056,6 +11060,127 @@ body.panel-resizing .panel-resizer::after {
   gap: 8px;
 }
 
+.law-evidence-detail-section {
+  display: grid;
+  gap: 10px;
+}
+
+.law-evidence-detail-head {
+  align-items: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.law-evidence-detail-head h4 {
+  margin: 0;
+}
+
+.law-evidence-detail-head > :first-child {
+  min-width: 0;
+}
+
+.law-evidence-detail-head p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 3px 0 0;
+}
+
+.law-evidence-detail-section .law-explorer-empty,
+.law-decision-evidence-section .law-explorer-empty {
+  align-items: flex-start;
+  display: block;
+  height: auto;
+  justify-content: flex-start;
+  min-height: 0;
+  padding-top: 2px;
+  text-align: left;
+}
+
+.law-evidence-source-badge {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.law-evidence-source-count {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.law-evidence-source-badge.is-ok {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-dark);
+}
+
+.law-evidence-source-badge.is-empty,
+.law-evidence-source-badge.is-skipped {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+}
+
+.law-evidence-source-badge.is-error {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.law-evidence-source-count {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.law-evidence-item-list,
+.law-evidence-source-group {
+  display: grid;
+  gap: 8px;
+}
+
+.law-evidence-source-group {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.law-evidence-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  display: grid;
+  gap: 3px;
+  line-height: 1.45;
+  padding: 9px 10px;
+  text-decoration: none;
+}
+
+.law-evidence-item:hover,
+.law-evidence-item:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  outline: none;
+}
+
+.law-evidence-item strong {
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.law-evidence-item span {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .law-evidence-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -11169,6 +11294,14 @@ body.panel-resizing .panel-resizer::after {
 
   .law-impact-row {
     grid-template-columns: 1fr;
+  }
+
+  .law-evidence-detail-head {
+    grid-template-columns: 1fr;
+  }
+
+  .law-evidence-item span {
+    white-space: normal;
   }
 
   .law-report-panel-controls {
