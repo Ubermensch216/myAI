@@ -34,9 +34,6 @@ export function bindLawWorkbenchEvents() {
     }
     runLawWorkbench();
   });
-  elements.lawWorkbenchReportButton?.addEventListener("click", () => {
-    createLawWorkbenchReport().catch((error) => setStatus(error.message || "보고서 생성에 실패했습니다.", "error"));
-  });
   elements.lawWorkbenchResetButton?.addEventListener("click", resetLawWorkbench);
   elements.lawWorkbenchTabs?.forEach((button) => {
     button.addEventListener("click", () => setActiveTab(button.dataset.lawWorkbenchTab || DEFAULT_TAB));
@@ -52,11 +49,6 @@ export function bindLawWorkbenchEvents() {
   ]) {
     input?.addEventListener("change", syncInputs);
   }
-  elements.lawWorkbenchOutputType?.addEventListener("change", () => {
-    if (elements.lawWorkbenchReportTemplate) {
-      elements.lawWorkbenchReportTemplate.value = elements.lawWorkbenchOutputType.value || "law_review_opinion";
-    }
-  });
   elements.lawWorkbenchQuery?.addEventListener("input", debounceTermsPreview);
   elements.lawWorkbenchQuery?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -209,10 +201,9 @@ export function renderLawWorkbench() {
   const state = ensureWorkbenchState(getActiveLawReview());
   hydrateInputs(state);
   syncAdvancedOpen(state);
-  renderTabs();
+  renderTabs(state);
   renderTerms(state);
   renderBody(state);
-  syncReportBar(state);
   renderLawReviewAttachments();
 }
 
@@ -241,9 +232,6 @@ function hydrateInputs(state) {
   setValueIfFree(elements.lawWorkbenchReviewType, conditions.reviewType || "general");
   setValueIfFree(elements.lawWorkbenchOutputType, conditions.outputType || "law_review_opinion");
   setValueIfFree(elements.lawWorkbenchConditionText, conditions.detail || "");
-  if (elements.lawWorkbenchReportTemplate && elements.lawWorkbenchOutputType) {
-    elements.lawWorkbenchReportTemplate.value = elements.lawWorkbenchOutputType.value || "law_review_opinion";
-  }
 }
 
 function setValueIfFree(element, value) {
@@ -370,7 +358,7 @@ async function createLawWorkbenchReport(templateOverride = "") {
   const state = ensureWorkbenchState(getActiveLawReview());
   if (!state.data && !state.reviewResult) throw new Error("먼저 검토를 실행하세요.");
   setStatus("검토 보고서 초안을 생성하는 중입니다.", "running");
-  const templateId = templateOverride || elements.lawWorkbenchReportTemplate?.value || "law_review_opinion";
+  const templateId = templateOverride || elements.lawWorkbenchOutputType?.value || "law_review_opinion";
   const response = await fetch("/api/law/workbench/report", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -429,11 +417,24 @@ function setActiveTab(tab) {
   renderLawWorkbench();
 }
 
-function renderTabs() {
+function renderTabs(state) {
+  const data = state?.data || null;
+  const hasDraft = Boolean(state?.reviewResult);
+  const hasError = Boolean(state?.reviewError);
+  const lampMap = {
+    review:   { done: hasDraft,         active: Boolean(_workbenchAbort && data && !hasDraft), error: hasError && Boolean(data) },
+    evidence: { done: Boolean(data),    active: Boolean(_workbenchAbort && !data) },
+    history:  { done: Boolean(data) }
+  };
   elements.lawWorkbenchTabs?.forEach((button) => {
-    const active = button.dataset.lawWorkbenchTab === _activeTab;
+    const tab = button.dataset.lawWorkbenchTab;
+    const active = tab === _activeTab;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
+    const lamp = lampMap[tab] || {};
+    button.classList.toggle("is-lamp-done",   Boolean(lamp.done));
+    button.classList.toggle("is-lamp-active", Boolean(lamp.active));
+    button.classList.toggle("is-lamp-error",  Boolean(lamp.error));
   });
 }
 
@@ -451,21 +452,12 @@ function renderTerms(state) {
   }
 }
 
-function syncReportBar(state) {
-  const bar = elements.lawReportBar;
-  const hasResult = Boolean(state?.data || state?.reviewResult);
-  if (bar) bar.hidden = true;
-  if (elements.lawWorkbenchReportButton) {
-    elements.lawWorkbenchReportButton.disabled = !hasResult;
-  }
-}
 
 function renderBody(state) {
   const target = elements.lawWorkbenchBody;
   if (!target) return;
   target.innerHTML = "";
   const data = state?.data;
-  renderWorkflowSteps(target, state);
   if (!data && !state?.reviewResult) {
     renderEmptyWorkbench(target);
     return;
@@ -484,8 +476,6 @@ function renderBody(state) {
   } else if (_activeTab === "history") {
     renderHistory(target, data.history);
     renderImpact(target, data.internalImpact);
-  } else if (_activeTab === "report") {
-    renderReportPanel(target, state);
   }
   renderWarnings(target, data?.warnings);
 }
@@ -505,36 +495,6 @@ function renderEmptyWorkbench(target) {
   target.append(empty);
 }
 
-function renderWorkflowSteps(target, state) {
-  const data = state?.data || null;
-  const hasDraft = Boolean(state?.reviewResult);
-  const hasError = Boolean(state?.reviewError);
-  const steps = [
-    { key: "input", label: "요청 입력", done: Boolean(state?.input?.query || state?.input?.lawName) },
-    { key: "evidence", label: "공식 근거 수집", done: Boolean(data), active: Boolean(_workbenchAbort && !data) },
-    { key: "draft", label: "AI 검토 초안", done: hasDraft, active: Boolean(_workbenchAbort && data && !hasDraft), error: hasError && Boolean(data) },
-    { key: "report", label: "보고서 생성", done: Boolean(state?.reportCreatedAt), active: _activeTab === "report" && hasDraft }
-  ];
-  const box = document.createElement("section");
-  box.className = "law-workflow-steps";
-  box.setAttribute("aria-label", "법령검토 진행 단계");
-  for (const step of steps) {
-    const item = document.createElement("div");
-    item.className = [
-      "law-workflow-step",
-      step.done ? "is-done" : "",
-      step.active ? "is-active" : "",
-      step.error ? "is-error" : ""
-    ].filter(Boolean).join(" ");
-    const dot = document.createElement("span");
-    dot.className = "law-workflow-step-dot";
-    const label = document.createElement("span");
-    label.textContent = step.label;
-    item.append(dot, label);
-    box.append(item);
-  }
-  target.append(box);
-}
 
 function renderReviewResult(target, state) {
   const result = state?.reviewResult;
@@ -547,9 +507,11 @@ function renderReviewResult(target, state) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "send-button law-review-result-cta";
-  button.textContent = "보고서로 넘기기";
+  button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" style="width:15px;height:15px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M9 14h6M9 17h4"/></svg><span>보고서 생성</span>`;
   button.disabled = !state?.data && !state?.reviewResult;
-  button.addEventListener("click", () => setActiveTab("report"));
+  button.addEventListener("click", () => {
+    createLawWorkbenchReport().catch((error) => setStatus(error.message || "보고서 생성에 실패했습니다.", "error"));
+  });
   head.append(title, button);
   card.append(head);
   if (!result) {
@@ -614,46 +576,6 @@ function renderEvidenceDashboard(target, state) {
   target.append(section);
 }
 
-function renderReportPanel(target, state) {
-  const hasResult = Boolean(state?.data || state?.reviewResult);
-  const panel = document.createElement("section");
-  panel.className = "law-report-panel";
-  const title = document.createElement("h3");
-  title.textContent = "보고서 생성";
-  const description = document.createElement("p");
-  description.textContent = hasResult
-    ? "검토 초안과 수집 근거를 문서 편집기 초안으로 보냅니다."
-    : "검토를 먼저 실행하면 보고서 템플릿을 선택할 수 있습니다.";
-  const controls = document.createElement("div");
-  controls.className = "law-report-panel-controls";
-  const select = document.createElement("select");
-  select.className = "text-input";
-  select.setAttribute("aria-label", "보고서 템플릿");
-  for (const [value, label] of [
-    ["law_review_opinion", "법령 검토의견서"],
-    ["ordinance_upper_law_review", "조례 상위법 적합성 검토서"],
-    ["administrative_disposition_basis", "행정처분 근거 검토서"],
-    ["civil_reply_law_review", "민원 회신 법령 검토서"],
-    ["internal_compliance_checklist", "내부규정 컴플라이언스 점검표"]
-  ]) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    option.selected = value === (state?.conditions?.outputType || elements.lawWorkbenchReportTemplate?.value || "law_review_opinion");
-    select.append(option);
-  }
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "send-button law-report-panel-cta";
-  button.textContent = "문서 편집기에 초안 만들기";
-  button.disabled = !hasResult;
-  button.addEventListener("click", () => {
-    createLawWorkbenchReport(select.value).catch((error) => setStatus(error.message || "보고서 생성에 실패했습니다.", "error"));
-  });
-  controls.append(select, button);
-  panel.append(title, description, controls);
-  target.append(panel);
-}
 
 function appendResultSection(target, title, value) {
   if (!value) return;
