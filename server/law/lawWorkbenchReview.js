@@ -1,19 +1,24 @@
+import { loadLocalEnv } from "../env.js";
 import { createLinkedAbortController, throwIfAborted } from "../abort.js";
 import { analysisQueue } from "../modelQueue.js";
+
+loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const TIMEOUT_MS = clampInt(process.env.LAW_WORKBENCH_REVIEW_TIMEOUT_MS, 300_000, 5_000, 600_000);
 const MAX_PROMPT_CHARS = clampInt(process.env.LAW_WORKBENCH_REVIEW_MAX_PROMPT_CHARS, 90000, 10000, 200000);
 const MAX_DOCUMENT_CHARS = clampInt(process.env.LAW_WORKBENCH_REVIEW_DOCUMENT_CHARS, 16000, 1000, 60000);
+const OLLAMA_NUM_CTX = clampInt(process.env.LAW_WORKBENCH_REVIEW_NUM_CTX || process.env.OLLAMA_NUM_CTX, 0, 0, 131072);
 
 const DISCLAIMER = "이 검토는 제공된 검토 대상 문서와 공식 법령 정보를 기반으로 한 업무 참고용 검토 초안입니다. 최종 법률 판단은 관련 부서 또는 전문가 검토가 필요합니다.";
 
 export async function runLawWorkbenchReview({ query = "", conditions = {}, workbench = {}, documents = [], model = DEFAULT_MODEL } = {}, { signal } = {}) {
   throwIfAborted(signal);
   const prompt = buildLawWorkbenchReviewPrompt({ query, conditions, workbench, documents });
+  const diagnostics = buildReviewDiagnostics({ prompt, model, workbench, documents });
   const raw = await analysisQueue.run(
-    () => callOllamaForReview({ prompt, model, signal }),
+    () => callOllamaForReview({ prompt, model, signal, diagnostics }),
     { signal, label: "law_workbench_review" }
   );
   return normalizeReviewResult(raw);
@@ -128,8 +133,16 @@ function itemLabel(item = {}) {
   return clean([item.title, item.lawName, item.name, item.caseNumber, item.locator, item.effectiveDate].filter(Boolean).join(" / ") || JSON.stringify(item).slice(0, 240));
 }
 
-async function callOllamaForReview({ prompt, model, signal }) {
+async function callOllamaForReview({ prompt, model, signal, diagnostics }) {
   const controller = createLinkedAbortController(signal, TIMEOUT_MS, "Law workbench review timed out.");
+  const startedAt = Date.now();
+  logReviewEvent("request", {
+    ...diagnostics,
+    timeoutMs: TIMEOUT_MS,
+    maxPromptChars: MAX_PROMPT_CHARS,
+    numCtx: OLLAMA_NUM_CTX || null,
+    promptVsCtxRatio: OLLAMA_NUM_CTX ? round(diagnostics.estimatedTokens / OLLAMA_NUM_CTX, 3) : null
+  });
   try {
     const response = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
@@ -143,19 +156,102 @@ async function callOllamaForReview({ prompt, model, signal }) {
           { role: "system", content: buildSystemPrompt() },
           { role: "user", content: prompt }
         ],
-        options: { temperature: 0.1 }
+        options: {
+          temperature: 0.1,
+          ...(OLLAMA_NUM_CTX ? { num_ctx: OLLAMA_NUM_CTX } : {})
+        }
       })
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      logReviewEvent("error", {
+        ...diagnostics,
+        elapsedMs: Date.now() - startedAt,
+        status: response.status,
+        error: text.slice(0, 160)
+      });
       throw new Error(`Ollama law review failed: ${response.status} ${text.slice(0, 160)}`.trim());
     }
     const payload = await response.json();
     const raw = payload?.message?.content || payload?.response || "";
+    logReviewEvent("response", {
+      ...diagnostics,
+      elapsedMs: Date.now() - startedAt,
+      promptEvalCount: payload.prompt_eval_count ?? null,
+      evalCount: payload.eval_count ?? null,
+      totalDurationMs: nsToMs(payload.total_duration),
+      loadDurationMs: nsToMs(payload.load_duration),
+      promptEvalDurationMs: nsToMs(payload.prompt_eval_duration),
+      evalDurationMs: nsToMs(payload.eval_duration),
+      responseChars: String(raw || "").length
+    });
     return parseJson(raw);
+  } catch (error) {
+    if (error?.name === "AbortError" || /timed out/i.test(error?.message || "")) {
+      logReviewEvent("timeout", {
+        ...diagnostics,
+        elapsedMs: Date.now() - startedAt,
+        timeoutMs: TIMEOUT_MS,
+        error: error.message || "aborted"
+      });
+    } else if (!error?.message?.startsWith("Ollama law review failed:")) {
+      logReviewEvent("error", {
+        ...diagnostics,
+        elapsedMs: Date.now() - startedAt,
+        error: error?.message || String(error)
+      });
+    }
+    throw error;
   } finally {
     controller.cleanup();
   }
+}
+
+function buildReviewDiagnostics({ prompt, model, workbench = {}, documents = [] }) {
+  const promptChars = String(prompt || "").length;
+  return {
+    model,
+    promptChars,
+    estimatedTokens: estimateTokenCount(prompt),
+    documentCount: Array.isArray(documents) ? documents.length : 0,
+    articleChars: String(workbench?.article?.text || "").length,
+    aiCandidates: count(workbench?.aiCandidates?.items),
+    annexes: count(workbench?.annexes?.items),
+    delegated: count(workbench?.delegated?.items),
+    ordinances: count(workbench?.ordinances?.items),
+    precedents: count(workbench?.decisions?.precedents?.items),
+    interpretations: count(workbench?.decisions?.interpretations?.items),
+    adminRules: count(workbench?.decisions?.adminRules?.items),
+    historyRevisions: count(workbench?.history?.revisions)
+  };
+}
+
+export function estimateTokenCount(value) {
+  const text = String(value || "");
+  if (!text) return 0;
+  const cjk = (text.match(/[\u3131-\uD79D]/g) || []).length;
+  const ascii = (text.match(/[A-Za-z0-9]/g) || []).length;
+  const other = Math.max(0, text.length - cjk - ascii);
+  // Conservative approximation for mixed Korean/legal text.
+  return Math.ceil(cjk * 0.75 + ascii / 4 + other / 2);
+}
+
+function logReviewEvent(event, payload) {
+  console.info(`[law-workbench-review] ${JSON.stringify({ event, ...payload })}`);
+}
+
+function nsToMs(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number / 1_000_000) : null;
+}
+
+function count(value) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function round(value, digits) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
 }
 
 function buildSystemPrompt() {
