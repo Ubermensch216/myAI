@@ -281,14 +281,42 @@
 
       <section class="law-area" aria-label="법령검토" hidden>
         <header class="law-hero">
-          <div class="law-hero-search">
-            <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="7"></circle>
-              <path d="M20 20l-3.5-3.5"></path>
-            </svg>
-            <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="법령·조문·상황을 자연어로 입력하세요 (예: 공무원 음주운전 징계 기준)" />
-            <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">검토</button>
+          <div class="law-hero-search-wrap" id="lawWorkbenchDropZone">
+            <div class="law-hero-search">
+              <button id="lawWorkbenchAttachButton" class="law-hero-attach-btn" type="button" aria-label="자료 첨부" title="자료 첨부 (드래그&amp;드롭 지원)">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 1 1 5 5l-9 9a2 2 0 1 1-3-3l8-8"></path>
+                </svg>
+              </button>
+              <input id="lawWorkbenchUploadInput" type="file" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.pptx,.hwpx,.md,.png,.jpg,.jpeg,.webp,.gif" />
+              <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="M20 20l-3.5-3.5"></path>
+              </svg>
+              <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="법령·조문·상황을 자연어로 입력하세요 (예: 공무원 음주운전 징계 기준)" />
+              <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">검토</button>
+            </div>
+            <div id="lawWorkbenchDropOverlay" class="law-hero-drop-overlay" aria-hidden="true">
+              <div class="law-hero-drop-overlay-inner">
+                <svg class="law-hero-drop-overlay-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 16V4M12 4l-4 4M12 4l4 4"/>
+                  <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+                </svg>
+                <div class="law-hero-drop-overlay-text">여기에 파일을 놓아 첨부</div>
+                <div class="law-hero-supported-types" aria-label="지원 파일 형식">
+                  <span class="file-type-badge" title="PDF">PDF</span>
+                  <span class="file-type-badge" title="Word">DOC</span>
+                  <span class="file-type-badge" title="Excel">XLS</span>
+                  <span class="file-type-badge" title="PowerPoint">PPT</span>
+                  <span class="file-type-badge" title="한글">HWP</span>
+                  <span class="file-type-badge" title="이미지">IMG</span>
+                  <span class="file-type-badge" title="Markdown / CSV">MD</span>
+                </div>
+              </div>
+            </div>
           </div>
+
+          <div id="lawWorkbenchAttachments" class="law-hero-attachments" aria-live="polite"></div>
 
           <div class="law-hero-examples" aria-label="예시 질문">
             <button class="law-example-chip" type="button" data-law-example="공무원 음주운전 징계 근거">공무원 음주운전 징계</button>

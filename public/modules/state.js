@@ -514,7 +514,11 @@ export const elements = {
   lawWorkbenchBody: document.querySelector("#lawWorkbenchBody"),
   lawWorkbenchAdvanced: document.querySelector("#lawWorkbenchAdvanced"),
   lawReportBar: document.querySelector("#lawReportBar"),
-  lawExampleChips: Array.from(document.querySelectorAll("[data-law-example]"))
+  lawExampleChips: Array.from(document.querySelectorAll("[data-law-example]")),
+  lawWorkbenchAttachButton: document.querySelector("#lawWorkbenchAttachButton"),
+  lawWorkbenchUploadInput: document.querySelector("#lawWorkbenchUploadInput"),
+  lawWorkbenchAttachments: document.querySelector("#lawWorkbenchAttachments"),
+  lawWorkbenchDropZone: document.querySelector("#lawWorkbenchDropZone")
 };
 
 export function ensureRoomStudio(room = getActiveRoom()) {

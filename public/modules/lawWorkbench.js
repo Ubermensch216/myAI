@@ -1,6 +1,7 @@
-import { elements, getActiveLawReview } from "./state.js";
+import { elements, getActiveLawReview, documentCacheHeaders } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { openWithPreparedDraft } from "./documentStudio.js";
+import { fileTypeIcon, displayFileName } from "../fileDisplay.js";
 
 const MATERIAL_TEXT_LIMIT = 10000;
 const DEFAULT_TAB = "review";
@@ -75,6 +76,133 @@ export function bindLawWorkbenchEvents() {
       debounceTermsPreview();
     });
   }
+  bindLawReviewUpload();
+}
+
+function bindLawReviewUpload() {
+  elements.lawWorkbenchAttachButton?.addEventListener("click", () => {
+    elements.lawWorkbenchUploadInput?.click();
+  });
+  elements.lawWorkbenchUploadInput?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (target?.files?.length) uploadLawReviewFiles(target.files);
+    if (target) target.value = "";
+  });
+  const zone = elements.lawWorkbenchDropZone;
+  if (!zone) return;
+  let depth = 0;
+  zone.addEventListener("dragenter", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    depth += 1;
+    zone.classList.add("is-dragover");
+  });
+  zone.addEventListener("dragover", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  });
+  zone.addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) zone.classList.remove("is-dragover");
+  });
+  zone.addEventListener("drop", (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    depth = 0;
+    zone.classList.remove("is-dragover");
+    const files = event.dataTransfer?.files;
+    if (files && files.length) uploadLawReviewFiles(files);
+  });
+}
+
+function hasDraggedFiles(event) {
+  const types = event.dataTransfer?.types;
+  if (!types) return false;
+  return Array.from(types).includes("Files");
+}
+
+async function uploadLawReviewFiles(fileList) {
+  const state = ensureWorkbenchState(getActiveLawReview());
+  if (!state || !state.id) {
+    setStatus("법령검토 항목을 먼저 선택하세요.", "error");
+    return;
+  }
+  if (!Array.isArray(state.documents)) state.documents = [];
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  let failed = 0;
+  for (const file of files) {
+    setStatus(`${file.name} 업로드 중...`, "running");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: documentCacheHeaders(),
+        body: form
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `status ${response.status}`);
+      if (payload.document) {
+        state.documents.push(payload.document);
+        touchReviewState(state);
+      }
+    } catch (error) {
+      failed += 1;
+      setStatus(`${file.name}: ${error.message || "업로드 실패"}`, "error");
+    }
+  }
+  scheduleSave();
+  renderLawReviewAttachments();
+  if (!failed) setStatus(`자료 ${files.length}개를 첨부했습니다.`, "idle");
+}
+
+async function removeLawReviewFile(doc) {
+  if (!doc?.id) return;
+  const state = ensureWorkbenchState(getActiveLawReview());
+  if (!state) return;
+  try {
+    await fetch(`/api/documents/${encodeURIComponent(doc.id)}`, {
+      method: "DELETE",
+      headers: documentCacheHeaders()
+    });
+  } catch {
+    // Server-side cache removal is best-effort; local state is the source of truth.
+  }
+  state.documents = (state.documents || []).filter((d) => d.id !== doc.id);
+  touchReviewState(state);
+  scheduleSave();
+  renderLawReviewAttachments();
+}
+
+function renderLawReviewAttachments() {
+  const host = elements.lawWorkbenchAttachments;
+  if (!host) return;
+  const state = ensureWorkbenchState(getActiveLawReview());
+  const docs = getLawReviewDocuments(state);
+  host.innerHTML = "";
+  if (!docs.length) return;
+  for (const doc of docs) {
+    const chip = document.createElement("span");
+    chip.className = "law-hero-attach-chip";
+    const badge = document.createElement("span");
+    badge.className = "file-type-badge";
+    badge.textContent = fileTypeIcon(doc);
+    const name = document.createElement("span");
+    name.className = "law-hero-attach-name";
+    const displayName = displayFileName(doc);
+    name.textContent = displayName;
+    name.title = displayName;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "law-hero-attach-remove";
+    remove.setAttribute("aria-label", "첨부 삭제");
+    remove.textContent = "×";
+    remove.addEventListener("click", () => removeLawReviewFile(doc));
+    chip.append(badge, name, remove);
+    host.append(chip);
+  }
 }
 
 export function renderLawWorkbench() {
@@ -85,6 +213,7 @@ export function renderLawWorkbench() {
   renderTerms(state);
   renderBody(state);
   syncReportBar(state);
+  renderLawReviewAttachments();
 }
 
 function ensureWorkbenchState(studio) {
