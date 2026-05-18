@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = await fs.readFile(path.join(rootDir, "public", "index.html"), "utf8");
 const css = await fs.readFile(path.join(rootDir, "public", "styles.css"), "utf8");
+const lawJs = await fs.readFile(path.join(rootDir, "public", "modules", "lawWorkbench.js"), "utf8");
+const stateJs = await fs.readFile(path.join(rootDir, "public", "modules", "state.js"), "utf8");
+const reviewServerJs = await fs.readFile(path.join(rootDir, "server", "law", "lawWorkbenchReview.js"), "utf8");
 
 function findAll(regex, text) {
   return [...text.matchAll(regex)].map((match) => match[1]);
@@ -27,6 +30,15 @@ assert.match(html, /법령검토/, "law review label is used");
 assert.doesNotMatch(html, /id="studioLawButton"/, "Studio law tool card is removed");
 assert.doesNotMatch(html, /id="studioLawRailButton"/, "Studio law rail button is removed");
 assert.doesNotMatch(html, /id="studioLawPanel"/, "Studio law panel is removed");
+assert.doesNotMatch(lawJs, /getActiveDocuments/, "law review must not auto-include chat room attachments");
+assert.match(lawJs, /const\s+reviewDocuments\s*=\s*getLawReviewDocuments\(state\)/, "law review scopes documents to dedicated law review state");
+assert.match(lawJs, /documents:\s*reviewDocuments/, "law review sends only dedicated law review documents");
+assert.match(lawJs, /reviewError/, "law review stores exact LLM failure reason for the UI");
+assert.match(reviewServerJs, /\[law-workbench-review\]/, "law review diagnostics log is present");
+assert.match(reviewServerJs, /prompt_eval_count/, "law review diagnostics logs Ollama prompt eval count");
+assert.match(reviewServerJs, /eval_count/, "law review diagnostics logs Ollama eval count");
+assert.doesNotMatch(reviewServerJs, /promptEvalCount|evalCount:/, "law review diagnostics use Ollama field names");
+assert.match(stateJs, /Object\.assign\(review,\s*normalized\)/, "law review normalization preserves object identity during async review rendering");
 
 const lawWorkbenchIds = findAll(/id="(lawWorkbench[^"]+)"/g, html);
 assert.equal(new Set(lawWorkbenchIds).size, lawWorkbenchIds.length, "law workbench DOM ids are unique");

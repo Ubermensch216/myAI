@@ -560,7 +560,9 @@ export function createLawReview(seed = {}) {
     title: seed.title || "새 법령검토",
     input: seed.input || {},
     conditions: seed.conditions || {},
+    documents: Array.isArray(seed.documents) ? seed.documents : [],
     reviewResult: seed.reviewResult || null,
+    reviewError: typeof seed.reviewError === "string" ? seed.reviewError : "",
     data: seed.data || null,
     terms: seed.terms || [],
     activeTab: seed.activeTab || "review",
@@ -578,12 +580,14 @@ export function getActiveLawReview() {
 
 function normalizeLawReview(review) {
   const now = new Date().toISOString();
-  return {
+  const normalized = {
     id: typeof review.id === "string" && review.id ? review.id : crypto.randomUUID(),
     title: typeof review.title === "string" && review.title.trim() ? review.title.trim() : "새 법령검토",
     input: review.input && typeof review.input === "object" ? review.input : {},
     conditions: review.conditions && typeof review.conditions === "object" ? review.conditions : {},
+    documents: Array.isArray(review.documents) ? review.documents : [],
     reviewResult: review.reviewResult && typeof review.reviewResult === "object" ? review.reviewResult : null,
+    reviewError: typeof review.reviewError === "string" ? review.reviewError : "",
     data: review.data || null,
     terms: Array.isArray(review.terms) ? review.terms : [],
     activeTab: typeof review.activeTab === "string" ? review.activeTab : "review",
@@ -593,6 +597,8 @@ function normalizeLawReview(review) {
     createdAt: typeof review.createdAt === "string" ? review.createdAt : now,
     updatedAt: typeof review.updatedAt === "string" ? review.updatedAt : now
   };
+  Object.assign(review, normalized);
+  return review;
 }
 
 export function ensureDocumentTemplatesState() {

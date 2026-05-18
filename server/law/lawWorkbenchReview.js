@@ -177,8 +177,8 @@ async function callOllamaForReview({ prompt, model, signal, diagnostics }) {
     logReviewEvent("response", {
       ...diagnostics,
       elapsedMs: Date.now() - startedAt,
-      promptEvalCount: payload.prompt_eval_count ?? null,
-      evalCount: payload.eval_count ?? null,
+      prompt_eval_count: payload.prompt_eval_count ?? null,
+      eval_count: payload.eval_count ?? null,
       totalDurationMs: nsToMs(payload.total_duration),
       loadDurationMs: nsToMs(payload.load_duration),
       promptEvalDurationMs: nsToMs(payload.prompt_eval_duration),

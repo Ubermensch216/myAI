@@ -1,6 +1,5 @@
 import { elements, getActiveLawReview } from "./state.js";
-import { hydrateStoredDocuments, scheduleSave } from "./persistence.js";
-import { getActiveDocuments } from "./chat.js";
+import { scheduleSave } from "./persistence.js";
 import { openWithPreparedDraft } from "./documentStudio.js";
 
 const MATERIAL_TEXT_LIMIT = 10000;
@@ -86,10 +85,12 @@ export function renderLawWorkbench() {
 }
 
 function ensureWorkbenchState(studio) {
-  if (!studio) return { input: {}, conditions: {}, data: null, reviewResult: null, terms: [], activeTab: DEFAULT_TAB };
+  if (!studio) return { input: {}, conditions: {}, documents: [], data: null, reviewResult: null, reviewError: "", terms: [], activeTab: DEFAULT_TAB };
   studio.input = studio.input && typeof studio.input === "object" ? studio.input : {};
   studio.conditions = studio.conditions && typeof studio.conditions === "object" ? studio.conditions : {};
+  studio.documents = Array.isArray(studio.documents) ? studio.documents : [];
   studio.reviewResult = studio.reviewResult && typeof studio.reviewResult === "object" ? studio.reviewResult : null;
+  studio.reviewError = typeof studio.reviewError === "string" ? studio.reviewError : "";
   studio.terms = Array.isArray(studio.terms) ? studio.terms : [];
   const storedTab = studio.activeTab;
   const normalized = VALID_TABS.has(storedTab) ? storedTab : (LEGACY_TAB_MAP[storedTab] || DEFAULT_TAB);
@@ -162,7 +163,9 @@ async function runLawWorkbench() {
     elements.lawWorkbenchQuery?.focus();
     return;
   }
-  if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  const reviewDocuments = getLawReviewDocuments(state);
+  state.reviewResult = null;
+  state.reviewError = "";
   _workbenchAbort = new AbortController();
   setBusy(true);
   setStatus("공식 법령 근거를 검토하는 중입니다.", "running");
@@ -173,7 +176,7 @@ async function runLawWorkbench() {
       signal: _workbenchAbort.signal,
       body: JSON.stringify({
         ...input,
-        materialText: collectMaterialText(),
+        materialText: collectMaterialText(reviewDocuments),
         includeInternalImpact: true
       })
     });
@@ -200,21 +203,31 @@ async function runLawWorkbench() {
         query: input.query || [input.lawName, input.article].filter(Boolean).join(" "),
         conditions,
         workbench: payload,
-        documents: getActiveDocuments()
+        documents: reviewDocuments
       })
     });
-    const reviewPayload = await reviewResponse.json().catch(() => ({}));
+    const reviewPayload = await parseReviewResponse(reviewResponse);
     if (!reviewResponse.ok || reviewPayload.ok === false) {
-      throw new Error(reviewPayload.error || `status ${reviewResponse.status}`);
+      throw new Error(reviewPayload.error || `LLM 검토 실패: status ${reviewResponse.status}`);
     }
     state.reviewResult = reviewPayload.reviewResult || reviewPayload.result || null;
+    if (!state.reviewResult) throw new Error("LLM 검토 응답에 reviewResult가 없습니다.");
+    state.reviewError = "";
     touchReviewState(state);
     scheduleSave();
     setStatus("", "idle");
     renderLawWorkbench();
   } catch (error) {
-    if (error?.name === "AbortError") setStatus("검토를 중단했습니다.", "idle");
-    else setStatus(error.message || "검토에 실패했습니다.", "error");
+    if (error?.name === "AbortError") {
+      setStatus("검토를 중단했습니다.", "idle");
+    } else {
+      const message = error.message || "검토에 실패했습니다.";
+      state.reviewError = message;
+      touchReviewState(state);
+      scheduleSave();
+      renderLawWorkbench();
+      setStatus(message, "error");
+    }
   } finally {
     _workbenchAbort = null;
     setBusy(false);
@@ -251,6 +264,7 @@ function resetLawWorkbench() {
   state.conditions = {};
   state.data = null;
   state.reviewResult = null;
+  state.reviewError = "";
   state.terms = [];
   state.activeTab = DEFAULT_TAB;
   state.title = "새 법령검토";
@@ -367,7 +381,9 @@ function renderReviewResult(target, state) {
   if (!result) {
     const empty = document.createElement("p");
     empty.className = "law-explorer-empty";
-    empty.textContent = state?.data
+    empty.textContent = state?.reviewError
+      ? `LLM 검토 실패: ${state.reviewError}`
+      : state?.data
       ? "공식근거는 수집되었습니다. LLM 검토 결과가 아직 없거나 생성에 실패했습니다. 근거 조문, 법체계, 판례 탭에서 수집된 근거를 확인할 수 있습니다."
       : "검토를 실행하면 공식근거와 LLM 검토 결과가 표시됩니다.";
     card.append(empty);
@@ -646,9 +662,24 @@ function itemLabel(item = {}) {
   return item.title || item.lawName || item.name || item.caseNumber || item.locator || item.effectiveDate || JSON.stringify(item).slice(0, 160);
 }
 
-function collectMaterialText() {
+async function parseReviewResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.replace(/\s+/g, " ").trim().slice(0, 160);
+    throw new Error(`LLM 검토 응답 JSON 파싱 실패: ${preview || "empty response"}`);
+  }
+}
+
+function getLawReviewDocuments(state) {
+  return Array.isArray(state?.documents) ? state.documents : [];
+}
+
+function collectMaterialText(documents = []) {
   const chunks = [];
-  for (const doc of getActiveDocuments()) {
+  for (const doc of documents) {
     if (doc.kind !== "document") continue;
     chunks.push(sampleDocumentText(doc, 2500));
     if (chunks.join("\n\n").length >= MATERIAL_TEXT_LIMIT) break;
