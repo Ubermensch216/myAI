@@ -464,7 +464,6 @@ function renderMaterialContext() {
     if (elements.materialSummaryLabel) elements.materialSummaryLabel.textContent = "자료 0개";
     if (elements.materialList) elements.materialList.innerHTML = "";
     if (elements.materialClearButton) elements.materialClearButton.hidden = true;
-    if (elements.complianceReviewButton) elements.complianceReviewButton.disabled = true;
     setDeepAnalysisEnabled(false);
     return;
   }
@@ -472,7 +471,6 @@ function renderMaterialContext() {
   if (elements.materialPanel) elements.materialPanel.hidden = !expanded;
   if (elements.materialSummaryLabel) elements.materialSummaryLabel.textContent = `자료(${count}개)`;
   if (elements.materialClearButton) elements.materialClearButton.hidden = documents.length === 0;
-  if (elements.complianceReviewButton) elements.complianceReviewButton.disabled = count === 0;
   renderMaterialList({ room, documents, attachments, generatedSources, notebook, hasNotebook });
   renderDeepAnalysisToggle();
 }
@@ -626,20 +624,6 @@ function toggleMaterialPanel() {
   room.updatedAt = new Date().toISOString();
   scheduleSave();
   renderMaterialContext();
-}
-
-function prefillComplianceReviewPrompt() {
-  const room = getActiveRoom();
-  const { count } = getActiveMaterials(room);
-  if (!room || !count || !elements.promptInput) return;
-  elements.promptInput.value = [
-    "현재 자료를 기준으로 법령 적합성 검토를 수행해줘.",
-    "내부 근거와 공식 법령 근거를 분리하고, 주요 리스크와 보완 권고를 표로 정리해줘.",
-    "최종 법률의견이 아니라 업무 참고용 검토 초안으로 작성해줘."
-  ].join(" ");
-  elements.promptInput.style.height = "auto";
-  elements.promptInput.style.height = `${elements.promptInput.scrollHeight}px`;
-  elements.promptInput.focus();
 }
 
 function renderHeader() {
@@ -958,13 +942,6 @@ function bindEvents() {
       await confirmAndClearRoomDocuments();
     });
   }
-  if (elements.complianceReviewButton) {
-    elements.complianceReviewButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      prefillComplianceReviewPrompt();
-    });
-  }
-
   if (elements.selectionModeToggle) {
     elements.selectionModeToggle.addEventListener("click", (event) => {
       event.preventDefault();

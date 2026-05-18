@@ -21,6 +21,11 @@ assert.equal(
   false,
   "active law-search button is icon-only"
 );
+assert.equal(
+  /id="complianceReviewButton"/.test(html),
+  false,
+  "composer material panel does not render the legacy compliance review button"
+);
 
 const rowBlock = cssBlock(".composer-main-row");
 assert.match(rowBlock, /display:\s*flex;/, "composer uses flex so hidden icons cannot collapse prompt width");
