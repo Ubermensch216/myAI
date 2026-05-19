@@ -508,6 +508,37 @@ function renderEmptyWorkbench(target) {
   target.append(empty);
 }
 
+function buildReviewStatusSummary(state) {
+  const data = state?.data || null;
+  const officialEvidenceCount = data
+    ? (data.article?.ok ? 1 : 0)
+      + countItems(data.annexes?.items)
+      + countDecisionEvidence(data.decisions)
+      + countSystemEvidence(data)
+      + countItems(data.history?.revisions)
+    : 0;
+  const draftStatus = state?.reviewResult
+    ? "AI 초안 생성 완료"
+    : state?.reviewError
+    ? "AI 초안 생성 실패"
+    : "AI 초안 대기";
+  const documentCount = countItems(state?.documents);
+  const reportStatus = (state?.data || state?.reviewResult) ? "보고서 생성 가능" : "보고서 생성 불가";
+  return [
+    `공식근거 ${officialEvidenceCount}건 수집`,
+    draftStatus,
+    `첨부자료 ${documentCount}건 반영`,
+    reportStatus
+  ].join(" · ");
+}
+
+function renderReviewStatusSummary(card, state) {
+  const summary = document.createElement("p");
+  summary.className = "law-review-status-summary";
+  summary.textContent = buildReviewStatusSummary(state);
+  card.append(summary);
+}
+
 
 function renderReviewResult(target, state) {
   const result = state?.reviewResult;
@@ -527,6 +558,7 @@ function renderReviewResult(target, state) {
   });
   head.append(title, button);
   card.append(head);
+  renderReviewStatusSummary(card, state);
   if (!result) {
     const empty = document.createElement("p");
     empty.className = "law-explorer-empty";
@@ -672,8 +704,8 @@ function renderTabHints(target, data) {
   if (aiCount) return;
   const summary = countOtherTabResults(data);
   const hints = [];
-  if (summary.decisions) hints.push({ tab: "decisions", label: `판례·해석례 ${summary.decisions}건` });
-  if (summary.system) hints.push({ tab: "system", label: `법체계·자치법규 ${summary.system}건` });
+  const evidenceCount = summary.decisions + summary.system;
+  if (evidenceCount) hints.push({ tab: "evidence", label: `근거 ${evidenceCount}건` });
   if (summary.history) hints.push({ tab: "history", label: `개정 이력 ${summary.history}건` });
   if (!hints.length) return;
   const box = document.createElement("div");
@@ -765,17 +797,6 @@ function renderStructure(target, structure) {
     description: "상위 법령, 하위 법령, 관련 법령 체계를 확인합니다.",
     labelFn: evidenceItemLabel
   });
-  return;
-  if (!tiers) {
-    appendEmptySection(target, "법체계", "법체계 정보를 확인하지 못했습니다.");
-    return;
-  }
-  if (Array.isArray(tiers)) return renderListPanel(target, tiers, "법체계");
-  const rows = Object.entries(tiers).map(([level, value]) => ({
-    title: `${level}: ${value?.lawName || "확인 안 됨"}`,
-    url: value?.url || ""
-  }));
-  renderListPanel(target, rows, "법체계");
 }
 
 function renderDecisions(target, decisions = {}) {

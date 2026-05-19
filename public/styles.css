@@ -9979,10 +9979,10 @@ body.panel-resizing .panel-resizer::after {
 .law-advanced-field > span { padding-left: 2px; }
 .law-advanced-field .text-input { font-size: 13px; }
 
-/* ---- Tabs (4 grouped) ---- */
+/* ---- Tabs (3 grouped) ---- */
 .law-workbench-tabs.law-mode-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   margin: 0;
   padding: 4px;
@@ -10038,18 +10038,18 @@ body.panel-resizing .panel-resizer::after {
 /* ---- Tab lamp (status indicator) ---- */
 .law-tab-lamp {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: transparent;
   border: 1.5px solid transparent;
-  margin-left: 5px;
+  margin-left: 10px;
   vertical-align: middle;
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 .law-mode-tab.is-lamp-done .law-tab-lamp {
-  background: var(--accent-dark, #3a52cc);
-  border-color: var(--accent-dark, #3a52cc);
+  background: var(--success, #16a34a);
+  border-color: var(--success, #16a34a);
 }
 .law-mode-tab.is-lamp-active .law-tab-lamp {
   background: var(--warning, #f59e0b);
@@ -11200,6 +11200,13 @@ body.panel-resizing .panel-resizer::after {
 .law-review-result-head h3,
 .law-review-result-section h4 {
   margin: 0;
+}
+
+.law-review-status-summary {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: -4px 0 0;
 }
 
 .law-review-result-section {

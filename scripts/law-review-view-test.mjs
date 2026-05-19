@@ -14,6 +14,22 @@ function findAll(regex, text) {
   return [...text.matchAll(regex)].map((match) => match[1]);
 }
 
+function findFunctionBody(source, name) {
+  const signature = `function ${name}`;
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `${name} function exists`);
+  const bodyStart = source.indexOf("{", start);
+  assert.notEqual(bodyStart, -1, `${name} function body starts`);
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+    if (depth === 0) return source.slice(bodyStart + 1, i);
+  }
+  assert.fail(`${name} function body closes`);
+}
+
 const navTargets = findAll(/class="primary-nav-item[^"]*"[^>]*data-view-target="([^"]+)"/g, html);
 assert.deepEqual(navTargets, ["chat", "law", "calendar"], "primary nav order is chat, law, calendar");
 
@@ -72,6 +88,14 @@ assert.match(lawJs, /main:\s*"evidence"/, "legacy main tab maps to grouped evide
 assert.match(lawJs, /decisions:\s*"evidence"/, "legacy decisions tab maps to grouped evidence tab");
 assert.match(lawJs, /report:\s*"review"/, "legacy report tab maps to the review tab");
 assert.doesNotMatch(lawJs, /const\s+VALID_TABS\s*=\s*new Set\(\[[^\]]*"report"/, "removed report tab is not accepted as a current valid tab");
+const renderTabHintsBody = findFunctionBody(lawJs, "renderTabHints");
+assert.doesNotMatch(renderTabHintsBody, /tab:\s*"decisions"/, "tab hints no longer target the removed decisions tab");
+assert.doesNotMatch(renderTabHintsBody, /tab:\s*"system"/, "tab hints no longer target the removed system tab");
+assert.match(renderTabHintsBody, /tab:\s*"evidence"/, "tab hints route evidence counts to the grouped evidence tab");
+assert.match(renderTabHintsBody, /tab:\s*"history"/, "tab hints keep revision history on the history tab");
+const renderStructureBody = findFunctionBody(lawJs, "renderStructure");
+assert.doesNotMatch(renderStructureBody, /return;\s*if\s*\(!tiers\)/, "renderStructure does not keep unreachable legacy code after returning");
+assert.doesNotMatch(renderStructureBody, /renderListPanel\(target,\s*rows,\s*"\uBC95\uCCB4\uACC4"\)/, "renderStructure no longer keeps the unreachable legacy rows renderer");
 assert.match(reviewServerJs, /\[law-workbench-review\]/, "law review diagnostics log is present");
 assert.match(reviewServerJs, /prompt_eval_count/, "law review diagnostics logs Ollama prompt eval count");
 assert.match(reviewServerJs, /eval_count/, "law review diagnostics logs Ollama eval count");

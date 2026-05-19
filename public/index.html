@@ -290,7 +290,7 @@
                 <circle cx="11" cy="11" r="7"></circle>
                 <path d="M20 20l-3.5-3.5"></path>
               </svg>
-              <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="법령·조문·상황을 자연어로 입력하세요 (예: 공무원 음주운전 징계 기준)" />
+              <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="검토 요청을 입력하세요 (예: 민원 회신에 필요한 법령 근거 검토)" />
               <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">검토</button>
             </div>
             <button id="lawWorkbenchResetButton" class="ghost-button law-hero-reset" type="button" title="결과 초기화" aria-label="결과 초기화">
@@ -319,11 +319,12 @@
           <div id="lawWorkbenchAttachments" class="law-hero-attachments" aria-live="polite"></div>
 
           <div class="law-hero-examples" aria-label="예시 질문">
-            <button class="law-example-chip" type="button" data-law-example="공무원 음주운전 징계 근거">공무원 음주운전 징계</button>
-            <button class="law-example-chip" type="button" data-law-example="건축법 제15조 별표">건축법 제15조 별표</button>
-            <button class="law-example-chip" type="button" data-law-example="도로교통법 최근 개정 이력">도로교통법 개정 이력</button>
-            <button class="law-example-chip" type="button" data-law-example="개인정보 보호 관련 판례">개인정보 보호 판례</button>
-            <button class="law-example-chip" type="button" data-law-example="서울특별시 자치법규">서울시 자치법규</button>
+            <button class="law-example-chip" type="button" data-law-example="민원 회신에 필요한 법령 근거 검토">민원 회신에 필요한 법령 근거 검토</button>
+            <button class="law-example-chip" type="button" data-law-example="내부 지침이 상위법과 충돌하는지 검토">내부 지침이 상위법과 충돌하는지 검토</button>
+            <button class="law-example-chip" type="button" data-law-example="행정처분 사전통지 절차 검토">행정처분 사전통지 절차 검토</button>
+            <button class="law-example-chip" type="button" data-law-example="개인정보 수집·이용 동의서 적법성 검토">개인정보 수집·이용 동의서 적법성 검토</button>
+            <button class="law-example-chip" type="button" data-law-example="조례 개정 필요 여부 검토">조례 개정 필요 여부 검토</button>
+            <button class="law-example-chip" type="button" data-law-example="용역 과업지시서 법령 리스크 검토">용역 과업지시서 법령 리스크 검토</button>
           </div>
 
           <details id="lawWorkbenchAdvanced" class="law-advanced">
@@ -395,12 +396,12 @@
         <div id="lawWorkbenchBody" class="law-workbench-body">
           <div class="law-explorer-empty law-empty-hero">
             <h3>법령검토</h3>
-            <p>자연어 질문 한 줄이면 공식 법령·판례·자치법규·내부자료 영향까지 한 번에 정리합니다.</p>
+            <p>검토 요청을 입력하면 공식 근거 수집, AI 검토 초안, 보고서 생성 순서로 진행합니다.</p>
             <ul class="law-empty-features">
-              <li><strong>본문·서식</strong> 조문 원문과 별표·서식 자동 매칭</li>
-              <li><strong>법체계</strong> 상위법 / 하위법령 / 자치법규 연계</li>
-              <li><strong>판례·해석</strong> 판례 · 해석례 · 행정규칙</li>
-              <li><strong>개정·영향</strong> 개정 이력과 내부자료 영향 분석</li>
+              <li><strong>검토 초안</strong> 결론 후보, 쟁점, 리스크, 보완 권고</li>
+              <li><strong>근거</strong> 조문 원문, 별표, 판례, 해석례, 법체계</li>
+              <li><strong>개정/영향</strong> 시행 이력과 내부자료 영향</li>
+              <li><strong>보고서</strong> 검토의견서, 민원 회신, 컴플라이언스 점검표</li>
             </ul>
           </div>
         </div>
