@@ -184,9 +184,7 @@ follow-up suggestions.
 Law Workbench review is intentionally scoped separately from normal chat
 materials. `/api/law/workbench/review` receives only the prompt, selected
 review conditions, the official workbench evidence payload, and Law Workbench
-dedicated documents. Do not auto-include active room attachments; until a
-dedicated Law Workbench upload UI exists, `documentCount` should normally be
-`0`.
+dedicated documents. Do not auto-include active room attachments; Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent.
 
 Input source badges on each assistant message show which sources were active
 (notebook, uploaded files, generated room sources, web search, law engine). Guessed badges are shown

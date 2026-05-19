@@ -44,7 +44,7 @@ Implemented pieces:
 - `POST /api/law/research`
 - `POST /api/law/action-plan`
 - `POST /api/law/workbench` (builds a comprehensive legal workbench context including research, citations, impact maps, and report-ready metadata)
-- `POST /api/law/workbench/review` (runs the LLM review-draft step from official Workbench evidence plus Law Workbench dedicated documents)
+- `POST /api/law/workbench/review` (runs the LLM review-draft step from official Workbench evidence plus Law Workbench dedicated documents explicitly attached to the review)
 - `POST /api/law/workbench/report` (generates a structured legal report draft from a workbench result and optional LLM review result)
 - `GET /api/law/terms` (Searches official Korean law term KB / Knowledge Base for normalized definitions and law/article hints)
 - `POST /api/law/article`
@@ -333,9 +333,7 @@ Request:
 Runs the LLM review-draft step. The prompt is built from the user's request,
 review conditions, the official evidence gathered by `/api/law/workbench`, and
 only documents explicitly attached to the Law Workbench review state. It must
-not auto-include active chat-room attachments. Until a dedicated Law Workbench
-upload/list UI exists, `documents` is normally empty and server diagnostics
-should show `documentCount: 0`.
+not auto-include active chat-room attachments. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the Law Workbench review state are sent. Server diagnostics log `documentCount` based on these explicitly attached files.
 
 Response:
 

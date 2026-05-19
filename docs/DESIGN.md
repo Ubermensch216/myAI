@@ -126,8 +126,7 @@ The review result tab must make the LLM review state explicit. When official
 evidence has been collected but the LLM review fails, show the actual failure
 message in the result card and status line instead of a generic empty state.
 The underlying request scope is also separate from chat: do not imply that
-active chat attachments are included. Law Workbench review documents should be
-shown only when a dedicated Law Workbench upload/list UI exists.
+active chat attachments are included. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent; active chat-room attachments are not automatically included.
 
 ## Studio Tools
 

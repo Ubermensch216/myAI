@@ -153,12 +153,7 @@ user prompt + review conditions
 -> optional POST /api/law/workbench/report creates a Studio Document draft
 ```
 
-The review request does not read active chat-room attachments. Law Workbench has
-its own `documents` array in `state.lawReviews`; until a dedicated upload/list
-UI is added that array is normally empty and server logs should show
-`documentCount: 0`. Diagnostics are logged as `[law-workbench-review]` without
-prompt text or document body and include prompt size, estimated tokens, evidence
-counts, elapsed time, and Ollama token counters.
+The review request does not read active chat-room attachments. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent; active chat-room attachments are not automatically included. Diagnostics are logged as `[law-workbench-review]` without prompt text or document body and include prompt size, estimated tokens, evidence counts, elapsed time, and Ollama token counters.
 
 Promotion is never automatic. A generated output enters a department notebook
 only after an admin approves it. The promoted document includes provenance such
