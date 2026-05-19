@@ -294,7 +294,9 @@ the supplied Law Workbench `documents`, then returns:
 ```
 
 This endpoint does not discover or attach active chat-room documents. The
-caller must pass any Law Workbench dedicated documents explicitly; Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent; active chat-room attachments are not automatically included.
+caller must pass any documents selected through the Law Workbench upload UI
+explicitly. Only documents attached to the active Law Workbench review are
+sent; active chat-room attachments are not automatically included.
 Server diagnostics are logged as `[law-workbench-review]` without prompt text
 or document body. Logs include `promptChars`, `estimatedTokens`,
 `documentCount`, evidence counts, `elapsedMs`, `prompt_eval_count`, and

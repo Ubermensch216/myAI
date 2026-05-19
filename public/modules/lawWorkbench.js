@@ -18,8 +18,7 @@ const LEGACY_TAB_MAP = {
   delegated: "evidence",
   ordinances: "evidence",
   history: "history",
-  impact: "history",
-  report: "review"
+  impact: "history"
 };
 
 let _activeTab = DEFAULT_TAB;
@@ -698,33 +697,6 @@ function fillAndRun(lawName, articleLabel) {
   runLawWorkbench();
 }
 
-function renderTabHints(target, data) {
-  if (data?.article?.ok) return;
-  const aiCount = Array.isArray(data?.aiCandidates?.items) ? data.aiCandidates.items.length : 0;
-  if (aiCount) return;
-  const summary = countOtherTabResults(data);
-  const hints = [];
-  const evidenceCount = summary.decisions + summary.system;
-  if (evidenceCount) hints.push({ tab: "evidence", label: `근거 ${evidenceCount}건` });
-  if (summary.history) hints.push({ tab: "history", label: `개정 이력 ${summary.history}건` });
-  if (!hints.length) return;
-  const box = document.createElement("div");
-  box.className = "law-workbench-tab-hints";
-  const lead = document.createElement("p");
-  lead.className = "law-explorer-empty";
-  lead.textContent = "공식 조문 자동 매칭에 실패했습니다. 다른 탭 결과를 확인하세요:";
-  box.append(lead);
-  for (const hint of hints) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "law-workbench-tab-hint";
-    button.textContent = hint.label;
-    button.addEventListener("click", () => setActiveTab(hint.tab));
-    box.append(button);
-  }
-  target.append(box);
-}
-
 function countItems(items) {
   return Array.isArray(items) ? items.length : 0;
 }
@@ -738,15 +710,6 @@ function countDecisionEvidence(decisions = {}) {
 function countSystemEvidence(data = {}) {
   const structureCount = data.structure?.tiers ? 1 : 0;
   return structureCount + countItems(data.delegated?.items) + countItems(data.ordinances?.items);
-}
-
-function countOtherTabResults(data) {
-  const len = (items) => (Array.isArray(items) ? items.length : 0);
-  return {
-    decisions: len(data?.decisions?.precedents?.items) + len(data?.decisions?.interpretations?.items) + len(data?.decisions?.adminRules?.items),
-    system: (data?.structure?.tiers ? 1 : 0) + len(data?.delegated?.items) + len(data?.ordinances?.items),
-    history: len(data?.history?.revisions)
-  };
 }
 
 function renderArticle(target, article) {
