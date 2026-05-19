@@ -10043,7 +10043,7 @@ body.panel-resizing .panel-resizer::after {
   border-radius: 50%;
   background: transparent;
   border: 1.5px solid transparent;
-  margin-left: 10px;
+  margin-left: 5px;
   vertical-align: middle;
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
