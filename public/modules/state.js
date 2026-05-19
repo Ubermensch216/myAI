@@ -510,7 +510,6 @@ export const elements = {
   lawWorkbenchTabs: Array.from(document.querySelectorAll("[data-law-workbench-tab]")),
   lawWorkbenchBody: document.querySelector("#lawWorkbenchBody"),
   lawWorkbenchAdvanced: document.querySelector("#lawWorkbenchAdvanced"),
-  lawReportBar: document.querySelector("#lawReportBar"),
   lawExampleChips: Array.from(document.querySelectorAll("[data-law-example]")),
   lawWorkbenchAttachButton: document.querySelector("#lawWorkbenchAttachButton"),
   lawWorkbenchUploadInput: document.querySelector("#lawWorkbenchUploadInput"),

@@ -29,6 +29,20 @@ assert.match(html, /data-law-workbench-tab="history"/, "law review has revision 
 assert.doesNotMatch(html, /data-law-workbench-tab="report"/, "law review keeps report generation inside the review tab");
 assert.match(html, /검토 초안/, "law review draft-first tab label exists");
 assert.match(html, /근거/, "law review evidence tab label exists");
+assert.match(html, /검토 요청을 입력하면 공식 근거 수집, AI 검토 초안, 보고서 생성 순서로 진행합니다\./, "static law empty state matches workflow-first JS copy");
+assert.match(html, /<li><strong>검토 초안<\/strong> 결론 후보, 쟁점, 리스크, 보완 권고<\/li>/, "static law empty state describes draft output");
+assert.doesNotMatch(html, /자연어 질문 한 줄이면 공식 법령/, "static law empty state no longer uses search-first copy");
+for (const example of [
+  "민원 회신에 필요한 법령 근거 검토",
+  "내부 지침이 상위법과 충돌하는지 검토",
+  "행정처분 사전통지 절차 검토",
+  "개인정보 수집·이용 동의서 적법성 검토",
+  "조례 개정 필요 여부 검토",
+  "용역 과업지시서 법령 리스크 검토"
+]) {
+  assert.match(html, new RegExp(example.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `law review example exists: ${example}`);
+}
+assert.doesNotMatch(html, /공무원 음주운전 징계/, "law review examples no longer lead with generic search fixtures");
 assert.doesNotMatch(html, /data-law-workbench-tab="main"/, "law review hides source-family tabs from primary workflow");
 assert.doesNotMatch(html, /data-law-workbench-tab="system"/, "law review groups law hierarchy under evidence");
 assert.doesNotMatch(html, /data-law-workbench-tab="decisions"/, "law review groups decisions under evidence");
@@ -50,8 +64,14 @@ assert.match(lawJs, /renderImpact\(target,\s*data\.internalImpact\);\s*renderHis
 assert.match(lawJs, /function\s+splitImpactNodes/, "law review separates internal material signals from law-derived nodes");
 assert.match(lawJs, /law-impact-brief/, "law review renders a clear internal impact brief");
 assert.match(lawJs, /law-impact-signal-list/, "law review renders internal material signals as their own list");
+assert.match(lawJs, /function\s+buildReviewStatusSummary/, "law review builds a compact workflow status summary");
+assert.match(lawJs, /className\s*=\s*"law-review-status-summary"/, "law review status summary has dedicated markup");
+assert.match(lawJs, /buildReviewStatusSummary\(state\)/, "law review card renders the status summary");
+assert.match(lawJs, /const\s+VALID_TABS\s*=\s*new Set\(\["review",\s*"evidence",\s*"history"\]\);/, "law review valid tabs match the visible three-tab workflow");
 assert.match(lawJs, /main:\s*"evidence"/, "legacy main tab maps to grouped evidence tab");
 assert.match(lawJs, /decisions:\s*"evidence"/, "legacy decisions tab maps to grouped evidence tab");
+assert.match(lawJs, /report:\s*"review"/, "legacy report tab maps to the review tab");
+assert.doesNotMatch(lawJs, /const\s+VALID_TABS\s*=\s*new Set\(\[[^\]]*"report"/, "removed report tab is not accepted as a current valid tab");
 assert.match(reviewServerJs, /\[law-workbench-review\]/, "law review diagnostics log is present");
 assert.match(reviewServerJs, /prompt_eval_count/, "law review diagnostics logs Ollama prompt eval count");
 assert.match(reviewServerJs, /eval_count/, "law review diagnostics logs Ollama eval count");
@@ -68,6 +88,22 @@ assert.match(
   "primary nav uses three equal columns"
 );
 assert.match(css, /\.law-area\s*{/, "law-area styles exist");
+assert.match(
+  css,
+  /\.law-workbench-tabs\.law-mode-tabs\s*{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/,
+  "law review workflow tabs use three columns"
+);
+assert.match(
+  css,
+  /\.law-tab-lamp\s*{[\s\S]*?width:\s*14px;[\s\S]*?height:\s*14px;/,
+  "law review tab lamps are prominent"
+);
+assert.match(
+  css,
+  /\.law-mode-tab\.is-lamp-done\s+\.law-tab-lamp\s*{[\s\S]*?(?:#16a34a|--success|green)/,
+  "completed law review tab lamp uses a green state"
+);
+assert.match(css, /\.law-review-status-summary\s*{/, "law review status summary styles exist");
 assert.match(css, /\.law-workflow-steps\s*{/, "law review workflow step styles exist");
 assert.match(
   css,

@@ -5,7 +5,7 @@ import { fileTypeIcon, displayFileName } from "../fileDisplay.js";
 
 const MATERIAL_TEXT_LIMIT = 10000;
 const DEFAULT_TAB = "review";
-const VALID_TABS = new Set(["review", "evidence", "history", "report"]);
+const VALID_TABS = new Set(["review", "evidence", "history"]);
 
 // Legacy tab → new grouped tab. Keeps room state migration painless.
 const LEGACY_TAB_MAP = {
@@ -19,7 +19,7 @@ const LEGACY_TAB_MAP = {
   ordinances: "evidence",
   history: "history",
   impact: "history",
-  report: "report"
+  report: "review"
 };
 
 let _activeTab = DEFAULT_TAB;
