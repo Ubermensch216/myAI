@@ -32,10 +32,22 @@ export function setBusy(busy) {
   state.busy = busy;
   elements.fileInput.disabled = busy;
   renderDeepAnalysisToggle();
+  renderStopGenerationButton();
 }
 
 export function stopGeneration() {
-  state.abortController?.abort();
+  if (!state.abortController || state.abortController.signal.aborted) return;
+  state.abortController.abort();
+  renderStopGenerationButton();
+}
+
+function renderStopGenerationButton() {
+  const button = elements.stopGenerationButton;
+  if (!button) return;
+  const canStop = Boolean(state.busy && state.abortController && !state.abortController.signal.aborted);
+  button.hidden = !canStop;
+  button.disabled = !canStop;
+  button.setAttribute("aria-disabled", canStop ? "false" : "true");
 }
 
 // ===== In-flight generation DOM tracking =====
@@ -427,8 +439,8 @@ export async function requestTextAssistantResponse(room) {
     return;
   }
 
-  setBusy(true);
   state.abortController = new AbortController();
+  setBusy(true);
   const latestPrompt = getLastUserPrompt(room);
   const lawSearchMode = Boolean(state.lawSearchMode);
   const naverSearch = !lawSearchMode && wantsExplicitWebSearch(latestPrompt);
@@ -659,8 +671,8 @@ function validateChatPayloadSize(payload) {
 }
 
 export async function requestVisualizationResponse(room) {
-  setBusy(true);
   state.abortController = new AbortController();
+  setBusy(true);
   const thinking = appendThinking();
   trackInflightThinking(room, thinking);
   advanceThinkingProgress(thinking, Math.max(1, getThinkingStepCount(thinking) - 2));

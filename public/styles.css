@@ -2896,6 +2896,26 @@ body.panel-resizing .panel-resizer::after {
   font-size: 0.9em;
 }
 
+.stop-generation-button {
+  order: 5;
+  flex: 0 0 46px;
+  display: grid;
+  width: 46px;
+  min-width: 46px;
+  place-items: center;
+  padding: 0;
+}
+
+.stop-generation-button[hidden] {
+  display: none;
+}
+
+.stop-generation-button svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
 .send-button {
   min-width: 82px;
   height: 46px;

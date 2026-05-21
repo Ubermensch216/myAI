@@ -1095,6 +1095,10 @@ function bindEvents() {
     }
   });
 
+  if (elements.stopGenerationButton) {
+    elements.stopGenerationButton.addEventListener("click", () => stopGeneration());
+  }
+
   // Global keyboard shortcuts
   window.addEventListener("keydown", (event) => {
     const isShiftOnly = event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;

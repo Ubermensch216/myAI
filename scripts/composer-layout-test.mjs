@@ -41,3 +41,20 @@ assert.match(materialButtonBlock, /order:\s*3;/, "file/material icon follows the
 const textareaBlock = cssBlock(".composer textarea");
 assert.match(textareaBlock, /order:\s*4;/, "prompt input follows the mode and file icons");
 assert.match(textareaBlock, /flex:\s*1\s+1\s+auto;/, "prompt input fills remaining width");
+
+const stopButtonMatch = html.match(/<button[^>]*id="stopGenerationButton"[\s\S]*?<\/button>/);
+assert.ok(stopButtonMatch, "stopGenerationButton exists");
+assert.match(stopButtonMatch[0], /\btype="button"/, "stop button does not submit the prompt form");
+assert.match(stopButtonMatch[0], /\bhidden\b/, "stop button starts hidden");
+assert.match(stopButtonMatch[0], /\bdisabled\b/, "stop button starts disabled");
+assert.equal(
+  /<span\b/i.test(stopButtonMatch[0]),
+  false,
+  "stop button is icon-only"
+);
+
+const stopButtonBlock = cssBlock(".stop-generation-button");
+assert.match(stopButtonBlock, /order:\s*5;/, "stop button sits to the right of the prompt input");
+assert.match(stopButtonBlock, /width:\s*46px;/, "stop button has fixed icon-button width");
+assert.match(stopButtonBlock, /min-width:\s*46px;/, "stop button does not inherit wide send-button sizing");
+assert.match(stopButtonBlock, /padding:\s*0;/, "stop button is icon-sized");
