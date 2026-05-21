@@ -518,7 +518,7 @@ export async function requestTextAssistantResponse(room) {
 
     const finalSources = mergeServerConfirmation(initialSources, notebookMeta);
     const assistantMessage = { role: "assistant", content: finalAnswer, createdAt: new Date().toISOString() };
-    const noEvidenceAnswer = isNoEvidenceAnswer(finalAnswer);
+    const noEvidenceAnswer = shouldSuppressEvidenceForAnswer(finalAnswer, allCitations);
     if (allCitations.length && !noEvidenceAnswer) {
       assistantMessage.citations = allCitations;
       assistantMessage.notebook = notebookMeta?.notebook ?? null;
@@ -1002,7 +1002,7 @@ export function appendMessage(role, text, options = {}) {
 
   article.append(meta);
   if (role === "assistant") {
-    const noEvidence = isNoEvidenceAnswer(text);
+    const noEvidence = shouldSuppressEvidenceForAnswer(text, options.citations);
     renderEvidenceSummaryBar(article, {
       citations: noEvidence ? [] : options.citations,
       sources: options.sources,
@@ -1029,10 +1029,10 @@ export function appendMessage(role, text, options = {}) {
   }
   article.append(createMessageActions(article, role, options.createdAt));
   if (role === "assistant") renderFollowupSuggestions(article, options.suggestions);
-  if (role === "assistant" && Array.isArray(options.citations) && options.citations.length && !isNoEvidenceAnswer(text)) {
+  if (role === "assistant" && hasRenderableCitations(options.citations) && !shouldSuppressEvidenceForAnswer(text, options.citations)) {
     renderLawNoticePanel(article, options.law);
     renderCitationsPanel(article, options.citations, options.law, options.compliance);
-  } else if (role === "assistant" && options.law && !isNoEvidenceAnswer(text)) {
+  } else if (role === "assistant" && options.law && !shouldSuppressEvidenceForAnswer(text, options.citations)) {
     renderLawNoticePanel(article, options.law);
     renderLawDisclaimer(article, options.law);
   }
@@ -1207,7 +1207,15 @@ function classifyLawCitation(citation) {
   const sourceType = String(citation.sourceType || "");
   const recordType = String(citation.recordType || "");
   const citationId = String(citation.citationId || "");
-  if (sourceType === "law" || recordType === "statute" || /^L\d/.test(citationId)) return "statute";
+  if (
+    sourceType === "law" ||
+    sourceType === "law_article" ||
+    recordType === "statute" ||
+    recordType === "law" ||
+    /^L\d/.test(citationId) ||
+    /^AI-L\d/.test(citationId) ||
+    /^L-S\d/.test(citationId)
+  ) return "statute";
   if (sourceType === "law_precedent" || recordType === "precedent" || /^P\d/.test(citationId)) return "precedent";
   if (sourceType.startsWith("decision_") || recordType === "decision" || /^D\d/.test(citationId)) return "decision";
   if (sourceType === "law_interpretation" || recordType === "interpretation" || /^I\d/.test(citationId)) return "interpretation";
@@ -1943,6 +1951,14 @@ function isNoEvidenceAnswer(answer) {
     /no relevant information/i,
     /could not find/i
   ].some((pattern) => pattern.test(text));
+}
+
+function hasRenderableCitations(citations) {
+  return Array.isArray(citations) && citations.length > 0;
+}
+
+function shouldSuppressEvidenceForAnswer(answer, citations = []) {
+  return isNoEvidenceAnswer(answer) && !hasRenderableCitations(citations);
 }
 
 function decodeNotebookMetaHeader(headerValue) {

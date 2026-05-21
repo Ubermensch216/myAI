@@ -47,6 +47,7 @@ assert.ok(stopButtonMatch, "stopGenerationButton exists");
 assert.match(stopButtonMatch[0], /\btype="button"/, "stop button does not submit the prompt form");
 assert.match(stopButtonMatch[0], /\bhidden\b/, "stop button starts hidden");
 assert.match(stopButtonMatch[0], /\bdisabled\b/, "stop button starts disabled");
+assert.doesNotMatch(stopButtonMatch[0], /\bstop-button\b/, "stop button does not use danger emphasis styling");
 assert.equal(
   /<span\b/i.test(stopButtonMatch[0]),
   false,
@@ -56,5 +57,6 @@ assert.equal(
 const stopButtonBlock = cssBlock(".stop-generation-button");
 assert.match(stopButtonBlock, /order:\s*5;/, "stop button sits to the right of the prompt input");
 assert.match(stopButtonBlock, /width:\s*46px;/, "stop button has fixed icon-button width");
+assert.match(stopButtonBlock, /height:\s*46px;/, "stop button has 1:1 icon-button height");
 assert.match(stopButtonBlock, /min-width:\s*46px;/, "stop button does not inherit wide send-button sizing");
 assert.match(stopButtonBlock, /padding:\s*0;/, "stop button is icon-sized");

@@ -1,6 +1,28 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { buildEvidenceSummaryItems } from "../public/modules/evidenceSummary.js";
+
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const chatJs = await fs.readFile(path.join(rootDir, "public", "modules", "chat.js"), "utf8");
+
+function findFunctionBody(source, name) {
+  const signature = `function ${name}`;
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `${name} function exists`);
+  const bodyStart = source.indexOf("{", start);
+  assert.notEqual(bodyStart, -1, `${name} function body starts`);
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+    if (depth === 0) return source.slice(bodyStart + 1, i);
+  }
+  assert.fail(`${name} function body closes`);
+}
 
 const summary = buildEvidenceSummaryItems({
   citations: [
@@ -42,6 +64,17 @@ assert.deepEqual(
 const decision = summary.find((item) => item.code === "D");
 assert.equal(decision.detail, "목록 1 / 전문 1");
 assert.equal(decision.marker, "[D]");
+
+const classifyLawCitationBody = findFunctionBody(chatJs, "classifyLawCitation");
+assert.match(classifyLawCitationBody, /sourceType\s*===\s*"law_article"/, "chat citation panel treats AI law-article results as legal citations");
+assert.match(classifyLawCitationBody, /\^AI-L/, "chat citation panel recognizes AI-L citation ids");
+assert.match(classifyLawCitationBody, /\^L-S/, "chat citation panel recognizes law search candidate ids");
+
+const shouldSuppressEvidenceBody = findFunctionBody(chatJs, "shouldSuppressEvidenceForAnswer");
+assert.match(shouldSuppressEvidenceBody, /isNoEvidenceAnswer\(answer\)/, "evidence suppression still checks no-evidence answers");
+assert.match(shouldSuppressEvidenceBody, /!hasRenderableCitations\(citations\)/, "evidence suppression keeps citation panels when citations exist");
+assert.match(chatJs, /shouldSuppressEvidenceForAnswer\(finalAnswer,\s*allCitations\)/, "streaming chat keeps law citations visible even when answer text says evidence is limited");
+assert.match(chatJs, /shouldSuppressEvidenceForAnswer\(text,\s*options\.citations\)/, "saved message rendering keeps persisted citations visible");
 
 const file = summary.find((item) => item.code === "F");
 assert.equal(file.marker, "[F]");
