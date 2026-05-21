@@ -10,12 +10,12 @@ import { PROFILE_PERSONAL } from "./rag/ragConfig.js";
 import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
 import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
-import { buildNaverSearchContext, shouldUseNaverSearch } from "./naverSearch.js";
+import { buildNaverSearchContext } from "./naverSearch.js";
 import { buildLawContext, buildForcedLawContext, buildLawContextFromArticleRefs, mergeLawContexts } from "./law/lawContextBuilder.js";
-import { detectLawIntent } from "./law/lawIntent.js";
 import { LAW_ERROR_MARKERS } from "./law/lawErrors.js";
 import { buildComplianceUnavailableMessage } from "./compliance/compliancePrompt.js";
-import { buildComplianceSearchQuery, getReviewType } from "./compliance/complianceTypes.js";
+import { getReviewType } from "./compliance/complianceTypes.js";
+import { CHAT_ROUTES, classifyChatRoute, resolveChatModeFlags as resolvePromptRouteFlags } from "./promptRouter.js";
 import {
   buildVisualizationContext,
   executeVisualizationPlan,
@@ -78,8 +78,22 @@ export async function streamChat({
   signal
 }) {
   throwIfAborted(signal);
-  const isLawSearchMode = Boolean(lawSearchMode);
-  if (mode === "map_reduce" && !isLawSearchMode) {
+  const latestUserIndex = findLatestUserMessageIndex(messages);
+  const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
+  const hasDocuments = Array.isArray(documents) && documents.length > 0;
+  const routeDecision = classifyChatRoute({
+    prompt: latestUserQuery,
+    messages,
+    documents,
+    notebookId,
+    mode,
+    lawSearchMode
+  });
+  const { allowWebSearch, forceWebSearch, shouldLoadNotebookContext, isLawSearchMode } = routeDecision.chatFlags;
+  const lawIntent = routeDecision.lawIntent;
+  const isComplianceReview = routeDecision.route === CHAT_ROUTES.COMPLIANCE_REVIEW;
+
+  if (routeDecision.route === CHAT_ROUTES.MAP_REDUCE) {
     await runMapReduceChat({
       messages,
       documents,
@@ -93,32 +107,14 @@ export async function streamChat({
     return;
   }
 
-  const latestUserIndex = findLatestUserMessageIndex(messages);
-  const latestUserQuery = latestUserIndex >= 0 ? String(messages[latestUserIndex]?.content ?? "") : "";
-  const hasDocuments = Array.isArray(documents) && documents.length > 0;
-  const { allowWebSearch, forceWebSearch, shouldLoadNotebookContext } = resolveChatModeFlags({
-    lawSearchMode: isLawSearchMode,
-    prompt: latestUserQuery,
-    notebookId,
-    documents
-  });
-  const lawIntent = detectLawIntent(latestUserQuery, { hasNotebook: Boolean(notebookId), hasDocuments });
-  const isComplianceReview = !isLawSearchMode && lawIntent.mode === "department_legal_review";
-  if (isComplianceReview && !notebookId && !hasDocuments) {
+  if (routeDecision.requiresInternalMaterial) {
     const compliance = buildComplianceMeta(lawIntent, { error: "NO_INTERNAL_MATERIAL", evidenceFamilies: [] });
     if (typeof onMeta === "function") onMeta({ compliance, law: null, citations: [] });
     onChunk(buildComplianceUnavailableMessage("no_internal_material"));
     return;
   }
-  const notebookQueryOverride = isComplianceReview
-    ? buildComplianceSearchQuery({
-        userQuestion: latestUserQuery,
-        reviewType: lawIntent.reviewType,
-        focusLawNames: lawIntent.focusLawNames
-      })
-    : "";
   const [notebookContext, explicitLawContext, webSearchContext] = await Promise.all([
-    loadNotebookContext(shouldLoadNotebookContext ? notebookId : null, messages, { signal, queryOverride: notebookQueryOverride }),
+    loadNotebookContext(shouldLoadNotebookContext ? notebookId : null, messages, { signal, queryOverride: routeDecision.notebookQueryOverride }),
     !forceWebSearch
       ? (isLawSearchMode
           ? buildForcedLawContext(latestUserQuery, { signal })
@@ -280,18 +276,7 @@ export async function streamChat({
 }
 
 export function resolveChatModeFlags({ lawSearchMode = false, prompt = "", notebookId = null, documents = [] } = {}) {
-  const isLawSearchMode = Boolean(lawSearchMode);
-  return {
-    isLawSearchMode,
-    forceWebSearch: !isLawSearchMode && shouldUseNaverSearch(prompt),
-    allowWebSearch: !isLawSearchMode && shouldAllowWebSearch({ notebookId, documents }),
-    shouldLoadNotebookContext: !isLawSearchMode && Boolean(notebookId)
-  };
-}
-
-function shouldAllowWebSearch({ notebookId, documents }) {
-  if (notebookId) return false;
-  return !Array.isArray(documents) || documents.length === 0;
+  return resolvePromptRouteFlags({ lawSearchMode, prompt, notebookId, documents });
 }
 
 function buildComplianceMeta(intent, { error = "", evidenceFamilies = [] } = {}) {

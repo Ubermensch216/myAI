@@ -42,6 +42,7 @@ const cases = [
   ["프로토콜 1000조 패킷", false, {}, "1000조 패킷 (protocol)"],
   ["오늘 점심 메뉴 추천해줘", false, {}, "totally non-legal"],
   ["기법을 설명해주세요", false, {}, "기법 (technique)"],
+  ["\"법무/컴플라이언스 관리자\"라는 용어에서 컴플라이언스의 의미를 중학생 수준에 맞춰 쉽게 설명해", false, {}, "compliance term definition, not internal review"],
   ["사내규정에 따르면 늦게 출근하면", false, { hasDocuments: true }, "사내규정 (company, no article ref)"],
 
   // === Borderline / context-sensitive ===
