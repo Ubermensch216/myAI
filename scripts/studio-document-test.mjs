@@ -130,6 +130,24 @@ await check("POST /from-answer rejects empty answer", async () => {
   if (res.status !== 400) throw new Error(`expected 400, got ${res.status}`);
 });
 
+await check("POST /ai-edit rejects empty target text", async () => {
+  const res = await fetch(`${base}/ai-edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "rewrite", targetType: "paragraph", text: "   " })
+  });
+  if (res.status !== 400) throw new Error(`expected 400, got ${res.status}`);
+});
+
+await check("POST /ai-edit rejects unsupported tone", async () => {
+  const res = await fetch(`${base}/ai-edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "tone", tone: "dramatic", targetType: "paragraph", text: "본문" })
+  });
+  if (res.status !== 400) throw new Error(`expected 400, got ${res.status}`);
+});
+
 await check("POST /from-answer falls back when LLM is unreachable", async () => {
   const { response, body } = await asJson(await fetch(`${base}/from-answer`, {
     method: "POST",

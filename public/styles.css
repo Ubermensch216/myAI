@@ -4916,12 +4916,202 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .studio-document-visual-block {
+  position: relative;
   padding: 2px 0 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
 
 .studio-document-visual-block:last-child {
   border-bottom: 0;
+}
+
+.studio-document-visual-content {
+  min-width: 0;
+}
+
+.studio-document-visual-block:not(.is-table) .studio-document-visual-content {
+  padding-right: 34px;
+}
+
+.studio-document-ai-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.studio-document-block-ai {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.studio-document-visual-block:hover .studio-document-block-ai,
+.studio-document-visual-block:focus-within .studio-document-block-ai,
+.studio-document-block-ai:has(.studio-document-ai-menu) {
+  opacity: 1;
+}
+
+.studio-document-ai-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.studio-document-ai-trigger:hover,
+.studio-document-ai-trigger:focus-visible,
+.studio-document-ai-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.studio-document-ai-trigger:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.studio-document-ai-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  display: grid;
+  gap: 2px;
+  min-width: 148px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+.studio-document-ai-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.studio-document-ai-menu-item:hover,
+.studio-document-ai-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.studio-document-ai-menu-label {
+  margin: 3px 3px 1px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.studio-document-table-cell-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  gap: 4px;
+  align-items: center;
+}
+
+.studio-document-table-cell-editor .studio-document-ai-trigger {
+  width: 24px;
+  height: 24px;
+  font-size: 9px;
+  opacity: 0.7;
+  box-shadow: none;
+}
+
+.studio-document-table-cell-editor:hover .studio-document-ai-trigger,
+.studio-document-table-cell-editor:focus-within .studio-document-ai-trigger {
+  opacity: 1;
+}
+
+.studio-document-ai-preview {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.studio-document-ai-preview.is-error {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+
+.studio-document-ai-preview-title {
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.studio-document-ai-loading,
+.studio-document-ai-output,
+.studio-document-ai-error,
+.studio-document-ai-warnings {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.studio-document-ai-loading {
+  color: var(--muted);
+}
+
+.studio-document-ai-output {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink);
+}
+
+.studio-document-ai-error {
+  color: var(--danger);
+}
+
+.studio-document-ai-warnings {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.studio-document-ai-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.studio-document-ai-preview-button {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .studio-document-visual-heading,

@@ -3,6 +3,7 @@ import { listDefaultTemplates, getDefaultTemplate, pickDefaultTemplateId } from 
 import { normalizeDocument, DOCUMENT_LIMITS } from "./documentModel.js";
 import { renderDocumentToMarkdown, renderCitationsSection } from "./documentRenderer.js";
 import { convertAnswerToDocument } from "./answerToDocument.js";
+import { editDocumentBlock } from "./aiEdit.js";
 import { createExportFile, listExportFormats } from "../exportFiles.js";
 import { DEFAULT_MODEL } from "../ollama.js";
 
@@ -66,6 +67,43 @@ studioDocumentRouter.post("/from-answer", async (req, res) => {
   } catch (error) {
     const status = error.statusCode || (isClientError(error) ? 400 : 500);
     res.status(status).json({ ok: false, error: error.message, code: error.code || null });
+  }
+});
+
+studioDocumentRouter.post("/ai-edit", async (req, res) => {
+  const controller = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded && !controller.signal.aborted) controller.abort();
+  };
+  res.on("close", onClose);
+
+  try {
+    const body = req.body || {};
+    const result = await editDocumentBlock({
+      action: body.action,
+      tone: body.tone,
+      targetType: body.targetType,
+      text: body.text,
+      documentTitle: body.documentTitle,
+      contextBefore: body.contextBefore,
+      contextAfter: body.contextAfter,
+      model: typeof body.model === "string" && body.model.trim() ? body.model.trim() : DEFAULT_MODEL,
+      signal: controller.signal
+    });
+    res.json({ ok: true, result });
+  } catch (error) {
+    if (error.name === "AbortError" && controller.signal.aborted) return;
+    if (isAiEditTimeout(error)) {
+      return res.status(504).json({
+        ok: false,
+        error: "AI 편집 응답 시간이 초과되었습니다. 선택 영역을 줄이거나 다시 시도해 주세요.",
+        code: "AI_EDIT_TIMEOUT"
+      });
+    }
+    const status = error.statusCode || (isAiEditClientError(error) ? 400 : 500);
+    res.status(status).json({ ok: false, error: error.message, code: error.code || null });
+  } finally {
+    res.off("close", onClose);
   }
 });
 
@@ -201,4 +239,17 @@ function isClientError(error) {
     || code === "ANSWER_TOO_LARGE"
     || code === "TEMPLATE_REQUIRED"
     || code === "DOCUMENT_TOO_LARGE";
+}
+
+function isAiEditClientError(error) {
+  const code = error?.code;
+  return code === "INVALID_ACTION"
+    || code === "INVALID_TARGET"
+    || code === "INVALID_TONE"
+    || code === "EMPTY_TEXT";
+}
+
+function isAiEditTimeout(error) {
+  const message = String(error?.message || "");
+  return error?.name === "AbortError" && /Studio document AI edit timed out|timed out/i.test(message);
 }

@@ -23,6 +23,23 @@ let _activeAbort = null;
 let _switchToDocumentTool = null;
 let _suppressEditorChange = false;
 let _visualBlocks = [];
+let _openAiMenuKey = "";
+let _aiEditDocumentId = "";
+const _aiEditStates = new Map();
+
+const AI_EDIT_ACTIONS = [
+  { id: "rewrite", label: "재작성" },
+  { id: "summarize", label: "요약" },
+  { id: "shorten", label: "더 짧게" },
+  { id: "expand", label: "더 길게" }
+];
+
+const AI_EDIT_TONES = [
+  { id: "official", label: "공문체" },
+  { id: "report", label: "보고서체" },
+  { id: "plain", label: "간결하게" },
+  { id: "friendly", label: "친절하게" }
+];
 
 export function registerDocumentStudioActivator(fn) {
   _switchToDocumentTool = typeof fn === "function" ? fn : null;
@@ -82,8 +99,12 @@ export function bindDocumentStudioEvents() {
     }
   });
   document.addEventListener("click", closeDownloadMenu);
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".studio-document-ai-menu-wrap")) closeAiEditMenus();
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeDownloadMenu();
+    if (event.key === "Escape") closeAiEditMenus();
   });
 
   elements.studioDocumentIncludeCitations?.addEventListener("change", () => {
@@ -166,6 +187,7 @@ function setDocumentEditorMode(mode) {
   if (!doc) return;
   const next = mode === "raw" ? "raw" : mode === "library" ? "library" : "visual";
   if (getDocumentEditorMode(doc) === next) return;
+  _openAiMenuKey = "";
   doc.editorMode = next;
   markDirty(doc);
   renderDocumentStudio();
@@ -202,15 +224,15 @@ function renderVisualEditor(doc) {
 }
 
 function renderVisualBlock(doc, block, blockIndex) {
-  if (block.type === "heading") return renderHeadingBlock(doc, block);
-  if (block.type === "paragraph") return renderParagraphBlock(doc, block);
-  if (block.type === "bullet_list" || block.type === "numbered_list") return renderListBlock(doc, block);
-  if (block.type === "checklist") return renderChecklistBlock(doc, block);
-  if (block.type === "table") return renderTableBlock(doc, block);
-  return renderRawBlock(block, blockIndex);
+  if (block.type === "heading") return renderHeadingBlock(doc, block, blockIndex);
+  if (block.type === "paragraph") return renderParagraphBlock(doc, block, blockIndex);
+  if (block.type === "bullet_list" || block.type === "numbered_list") return renderListBlock(doc, block, blockIndex);
+  if (block.type === "checklist") return renderChecklistBlock(doc, block, blockIndex);
+  if (block.type === "table") return renderTableBlock(doc, block, blockIndex);
+  return renderRawBlock(doc, block, blockIndex);
 }
 
-function renderHeadingBlock(doc, block) {
+function renderHeadingBlock(doc, block, blockIndex) {
   const wrap = createVisualShell("heading");
   const input = document.createElement("input");
   input.className = `studio-document-visual-heading is-h${Math.min(6, Math.max(1, Number(block.level) || 1))}`;
@@ -220,11 +242,13 @@ function renderHeadingBlock(doc, block) {
     block.text = input.value;
     syncVisualBlocks(doc);
   });
-  wrap.append(input);
+  appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
+  appendVisualContent(wrap, input);
+  appendAiEditPanels(wrap, doc, block, blockIndex);
   return wrap;
 }
 
-function renderParagraphBlock(doc, block) {
+function renderParagraphBlock(doc, block, blockIndex) {
   const wrap = createVisualShell("paragraph");
   const input = document.createElement("textarea");
   input.className = "studio-document-visual-paragraph";
@@ -235,12 +259,14 @@ function renderParagraphBlock(doc, block) {
     syncVisualBlocks(doc);
     autosizeVisualTextarea(input);
   });
-  wrap.append(input);
+  appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
+  appendVisualContent(wrap, input);
+  appendAiEditPanels(wrap, doc, block, blockIndex);
   requestAnimationFrame(() => autosizeVisualTextarea(input));
   return wrap;
 }
 
-function renderListBlock(doc, block) {
+function renderListBlock(doc, block, blockIndex) {
   const wrap = createVisualShell(block.type === "numbered_list" ? "numbered-list" : "bullet-list");
   const list = document.createElement(block.type === "numbered_list" ? "ol" : "ul");
   list.className = "studio-document-visual-list";
@@ -257,11 +283,13 @@ function renderListBlock(doc, block) {
     li.append(input);
     list.append(li);
   }
-  wrap.append(list);
+  appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
+  appendVisualContent(wrap, list);
+  appendAiEditPanels(wrap, doc, block, blockIndex);
   return wrap;
 }
 
-function renderChecklistBlock(doc, block) {
+function renderChecklistBlock(doc, block, blockIndex) {
   const wrap = createVisualShell("checklist");
   const list = document.createElement("ul");
   list.className = "studio-document-visual-list studio-document-visual-checklist";
@@ -285,11 +313,13 @@ function renderChecklistBlock(doc, block) {
     li.append(checkbox, input);
     list.append(li);
   }
-  wrap.append(list);
+  appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
+  appendVisualContent(wrap, list);
+  appendAiEditPanels(wrap, doc, block, blockIndex);
   return wrap;
 }
 
-function renderTableBlock(doc, block) {
+function renderTableBlock(doc, block, blockIndex) {
   const wrap = createVisualShell("table");
   const scroller = document.createElement("div");
   scroller.className = "studio-document-visual-table-scroll";
@@ -302,10 +332,10 @@ function renderTableBlock(doc, block) {
   const headerRow = document.createElement("tr");
   headers.forEach((header, colIndex) => {
     const th = document.createElement("th");
-    th.append(createTableInput(header, (value) => {
+    th.append(createTableCellEditor(doc, block, blockIndex, header, (value) => {
       block.headers[colIndex] = value;
       syncVisualBlocks(doc);
-    }));
+    }, makeTableCellAiTarget(blockIndex, true, -1, colIndex)));
     headerRow.append(th);
   });
   thead.append(headerRow);
@@ -316,29 +346,32 @@ function renderTableBlock(doc, block) {
     const tr = document.createElement("tr");
     headers.forEach((_, colIndex) => {
       const td = document.createElement("td");
-      td.append(createTableInput(row?.[colIndex] || "", (value) => {
+      td.append(createTableCellEditor(doc, block, blockIndex, row?.[colIndex] || "", (value) => {
         if (!Array.isArray(block.rows[rowIndex])) block.rows[rowIndex] = [];
         block.rows[rowIndex][colIndex] = value;
         syncVisualBlocks(doc);
-      }));
+      }, makeTableCellAiTarget(blockIndex, false, rowIndex, colIndex)));
       tr.append(td);
     });
     tbody.append(tr);
   });
   table.append(tbody);
   scroller.append(table);
-  wrap.append(scroller);
+  appendVisualContent(wrap, scroller);
+  appendAiEditPanels(wrap, doc, block, blockIndex);
   return wrap;
 }
 
-function renderRawBlock(block, blockIndex) {
+function renderRawBlock(doc, block, blockIndex) {
   const wrap = createVisualShell("raw");
   const pre = document.createElement("pre");
   pre.className = "studio-document-visual-raw";
   pre.tabIndex = 0;
   pre.dataset.blockIndex = String(blockIndex);
   pre.textContent = block.markdown || "";
-  wrap.append(pre);
+  appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
+  appendVisualContent(wrap, pre);
+  appendAiEditPanels(wrap, doc, block, blockIndex);
   return wrap;
 }
 
@@ -354,6 +387,359 @@ function createTableInput(value, onInput) {
   input.value = value || "";
   input.addEventListener("input", () => onInput(input.value));
   return input;
+}
+
+function createTableCellEditor(doc, block, blockIndex, value, onInput, target) {
+  const editor = document.createElement("div");
+  editor.className = "studio-document-table-cell-editor";
+  editor.append(createTableInput(value, onInput), createAiEditControls(doc, block, blockIndex, target, { compact: true }));
+  return editor;
+}
+
+function appendVisualContent(wrap, ...nodes) {
+  const content = document.createElement("div");
+  content.className = "studio-document-visual-content";
+  content.append(...nodes);
+  wrap.append(content);
+}
+
+function appendBlockAiControls(wrap, doc, block, blockIndex, target) {
+  if (!target) return;
+  const controls = createAiEditControls(doc, block, blockIndex, target);
+  controls.classList.add("studio-document-block-ai");
+  wrap.append(controls);
+}
+
+function createAiEditControls(doc, block, blockIndex, target, options = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = `studio-document-ai-menu-wrap${options.compact ? " is-compact" : ""}`;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "studio-document-ai-trigger";
+  button.textContent = "AI";
+  button.title = `${target.label} AI 편집`;
+  button.setAttribute("aria-label", `${target.label} AI 편집 메뉴`);
+  button.setAttribute("aria-haspopup", "menu");
+  button.setAttribute("aria-expanded", _openAiMenuKey === target.key ? "true" : "false");
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    _openAiMenuKey = _openAiMenuKey === target.key ? "" : target.key;
+    renderDocumentStudio();
+  });
+  wrap.append(button);
+
+  if (_openAiMenuKey === target.key) {
+    const menu = document.createElement("div");
+    menu.className = "studio-document-ai-menu";
+    menu.setAttribute("role", "menu");
+    for (const action of AI_EDIT_ACTIONS) {
+      menu.append(createAiEditMenuItem(action.label, () => {
+        startAiEdit(doc, block, blockIndex, target, action.id);
+      }));
+    }
+    const toneLabel = document.createElement("div");
+    toneLabel.className = "studio-document-ai-menu-label";
+    toneLabel.textContent = "어조 변경";
+    menu.append(toneLabel);
+    for (const tone of AI_EDIT_TONES) {
+      menu.append(createAiEditMenuItem(tone.label, () => {
+        startAiEdit(doc, block, blockIndex, target, "tone", tone.id);
+      }));
+    }
+    wrap.append(menu);
+  }
+
+  return wrap;
+}
+
+function createAiEditMenuItem(label, onClick) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "studio-document-ai-menu-item";
+  item.setAttribute("role", "menuitem");
+  item.textContent = label;
+  item.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  return item;
+}
+
+function appendAiEditPanels(wrap, doc, block, blockIndex) {
+  const states = Array.from(_aiEditStates.values()).filter((state) => state.target.blockIndex === blockIndex);
+  for (const state of states) {
+    wrap.append(renderAiEditPanel(doc, block, blockIndex, state));
+  }
+}
+
+function renderAiEditPanel(doc, block, blockIndex, state) {
+  const panel = document.createElement("div");
+  panel.className = `studio-document-ai-preview is-${state.status}`;
+  panel.setAttribute("aria-live", "polite");
+
+  const title = document.createElement("div");
+  title.className = "studio-document-ai-preview-title";
+  title.textContent = state.status === "loading"
+    ? `${state.actionLabel} 중`
+    : state.status === "error"
+      ? `${state.actionLabel} 실패`
+      : `${state.actionLabel} 결과`;
+  panel.append(title);
+
+  if (state.status === "loading") {
+    const loading = document.createElement("div");
+    loading.className = "studio-document-ai-loading";
+    loading.textContent = "선택한 항목을 편집하고 있습니다.";
+    panel.append(loading);
+  } else if (state.status === "error") {
+    const error = document.createElement("div");
+    error.className = "studio-document-ai-error";
+    error.textContent = state.error || "AI 편집에 실패했습니다.";
+    panel.append(error);
+  } else {
+    const output = document.createElement("div");
+    output.className = "studio-document-ai-output";
+    output.textContent = state.resultText || "";
+    panel.append(output);
+    if (Array.isArray(state.warnings) && state.warnings.length) {
+      const warnings = document.createElement("div");
+      warnings.className = "studio-document-ai-warnings";
+      warnings.textContent = state.warnings.join(" · ");
+      panel.append(warnings);
+    }
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "studio-document-ai-preview-actions";
+  if (state.status === "ready") {
+    actions.append(
+      createAiPreviewButton("적용", () => applyAiEditResult(doc, state)),
+      createAiPreviewButton("아래에 삽입", () => insertAiEditResult(doc, state))
+    );
+  }
+  if (state.status !== "loading") {
+    actions.append(createAiPreviewButton("다시 생성", () => {
+      startAiEdit(doc, block, blockIndex, state.target, state.action, state.tone);
+    }));
+  }
+  actions.append(createAiPreviewButton(state.status === "loading" ? "취소" : "닫기", () => cancelAiEdit(state.key)));
+  panel.append(actions);
+  return panel;
+}
+
+function createAiPreviewButton(label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button studio-document-ai-preview-button";
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+}
+
+function makeBlockAiTarget(block, blockIndex) {
+  if (block.type === "heading") return { key: `block:${blockIndex}`, blockIndex, targetType: "heading", label: "제목" };
+  if (block.type === "paragraph") return { key: `block:${blockIndex}`, blockIndex, targetType: "paragraph", label: "문단" };
+  if (block.type === "bullet_list" || block.type === "numbered_list") {
+    return { key: `block:${blockIndex}`, blockIndex, targetType: "list", label: "목록" };
+  }
+  if (block.type === "checklist") return { key: `block:${blockIndex}`, blockIndex, targetType: "checklist", label: "체크리스트" };
+  if (block.type === "raw") return { key: `block:${blockIndex}`, blockIndex, targetType: "raw", label: "원문 블록" };
+  return null;
+}
+
+function makeTableCellAiTarget(blockIndex, isHeader, rowIndex, colIndex) {
+  const rowKey = isHeader ? "h" : String(rowIndex);
+  const label = isHeader ? `표 머리글 ${colIndex + 1}` : `표 ${rowIndex + 1}행 ${colIndex + 1}열`;
+  return {
+    key: `cell:${blockIndex}:${rowKey}:${colIndex}`,
+    blockIndex,
+    targetType: "table_cell",
+    label,
+    cell: { isHeader, rowIndex, colIndex }
+  };
+}
+
+async function startAiEdit(doc, block, blockIndex, target, action, tone = "") {
+  const text = getAiTargetText(block, target);
+  if (!text.trim()) {
+    _aiEditStates.set(target.key, {
+      key: target.key,
+      target,
+      action,
+      tone,
+      actionLabel: getAiActionLabel(action, tone),
+      status: "error",
+      error: "편집할 내용이 없습니다."
+    });
+    _openAiMenuKey = "";
+    renderDocumentStudio();
+    return;
+  }
+
+  const existing = _aiEditStates.get(target.key);
+  if (existing?.controller) existing.controller.abort();
+
+  const controller = new AbortController();
+  const state = {
+    key: target.key,
+    target: { ...target, cell: target.cell ? { ...target.cell } : null },
+    action,
+    tone,
+    actionLabel: getAiActionLabel(action, tone),
+    status: "loading",
+    controller,
+    resultText: "",
+    warnings: []
+  };
+  _aiEditStates.set(target.key, state);
+  _openAiMenuKey = "";
+  renderDocumentStudio();
+
+  try {
+    const response = await fetch("/api/studio/document/ai-edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        action,
+        tone,
+        targetType: target.targetType,
+        text,
+        documentTitle: doc.title || "",
+        contextBefore: getAiContext(blockIndex, -1),
+        contextAfter: getAiContext(blockIndex, 1),
+        model: elements.modelInput?.value?.trim() || undefined
+      })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.ok) throw new Error(body.error || `status ${response.status}`);
+    if (_aiEditStates.get(target.key)?.controller !== controller) return;
+    _aiEditStates.set(target.key, {
+      ...state,
+      status: "ready",
+      controller: null,
+      resultText: String(body.result?.text || "").trim(),
+      warnings: Array.isArray(body.result?.warnings) ? body.result.warnings : []
+    });
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    if (_aiEditStates.get(target.key)?.controller !== controller) return;
+    _aiEditStates.set(target.key, {
+      ...state,
+      status: "error",
+      controller: null,
+      error: error.message || "AI 편집에 실패했습니다."
+    });
+  } finally {
+    renderDocumentStudio();
+  }
+}
+
+function getAiTargetText(block, target) {
+  if (!block) return "";
+  if (target.targetType === "heading") return String(block.text || "");
+  if (target.targetType === "paragraph") return String(block.text || "");
+  if (target.targetType === "raw") return String(block.markdown || "");
+  if (target.targetType === "list") {
+    return (Array.isArray(block.items) ? block.items : []).map((item) => item.text || "").filter(Boolean).join("\n");
+  }
+  if (target.targetType === "checklist") {
+    return (Array.isArray(block.items) ? block.items : []).map((item) => item.text || "").filter(Boolean).join("\n");
+  }
+  if (target.targetType === "table_cell") {
+    const cell = target.cell || {};
+    if (cell.isHeader) return String(block.headers?.[cell.colIndex] || "");
+    return String(block.rows?.[cell.rowIndex]?.[cell.colIndex] || "");
+  }
+  return "";
+}
+
+function setAiTargetText(block, target, text) {
+  const value = String(text || "").trim();
+  if (target.targetType === "heading") {
+    block.text = value.replace(/\s*\n+\s*/g, " ");
+  } else if (target.targetType === "paragraph") {
+    block.text = value;
+  } else if (target.targetType === "raw") {
+    block.markdown = value;
+  } else if (target.targetType === "list") {
+    block.items = textToLineItems(value).map((item) => ({ text: item }));
+  } else if (target.targetType === "checklist") {
+    const previous = Array.isArray(block.items) ? block.items : [];
+    block.items = textToLineItems(value).map((item, index) => ({
+      text: item,
+      checked: Boolean(previous[index]?.checked)
+    }));
+  } else if (target.targetType === "table_cell") {
+    const cell = target.cell || {};
+    const cellText = value.replace(/\s*\n+\s*/g, " ");
+    if (cell.isHeader) {
+      if (!Array.isArray(block.headers)) block.headers = [];
+      block.headers[cell.colIndex] = cellText;
+    } else {
+      if (!Array.isArray(block.rows)) block.rows = [];
+      if (!Array.isArray(block.rows[cell.rowIndex])) block.rows[cell.rowIndex] = [];
+      block.rows[cell.rowIndex][cell.colIndex] = cellText;
+    }
+  }
+}
+
+function applyAiEditResult(doc, state) {
+  const block = _visualBlocks[state.target.blockIndex];
+  if (!block || state.status !== "ready") return;
+  setAiTargetText(block, state.target, state.resultText);
+  _aiEditStates.delete(state.key);
+  syncVisualBlocks(doc);
+  renderDocumentStudio();
+}
+
+function insertAiEditResult(doc, state) {
+  if (state.status !== "ready") return;
+  const index = Math.min(_visualBlocks.length, state.target.blockIndex + 1);
+  _visualBlocks.splice(index, 0, { type: "paragraph", text: String(state.resultText || "").trim() });
+  _aiEditStates.clear();
+  syncVisualBlocks(doc);
+  renderDocumentStudio();
+}
+
+function cancelAiEdit(key) {
+  const state = _aiEditStates.get(key);
+  if (state?.controller) state.controller.abort();
+  _aiEditStates.delete(key);
+  renderDocumentStudio();
+}
+
+function closeAiEditMenus() {
+  if (!_openAiMenuKey) return;
+  _openAiMenuKey = "";
+  renderDocumentStudio();
+}
+
+function getAiContext(blockIndex, direction) {
+  const start = direction < 0 ? Math.max(0, blockIndex - 2) : blockIndex + 1;
+  const end = direction < 0 ? blockIndex : Math.min(_visualBlocks.length, blockIndex + 3);
+  return serializeVisualBlocksToMarkdown(_visualBlocks.slice(start, end)).slice(0, 2000);
+}
+
+function getAiActionLabel(action, tone) {
+  if (action === "tone") {
+    const toneLabel = AI_EDIT_TONES.find((item) => item.id === tone)?.label || "어조 변경";
+    return `어조 변경: ${toneLabel}`;
+  }
+  return AI_EDIT_ACTIONS.find((item) => item.id === action)?.label || "AI 편집";
+}
+
+function textToLineItems(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+|\[[ xX]\]\s+)/, "").trim())
+    .filter(Boolean);
 }
 
 function syncVisualBlocks(doc) {
@@ -466,6 +852,9 @@ export function renderDocumentStudio() {
   const doc = studio ? studio.documents.find((d) => d.id === studio.activeDocumentId) : null;
 
   if (!doc) {
+    _openAiMenuKey = "";
+    _aiEditDocumentId = "";
+    _aiEditStates.clear();
     if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = false;
     if (elements.studioDocumentEditor) elements.studioDocumentEditor.hidden = true;
     if (elements.studioDocumentVisual) elements.studioDocumentVisual.innerHTML = "";
@@ -474,6 +863,11 @@ export function renderDocumentStudio() {
   }
   if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = true;
   if (elements.studioDocumentEditor) elements.studioDocumentEditor.hidden = false;
+  if (_aiEditDocumentId !== doc.id) {
+    _openAiMenuKey = "";
+    _aiEditStates.clear();
+    _aiEditDocumentId = doc.id;
+  }
 
   ensureDraftMarkdown(doc);
 
