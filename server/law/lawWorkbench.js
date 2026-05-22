@@ -35,10 +35,11 @@ export async function buildLawWorkbench(input = {}, options = {}) {
   let aiCandidatesBlock = { ok: false, skipped: true, items: [] };
   let resolvedLawName = "";
 
-  if (!articleLookup && !lawName && typeof client.searchAiLaw === "function") {
+  const aiCandidateQuery = buildAiCandidateQuery({ expandedQuery, query, lawName, article });
+  if (aiCandidateQuery && typeof client.searchAiLaw === "function") {
     const aiResult = await capture(
       "aiSearch",
-      () => client.searchAiLaw({ query: expandedQuery || query, searchType: 0, display: 5 }, { signal }),
+      () => client.searchAiLaw({ query: aiCandidateQuery, searchType: 0, display: 5 }, { signal }),
       { warnings, errors }
     );
     if (aiResult.ok && Array.isArray(aiResult.value?.results) && aiResult.value.results.length) {
@@ -50,10 +51,14 @@ export async function buildLawWorkbench(input = {}, options = {}) {
       }));
       aiCandidatesBlock = { ok: true, items, cacheHit: Boolean(aiResult.value.cacheHit) };
       const top = items.find((item) => item.lawName && item.articleNo);
-      if (top) {
+      if (!articleLookup && !lawName && top) {
         resolvedLawName = top.lawName;
         articleLookup = { lawName: top.lawName, article: top.articleNo };
       }
+    } else if (aiResult.ok) {
+      aiCandidatesBlock = { ok: false, skipped: false, items: [], cacheHit: Boolean(aiResult.value?.cacheHit) };
+    } else {
+      aiCandidatesBlock = emptyBlock(aiResult, "aiSearch");
     }
   }
 
@@ -144,6 +149,20 @@ export async function buildLawWorkbench(input = {}, options = {}) {
     warnings,
     errors
   };
+}
+
+function buildAiCandidateQuery({ expandedQuery, query, lawName, article } = {}) {
+  const parts = [expandedQuery, query, lawName, article]
+    .map((part) => clean(part))
+    .filter(Boolean);
+  const seen = new Set();
+  const unique = [];
+  for (const part of parts) {
+    if (seen.has(part)) continue;
+    seen.add(part);
+    unique.push(part);
+  }
+  return unique.join(" ").trim();
 }
 
 export function buildLawWorkbenchReport({ workbench, reviewResult = null, templateId = DEFAULT_REPORT_TEMPLATE } = {}) {

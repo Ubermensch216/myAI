@@ -90,6 +90,7 @@ await run("haengjim hub API falls back to law.go.kr on transport failure", testH
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
 await run("law workbench aggregates official law evidence groups", testLawWorkbenchAggregation);
 await run("law workbench supports natural-language-only queries", testLawWorkbenchNaturalQueryOnly);
+await run("law workbench searches related article candidates with explicit law input", testLawWorkbenchExplicitLawStillSearchesAiCandidates);
 await run("law workbench isolates partial upstream failures", testLawWorkbenchPartialFailure);
 await run("law workbench report renders fixed review sequence", testLawWorkbenchReport);
 await run("law workbench review payload includes official evidence and review documents", testLawWorkbenchReviewPayload);
@@ -1447,6 +1448,67 @@ async function testLawWorkbenchNaturalQueryOnly() {
   assert.equal(annexCalled, true);
   assert.equal(result.decisions.precedents.items.length, 1);
   assert.ok(result.termMatches.some((item) => item.canonicalTerms.includes("임대차보증금 반환")));
+}
+
+async function testLawWorkbenchExplicitLawStillSearchesAiCandidates() {
+  const { buildLawWorkbench } = await import("../server/law/lawWorkbench.js");
+  const calls = [];
+  const result = await buildLawWorkbench({
+    query: "행정처분 사전통지 절차 검토",
+    lawName: "행정절차법",
+    article: "제21조"
+  }, {
+    client: {
+      async searchAiLaw(input) {
+        calls.push(["searchAiLaw", input]);
+        return {
+          ok: true,
+          results: [
+            {
+              lawName: "행정절차법",
+              articleNo: "21",
+              articleTitle: "처분의 사전 통지",
+              snippet: "행정청은 당사자에게 처분의 제목 등을 미리 통지하여야 한다."
+            }
+          ]
+        };
+      },
+      async getLawArticle(input) {
+        calls.push(["getLawArticle", input]);
+        return {
+          ok: true,
+          text: "행정청은 당사자에게 처분의 제목 등을 미리 통지하여야 한다.",
+          citation: {
+            citationId: "L1",
+            sourceType: "law",
+            lawName: input.lawName,
+            article: input.article,
+            canonical: `${input.lawName}/${input.article}`,
+            locator: `${input.lawName} ${input.article}`
+          }
+        };
+      },
+      async searchAnnexes() { return { ok: true, results: [] }; },
+      async getLawHistory() { return { ok: true, revisions: [] }; },
+      async getThreeTier() { return { ok: true, tiers: [] }; },
+      async getDelegatedLaws() { return { ok: true, links: [] }; },
+      async searchOrdinances() { return { ok: true, results: [] }; },
+      async searchPrecedents() { return { ok: true, results: [] }; },
+      async searchInterpretations() { return { ok: true, results: [] }; },
+      async searchAdminRules() { return { ok: true, results: [] }; }
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.article.ok, true);
+  assert.equal(result.aiCandidates.ok, true);
+  assert.equal(result.aiCandidates.items[0].lawName, "행정절차법");
+  assert.ok(calls.some(([name]) => name === "searchAiLaw"), "explicit law input should still populate related article candidates");
+  assert.deepEqual(
+    calls.find(([name]) => name === "getLawArticle")[1],
+    { lawName: "행정절차법", article: "제21조" },
+    "explicit article lookup must not be overridden by the candidate search"
+  );
 }
 
 async function testLawWorkbenchPartialFailure() {

@@ -96,6 +96,9 @@ assert.match(renderTabHintsBody, /tab:\s*"history"/, "tab hints keep revision hi
 const renderStructureBody = findFunctionBody(lawJs, "renderStructure");
 assert.doesNotMatch(renderStructureBody, /return;\s*if\s*\(!tiers\)/, "renderStructure does not keep unreachable legacy code after returning");
 assert.doesNotMatch(renderStructureBody, /renderListPanel\(target,\s*rows,\s*"\uBC95\uCCB4\uACC4"\)/, "renderStructure no longer keeps the unreachable legacy rows renderer");
+const renderBodySource = findFunctionBody(lawJs, "renderBody");
+assert.match(renderBodySource, /renderEvidenceDashboard\(target,\s*state\);\s*renderAiCandidates\(target,\s*data\.aiCandidates\);\s*renderArticle\(target,\s*data\.article\);/, "related article candidates render above the long article body");
+assert.match(lawJs, /law-ai-candidates-section/, "related article candidates use evidence detail section styling");
 assert.match(reviewServerJs, /\[law-workbench-review\]/, "law review diagnostics log is present");
 assert.match(reviewServerJs, /prompt_eval_count/, "law review diagnostics logs Ollama prompt eval count");
 assert.match(reviewServerJs, /eval_count/, "law review diagnostics logs Ollama eval count");

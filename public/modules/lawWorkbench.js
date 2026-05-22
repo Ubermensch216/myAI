@@ -17,6 +17,7 @@ const LEGACY_TAB_MAP = {
   structure: "evidence",
   delegated: "evidence",
   ordinances: "evidence",
+  report: "review",
   history: "history",
   impact: "history"
 };
@@ -465,8 +466,8 @@ function renderBody(state) {
     renderReviewResult(target, state);
   } else if (_activeTab === "evidence") {
     renderEvidenceDashboard(target, state);
-    renderArticle(target, data.article);
     renderAiCandidates(target, data.aiCandidates);
+    renderArticle(target, data.article);
     renderEvidenceSection(target, {
       title: "별표/서식",
       block: data.annexes,
@@ -538,6 +539,28 @@ function renderReviewStatusSummary(card, state) {
   card.append(summary);
 }
 
+function renderTabHints(target, state) {
+  const data = state?.data || null;
+  const steps = [
+    { tab: "evidence", label: "근거", done: Boolean(data), active: Boolean(_workbenchAbort && !data) },
+    { tab: "review", label: "초안", done: Boolean(state?.reviewResult), active: Boolean(_workbenchAbort && data && !state?.reviewResult), error: Boolean(state?.reviewError) },
+    { tab: "history", label: "개정/영향", done: Boolean(data?.history?.revisions?.length || data?.internalImpact?.ok) },
+    { tab: "review", label: "보고서", done: Boolean(state?.reportCreatedAt), active: Boolean(state?.reviewResult && !state?.reportCreatedAt) }
+  ];
+  const wrap = document.createElement("div");
+  wrap.className = "law-workflow-steps";
+  for (const step of steps) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `law-workflow-step${step.done ? " is-done" : ""}${step.active ? " is-active" : ""}${step.error ? " is-error" : ""}`;
+    button.innerHTML = `<span class="law-workflow-step-dot" aria-hidden="true"></span><span></span>`;
+    button.lastElementChild.textContent = step.label;
+    button.addEventListener("click", () => setActiveTab(step.tab));
+    wrap.append(button);
+  }
+  target.append(wrap);
+}
+
 
 function renderReviewResult(target, state) {
   const result = state?.reviewResult;
@@ -558,6 +581,7 @@ function renderReviewResult(target, state) {
   head.append(title, button);
   card.append(head);
   renderReviewStatusSummary(card, state);
+  renderTabHints(card, state);
   if (!result) {
     const empty = document.createElement("p");
     empty.className = "law-explorer-empty";
@@ -588,6 +612,7 @@ function renderEvidenceDashboard(target, state) {
   const impactNodes = splitImpactNodes(data.internalImpact);
   const counts = [
     { label: "조문", value: data.article?.ok ? 1 : 0, detail: data.article?.citation?.locator || "본문 미확인" },
+    { label: "조문 후보", value: countItems(data.aiCandidates?.items), detail: data.aiCandidates?.error ? "조회 실패" : data.aiCandidates?.skipped ? "조회 생략" : "AI 조문 검색" },
     { label: "별표/서식", value: countItems(data.annexes?.items), detail: "첨부 서식 후보" },
     { label: "법체계", value: countSystemEvidence(data), detail: "상하위 법령/자치법규" },
     { label: "판례/해석", value: countDecisionEvidence(data.decisions), detail: "판례·해석례·행정규칙" },
@@ -653,27 +678,46 @@ function appendResultList(target, title, value) {
 
 function renderAiCandidates(target, aiCandidates) {
   const items = Array.isArray(aiCandidates?.items) ? aiCandidates.items : [];
-  if (!items.length) return;
   const section = document.createElement("section");
-  section.className = "law-workbench-result-section";
-  const heading = document.createElement("h4");
-  heading.className = "law-workbench-section-head";
-  heading.textContent = "관련 조문 후보";
-  section.append(heading);
-  const hint = document.createElement("p");
-  hint.className = "law-explorer-empty";
-  hint.textContent = "후보를 선택하면 해당 조문 본문으로 다시 검토합니다.";
-  section.append(hint);
+  section.className = "law-workbench-result-section law-evidence-detail-section law-ai-candidates-section";
+  section.append(createEvidenceSectionHead({
+    title: "관련 조문 후보",
+    status: evidenceStatus(aiCandidates, items),
+    count: items.length,
+    description: "질의와 연결된 법령 조문 후보입니다. 후보를 선택하면 해당 조문 본문으로 다시 검토합니다."
+  }));
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "law-explorer-empty";
+    empty.textContent = aiCandidates?.error?.message
+      ? `관련 조문 후보 조회 실패: ${aiCandidates.error.message}`
+      : aiCandidates?.skipped
+      ? "관련 조문 후보 조회가 실행되지 않았습니다."
+      : "관련 조문 후보가 없습니다.";
+    section.append(empty);
+    target.append(section);
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "law-evidence-item-list";
   for (const item of items.slice(0, 5)) {
     const row = document.createElement("button");
     row.type = "button";
-    row.className = "law-workbench-result-row law-candidate-row";
+    row.className = "law-evidence-item law-ai-candidate-item";
     const articleLabel = item.articleNo ? formatArticleLabel(item.articleNo) : "";
     const heads = [item.lawName, articleLabel, item.articleTitle].filter(Boolean).join(" · ");
-    row.textContent = item.snippet ? `${heads}\n${item.snippet}` : heads;
+    const title = document.createElement("strong");
+    title.textContent = heads || "조문 후보";
+    row.append(title);
+    if (item.snippet) {
+      const snippet = document.createElement("span");
+      snippet.textContent = item.snippet;
+      row.append(snippet);
+    }
     row.addEventListener("click", () => fillAndRun(item.lawName, articleLabel));
-    section.append(row);
+    wrap.append(row);
   }
+  section.append(wrap);
   target.append(section);
 }
 

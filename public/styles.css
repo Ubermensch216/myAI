@@ -10961,11 +10961,16 @@ body.panel-resizing .panel-resizer::after {
 
 .law-workflow-step {
   align-items: center;
+  background: transparent;
+  border: 0;
   color: var(--muted);
+  cursor: pointer;
   display: flex;
   font-size: 12px;
   gap: 6px;
   min-width: 0;
+  padding: 0;
+  text-align: left;
 }
 
 .law-workflow-step span:last-child {
@@ -11012,9 +11017,13 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .law-workbench-result-section {
+  background: var(--surface-3);
   border: 1px solid var(--line);
   border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
   padding: 10px;
+  position: relative;
 }
 
 .law-workbench-result-row {
@@ -11062,6 +11071,19 @@ body.panel-resizing .panel-resizer::after {
 
 .law-candidate-row:hover {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.law-ai-candidate-item {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.law-ai-candidate-item:hover,
+.law-ai-candidate-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 
 .law-workbench-tab-hints {
@@ -11252,6 +11274,7 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .law-evidence-detail-section {
+  align-content: start;
   display: grid;
   gap: 10px;
 }
@@ -11332,6 +11355,7 @@ body.panel-resizing .panel-resizer::after {
 .law-evidence-source-group {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .law-evidence-source-group {
@@ -11347,6 +11371,8 @@ body.panel-resizing .panel-resizer::after {
   display: grid;
   gap: 3px;
   line-height: 1.45;
+  min-width: 0;
+  overflow: hidden;
   padding: 9px 10px;
   text-decoration: none;
 }
@@ -11640,8 +11666,9 @@ body.panel-resizing .panel-resizer::after {
   white-space: pre-wrap;
   word-break: keep-all;
   min-height: 0;
-  max-height: 100%;
+  max-height: min(34vh, 260px);
   overflow: auto;
+  position: relative;
 }
 
 /* ???? Diff viewer (added / removed / modified / unchanged) ???????????????? */
