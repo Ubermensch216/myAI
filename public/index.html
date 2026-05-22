@@ -285,17 +285,25 @@
         <header class="law-hero">
           <div class="law-hero-search-wrap" id="lawWorkbenchDropZone">
             <div class="law-hero-search">
+              <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="M20 20l-3.5-3.5"></path>
+              </svg>
+              <select id="lawWorkbenchReviewType" class="law-hero-type-select" aria-label="검토 유형">
+                <option value="general" selected>일반 법령 검토</option>
+                <option value="internal_rule">내부 규정/지침 검토</option>
+                <option value="ordinance">조례 상위법 검토</option>
+                <option value="administrative_disposition">행정처분 근거 검토</option>
+                <option value="civil_reply">민원 회신 근거 검토</option>
+                <option value="privacy">개인정보 적법성 검토</option>
+              </select>
+              <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="검토 요청을 입력하세요 (예: 민원 회신에 필요한 법령 근거 검토)" />
+              <input id="lawWorkbenchUploadInput" type="file" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.pptx,.hwpx,.md,.png,.jpg,.jpeg,.webp,.gif" />
               <button id="lawWorkbenchAttachButton" class="law-hero-attach-btn" type="button" aria-label="자료 첨부" title="자료 첨부 (드래그&amp;드롭 지원)">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 1 1 5 5l-9 9a2 2 0 1 1-3-3l8-8"></path>
                 </svg>
               </button>
-              <input id="lawWorkbenchUploadInput" type="file" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.pptx,.hwpx,.md,.png,.jpg,.jpeg,.webp,.gif" />
-              <svg class="law-hero-search-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="7"></circle>
-                <path d="M20 20l-3.5-3.5"></path>
-              </svg>
-              <input id="lawWorkbenchQuery" class="law-hero-input" type="search" autocomplete="off" placeholder="검토 요청을 입력하세요 (예: 민원 회신에 필요한 법령 근거 검토)" />
               <button id="lawWorkbenchRunButton" class="law-hero-run" type="button">검토</button>
             </div>
             <button id="lawWorkbenchResetButton" class="ghost-button law-hero-reset" type="button" title="결과 초기화" aria-label="결과 초기화">
@@ -321,22 +329,22 @@
             </div>
           </div>
 
+          <div id="lawWorkbenchStatus" class="law-explorer-status" aria-live="polite"></div>
+
           <div id="lawWorkbenchAttachments" class="law-hero-attachments" aria-live="polite"></div>
 
           <div class="law-hero-examples" aria-label="예시 질문">
-            <button class="law-example-chip" type="button" data-law-example="민원 회신에 필요한 법령 근거 검토">민원 회신에 필요한 법령 근거 검토</button>
-            <button class="law-example-chip" type="button" data-law-example="내부 지침이 상위법과 충돌하는지 검토">내부 지침이 상위법과 충돌하는지 검토</button>
-            <button class="law-example-chip" type="button" data-law-example="행정처분 사전통지 절차 검토">행정처분 사전통지 절차 검토</button>
-            <button class="law-example-chip" type="button" data-law-example="개인정보 수집·이용 동의서 적법성 검토">개인정보 수집·이용 동의서 적법성 검토</button>
-            <button class="law-example-chip" type="button" data-law-example="조례 개정 필요 여부 검토">조례 개정 필요 여부 검토</button>
-            <button class="law-example-chip" type="button" data-law-example="용역 과업지시서 법령 리스크 검토">용역 과업지시서 법령 리스크 검토</button>
+            <span class="law-hero-examples-label">예시</span>
+            <button class="law-example-chip" type="button" data-law-example="민원 회신에 필요한 법령 근거 검토" title="민원 회신에 필요한 법령 근거 검토">민원 회신 근거</button>
+            <button class="law-example-chip" type="button" data-law-example="내부 지침이 상위법과 충돌하는지 검토" title="내부 지침이 상위법과 충돌하는지 검토">내부지침 vs 상위법</button>
+            <button class="law-example-chip" type="button" data-law-example="행정처분 사전통지 절차 검토" title="행정처분 사전통지 절차 검토">행정처분 사전통지</button>
           </div>
 
           <details id="lawWorkbenchAdvanced" class="law-advanced">
             <summary class="law-advanced-summary">
               <svg class="law-advanced-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
               <span class="law-advanced-title">상세 조건</span>
-              <span class="law-advanced-hint">범위 · 산출물 · 중점사항</span>
+              <span class="law-advanced-hint">법령 · 조문 · 자치법규 · 검토 관점</span>
             </summary>
             <div class="law-advanced-body">
               <label class="law-advanced-field">
@@ -347,40 +355,17 @@
                 <span>조문</span>
                 <input id="lawWorkbenchArticle" class="text-input" type="text" placeholder="예: 제15조" />
               </label>
-              <label class="law-advanced-field">
+              <label id="lawWorkbenchRegionField" class="law-advanced-field" hidden>
                 <span>자치법규 지역</span>
                 <input id="lawWorkbenchRegion" class="text-input" type="text" placeholder="예: 서울특별시" />
               </label>
-              <label class="law-advanced-field">
-                <span>검토 유형</span>
-                <select id="lawWorkbenchReviewType" class="text-input">
-                  <option value="general">일반 법령 검토</option>
-                  <option value="internal_rule">내부 규정/지침 검토</option>
-                  <option value="ordinance">조례 상위법 검토</option>
-                  <option value="administrative_disposition">행정처분 근거 검토</option>
-                  <option value="civil_reply">민원 회신 근거 검토</option>
-                  <option value="privacy">개인정보 적법성 검토</option>
-                </select>
-              </label>
-              <label class="law-advanced-field">
-                <span>산출물 유형</span>
-                <select id="lawWorkbenchOutputType" class="text-input">
-                  <option value="law_review_opinion">법령 검토의견서</option>
-                  <option value="ordinance_upper_law_review">조례 상위법 적합성 검토서</option>
-                  <option value="administrative_disposition_basis">행정처분 근거 검토서</option>
-                  <option value="civil_reply_law_review">민원 회신 법령 검토서</option>
-                  <option value="internal_compliance_checklist">내부규정 컴플라이언스 점검표</option>
-                </select>
-              </label>
               <label class="law-advanced-field law-advanced-field-wide">
-                <span>상세 조건</span>
-                <textarea id="lawWorkbenchConditionText" class="text-input" rows="3" placeholder="검토 관점, 제외 범위, 중점 확인사항을 입력하세요."></textarea>
+                <span>검토 관점·제외 범위</span>
+                <textarea id="lawWorkbenchConditionText" class="text-input" rows="3" placeholder="중점 확인사항이나 검토에서 제외할 범위를 적어주세요."></textarea>
               </label>
             </div>
           </details>
 
-          <div id="lawWorkbenchTerms" class="law-workbench-terms"></div>
-          <div id="lawWorkbenchStatus" class="law-explorer-status"></div>
         </header>
 
         <div class="law-mode-tabs law-workbench-tabs" role="tablist" aria-label="법령검토 업무 단계">

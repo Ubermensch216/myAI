@@ -7,6 +7,20 @@ const MATERIAL_TEXT_LIMIT = 10000;
 const DEFAULT_TAB = "review";
 const VALID_TABS = new Set(["review", "evidence", "history"]);
 
+// 검토 유형 → 산출물 유형 (1:1 자동 도출).
+const REVIEW_TYPE_TO_OUTPUT = {
+  general: "law_review_opinion",
+  internal_rule: "internal_compliance_checklist",
+  ordinance: "ordinance_upper_law_review",
+  administrative_disposition: "administrative_disposition_basis",
+  civil_reply: "civil_reply_law_review",
+  privacy: "law_review_opinion"
+};
+
+function resolveOutputType(reviewType) {
+  return REVIEW_TYPE_TO_OUTPUT[reviewType] || "law_review_opinion";
+}
+
 // Legacy tab → new grouped tab. Keeps room state migration painless.
 const LEGACY_TAB_MAP = {
   main: "evidence",
@@ -44,11 +58,14 @@ export function bindLawWorkbenchEvents() {
     elements.lawWorkbenchArticle,
     elements.lawWorkbenchRegion,
     elements.lawWorkbenchReviewType,
-    elements.lawWorkbenchOutputType,
     elements.lawWorkbenchConditionText
   ]) {
     input?.addEventListener("change", syncInputs);
   }
+  // 검토 유형이 바뀌면 자치법규 지역 노출을 다시 계산.
+  elements.lawWorkbenchReviewType?.addEventListener("change", () => {
+    syncRegionFieldVisibility(elements.lawWorkbenchReviewType?.value || "");
+  });
   elements.lawWorkbenchQuery?.addEventListener("input", debounceTermsPreview);
   elements.lawWorkbenchQuery?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -200,7 +217,6 @@ function renderLawReviewAttachments() {
 export function renderLawWorkbench() {
   const state = ensureWorkbenchState(getActiveLawReview());
   hydrateInputs(state);
-  syncAdvancedOpen(state);
   renderTabs(state);
   renderTerms(state);
   renderBody(state);
@@ -225,28 +241,30 @@ function ensureWorkbenchState(studio) {
 function hydrateInputs(state) {
   const input = state?.input || {};
   const conditions = state?.conditions || {};
+  const reviewType = conditions.reviewType || "general";
   setValueIfFree(elements.lawWorkbenchQuery, input.query || "");
   setValueIfFree(elements.lawWorkbenchLawName, input.lawName || "");
   setValueIfFree(elements.lawWorkbenchArticle, input.article || "");
   setValueIfFree(elements.lawWorkbenchRegion, input.region || "");
-  setValueIfFree(elements.lawWorkbenchReviewType, conditions.reviewType || "general");
-  setValueIfFree(elements.lawWorkbenchOutputType, conditions.outputType || "law_review_opinion");
+  setValueIfFree(elements.lawWorkbenchReviewType, reviewType);
   setValueIfFree(elements.lawWorkbenchConditionText, conditions.detail || "");
+  syncRegionFieldVisibility(reviewType);
+}
+
+// 자치법규 지역은 조례 상위법 검토일 때만 의미가 있으므로 그 외에는 숨긴다.
+function syncRegionFieldVisibility(reviewType) {
+  const field = elements.lawWorkbenchRegionField;
+  if (!field) return;
+  const shouldShow = reviewType === "ordinance";
+  field.hidden = !shouldShow;
+  if (!shouldShow && elements.lawWorkbenchRegion?.value) {
+    elements.lawWorkbenchRegion.value = "";
+  }
 }
 
 function setValueIfFree(element, value) {
   if (!element || document.activeElement === element) return;
   element.value = value || "";
-}
-
-function syncAdvancedOpen(state) {
-  const advanced = elements.lawWorkbenchAdvanced;
-  if (!advanced) return;
-  const input = state?.input || {};
-  const conditions = state?.conditions || {};
-  if (input.lawName || input.article || input.region || conditions.reviewType || conditions.outputType || conditions.detail) {
-    advanced.open = true;
-  }
 }
 
 function syncInputs() {
@@ -267,9 +285,10 @@ function readInputs() {
 }
 
 function readConditions() {
+  const reviewType = elements.lawWorkbenchReviewType?.value?.trim() || "general";
   return {
-    reviewType: elements.lawWorkbenchReviewType?.value?.trim() || "general",
-    outputType: elements.lawWorkbenchOutputType?.value?.trim() || "law_review_opinion",
+    reviewType,
+    outputType: resolveOutputType(reviewType),
     detail: elements.lawWorkbenchConditionText?.value?.trim() || ""
   };
 }
@@ -358,7 +377,7 @@ async function createLawWorkbenchReport(templateOverride = "") {
   const state = ensureWorkbenchState(getActiveLawReview());
   if (!state.data && !state.reviewResult) throw new Error("먼저 검토를 실행하세요.");
   setStatus("검토 보고서 초안을 생성하는 중입니다.", "running");
-  const templateId = templateOverride || elements.lawWorkbenchOutputType?.value || "law_review_opinion";
+  const templateId = templateOverride || resolveOutputType(elements.lawWorkbenchReviewType?.value || "general");
   const response = await fetch("/api/law/workbench/report", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -399,7 +418,6 @@ function resetLawWorkbench() {
     if (input) input.value = "";
   }
   if (elements.lawWorkbenchReviewType) elements.lawWorkbenchReviewType.value = "general";
-  if (elements.lawWorkbenchOutputType) elements.lawWorkbenchOutputType.value = "law_review_opinion";
   if (elements.lawWorkbenchAdvanced) elements.lawWorkbenchAdvanced.open = false;
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:renderlawreviews"));
@@ -654,9 +672,25 @@ function appendResultSection(target, title, value) {
   const heading = document.createElement("h4");
   heading.textContent = title;
   const body = document.createElement("p");
-  body.textContent = String(value);
+  body.textContent = stripInlineMarkdown(String(value));
   section.append(heading, body);
   target.append(section);
+}
+
+// LLM이 가끔 결과에 섞어 보내는 마크다운 문법을 평문으로 정리한다.
+function stripInlineMarkdown(text) {
+  if (typeof text !== "string" || !text) return text;
+  return text
+    .replace(/^[ \t]*[-*+][ \t]+/gm, "")
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, "")
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/__([^_\n]+)__/g, "$1")
+    .replace(/(^|[^\*])\*([^*\n]+)\*(?!\*)/g, "$1$2")
+    .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1$2")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/~~([^~\n]+)~~/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1")
+    .trim();
 }
 
 function coerceJsonLike(item) {
@@ -684,7 +718,8 @@ function appendResultList(target, title, value) {
     const subItems = Array.isArray(coerced) ? coerced.map(coerceJsonLike) : [coerced];
     for (const item of subItems) {
       const li = document.createElement("li");
-      li.textContent = typeof item === "string" ? item : itemLabel(item);
+      const raw = typeof item === "string" ? item : itemLabel(item);
+      li.textContent = stripInlineMarkdown(raw);
       list.append(li);
     }
   }
@@ -1213,9 +1248,12 @@ function setBusy(isBusy) {
   button.setAttribute("aria-busy", isBusy ? "true" : "false");
 }
 
+let _statusClearTimer = null;
 function setStatus(message, mode = "idle") {
   if (!elements.lawWorkbenchStatus) return;
   const node = elements.lawWorkbenchStatus;
+  clearTimeout(_statusClearTimer);
+  _statusClearTimer = null;
   node.dataset.mode = mode;
   node.classList.toggle("is-loading", mode === "running" && Boolean(message));
   if (mode === "running" && message) {
@@ -1224,6 +1262,13 @@ function setStatus(message, mode = "idle") {
     if (textNode) textNode.textContent = message;
   } else {
     node.textContent = message || "";
+  }
+  // 성공/안내 메시지는 일정 시간 후 자동으로 사라진다. 오류·진행 중 메시지는 그대로 유지.
+  if (mode === "idle" && message) {
+    _statusClearTimer = setTimeout(() => {
+      if (node.dataset.mode === "idle") node.textContent = "";
+      _statusClearTimer = null;
+    }, 3000);
   }
 }
 

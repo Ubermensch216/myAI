@@ -9891,6 +9891,40 @@ body.panel-resizing .panel-resizer::after {
   stroke-linejoin: round;
 }
 
+.law-hero-type-select {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--accent, #4b6bff);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 20px 4px 6px;
+  margin: 0 4px 0 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%234b6bff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 10px;
+  border-radius: 6px;
+  outline: none;
+  transition: background-color .12s ease;
+  max-width: 160px;
+  text-overflow: ellipsis;
+}
+.law-hero-type-select:hover {
+  background-color: color-mix(in srgb, var(--accent, #4b6bff) 10%, transparent);
+}
+.law-hero-type-select:focus-visible {
+  background-color: color-mix(in srgb, var(--accent, #4b6bff) 14%, transparent);
+}
+.law-hero-type-select option {
+  color: var(--text);
+  background: var(--surface, #fff);
+}
+
 .law-hero-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -10107,6 +10141,14 @@ body.panel-resizing .panel-resizer::after {
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+}
+
+.law-hero-examples-label {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin-right: 2px;
 }
 
 .law-example-chip {
@@ -10916,6 +10958,9 @@ body.panel-resizing .panel-resizer::after {
   gap: 6px;
   margin: 6px 0;
 }
+.law-workbench-terms:empty {
+  display: none;
+}
 
 .law-term-chip {
   border: 1px solid var(--line);
@@ -10979,11 +11024,12 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .law-workflow-step.is-done {
-  color: var(--accent-dark, #3a52cc);
+  color: var(--text);
 }
 
 .law-workflow-step.is-done .law-workflow-step-dot {
-  background: currentColor;
+  background: var(--accent-dark, #3a52cc);
+  border-color: var(--accent-dark, #3a52cc);
 }
 
 .law-workflow-step.is-active {
@@ -10996,7 +11042,12 @@ body.panel-resizing .panel-resizer::after {
 }
 
 .law-workflow-step.is-error {
-  color: var(--danger, #d04545);
+  color: var(--text);
+}
+
+.law-workflow-step.is-error .law-workflow-step-dot {
+  background: var(--danger, #d04545);
+  border-color: var(--danger, #d04545);
 }
 
 .law-workbench-section-head,
