@@ -88,6 +88,13 @@ Implemented pieces:
 - Studio Law Explorer MVP that calls the impact-map endpoint and renders
   official-article, subject, obligation, condition, risk, and material-signal
   groups
+- Law Workbench UI overhaul: 검토 유형 dropdown embedded in search bar
+  (zen-style, no border/background), `outputType` derived automatically server-
+  side via `REVIEW_TYPE_TO_OUTPUT` and never shown to the user, 자치법규 지역
+  field conditionally shown only for `reviewType === "ordinance"`, 상세 조건
+  panel collapsed by default, status line auto-clears after 3 s for idle
+  messages, term-mapping chips removed from DOM while `fetchTermsPreview`
+  continues silently, `stripInlineMarkdown()` applied to all result fields
 - Studio Law Explorer "조문 이력" sub-tab that calls `/api/law/history`,
   `/api/law/article/at`, and `/api/law/article/diff`. Users pick 1 or 2
   시행일 entries from the revision list to either view the snapshot text or

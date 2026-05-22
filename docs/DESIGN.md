@@ -128,6 +128,102 @@ message in the result card and status line instead of a generic empty state.
 The underlying request scope is also separate from chat: do not imply that
 active chat attachments are included. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent; active chat-room attachments are not automatically included.
 
+### Law Workbench Search Bar
+
+The search bar (`.law-hero-search`) follows the order:
+
+```
+[🔍 icon] [검토 유형 ▾] [텍스트 입력창] [📎 clip] [검토 button] [↺ reset]
+```
+
+**검토 유형 dropdown** (`.law-hero-type-select`) is embedded directly in the
+search bar as a zen-style selector: no border, transparent background, accent
+text color, custom SVG caret, hover/focus subtle background. The dropdown
+doubles as a prompt guide so users can set the review intent without typing it
+out.
+
+| value | 검토 유형 |
+|---|---|
+| `general` | 일반 법령 검토 (default) |
+| `internal_rule` | 내부 규정/지침 검토 |
+| `ordinance` | 조례 상위법 검토 |
+| `administrative_disposition` | 행정처분 근거 검토 |
+| `civil_reply` | 민원 회신 근거 검토 |
+| `privacy` | 개인정보 적법성 검토 |
+
+`outputType` is **not shown to users**. It is derived automatically from
+`reviewType` via `REVIEW_TYPE_TO_OUTPUT` in `public/modules/lawWorkbench.js`
+and sent only to the server. The mapping is 1-to-1 for four types; `general`
+and `privacy` both map to `law_review_opinion`.
+
+**Status line** (`#lawWorkbenchStatus`) sits immediately below the search bar.
+It is empty-hidden via CSS (`:empty { display: none }`). Messages with mode
+`idle` auto-clear after 3 seconds; `error` and `running` messages persist until
+the next state change.
+
+**Clip button** (`#lawWorkbenchAttachButton`) is placed between the text input
+and the 검토 button (right side of bar). The file input (`#lawWorkbenchUploadInput`)
+is hidden and sits beside it.
+
+### Example Chips
+
+Three chips appear below the attachments row (`.law-hero-examples`):
+
+```html
+<span class="law-hero-examples-label">예시</span>
+<button data-law-example="<full prompt>" title="<full prompt>">짧은 라벨</button>
+```
+
+Chip labels are shortened for single-line display; the full prompt lives in
+`data-law-example` (used on click) and `title` (shown on hover). All three
+chips must fit on one line at the standard panel width (~396 px).
+
+### Advanced Conditions Panel (`상세 조건`)
+
+`<details id="lawWorkbenchAdvanced">` starts **collapsed** by default on every
+new review. The auto-open logic (`syncAdvancedOpen`) has been removed; the
+panel only auto-opens when `fillAndRun()` populates 법령명/조문 from an AI
+candidate.
+
+Fields inside the panel:
+
+| Field | Element | Notes |
+|---|---|---|
+| 법령명 | `#lawWorkbenchLawName` | always visible |
+| 조문 | `#lawWorkbenchArticle` | always visible |
+| 자치법규 지역 | `#lawWorkbenchRegionField` (label wrapping `#lawWorkbenchRegion`) | **hidden by default**; shown only when `reviewType === "ordinance"`. Cleared automatically when hidden. |
+| 검토 관점·제외 범위 | `#lawWorkbenchConditionText` (textarea) | formerly labelled "상세 조건"; renamed to avoid collision with the parent `<details>` summary |
+
+The `<details>` summary hint reads "법령 · 조문 · 자치법규 · 검토 관점".
+
+### Term Mapping
+
+`GET /api/law/terms` is still called during typing (`fetchTermsPreview`) and
+the result is stored in `state.terms`. The chips that used to display the
+mapping (`.law-workbench-terms`) have been **removed from the DOM**; the
+feature operates silently in the background. `renderTerms()` is a safe no-op
+because its target element no longer exists.
+
+### Result Rendering
+
+All result sections (`appendResultSection`, `appendResultList`) pass text
+through `stripInlineMarkdown()` before setting `textContent`. This removes
+`**bold**`, `*italic*`, `# headings`, `- list markers`, `` `code` ``,
+`~~strikethrough~~`, and `[link](url)` syntax that the LLM occasionally emits
+in structured result fields.
+
+### Workflow Step Bar
+
+`.law-workflow-step` text color is always `var(--text)` regardless of state.
+The dot (`.law-workflow-step-dot`) uses explicit accent/danger colors:
+
+| State | Text | Dot |
+|---|---|---|
+| default | `var(--muted)` | hollow, `var(--muted)` border |
+| `is-done` | `var(--text)` | filled `var(--accent-dark)` |
+| `is-active` | `var(--text)` bold | hollow + accent glow ring |
+| `is-error` | `var(--text)` | filled `var(--danger)` |
+
 ## Studio Tools
 
 The Studio panel is a tool workspace, not a marketing area. New tools should
