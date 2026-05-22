@@ -1666,9 +1666,7 @@ function setStatus(text, isError = false, isLoading = false) {
   node.classList.toggle("is-loading", Boolean(isLoading) && !isError);
   if (isLoading && !isError) {
     node.innerHTML = `
-      <span class="studio-document-status-spinner" aria-hidden="true"></span>
       <span class="studio-document-status-text"></span>
-      <span class="studio-document-status-dots" aria-hidden="true"><i></i><i></i><i></i></span>
     `;
     const textNode = node.querySelector(".studio-document-status-text");
     if (textNode) textNode.textContent = String(text).replace(/[…\.]+$/, "");

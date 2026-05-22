@@ -1191,8 +1191,16 @@ function setBusy(isBusy) {
 
 function setStatus(message, mode = "idle") {
   if (!elements.lawWorkbenchStatus) return;
-  elements.lawWorkbenchStatus.textContent = message || "";
-  elements.lawWorkbenchStatus.dataset.mode = mode;
+  const node = elements.lawWorkbenchStatus;
+  node.dataset.mode = mode;
+  node.classList.toggle("is-loading", mode === "running" && Boolean(message));
+  if (mode === "running" && message) {
+    node.innerHTML = `<span class="law-workbench-status-text"></span>`;
+    const textNode = node.querySelector(".law-workbench-status-text");
+    if (textNode) textNode.textContent = message;
+  } else {
+    node.textContent = message || "";
+  }
 }
 
 function touchReviewState(state) {
