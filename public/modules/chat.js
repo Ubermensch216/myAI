@@ -452,17 +452,20 @@ export async function requestTextAssistantResponse(room) {
   let assistant = null;
   let assistantBody = null;
   let answer = "";
-  const useDeepAnalysis = !lawSearchMode && state.deepAnalysisEnabled;
+  // lawSearchMode가 true여도 사용자가 자료를 첨부했거나 정밀 분석을 켰다면 자료를 우선 — 명시적으로 첨부한 자료는 무시되면 안 됨
+  const useDeepAnalysis = state.deepAnalysisEnabled;
+  const hasAttachedDocs = getActiveDocuments().length > 0 || Boolean(room.selectedNotebookId);
+  const effectiveLawSearchMode = lawSearchMode && !useDeepAnalysis && !hasAttachedDocs;
 
   try {
     const payload = {
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
       messages: room.messages.map(({ role, content }) => ({ role, content })),
-      documents: lawSearchMode ? [] : queryTrimDocuments(getActiveDocuments(), latestPrompt),
+      documents: effectiveLawSearchMode ? [] : queryTrimDocuments(getActiveDocuments(), latestPrompt),
       personalization: getPersonalizationSettings(),
-      notebookId: lawSearchMode ? null : room.selectedNotebookId || null,
+      notebookId: effectiveLawSearchMode ? null : room.selectedNotebookId || null,
       ...(useDeepAnalysis ? { mode: "map_reduce" } : {}),
-      ...(lawSearchMode ? { lawSearchMode: true } : {})
+      ...(effectiveLawSearchMode ? { lawSearchMode: true } : {})
     };
     validateChatPayloadSize(payload);
     const response = await fetch("/api/chat", {

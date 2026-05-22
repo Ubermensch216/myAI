@@ -1153,6 +1153,7 @@ function formatAttachmentOverview(documents) {
 function collectChunks(documents) {
   const chunks = [];
   for (const documentItem of documents) {
+    ensureGeneratedDocumentText(documentItem);
     if (!hasDocumentContext(documentItem)) continue;
     for (const chunk of chunkDocumentSections(documentItem)) {
       const label = chunk.label ? `${chunk.page} / ${chunk.label}` : chunk.page;
@@ -1176,6 +1177,28 @@ function collectChunks(documents) {
 
 function isGeneratedSourceDocument(documentItem) {
   return documentItem?.trustLevel === "generated" || documentItem?.origin === "assistant_answer" || documentItem?.type === "generated_answer";
+}
+
+// 영속화/직렬화 과정에서 AI 생성 문서의 text가 누락된 경우 dataBase64에서 복원.
+// Markdown 등 텍스트 포맷은 base64 페이로드가 곧 본문이므로 손실 없이 복원 가능.
+function ensureGeneratedDocumentText(documentItem) {
+  if (!documentItem || typeof documentItem !== "object") return;
+  if (documentItem.text || !isGeneratedSourceDocument(documentItem)) return;
+  if (!documentItem.dataBase64) return;
+  const isTextFormat = documentItem.fileType === "md"
+    || documentItem.fileType === "txt"
+    || (typeof documentItem.mimeType === "string" && documentItem.mimeType.startsWith("text/"));
+  if (!isTextFormat) return;
+  try {
+    const decoded = Buffer.from(documentItem.dataBase64, "base64").toString("utf-8").trim();
+    if (decoded) {
+      documentItem.text = decoded;
+      documentItem.textLength = decoded.length;
+      documentItem.preview = documentItem.preview || decoded.slice(0, 280);
+    }
+  } catch (err) {
+    console.warn(`[collectChunks] Failed to restore text for generated doc ${documentItem.fileName}: ${err.message}`);
+  }
 }
 
 function hasDocumentContext(documentItem) {

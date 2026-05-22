@@ -339,7 +339,11 @@ follow-up suggestions for that no-evidence answer.
 | `MAP_REDUCE_BATCH_CHUNKS` | `4` | chunks per map call |
 | `MAP_REDUCE_MAX_CHUNKS` | `80` | maximum chunks per Precision Analysis / Map-Reduce run |
 | `MAP_REDUCE_PARALLELISM` | `2` | concurrent map calls |
-| `MAP_REDUCE_MAP_TIMEOUT_MS` | `45000` | map-call timeout |
+| `MAP_REDUCE_MAP_TIMEOUT_MS` | `120000` | base map-call timeout (adaptive: see below) |
+| `MAP_REDUCE_MAP_TIMEOUT_PER_CHUNK_MS` | `20000` | extra timeout per chunk in the batch |
+| `MAP_REDUCE_COLD_START_MARGIN_MS` | `30000` | additional margin for the first batch (Ollama model load) |
+| `MAP_REDUCE_MAP_RETRY` | `1` | retries per map batch on timeout / 5xx / connection error |
+| `OLLAMA_KEEP_ALIVE` | `30m` | model residency hint sent to Ollama on every Map-Reduce call |
 | `EMBED_QUEUE_CONCURRENCY` | `2` | concurrent embedding calls |
 | `EMBED_QUEUE_MAX_QUEUED` | `64` | queued embedding-call limit |
 | `MAP_REDUCE_QUEUE_CONCURRENCY` | `2` | concurrent Map-Reduce jobs |

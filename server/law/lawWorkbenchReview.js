@@ -296,9 +296,49 @@ function pickValue(source, keys) {
   return "";
 }
 
+function objectToReadableString(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return JSON.stringify(obj);
+  const LABEL_KEYS = ["point", "risk_area", "area", "title", "name", "label", "category", "항목"];
+  const TEXT_KEYS = ["detail", "details", "text", "content", "description", "summary", "value", "body"];
+  const EXTRA_KEYS = ["risk", "note", "비고"];
+  const label = LABEL_KEYS.map((k) => obj[k]).find((v) => v && typeof v === "string");
+  const text = TEXT_KEYS.map((k) => obj[k]).find((v) => v && typeof v === "string");
+  const extra = EXTRA_KEYS.map((k) => obj[k]).find((v) => v && typeof v === "string");
+  const parts = [];
+  if (label) parts.push(label);
+  if (text) parts.push(text);
+  if (extra) parts.push(`(${extra})`);
+  if (parts.length) return parts.join(": ").replace(/: \(/, " (");
+  const allStrings = Object.values(obj).filter((v) => v && typeof v === "string");
+  return allStrings.join(" / ") || JSON.stringify(obj).slice(0, 240);
+}
+
+function coerceArrayItem(item) {
+  if (typeof item === "string") {
+    const trimmed = item.trim();
+    if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === "object") return parsed;
+      } catch (_) {}
+    }
+    return item;
+  }
+  return item;
+}
+
 function normalizeStringArray(value) {
   const list = Array.isArray(value) ? value : (value ? [value] : []);
-  return list.map((item) => clean(typeof item === "string" ? item : JSON.stringify(item), 1200)).filter(Boolean).slice(0, 12);
+  const flat = [];
+  for (const raw of list) {
+    const coerced = coerceArrayItem(raw);
+    if (Array.isArray(coerced)) {
+      for (const inner of coerced) flat.push(coerceArrayItem(inner));
+    } else {
+      flat.push(coerced);
+    }
+  }
+  return flat.map((item) => clean(typeof item === "string" ? item : objectToReadableString(item), 1200)).filter(Boolean).slice(0, 12);
 }
 
 function parseJson(raw) {

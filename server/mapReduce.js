@@ -9,8 +9,29 @@ const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
 const BATCH_CHUNKS = clampInt(process.env.MAP_REDUCE_BATCH_CHUNKS, 4, 1, 20);
 const MAX_CHUNKS = clampInt(process.env.MAP_REDUCE_MAX_CHUNKS, 80, 4, 400);
 const PARALLELISM = clampInt(process.env.MAP_REDUCE_PARALLELISM, 2, 1, 8);
-const MAP_TIMEOUT_MS = clampInt(process.env.MAP_REDUCE_MAP_TIMEOUT_MS, 45000, 5000, 300000);
+const MAP_TIMEOUT_BASE_MS = clampInt(process.env.MAP_REDUCE_MAP_TIMEOUT_MS, 120000, 5000, 600000);
+const MAP_TIMEOUT_PER_CHUNK_MS = clampInt(process.env.MAP_REDUCE_MAP_TIMEOUT_PER_CHUNK_MS, 20000, 0, 120000);
+const COLD_START_MARGIN_MS = clampInt(process.env.MAP_REDUCE_COLD_START_MARGIN_MS, 30000, 0, 300000);
+const MAP_RETRY = clampInt(process.env.MAP_REDUCE_MAP_RETRY, 1, 0, 3);
+const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "30m";
 const MAP_PARTIAL_MAX_CHARS = 1200;
+
+function computeMapTimeout(batchSize, { isFirstAttempt, isFirstBatch }) {
+  let timeout = MAP_TIMEOUT_BASE_MS + batchSize * MAP_TIMEOUT_PER_CHUNK_MS;
+  if (isFirstBatch) timeout += COLD_START_MARGIN_MS;
+  if (!isFirstAttempt) timeout = Math.round(timeout * 1.5);
+  return timeout;
+}
+
+function isRetriableMapError(err) {
+  if (!err) return false;
+  const msg = String(err.message || "");
+  if (msg.includes("timed out")) return true;
+  if (/Ollama 5\d\d/.test(msg)) return true;
+  const code = err.code || err.cause?.code;
+  if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "UND_ERR_SOCKET") return true;
+  return false;
+}
 
 function clampInt(raw, fallback, min, max) {
   const value = Number(raw);
@@ -142,15 +163,31 @@ async function runMapStage({ batches, query, model, onProgress, signal }) {
 }
 
 async function runMapBatch({ batch, query, model, batchIndex, signal }) {
-  throwIfAborted(signal);
-  return mapReduceQueue.run(() => runMapBatchNow({ batch, query, model, batchIndex, signal }), {
-    signal,
-    label: `map:${batchIndex + 1}`
-  });
+  let lastError;
+  for (let attempt = 0; attempt <= MAP_RETRY; attempt++) {
+    throwIfAborted(signal);
+    try {
+      const label = attempt === 0 ? `map:${batchIndex + 1}` : `map:${batchIndex + 1}:retry${attempt}`;
+      return await mapReduceQueue.run(
+        () => runMapBatchNow({ batch, query, model, batchIndex, signal, attempt }),
+        { signal, label }
+      );
+    } catch (err) {
+      lastError = err;
+      if (signal?.aborted) throw err;
+      if (!isRetriableMapError(err) || attempt >= MAP_RETRY) throw err;
+      console.warn(`[mapReduce] map batch ${batchIndex + 1} attempt ${attempt + 1}/${MAP_RETRY + 1} 실패, 재시도: ${err.message}`);
+    }
+  }
+  throw lastError;
 }
 
-async function runMapBatchNow({ batch, query, model, batchIndex, signal }) {
-  const controller = createLinkedAbortController(signal, MAP_TIMEOUT_MS, "Map batch timed out.");
+async function runMapBatchNow({ batch, query, model, batchIndex, signal, attempt = 0 }) {
+  const timeoutMs = computeMapTimeout(batch.length, {
+    isFirstAttempt: attempt === 0,
+    isFirstBatch: batchIndex === 0
+  });
+  const controller = createLinkedAbortController(signal, timeoutMs, "Map batch timed out.");
   try {
     const chunkBlock = batch.map((chunk, localIndex) => {
       const locator = formatChunkLocator(chunk);
@@ -165,6 +202,7 @@ async function runMapBatchNow({ batch, query, model, batchIndex, signal }) {
       body: JSON.stringify({
         model,
         stream: false,
+        keep_alive: OLLAMA_KEEP_ALIVE,
         messages: [
           {
             role: "system",
@@ -235,6 +273,7 @@ async function runReduceStreamNow({ partials, query, model, systemDirective, onC
     body: JSON.stringify({
       model,
       stream: true,
+      keep_alive: OLLAMA_KEEP_ALIVE,
       messages: [
         { role: "system", content: systemParts.join("\n") },
         {

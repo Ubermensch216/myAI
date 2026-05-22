@@ -659,6 +659,18 @@ function appendResultSection(target, title, value) {
   target.append(section);
 }
 
+function coerceJsonLike(item) {
+  if (typeof item !== "string") return item;
+  const trimmed = item.trim();
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch (_) {}
+  }
+  return item;
+}
+
 function appendResultList(target, title, value) {
   const items = Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
   if (!items.length) return;
@@ -667,10 +679,14 @@ function appendResultList(target, title, value) {
   const heading = document.createElement("h4");
   heading.textContent = title;
   const list = document.createElement("ul");
-  for (const item of items) {
-    const li = document.createElement("li");
-    li.textContent = typeof item === "string" ? item : itemLabel(item);
-    list.append(li);
+  for (const raw of items) {
+    const coerced = coerceJsonLike(raw);
+    const subItems = Array.isArray(coerced) ? coerced.map(coerceJsonLike) : [coerced];
+    for (const item of subItems) {
+      const li = document.createElement("li");
+      li.textContent = typeof item === "string" ? item : itemLabel(item);
+      list.append(li);
+    }
   }
   section.append(heading, list);
   target.append(section);
@@ -1098,7 +1114,15 @@ function renderWarnings(target, warnings = []) {
 }
 
 function itemLabel(item = {}) {
-  return item.title || item.lawName || item.name || item.caseNumber || item.locator || item.effectiveDate || JSON.stringify(item).slice(0, 160);
+  if (!item || typeof item !== "object") return String(item || "");
+  const label = item.point || item.risk_area || item.area || item.title || item.lawName || item.name || item.caseNumber || item.locator || item.effectiveDate;
+  const text = item.detail || item.details || item.content || item.description || item.summary;
+  const extra = item.risk || item.note;
+  if (label && text) return extra ? `${label}: ${text} (${extra})` : `${label}: ${text}`;
+  if (text) return extra ? `${text} (${extra})` : text;
+  if (label) return extra ? `${label} (${extra})` : label;
+  const allStrings = Object.values(item).filter((v) => v && typeof v === "string");
+  return allStrings.join(" / ") || JSON.stringify(item).slice(0, 160);
 }
 
 function evidenceItemLabel(item = {}) {

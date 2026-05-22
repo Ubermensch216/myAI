@@ -3,6 +3,7 @@ import { toLawError, LAW_ERROR_MARKERS } from "./lawErrors.js";
 import { createDeterministicImpactMap } from "./tools/impactMap.js";
 import { expandQueryWithLawTerms, inferLawTermArticleRefs, searchLawTerms } from "./lawTermKb.js";
 import { buildPublicLawUrl } from "./lawApiParser.js";
+import { normalizeReviewResult } from "./lawWorkbenchReview.js";
 
 const DEFAULT_REPORT_TEMPLATE = "law_review_opinion";
 
@@ -220,7 +221,7 @@ export function buildLawWorkbenchReport({ workbench, reviewResult = null, templa
 }
 
 function reviewResultMarkdown({ reviewResult, input, warnings = [] }) {
-  const result = reviewResult && typeof reviewResult === "object" ? reviewResult : {};
+  const result = reviewResult && typeof reviewResult === "object" ? normalizeReviewResult(reviewResult) : {};
   return [
     "# 법령 검토 보고서 초안",
     "",
@@ -261,10 +262,18 @@ function reviewResultMarkdown({ reviewResult, input, warnings = [] }) {
   ].filter((part) => part !== "").join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function stripMarkdownInlineMarkers(text) {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(/\*\*\*([^*]+?)\*\*\*/g, "$1")
+    .replace(/\*\*([^*]+?)\*\*/g, "$1")
+    .replace(/__([^_]+?)__/g, "$1");
+}
+
 function listSummaryFromStrings(value) {
   const list = Array.isArray(value) ? value : (value ? [value] : []);
   if (!list.length) return "확인된 항목이 없습니다.";
-  return list.slice(0, 12).map((item) => `- ${String(item || "").trim() || "작성 필요"}`).join("\n");
+  return list.slice(0, 12).map((item) => `- ${stripMarkdownInlineMarkers(String(item || "").trim()) || "작성 필요"}`).join("\n");
 }
 
 function buildInternalImpact({ enabled, articleBlock, lawName, article, query, materialText, citations }) {
