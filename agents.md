@@ -23,6 +23,7 @@ Useful checks:
 curl.exe -s http://127.0.0.1:11434/api/tags
 curl.exe -s http://127.0.0.1:3000/api/status
 npm.cmd test
+npm.cmd run test:prompt-router
 npm.cmd run test:source-workflow
 npm.cmd run test:xlsx
 npm.cmd run test:live
@@ -52,6 +53,7 @@ Server:
 - `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/graphStudioApi.js` - Studio knowledge-graph endpoints for accessible department notebooks.
 - `server/graphAdminApi.js` - Admin knowledge-graph inspection, node/edge override, and rebuild endpoints.
+- `server/promptRouter.js` - chat-route classifier; resolves each request into one of `strict_law_search` / `map_reduce` / `compliance_review` / `law` / `notebook_rag` / `web_search` / `normal_chat` with derived flags and a compliance notebook query override.
 - `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
 - `server/naverSearch.js` - Naver Search API integration for explicit search prompts.
 - `server/notebooks.js` - department-notebook storage, access policy metadata, dual-write to Qdrant/SQLite, ingest, chunk cache.
@@ -96,7 +98,7 @@ Frontend:
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities (including `showConfirmDialog`). No imports.
 - `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
 - `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
-- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming, input source badge rendering and persistence.
+- `public/modules/chat.js` - streaming chat, message rendering, file upload, composer stop-generation button wiring, calendar message handlers, query-aware document trimming, input source badge rendering and persistence.
 - `public/modules/messageDelete.js` - single-message and bulk chat message deletion.
 - `public/modules/customPrompts.js` - personal prompt presets, picker, and Settings subtab.
 - `public/modules/sourceWorkflow.js` - "자료로 추가" dialog, `/api/source-workflow/from-answer` call, and generated-source insertion into room materials.
@@ -158,9 +160,12 @@ Chat:
 
 ```text
 public/modules/chat.js -> POST /api/chat
--> server/ollama.js builds prompt/context
--> optional server/naverSearch.js web context for explicit search prompts only
--> Ollama streams
+-> server/promptRouter.js classifies the request into one route
+   (strict_law_search | map_reduce | compliance_review | law |
+    notebook_rag | web_search | normal_chat)
+-> server/ollama.js builds prompt/context based on the resolved route flags
+-> optional server/naverSearch.js web context only when forceWebSearch is set
+-> Ollama streams (abortable via composer stop button)
 -> browser renders and saves encrypted state in IndexedDB
 -> /api/followups generates autonomous context-aware suggestions
 ```
@@ -262,7 +267,7 @@ unchanged.
 
 ## Key Caveats
 
-- `npm.cmd test` runs law unit/intent/KG checks, mind-map validation, and fast app-server smoke checks. `npm.cmd run test:source-workflow` covers answer-as-source API/frontend wiring/trust metadata. `npm.cmd run test:studio-document` covers Studio document conversion/export behavior. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
+- `npm.cmd test` runs readability/evidence/composer/law-review-view checks, law unit/intent/KG checks, the `promptRouter` chat-route classifier, mind-map validation, and fast app-server smoke checks. `npm.cmd run test:source-workflow` covers answer-as-source API/frontend wiring/trust metadata. `npm.cmd run test:studio-document` covers Studio document conversion/export behavior. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
 - Department RAG uses Qdrant + SQLite FTS5 when configured; falls back to JSON/BM25. Fallback is triggered per-request if either backend is unavailable.
 - Notebook chunk cache (`NOTEBOOK_CHUNK_CACHE_MAX`) is a single in-process LRU shared across all sessions. Tune upward on high-core-count servers.
 - `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.

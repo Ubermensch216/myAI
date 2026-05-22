@@ -19,7 +19,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 
 ## Features
 
-- Multi-room streaming chat with stop/regenerate/edit/copy/download/delete flows, bulk message deletion, and a room pin toggle to keep important conversations at the top of the sidebar.
+- Multi-room streaming chat with a composer stop button, regenerate/edit/copy/download/delete flows, bulk message deletion, and a room pin toggle to keep important conversations at the top of the sidebar.
 - Input source badges on assistant messages show which sources were active (department notebook, uploaded files, generated room sources, web search, law engine); clicking the notebook badge reopens the selector.
 - Autonomous, context-aware follow-up suggestions grounded in conversation logic.
 - Upload support for PDF, DOCX, XLSX, CSV, PPTX, HWPX, PNG, JPG, JPEG, WEBP, and GIF.
@@ -157,13 +157,13 @@ Check the app server:
 curl.exe -s http://127.0.0.1:3000/api/status
 ```
 
-Run the full fast test suite (law unit tests, mind-map validation, and smoke tests) while the app server is running:
+Run the full fast test suite (readability, evidence, composer layout, law-review view, law unit tests, prompt router, mind-map validation, and smoke tests) while the app server is running:
 
 ```powershell
 npm.cmd test
 ```
 
-The suite covers law parsing/intent/KG unit tests, mind-map generation validation, app shell IDs, `/api/status`, notebook list, file upload, answer export, visualization error handling, chat, and calendar intent classification. Run mind-map tests alone:
+The suite covers answer readability policy, evidence-summary classification, composer/stop-button layout, law-review view rendering, law parsing/intent/KG unit tests, chat-route classification (`promptRouter`), mind-map generation validation, app shell IDs, `/api/status`, notebook list, file upload, answer export, visualization error handling, chat, and calendar intent classification. Run mind-map tests alone:
 
 ```powershell
 npm.cmd run test:mindmap
@@ -374,6 +374,7 @@ server/
   exportFiles.js       answer export generators for MD/XLSX/PDF/HWPX/DOCX
   sourceWorkflow/      answer-as-source, source guide, and promotion-review helpers
   mindmap.js           Studio mind-map graph generation from uploaded documents
+  promptRouter.js      classifies each chat request into a route (strict_law_search / map_reduce / compliance_review / law / notebook_rag / web_search / normal_chat)
   ollama.js            chat/followups/visualization calls, RAG and Map-Reduce dispatch
   naverSearch.js       Naver Search API integration for explicit search prompts
   law/                 Korean Law Engine config, law.go.kr/decision clients, citation verification, annexes, law links, time-travel/diff/history, impact map, Law Workbench review/report APIs
@@ -457,7 +458,6 @@ docs/
   RAG.md
   CALENDAR.md
   KOREAN_LAW_ENGINE.md
-  PRD_NOTEBOOKLM_STYLE_SOURCE_WORKFLOW.md
   USAGE_TELEMETRY.md
   DESIGN.md
   SECURITY.md
@@ -472,7 +472,6 @@ docs/
 - [RAG and Map-Reduce](docs/RAG.md)
 - [Calendar](docs/CALENDAR.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
-- [NotebookLM-Style Source Workflow](docs/PRD_NOTEBOOKLM_STYLE_SOURCE_WORKFLOW.md)
 - [Usage Telemetry and Admin Statistics](docs/USAGE_TELEMETRY.md)
 - [Design Guide](docs/DESIGN.md)
 - [Security and Deployment Boundary](docs/SECURITY.md)
