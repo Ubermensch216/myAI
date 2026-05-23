@@ -406,6 +406,7 @@ function buildChunkPayload({
     documentName: documentRecord.name,
     documentType: documentRecord.type,
     chunkIndex: chunk.index ?? index,
+    parentIndex: chunk.parentIndex ?? null,
     page: chunk.page ?? null,
     label: chunk.label ?? "",
     part: chunk.part ?? null,
@@ -468,6 +469,7 @@ function payloadToChunk(payload, scores) {
     part: payload.part,
     partTotal: payload.partTotal,
     chunkIndex: payload.chunkIndex,
+    parentIndex: payload.parentIndex ?? null,
     locator: payload.locator || "",
     rrfScore: scores.rrfScore,
     qdrantScore: scores.qdrantScore

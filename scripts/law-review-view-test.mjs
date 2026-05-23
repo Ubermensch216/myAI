@@ -31,7 +31,7 @@ function findFunctionBody(source, name) {
 }
 
 const navTargets = findAll(/class="primary-nav-item[^"]*"[^>]*data-view-target="([^"]+)"/g, html);
-assert.deepEqual(navTargets, ["chat", "law", "calendar"], "primary nav order is chat, law, calendar");
+assert.deepEqual(navTargets, ["chat", "law", "calendar", "grc"], "primary nav order is chat, law, calendar, grc");
 
 assert.match(html, /data-view-content="law"/, "law review sidebar content exists");
 assert.match(html, /id="newLawReviewButton"/, "new law review button exists");
@@ -107,8 +107,8 @@ assert.equal(new Set(lawWorkbenchIds).size, lawWorkbenchIds.length, "law workben
 
 assert.match(
   css,
-  /\.primary-nav\s*{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/,
-  "primary nav uses three equal columns"
+  /\.primary-nav\s*{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/,
+  "primary nav uses four equal columns"
 );
 assert.match(css, /\.law-area\s*{/, "law-area styles exist");
 assert.match(

@@ -9,7 +9,9 @@ import { getRerankConfig, rerankChunks } from "../reranker.js";
 import {
   getNotebookManifest,
   loadNotebookChunksForRetrieval,
-  summarizeNotebookManifest
+  summarizeNotebookManifest,
+  loadDocumentRecord,
+  getNotebookParentChunks
 } from "../notebooks.js";
 import { expandQueryWithGraph, notebookHasGraph } from "./graph/expander.js";
 
@@ -228,6 +230,7 @@ export async function searchNotebook(notebookId, query, options = {}) {
         ? rankingLists.map((_, i) => (i === rankingLists.length - 1 ? Number(process.env.KG_FUSION_WEIGHT || 0.3) : 1))
         : null;
       const fusedSorted = fuseRankings(rankingLists, fusionWeights);
+      let candidates = [];
       if (rerankEnabled) {
         const tRerank = Date.now();
         const { chunks: rerankedChunks, reranked, reason: rerankReason } = await rerankChunks(
@@ -238,20 +241,29 @@ export async function searchNotebook(notebookId, query, options = {}) {
         timing.rerankMs = Date.now() - tRerank;
         rerankApplied = reranked;
         if (!reranked) fallbackReason = fallbackReason || rerankReason;
-        ranked = greedyFit([...rerankedChunks, ...fusedSorted.slice(rerankConfig.topK)], budget);
+        candidates = [...rerankedChunks, ...fusedSorted.slice(rerankConfig.topK)];
       } else {
-        ranked = greedyFit(fusedSorted, budget);
+        candidates = fusedSorted;
       }
+      const hydrated = await hydrateCandidates(notebookId, manifest, candidates);
+      ranked = greedyFit(hydrated, budget);
     } else {
       const fallbackChunks = await loadAllChunksForFallback();
-      ranked = multiQueryHybridSelect(fallbackChunks, queries, queryEmbeddings, budget);
+      const rawRanked = multiQueryHybridSelect(fallbackChunks, queries, queryEmbeddings, budget * 4);
+      const hydrated = await hydrateCandidates(notebookId, manifest, rawRanked);
+      ranked = greedyFit(hydrated, budget);
     }
     timing.retrievalMs = Date.now() - tRetrieve;
   }
 
-  const selected = ranked.length
-    ? ranked
-    : greedyFit(await loadAllChunksForFallback(), budget);
+  let selected = [];
+  if (ranked.length) {
+    selected = ranked;
+  } else {
+    const fallbackChunks = await loadAllChunksForFallback();
+    const hydrated = await hydrateCandidates(notebookId, manifest, fallbackChunks);
+    selected = greedyFit(hydrated, budget);
+  }
 
   if (!selected.length) {
     fallbackReason = fallbackReason || (trimmedQuery ? "no_ranked_results" : "empty_query");
@@ -416,4 +428,68 @@ function fuseRankings(rankings, weights = null) {
   return Array.from(byKey.values())
     .sort((left, right) => right.score - left.score || left.bestRank - right.bestRank)
     .map((entry) => entry.chunk);
+}
+
+async function hydrateCandidates(notebookId, manifest, candidates) {
+  if (!Array.isArray(candidates) || !candidates.length) return [];
+
+  const parentChunksByDoc = await getNotebookParentChunks(notebookId, manifest).catch(() => ({}));
+  const docsCache = new Map();
+
+  const getDocRecord = async (docId) => {
+    if (docsCache.has(docId)) return docsCache.get(docId);
+    const record = await loadDocumentRecord(notebookId, docId).catch(() => null);
+    if (record) {
+      docsCache.set(docId, record);
+    }
+    return record;
+  };
+
+  const hydrated = [];
+  const seenParentKeys = new Set();
+
+  for (const chunk of candidates) {
+    const docId = chunk.documentId;
+    const parentIndex = chunk.parentIndex;
+
+    let parentText = null;
+    let parentLocator = chunk.locator;
+
+    if (docId && parentIndex != null) {
+      let parentChunk = null;
+      if (parentChunksByDoc[docId] && parentChunksByDoc[docId][parentIndex]) {
+        parentChunk = parentChunksByDoc[docId][parentIndex];
+      } else {
+        const record = await getDocRecord(docId);
+        if (record && Array.isArray(record.parentChunks) && record.parentChunks[parentIndex]) {
+          parentChunk = record.parentChunks[parentIndex];
+        }
+      }
+
+      if (parentChunk) {
+        parentText = parentChunk.text;
+        const parts = [];
+        if (parentChunk.label) parts.push(parentChunk.label);
+        if (parentChunk.page != null) parts.push(`${parentChunk.page}쪽`);
+        if (parts.length) {
+          parentLocator = parts.join(" · ");
+        }
+      }
+    }
+
+    const parentKey = docId && parentIndex != null
+      ? `${docId}:${parentIndex}`
+      : `${docId}:child:${chunk.chunkIndex ?? chunk.index}`;
+
+    if (seenParentKeys.has(parentKey)) continue;
+    seenParentKeys.add(parentKey);
+
+    hydrated.push({
+      ...chunk,
+      text: parentText || chunk.text,
+      locator: parentLocator
+    });
+  }
+
+  return hydrated;
 }

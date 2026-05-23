@@ -707,7 +707,7 @@ function processHwpxTable(tableChildren) {
   return lines.join("\n");
 }
 
-function parseHwpxSectionXml(xmlContent) {
+export function parseHwpxSectionXml(xmlContent) {
   try {
     const parsed = hwpxXmlParser.parse(xmlContent);
     const text = processHwpxNodes(parsed);

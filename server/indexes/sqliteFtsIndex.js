@@ -176,6 +176,7 @@ function buildChunkPayload({ notebookId, documentRecord, chunk, index }) {
     part: chunk.part,
     partTotal: chunk.partTotal,
     chunkIndex: chunk.index ?? index,
+    parentIndex: chunk.parentIndex ?? null,
     locator: formatLocator(chunk),
     text: String(chunk.text || "")
   };
@@ -225,6 +226,7 @@ function payloadToChunk(rawPayload, scores = {}) {
     part: payload.part,
     partTotal: payload.partTotal,
     chunkIndex: payload.chunkIndex,
+    parentIndex: payload.parentIndex ?? null,
     locator: payload.locator || "",
     lexicalRank: scores.lexicalRank,
     lexicalScore: scores.lexicalScore

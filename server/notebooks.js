@@ -161,6 +161,7 @@ function flattenNotebookChunk(entry, chunk) {
     part: chunk.part,
     partTotal: chunk.partTotal,
     chunkIndex: chunk.index,
+    parentIndex: chunk.parentIndex ?? null,
     locator: formatLocator(chunk)
   };
   if (Array.isArray(chunk.embedding)) {
@@ -178,16 +179,30 @@ async function loadNotebookChunks(notebookId, manifest) {
   }
 
   const chunks = [];
+  const parentChunksByDoc = {};
   for (const entry of manifest.documents || []) {
     const record = await loadDocumentRecord(notebookId, entry.id);
     if (!record) continue;
+    if (record.parentChunks) {
+      parentChunksByDoc[entry.id] = record.parentChunks;
+    }
     for (const chunk of record.chunks || []) {
       chunks.push(flattenNotebookChunk(entry, chunk));
     }
   }
 
-  touchNotebookCache(notebookId, { key: cacheKey, chunks });
+  touchNotebookCache(notebookId, { key: cacheKey, chunks, parentChunksByDoc });
   return chunks;
+}
+
+export async function getNotebookParentChunks(notebookId, manifest) {
+  const cacheKey = notebookCacheKey(manifest);
+  let cached = notebookChunkCache.get(notebookId);
+  if (!cached || cached.key !== cacheKey) {
+    await loadNotebookChunks(notebookId, manifest);
+    cached = notebookChunkCache.get(notebookId);
+  }
+  return cached?.parentChunksByDoc || {};
 }
 
 export async function listNotebooks() {
@@ -325,9 +340,9 @@ export async function addNotebookDocument(notebookId, parsedDocument, onProgress
   }
 
   const id = generateId("doc");
-  const chunks = chunkDocumentSections(parsedDocument);
+  const { parentChunks, chunks } = chunkDocumentSections(parsedDocument, { hierarchical: true });
 
-  if (!chunks.length) {
+  if (!chunks || !chunks.length) {
     throw new Error("문서에서 본문 텍스트를 추출하지 못했습니다.");
   }
 
@@ -381,7 +396,8 @@ export async function addNotebookDocument(notebookId, parsedDocument, onProgress
       startedAt,
       finishedAt
     },
-    chunks
+    chunks,
+    parentChunks
   };
 
   await fs.mkdir(docsDir(notebookId), { recursive: true });
@@ -506,7 +522,7 @@ async function removeNotebookLexicalIndex(notebookId) {
   }
 }
 
-async function loadDocumentRecord(notebookId, documentId) {
+export async function loadDocumentRecord(notebookId, documentId) {
   try {
     const raw = await fs.readFile(docPath(notebookId, documentId), "utf8");
     return JSON.parse(raw);

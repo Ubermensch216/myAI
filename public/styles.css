@@ -4196,7 +4196,7 @@ body.panel-resizing .panel-resizer::after {
 /* ===== Primary navigation (Chat / Calendar) ===== */
 .primary-nav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
