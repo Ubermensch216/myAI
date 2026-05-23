@@ -1,5 +1,5 @@
 import express from "express";
-import { listDefaultTemplates, getDefaultTemplate, pickDefaultTemplateId } from "./defaultTemplates.js";
+import { listDefaultTemplates, getDefaultTemplate, pickDefaultTemplateId, DOCUMENT_TYPES, PRESENTATION_STYLES } from "./defaultTemplates.js";
 import { normalizeDocument, DOCUMENT_LIMITS } from "./documentModel.js";
 import { renderDocumentToMarkdown, renderCitationsSection } from "./documentRenderer.js";
 import { convertAnswerToDocument } from "./answerToDocument.js";
@@ -13,6 +13,8 @@ studioDocumentRouter.get("/templates", (_req, res) => {
   res.json({
     ok: true,
     templates: listDefaultTemplates(),
+    documentTypes: DOCUMENT_TYPES,
+    presentationStyles: PRESENTATION_STYLES,
     defaults: {
       compliance: "review_report"
     },
@@ -39,12 +41,33 @@ studioDocumentRouter.post("/from-answer", async (req, res) => {
       return res.status(400).json({ ok: false, error: `알 수 없는 템플릿: ${templateId}` });
     }
 
+    let docType = typeof body.docType === "string" ? body.docType.trim() : "";
+    const presentationStyle = typeof body.presentationStyle === "string" ? body.presentationStyle.trim() : "default";
+
+    if (!docType) {
+      if (templateId) {
+        if (["review_report", "law_review_opinion", "ordinance_upper_law_review", "administrative_disposition_basis", "civil_reply_law_review", "internal_compliance_checklist"].includes(templateId)) {
+          docType = "review_report";
+        } else if (templateId === "meeting_minutes") {
+          docType = "meeting_minutes";
+        } else if (templateId === "daily_report" || templateId === "planning_proposal" || templateId === "audit_checklist") {
+          docType = "custom";
+        } else {
+          docType = "summary";
+        }
+      } else {
+        docType = "summary";
+      }
+    }
+
     const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : DEFAULT_MODEL;
 
     const result = await convertAnswerToDocument({
       title: body.title,
       answerMarkdown,
       template,
+      docType,
+      presentationStyle,
       metadata,
       source: normalizeSourceField(body.source),
       model

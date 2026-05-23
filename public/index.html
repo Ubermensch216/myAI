@@ -698,9 +698,20 @@
               <div class="studio-document-header">
                 <input id="studioDocumentTitle" class="text-input studio-document-title" type="text" placeholder="제목" maxlength="200" />
                 <div class="studio-document-header-row">
-                  <select id="studioDocumentTemplate" class="text-input studio-document-template" aria-label="템플릿 선택">
-                    <option value="" disabled selected hidden>템플릿</option>
+                  <select id="studioDocumentType" class="text-input studio-document-template" aria-label="문서 유형 선택">
+                    <option value="" disabled selected hidden>문서 유형</option>
                   </select>
+                  <select id="studioDocumentStyle" class="text-input studio-document-template" aria-label="표현 서식 선택">
+                    <option value="" disabled selected hidden>표현 서식</option>
+                  </select>
+                  <button id="studioDocumentDerivativeBtn" class="icon-button studio-doc-icon-btn" type="button" title="파생 문서 만들기" aria-label="파생 문서 만들기">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="6" y1="3" x2="6" y2="15"></line>
+                      <circle cx="18" cy="6" r="3"></circle>
+                      <circle cx="6" cy="18" r="3"></circle>
+                      <path d="M18 9a9 9 0 0 1-9 9"></path>
+                    </svg>
+                  </button>
                   <button id="studioDocumentRegenerateButton" class="icon-button studio-doc-icon-btn" type="button" title="AI 재구성" aria-label="AI 재구성">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8"/>
@@ -748,6 +759,7 @@
 
               <div id="studioDocumentStatus" class="studio-document-status" hidden></div>
               <div id="studioDocumentWarnings" class="studio-document-warnings"></div>
+              <div id="studioDocumentStructureWarnings" class="studio-document-structure-warnings" hidden></div>
 
               <div class="studio-document-modebar" role="group" aria-label="문서 편집 모드">
                 <button id="studioDocumentVisualModeButton" class="studio-document-mode-button" type="button" data-doc-mode="visual">문서 편집</button>
@@ -946,7 +958,7 @@
                 <span class="admin-console-nav-divider" aria-hidden="true"></span>
                 <button id="settingsSubTabDocs" class="admin-console-nav-item" type="button" data-subtab="docs">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><polyline points="14 2 14 8 20 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="8" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                  <span>문서 템플릿</span>
+                  <span>문서화 및 서식 설정</span>
                 </button>
                 <button id="settingsSubTabCustomPrompts" class="admin-console-nav-item" type="button" data-subtab="customPrompts">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21 13 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 3v5M13.5 5.5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19.5 12v3M18 13.5h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 3v2M7 4h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -1143,7 +1155,7 @@
               <!-- DOCS TEMPLATE TAB -->
               <section id="settingsPanelDocs" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsSubTabDocs" hidden>
                 <fieldset class="field-section template-section settings-template-section">
-                  <legend class="field-section-title">문서 템플릿</legend>
+                  <legend class="field-section-title">문서화 및 서식 설정</legend>
                   <div id="settingsDocumentTemplatesMount" class="settings-document-templates-mount"></div>
                 </fieldset>
               </section>

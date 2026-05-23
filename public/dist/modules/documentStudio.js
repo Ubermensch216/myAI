@@ -19,6 +19,8 @@ const EXPORT_FORMATS = [
 ];
 
 let _templates = null;
+let _documentTypes = null;
+let _presentationStyles = null;
 let _activeAbort = null;
 let _switchToDocumentTool = null;
 let _suppressEditorChange = false;
@@ -60,11 +62,23 @@ export function bindDocumentStudioEvents() {
     markDirty(doc);
   });
 
-  elements.studioDocumentTemplate?.addEventListener("change", () => {
+  elements.studioDocumentType?.addEventListener("change", () => {
     const doc = getActiveDraft();
     if (!doc) return;
-    doc.templateId = elements.studioDocumentTemplate.value || null;
+    doc.docType = elements.studioDocumentType.value || null;
     markDirty(doc);
+    validateAndRenderStructureWarnings(doc);
+  });
+
+  elements.studioDocumentStyle?.addEventListener("change", () => {
+    const doc = getActiveDraft();
+    if (!doc) return;
+    doc.presentationStyle = elements.studioDocumentStyle.value || null;
+    markDirty(doc);
+  });
+
+  elements.studioDocumentDerivativeBtn?.addEventListener("click", () => {
+    createDerivativeDocument().catch((error) => setStatus(`파생 문서 생성 실패: ${error.message}`, true));
   });
 
   elements.studioDocumentRegenerateButton?.addEventListener("click", () => {
@@ -149,6 +163,7 @@ function initEditor() {
     if (!doc) return;
     doc.markdown = ta.value;
     markDirty(doc);
+    validateAndRenderStructureWarnings(doc);
   });
   ta.addEventListener("keydown", (event) => {
     const mod = event.ctrlKey || event.metaKey;
@@ -746,6 +761,7 @@ function syncVisualBlocks(doc) {
   doc.markdown = serializeVisualBlocksToMarkdown(_visualBlocks);
   setEditorValue(doc.markdown);
   markDirty(doc);
+  validateAndRenderStructureWarnings(doc);
 }
 
 function autosizeVisualTextarea(input) {
@@ -768,16 +784,26 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
   _switchToDocumentTool?.();
   await ensureTemplatesLoaded();
 
-  const suggestedId = pickDefaultTemplateId(metadata);
-  const templateId = await promptTemplateChoice(suggestedId);
-  if (!templateId) return;
+  // Setup state settings defaults if missing
+  state.settings.docTypeDefaults = state.settings.docTypeDefaults || { chat: "summary", law: "review_report", grc: "review_report" };
+  state.settings.styleDefaults = state.settings.styleDefaults || { chat: "default", law: "working", grc: "working" };
+
+  const suggestedType = state.settings.docTypeDefaults.chat || "summary";
+  const suggestedStyle = state.settings.styleDefaults.chat || "default";
+
+  const choice = await promptDocumentOptions({ suggestedType, suggestedStyle });
+  if (!choice) return;
+
+  const { docType, presentationStyle } = choice;
 
   const studio = ensureRoomStudio(room);
   const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const draft = {
     id: draftId,
     title: title || deriveTitleFromMarkdown(text),
-    templateId,
+    templateId: "planning_proposal",
+    docType,
+    presentationStyle,
     markdown: "",
     citations: {},
     source: {
@@ -831,22 +857,43 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
     draft.markdown = text;
     draft.citations = { law: Array.isArray(citations) ? citations : [] };
     if (templateId) draft.templateId = templateId;
+
+    const sourceType = draft.source?.sourceType || "";
+    if (sourceType === "law_workbench_report" || sourceType === "grc_review") {
+      draft.docType = "review_report";
+      draft.presentationStyle = draft.presentationStyle || "working";
+    } else {
+      draft.docType = draft.docType || "summary";
+      draft.presentationStyle = draft.presentationStyle || "default";
+    }
+
     draft.metadata = { ...draft.metadata, ...metadata };
     draft.updatedAt = new Date().toISOString();
   } else {
     const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const resolvedSource = {
+      roomId: state.activeView === "law" ? null : context.id,
+      lawReviewId: state.activeView === "law" ? context.id : null,
+      sourceType: state.activeView === "law" ? "law_workbench_report" : (source.sourceType || "assistant_answer"),
+      ...source
+    };
+
+    let docType = "summary";
+    let presentationStyle = "default";
+    if (resolvedSource.sourceType === "law_workbench_report" || resolvedSource.sourceType === "grc_review") {
+      docType = "review_report";
+      presentationStyle = "working";
+    }
+
     draft = {
       id: draftId,
       title: title || deriveTitleFromMarkdown(text),
       templateId: templateId || pickDefaultTemplateId(metadata),
+      docType,
+      presentationStyle,
       markdown: text,
       citations: { law: Array.isArray(citations) ? citations : [] },
-      source: {
-        roomId: state.activeView === "law" ? null : context.id,
-        lawReviewId: state.activeView === "law" ? context.id : null,
-        sourceType: "law_workbench_report",
-        ...source
-      },
+      source: resolvedSource,
       metadata,
       editorMode: "visual",
       exportOptions: { includeCitations: true },
@@ -904,11 +951,11 @@ export function renderDocumentStudio() {
   }
   setEditorValue(doc.markdown || "");
   renderEditorMode(doc);
-  populateTemplateSelect(doc.templateId);
+  populateTypeAndStyleSelects(doc);
   if (!_templates || !_templates.length) {
     ensureTemplatesLoaded().then(() => {
       const current = getActiveDraft();
-      if (current && current === doc) populateTemplateSelect(current.templateId);
+      if (current && current === doc) populateTypeAndStyleSelects(current);
     }).catch(() => { /* status already surfaced inside ensureTemplatesLoaded */ });
   }
   if (elements.studioDocumentIncludeCitations) {
@@ -1255,69 +1302,86 @@ function formatOutputDate(value) {
 // ── Template management ──────────────────────────────────────────────────
 
 async function ensureTemplatesLoaded() {
-  if (_templates) return _templates;
+  if (_templates && _documentTypes && _presentationStyles) return _templates;
   try {
     const response = await fetch("/api/studio/document/templates");
     if (!response.ok) throw new Error(`status ${response.status}`);
     const body = await response.json();
     if (!body.ok || !Array.isArray(body.templates)) throw new Error("invalid response");
     _templates = body.templates;
+    _documentTypes = body.documentTypes || [];
+    _presentationStyles = body.presentationStyles || [];
   } catch (error) {
-    setStatus(`템플릿 목록을 불러오지 못했습니다: ${error.message}`, true);
+    setStatus(`템플릿 및 서식 정보를 불러오지 못했습니다: ${error.message}`, true);
     _templates = [];
+    _documentTypes = [];
+    _presentationStyles = [];
   }
   return _templates;
 }
 
-function populateTemplateSelect(activeId) {
-  const select = elements.studioDocumentTemplate;
-  if (!select) return;
-  const previous = select.value;
-  select.innerHTML = "";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "템플릿";
-  placeholder.disabled = true;
-  placeholder.hidden = true;
-  select.append(placeholder);
-  const templates = Array.isArray(_templates) ? _templates : [];
-  
-  const personalTemplates = (state.documentTemplates && Array.isArray(state.documentTemplates.personal)) ? state.documentTemplates.personal : [];
-  
-  if (personalTemplates.length > 0) {
-    const groupPersonal = document.createElement("optgroup");
-    groupPersonal.label = "내 템플릿";
-    for (const tpl of personalTemplates) {
-      const option = document.createElement("option");
-      option.value = tpl.id;
-      option.textContent = tpl.name;
-      groupPersonal.append(option);
+function populateTypeAndStyleSelects(doc) {
+  if (!doc) return;
+  const typeSelect = elements.studioDocumentType;
+  const styleSelect = elements.studioDocumentStyle;
+  if (!typeSelect || !styleSelect) return;
+
+  const sourceType = doc.source?.sourceType || "";
+  const isLocked = ["law_workbench_report", "grc_review"].includes(sourceType);
+
+  // 1. Populate Types
+  typeSelect.innerHTML = "";
+  const typePlaceholder = document.createElement("option");
+  typePlaceholder.value = "";
+  typePlaceholder.textContent = "문서 유형";
+  typePlaceholder.disabled = true;
+  typePlaceholder.hidden = true;
+  typeSelect.append(typePlaceholder);
+
+  const types = Array.isArray(_documentTypes) ? _documentTypes : [];
+  for (const t of types) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    if (isLocked && t.id === "review_report") {
+      opt.textContent = `${t.name} \uD83D\uDD12`;
+    } else {
+      opt.textContent = t.name;
     }
-    select.append(groupPersonal);
+    typeSelect.append(opt);
   }
-  
-  const groupBuiltin = document.createElement("optgroup");
-  groupBuiltin.label = "기본 템플릿";
-  for (const tpl of templates) {
-    if (personalTemplates.some(p => p.id === tpl.id)) continue;
-    const option = document.createElement("option");
-    option.value = tpl.id;
-    option.textContent = tpl.name;
-    groupBuiltin.append(option);
+  typeSelect.value = doc.docType || "";
+
+  if (isLocked) {
+    typeSelect.disabled = true;
+    typeSelect.title = "검토 원본 보고서의 구조를 보호하기 위해 문서 유형이 고정됩니다.";
+  } else {
+    typeSelect.disabled = false;
+    typeSelect.removeAttribute("title");
   }
-  if (groupBuiltin.children.length > 0) {
-    select.append(groupBuiltin);
+
+  // 2. Populate Styles
+  styleSelect.innerHTML = "";
+  const stylePlaceholder = document.createElement("option");
+  stylePlaceholder.value = "";
+  stylePlaceholder.textContent = "표현 서식";
+  stylePlaceholder.disabled = true;
+  stylePlaceholder.hidden = true;
+  styleSelect.append(stylePlaceholder);
+
+  const styles = Array.isArray(_presentationStyles) ? _presentationStyles : [];
+  for (const s of styles) {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.name;
+    styleSelect.append(opt);
   }
-  const desired = activeId || previous || "";
-  const inBuiltin = templates.some((t) => t.id === desired);
-  const inPersonal = personalTemplates.some((t) => t.id === desired);
-  if (desired && !inBuiltin && !inPersonal) {
-    const fallback = document.createElement("option");
-    fallback.value = desired;
-    fallback.textContent = desired;
-    select.append(fallback);
+  styleSelect.value = doc.presentationStyle || "default";
+
+  // Hide or show derivative button
+  if (elements.studioDocumentDerivativeBtn) {
+    const canDerive = ["law_workbench_report", "grc_review"].includes(sourceType) || doc.docType === "review_report";
+    elements.studioDocumentDerivativeBtn.hidden = !canDerive;
   }
-  select.value = desired || "";
 }
 
 function pickDefaultTemplateId(metadata) {
@@ -1327,87 +1391,359 @@ function pickDefaultTemplateId(metadata) {
   return _templates?.[0]?.id || "planning_proposal";
 }
 
-function promptTemplateChoice(suggestedId) {
-  const templates = Array.isArray(_templates) ? _templates : [];
-  if (!templates.length) return Promise.resolve(suggestedId || "");
+function promptDocumentOptions({ suggestedType, suggestedStyle }) {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "studio-doc-template-picker";
-    const card = document.createElement("div");
-    card.className = "studio-doc-template-picker-card";
-    const title = document.createElement("h3");
-    title.className = "studio-doc-template-picker-title";
-    title.textContent = "어떤 템플릿으로 문서를 만들까요?";
-    const list = document.createElement("div");
-    list.className = "studio-doc-template-picker-list";
+    overlay.innerHTML = `
+      <div class="studio-doc-template-picker-card" style="width: min(480px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 24px 60px rgba(0,0,0,0.3);">
+        <h3 class="studio-doc-template-picker-title" style="margin: 0; font-size: 15px; font-weight: 700; color: var(--ink);">답변을 어떤 문서로 만들까요?</h3>
+        
+        <!-- 추천 빠른 선택 -->
+        <div>
+          <div style="font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px;">추천 빠른 선택</div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+            <button type="button" class="quick-chip-btn" data-type="summary" data-style="brief" style="padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); text-align: left; cursor: pointer; transition: all 0.12s ease; color: var(--ink);">
+              <div style="font-weight: 600; font-size: 12px;">핵심 요약 \uD83D\uDCCB</div>
+              <div style="font-size: 10px; color: var(--muted); margin-top: 2px;">요약문 / 간략 서식</div>
+            </button>
+            <button type="button" class="quick-chip-btn" data-type="report_memo" data-style="executive" style="padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); text-align: left; cursor: pointer; transition: all 0.12s ease; color: var(--ink);">
+              <div style="font-weight: 600; font-size: 12px;">보고 메모 \u2709\uFE0F</div>
+              <div style="font-size: 10px; color: var(--muted); margin-top: 2px;">보고 메모 / 상급자 보고 서식</div>
+            </button>
+            <button type="button" class="quick-chip-btn" data-type="explanatory" data-style="default" style="padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); text-align: left; cursor: pointer; transition: all 0.12s ease; color: var(--ink);">
+              <div style="font-weight: 600; font-size: 12px;">Q&A 및 설명자료 \uD83D\uDCA1</div>
+              <div style="font-size: 10px; color: var(--muted); margin-top: 2px;">설명자료 / 기본 서식</div>
+            </button>
+            <button type="button" class="quick-chip-btn" data-type="review_report" data-style="working" style="padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); text-align: left; cursor: pointer; transition: all 0.12s ease; color: var(--ink);">
+              <div style="font-weight: 600; font-size: 12px;">검토보고서 \u2696\uFE0F</div>
+              <div style="font-size: 10px; color: var(--muted); margin-top: 2px;">검토보고서 / 실무 검토 서식</div>
+            </button>
+          </div>
+        </div>
 
-    let selectedId = suggestedId || templates[0].id;
+        <div style="border-top: 1px solid var(--line); margin: 2px 0;"></div>
 
-    const renderOptions = () => {
-      list.innerHTML = "";
-      for (const tpl of templates) {
-        const opt = document.createElement("button");
-        opt.type = "button";
-        opt.className = "studio-doc-template-picker-option";
-        opt.dataset.templateId = tpl.id;
-        if (tpl.id === selectedId) opt.classList.add("is-selected");
-        const name = document.createElement("div");
-        name.className = "studio-doc-template-picker-name";
-        name.textContent = tpl.name || tpl.id;
-        opt.append(name);
-        if (tpl.description) {
-          const desc = document.createElement("div");
-          desc.className = "studio-doc-template-picker-desc";
-          desc.textContent = tpl.description;
-          opt.append(desc);
-        }
-        opt.addEventListener("click", () => {
-          selectedId = tpl.id;
-          renderOptions();
-        });
-        opt.addEventListener("dblclick", () => {
-          selectedId = tpl.id;
-          close(selectedId);
-        });
-        list.append(opt);
-      }
+        <!-- 상세 설정 -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--muted);">상세 설정</div>
+          <div style="display: flex; gap: 8px;">
+            <div style="flex: 1;">
+              <label style="font-size: 10px; color: var(--muted); display: block; margin-bottom: 4px;">문서 유형</label>
+              <select id="modalDocType" class="text-input" style="width: 100%; height: 32px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0 6px; outline: none;"></select>
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 10px; color: var(--muted); display: block; margin-bottom: 4px;">표현 서식</label>
+              <select id="modalDocStyle" class="text-input" style="width: 100%; height: 32px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0 6px; outline: none;"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="studio-doc-template-picker-actions" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button type="button" class="ghost-button" id="modalCancelBtn">취소</button>
+          <button type="button" class="send-button" id="modalOkBtn">만들기</button>
+        </div>
+      </div>
+    `;
+
+    const modalDocType = overlay.querySelector("#modalDocType");
+    const modalDocStyle = overlay.querySelector("#modalDocStyle");
+    const modalCancelBtn = overlay.querySelector("#modalCancelBtn");
+    const modalOkBtn = overlay.querySelector("#modalOkBtn");
+    const chips = overlay.querySelectorAll(".quick-chip-btn");
+
+    // Populate selects
+    const types = Array.isArray(_documentTypes) ? _documentTypes : [];
+    for (const t of types) {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name;
+      modalDocType.append(opt);
+    }
+    modalDocType.value = suggestedType || "summary";
+
+    const styles = Array.isArray(_presentationStyles) ? _presentationStyles : [];
+    for (const s of styles) {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = s.name;
+      modalDocStyle.append(opt);
+    }
+    modalDocStyle.value = suggestedStyle || "default";
+
+    const updateChipHighlights = () => {
+      const currentType = modalDocType.value;
+      const currentStyle = modalDocStyle.value;
+      chips.forEach(btn => {
+        const isMatched = btn.dataset.type === currentType && btn.dataset.style === currentStyle;
+        btn.style.borderColor = isMatched ? "var(--accent)" : "var(--line)";
+        btn.style.background = isMatched ? "color-mix(in srgb, var(--accent) 10%, var(--surface))" : "var(--surface)";
+      });
     };
 
-    const actions = document.createElement("div");
-    actions.className = "studio-doc-template-picker-actions";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.type = "button";
-    cancelBtn.className = "ghost-button";
-    cancelBtn.textContent = "취소";
-    cancelBtn.addEventListener("click", () => close(null));
-    const okBtn = document.createElement("button");
-    okBtn.type = "button";
-    okBtn.className = "send-button";
-    okBtn.textContent = "선택";
-    okBtn.addEventListener("click", () => close(selectedId));
-    actions.append(cancelBtn, okBtn);
+    modalDocType.addEventListener("change", updateChipHighlights);
+    modalDocStyle.addEventListener("change", updateChipHighlights);
 
-    card.append(title, list, actions);
-    overlay.append(card);
+    chips.forEach(btn => {
+      btn.addEventListener("click", () => {
+        modalDocType.value = btn.dataset.type;
+        modalDocStyle.value = btn.dataset.style;
+        updateChipHighlights();
+      });
+    });
+
+    const close = (result) => {
+      document.removeEventListener("keydown", onKeydown);
+      overlay.remove();
+      resolve(result);
+    };
 
     const onKeydown = (event) => {
       if (event.key === "Escape") { event.preventDefault(); close(null); }
-      else if (event.key === "Enter") { event.preventDefault(); close(selectedId); }
+      else if (event.key === "Enter") {
+        event.preventDefault();
+        close({ docType: modalDocType.value, presentationStyle: modalDocStyle.value });
+      }
     };
+
+    modalCancelBtn.addEventListener("click", () => close(null));
+    modalOkBtn.addEventListener("click", () => {
+      close({ docType: modalDocType.value, presentationStyle: modalDocStyle.value });
+    });
+
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) close(null);
     });
 
-    function close(result) {
+    updateChipHighlights();
+    document.addEventListener("keydown", onKeydown);
+    document.body.append(overlay);
+    modalOkBtn.focus();
+  });
+}
+
+function promptDerivativeOptions(parent) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "studio-doc-template-picker";
+    overlay.innerHTML = `
+      <div class="studio-doc-template-picker-card" style="width: min(400px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 24px 60px rgba(0,0,0,0.3);">
+        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--ink);">파생 문서 만들기</h3>
+        <p style="margin: 0; font-size: 11px; color: var(--muted);">현재 문서를 바탕으로 요약문, 보고 메모 등의 파생 문서를 생성합니다.</p>
+        
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 600; color: var(--ink); display: block; margin-bottom: 4px;">대상 문서 유형</label>
+            <select id="derivDocType" class="text-input" style="width: 100%; height: 32px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0 6px; outline: none;">
+              <!-- Filled programmatically -->
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; font-weight: 600; color: var(--ink); display: block; margin-bottom: 4px;">표현 서식</label>
+            <select id="derivDocStyle" class="text-input" style="width: 100%; height: 32px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0 6px; outline: none;">
+              <!-- Filled programmatically -->
+            </select>
+          </div>
+        </div>
+
+        <div class="studio-doc-template-picker-actions" style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+          <button type="button" class="ghost-button" id="derivCancelBtn">취소</button>
+          <button type="button" class="send-button" id="derivOkBtn">생성</button>
+        </div>
+      </div>
+    `;
+
+    const derivDocType = overlay.querySelector("#derivDocType");
+    const derivDocStyle = overlay.querySelector("#derivDocStyle");
+    const derivCancelBtn = overlay.querySelector("#derivCancelBtn");
+    const derivOkBtn = overlay.querySelector("#derivOkBtn");
+
+    // Populate types
+    const types = Array.isArray(_documentTypes) ? _documentTypes : [];
+    for (const t of types) {
+      if (t.id === "review_report") continue;
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name;
+      derivDocType.append(opt);
+    }
+    derivDocType.value = "summary";
+
+    // Populate styles
+    const styles = Array.isArray(_presentationStyles) ? _presentationStyles : [];
+    for (const s of styles) {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = s.name;
+      derivDocStyle.append(opt);
+    }
+    derivDocStyle.value = "default";
+
+    const close = (result) => {
       document.removeEventListener("keydown", onKeydown);
       overlay.remove();
       resolve(result);
-    }
+    };
 
-    renderOptions();
+    const onKeydown = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); close(null); }
+      else if (event.key === "Enter") {
+        event.preventDefault();
+        close({ docType: derivDocType.value, presentationStyle: derivDocStyle.value });
+      }
+    };
+
+    derivCancelBtn.addEventListener("click", () => close(null));
+    derivOkBtn.addEventListener("click", () => {
+      close({ docType: derivDocType.value, presentationStyle: derivDocStyle.value });
+    });
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close(null);
+    });
+
     document.addEventListener("keydown", onKeydown);
     document.body.append(overlay);
-    okBtn.focus();
+    derivOkBtn.focus();
+  });
+}
+
+async function createDerivativeDocument() {
+  const parent = getActiveDraft();
+  if (!parent) return;
+
+  await ensureTemplatesLoaded();
+  const choice = await promptDerivativeOptions(parent);
+  if (!choice) return;
+
+  const { docType, presentationStyle } = choice;
+
+  const room = getActiveRoom();
+  const context = state.activeView === "law" ? getActiveLawReview() : room;
+  if (!context) return;
+  const studio = state.activeView === "law" ? ensureLawReviewStudio(context) : ensureRoomStudio(context);
+
+  const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const draft = {
+    id: draftId,
+    title: `[파생본] ${parent.title}`,
+    templateId: parent.templateId,
+    docType,
+    presentationStyle,
+    parentDocumentId: parent.id,
+    markdown: "",
+    citations: { ...parent.citations },
+    source: {
+      ...parent.source,
+      roomId: room ? room.id : null,
+      parentDocumentId: parent.id
+    },
+    model: parent.model || "gemma3n:e2b",
+    answerMarkdown: parent.sourceMarkdown || parent.markdown || "",
+    metadata: { ...parent.metadata, parentDocumentId: parent.id },
+    editorMode: "visual",
+    exportOptions: { ...parent.exportOptions },
+    pending: true,
+    warnings: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  studio.documents.unshift(draft);
+  studio.activeDocumentId = draftId;
+  scheduleSave();
+
+  renderDocumentStudio();
+  try {
+    await convertDraft(draft);
+  } catch (error) {
+    setStatus(`파생 문서 변환 실패: ${error.message}`, true);
+  }
+  scheduleSave();
+  renderDocumentStudio();
+}
+
+function validateDocumentStructure(docType, markdown) {
+  const typeDef = _documentTypes?.find(t => t.id === docType);
+  if (!typeDef || !Array.isArray(typeDef.requiredSections) || typeDef.requiredSections.length === 0) {
+    return [];
+  }
+
+  const missing = [];
+  const lines = String(markdown || "").split("\n").map(l => l.trim());
+
+  for (const section of typeDef.requiredSections) {
+    let found = false;
+    for (const label of section.labels) {
+      const escapedLabel = label.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const regex = new RegExp(`^\\s*(?:#{1,6}\\s+)?(?:(?:\\d+\\.\\s*)?${escapedLabel}|${escapedLabel})`, 'i');
+      if (lines.some(line => regex.test(line))) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      missing.push({ id: section.id, label: section.labels[0] });
+    }
+  }
+
+  return missing;
+}
+
+function validateAndRenderStructureWarnings(doc) {
+  const banner = elements.studioDocumentStructureWarnings;
+  if (!banner) return;
+
+  if (!doc) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+
+  const missing = validateDocumentStructure(doc.docType, doc.markdown);
+  if (missing.length === 0) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+
+  const missingLabels = missing.map(m => m.label).join(", ");
+  banner.hidden = false;
+  banner.style.display = "flex";
+  banner.innerHTML = `
+    <div style="flex: 1; color: var(--danger, #ef4444); font-size: 12px;">
+      \u26A0\uFE0F 필수 구조 누락: <strong>${missingLabels}</strong> (조문/근거/결론 연결이 훼손될 수 있습니다.)
+    </div>
+    <div class="warning-actions" style="display: flex; gap: 6px; align-items: center;">
+      <button type="button" class="warning-btn" id="warningRecoverBtn" style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: var(--ink);">[누락 섹션 복구]</button>
+      <button type="button" class="warning-btn" id="warningRevertBtn" style="background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: var(--ink);">[원본으로 복원]</button>
+    </div>
+  `;
+
+  // Bind recover button
+  banner.querySelector("#warningRecoverBtn").addEventListener("click", () => {
+    let appended = doc.markdown || "";
+    for (const m of missing) {
+      appended += `\n\n## ${m.label}\n작성 필요`;
+    }
+    doc.markdown = appended;
+    setEditorValue(doc.markdown);
+    markDirty(doc);
+    validateAndRenderStructureWarnings(doc);
+  });
+
+  // Bind revert button
+  banner.querySelector("#warningRevertBtn").addEventListener("click", () => {
+    const original = doc.generatedMarkdown || doc.sourceMarkdown;
+    if (!original) {
+      window.alert("복원할 원본 문서 내용이 없습니다.");
+      return;
+    }
+    if (!window.confirm("현재 편집 내용이 원본 검토보고서로 대체됩니다. 계속하시겠습니까?")) return;
+    doc.markdown = original;
+    setEditorValue(doc.markdown);
+    markDirty(doc);
+    validateAndRenderStructureWarnings(doc);
   });
 }
 
@@ -1426,6 +1762,8 @@ async function convertDraft(draft) {
         title: draft.title,
         answerMarkdown: draft.answerMarkdown,
         templateId: draft.templateId,
+        docType: draft.docType || null,
+        presentationStyle: draft.presentationStyle || null,
         metadata: draft.metadata || {},
         source: draft.source,
         model: draft.model
@@ -1448,7 +1786,13 @@ async function convertDraft(draft) {
     if (!isDraftAlive(draft)) return;
     draft.templateId = body.templateId || draft.templateId;
     draft.title = body.document?.title || draft.title;
-    draft.markdown = typeof body.markdown === "string" ? body.markdown : blocksToMarkdown(body.document?.blocks || []);
+    draft.docType = body.document?.docType || draft.docType;
+    draft.presentationStyle = body.document?.presentationStyle || draft.presentationStyle;
+    draft.parentDocumentId = body.document?.parentDocumentId || draft.parentDocumentId;
+    draft.sourceMarkdown = body.document?.sourceMarkdown || draft.sourceMarkdown;
+    draft.generatedMarkdown = body.document?.generatedMarkdown || draft.generatedMarkdown;
+    draft.versions = body.document?.versions || draft.versions || [];
+    draft.markdown = typeof body.document?.generatedMarkdown === "string" ? body.document.generatedMarkdown : (typeof body.markdown === "string" ? body.markdown : blocksToMarkdown(body.document?.blocks || []));
     draft.citations = body.document?.citations || {};
     draft.warnings = Array.isArray(body.warnings) ? body.warnings : [];
     draft.pending = false;
@@ -1481,7 +1825,8 @@ async function regenerateActiveDraft() {
     setStatus("재구성할 원본 답변이 없습니다.", true);
     return;
   }
-  doc.templateId = elements.studioDocumentTemplate?.value || doc.templateId;
+  if (elements.studioDocumentType) doc.docType = elements.studioDocumentType.value || doc.docType;
+  if (elements.studioDocumentStyle) doc.presentationStyle = elements.studioDocumentStyle.value || doc.presentationStyle;
   doc.pending = true;
   renderDocumentStudio();
   await convertDraft(doc);

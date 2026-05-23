@@ -1382,15 +1382,25 @@ function formatLawVerificationReason(reason) {
 export function createMessageActions(article, role, createdAt = "") {
   const actions = document.createElement("div");
   actions.className = "message-actions";
-  actions.append(createCopyButton(article, role));
   if (role === "assistant") {
-    actions.append(createDownloadButton(article));
-    actions.append(createSendToStudioButton(article));
-    actions.append(createSaveAsSourceButton(article));
+    const leftActions = document.createElement("div");
+    leftActions.className = "message-actions-left";
+    leftActions.append(createCopyButton(article, role));
+    leftActions.append(createDownloadButton(article));
+    leftActions.append(createDeleteButton(article));
+    if (createdAt) leftActions.append(createMessageTime(createdAt));
+    actions.append(leftActions);
+
+    const rightActions = document.createElement("div");
+    rightActions.className = "message-actions-right";
+    rightActions.append(createSendToStudioButton(article));
+    rightActions.append(createSaveAsSourceButton(article));
+    actions.append(rightActions);
+  } else {
+    actions.append(createCopyButton(article, role));
+    if (role === "user") actions.append(createEditButton(article));
+    actions.append(createDeleteButton(article));
   }
-  if (role === "user") actions.append(createEditButton(article));
-  actions.append(createDeleteButton(article));
-  if (role === "assistant" && createdAt) actions.append(createMessageTime(createdAt));
   return actions;
 }
 
@@ -1398,8 +1408,8 @@ function createSaveAsSourceButton(article) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "message-action-button save-as-source-button";
-  button.title = "자료로 추가";
-  button.setAttribute("aria-label", "자료로 추가");
+  button.title = "자료 추가";
+  button.setAttribute("aria-label", "자료 추가");
   button.innerHTML = `
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M6 3h9l3 3v15H6z"></path>
@@ -1407,6 +1417,7 @@ function createSaveAsSourceButton(article) {
       <path d="M9 13h6"></path>
       <path d="M12 10v6"></path>
     </svg>
+    <span>자료 추가</span>
   `;
   button.addEventListener("click", () => openAnswerAsSourceDialog(article));
   return button;
@@ -1416,14 +1427,15 @@ function createSendToStudioButton(article) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "message-action-button send-to-studio-button";
-  button.title = "스튜디오>문서";
-  button.setAttribute("aria-label", "스튜디오>문서");
+  button.title = "문서만들기";
+  button.setAttribute("aria-label", "문서만들기");
   button.innerHTML = `
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M7 3h8l4 4v14H7z"></path>
       <path d="M15 3v4h4"></path>
       <path d="M9 12h8M9 16h8M9 8h4"></path>
     </svg>
+    <span>문서만들기</span>
   `;
   button.addEventListener("click", () => sendArticleToStudio(article));
   return button;
@@ -1460,8 +1472,10 @@ export function setAssistantAnswerTime(article, createdAt) {
   if (!article || !createdAt) return;
   article.dataset.createdAt = createdAt;
   const actions = article.querySelector(".message-actions");
-  if (!actions || actions.querySelector(".message-time")) return;
-  actions.append(createMessageTime(createdAt));
+  if (!actions) return;
+  const target = actions.querySelector(".message-actions-left") || actions;
+  if (target.querySelector(".message-time")) return;
+  target.append(createMessageTime(createdAt));
 }
 
 function createMessageTime(createdAt) {

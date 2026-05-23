@@ -1,6 +1,8 @@
 // Studio Document model validator/normalizer. Accepts loose input from the
 // LLM or the client, produces a strict, bounded document.
 
+import { DOCUMENT_TYPES } from "./defaultTemplates.js";
+
 const SUPPORTED_BLOCK_TYPES = new Set([
   "heading",
   "paragraph",
@@ -31,6 +33,34 @@ export const DOCUMENT_LIMITS = Object.freeze({
   maxText: MAX_TEXT
 });
 
+export function validateDocumentStructure(docType, markdown) {
+  const typeDef = DOCUMENT_TYPES.find(t => t.id === docType);
+  if (!typeDef || !Array.isArray(typeDef.requiredSections) || typeDef.requiredSections.length === 0) {
+    return [];
+  }
+
+  const missing = [];
+  const lines = String(markdown || "").split("\n").map(l => l.trim());
+
+  for (const section of typeDef.requiredSections) {
+    let found = false;
+    for (const label of section.labels) {
+      const escapedLabel = label.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      // Heading pattern: e.g., "## 1. 검토 개요" or "### 검토 개요" or "1. 검토 개요"
+      const regex = new RegExp(`^\\s*(?:#{1,6}\\s+)?(?:(?:\\d+\\.\\s*)?${escapedLabel}|${escapedLabel})`, 'i');
+      if (lines.some(line => regex.test(line))) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      missing.push({ id: section.id, label: section.labels[0] });
+    }
+  }
+
+  return missing;
+}
+
 export function normalizeDocument(doc = {}, { source = null } = {}) {
   const id = String(doc.id || "").trim() || `draft_${Date.now()}_${randomSuffix()}`;
   const title = sanitizeInline(doc.title, MAX_TITLE) || "제목 없음";
@@ -49,11 +79,51 @@ export function normalizeDocument(doc = {}, { source = null } = {}) {
     throw err;
   }
 
+  const resolvedSource = source || normalizeSource(doc.source);
+  const sourceType = String(resolvedSource?.sourceType || "").trim();
+
+  let docType = String(doc.docType || "").trim() || null;
+  let presentationStyle = String(doc.presentationStyle || "").trim() || null;
+
+  // Legacy document migration
+  if (!docType) {
+    if (sourceType === "law_workbench_report" || sourceType === "grc_review") {
+      docType = "review_report";
+    } else if (templateId) {
+      docType = "custom";
+    } else {
+      docType = "summary";
+    }
+  }
+  if (!presentationStyle) {
+    if (sourceType === "law_workbench_report" || sourceType === "grc_review") {
+      presentationStyle = "working";
+    } else {
+      presentationStyle = "default";
+    }
+  }
+
+  const parentDocumentId = String(doc.parentDocumentId || "").trim() || null;
+  const sourceMarkdown = typeof doc.sourceMarkdown === "string" ? doc.sourceMarkdown : null;
+  const generatedMarkdown = typeof doc.generatedMarkdown === "string" ? doc.generatedMarkdown : null;
+  const versions = Array.isArray(doc.versions) ? doc.versions.map(v => ({
+    id: String(v.id || ""),
+    reason: String(v.reason || ""),
+    createdAt: String(v.createdAt || ""),
+    markdown: String(v.markdown || "")
+  })) : [];
+
   return {
     id,
     title,
     templateId,
-    source: source || normalizeSource(doc.source),
+    docType,
+    presentationStyle,
+    parentDocumentId,
+    sourceMarkdown,
+    generatedMarkdown,
+    versions,
+    source: resolvedSource,
     blocks,
     citations,
     createdAt: typeof doc.createdAt === "string" && doc.createdAt ? doc.createdAt : now,

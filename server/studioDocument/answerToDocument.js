@@ -5,6 +5,8 @@
 import { createLinkedAbortController, throwIfAborted } from "../abort.js";
 import { analysisQueue } from "../modelQueue.js";
 import { normalizeDocument, DOCUMENT_LIMITS } from "./documentModel.js";
+import { DOCUMENT_TYPES, PRESENTATION_STYLES } from "./defaultTemplates.js";
+import { renderDocumentToMarkdown } from "./documentRenderer.js";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
@@ -16,6 +18,8 @@ export async function convertAnswerToDocument({
   title,
   answerMarkdown,
   template,
+  docType,
+  presentationStyle,
   metadata = {},
   source = null,
   model = DEFAULT_MODEL,
@@ -35,13 +39,12 @@ export async function convertAnswerToDocument({
     err.code = "ANSWER_TOO_LARGE";
     throw err;
   }
-  if (!template || typeof template !== "object" || !Array.isArray(template.blocks)) {
-    const err = new Error("유효한 템플릿이 필요합니다.");
-    err.code = "TEMPLATE_REQUIRED";
-    throw err;
-  }
 
-  const resolvedTitle = String(title || "").trim() || deriveTitleFromAnswer(answer) || template.name || "문서";
+  const docTypeObj = DOCUMENT_TYPES.find(d => d.id === docType);
+  const presentationStyleObj = PRESENTATION_STYLES.find(s => s.id === presentationStyle);
+  const useStructuredFlow = docTypeObj && Array.isArray(docTypeObj.requiredSections) && docTypeObj.requiredSections.length > 0;
+
+  const resolvedTitle = String(title || "").trim() || deriveTitleFromAnswer(answer) || docTypeObj?.name || template?.name || "문서";
   const warnings = [];
 
   let parsed = null;
@@ -49,7 +52,7 @@ export async function convertAnswerToDocument({
   let usedFallbackModel = false;
   try {
     parsed = await analysisQueue.run(
-      () => callOllamaForDocument({ template, answer, metadata, model, signal }),
+      () => callOllamaForDocument({ template, answer, metadata, model, signal, docTypeObj, presentationStyleObj }),
       { signal, label: "studio_document" }
     );
   } catch (error) {
@@ -61,7 +64,7 @@ export async function convertAnswerToDocument({
     if (isOutOfMemoryError(error) && FALLBACK_MODEL && FALLBACK_MODEL !== model) {
       try {
         parsed = await analysisQueue.run(
-          () => callOllamaForDocument({ template, answer, metadata, model: FALLBACK_MODEL, signal }),
+          () => callOllamaForDocument({ template, answer, metadata, model: FALLBACK_MODEL, signal, docTypeObj, presentationStyleObj }),
           { signal, label: "studio_document_fallback" }
         );
         usedFallbackModel = true;
@@ -76,12 +79,17 @@ export async function convertAnswerToDocument({
   const draftDoc = parsed
     ? {
         title: parsed.title || resolvedTitle,
-        templateId: template.id,
-        blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [],
+        templateId: template?.id || null,
+        docType: docType || "summary",
+        presentationStyle: presentationStyle || "default",
+        parentDocumentId: metadata.parentDocumentId || null,
+        blocks: useStructuredFlow
+          ? compileStructuredBlocks(parsed, docTypeObj)
+          : (Array.isArray(parsed.blocks) ? parsed.blocks : []),
         citations: pickCitationsFromMetadata(metadata),
         source
       }
-    : buildFallbackDoc({ title: resolvedTitle, template, answer, metadata, source });
+    : buildFallbackDoc({ title: resolvedTitle, template, answer, metadata, source, docType, presentationStyle });
 
   if (llmError) {
     warnings.push({ code: "model_fallback", message: `AI 변환 실패: ${shortReason(llmError.message)}. 원문을 그대로 사용합니다.` });
@@ -91,20 +99,47 @@ export async function convertAnswerToDocument({
     warnings.push({ code: "model_downgraded", message: `기본 모델 메모리 부족으로 폴백 모델(${FALLBACK_MODEL})로 변환했습니다.` });
   }
 
-  // Ensure templateId is set (LLM might omit it).
-  draftDoc.templateId = template.id;
+  // Ensure fields are propagated
+  if (template?.id) draftDoc.templateId = template.id;
 
   const normalized = normalizeDocument(draftDoc, { source: draftDoc.source });
   if (!normalized.blocks.length) {
-    // Defensive: if normalization wiped everything (e.g., bogus types only),
-    // still produce a usable doc.
-    const fallback = buildFallbackDoc({ title: resolvedTitle, template, answer, metadata, source });
-    fallback.templateId = template.id;
+    const fallback = buildFallbackDoc({ title: resolvedTitle, template, answer, metadata, source, docType, presentationStyle });
     const extra = warnings.length
       ? warnings
       : [{ code: "empty_blocks", message: "AI 응답에 유효한 블록이 없어 원문으로 대체했습니다." }];
-    return { document: normalizeDocument(fallback, { source: fallback.source }), warnings: extra };
+    const finalDoc = normalizeDocument(fallback, { source: fallback.source });
+    finalDoc.sourceMarkdown = typeof metadata.sourceMarkdown === "string" ? metadata.sourceMarkdown : answer;
+    const genMd = renderDocumentToMarkdown(finalDoc, { includeTitle: false, includeCitations: false }).trim();
+    finalDoc.generatedMarkdown = genMd;
+    if (!finalDoc.versions || finalDoc.versions.length === 0) {
+      finalDoc.versions = [
+        {
+          id: `v1_${Date.now()}`,
+          reason: "최초 생성",
+          createdAt: new Date().toISOString(),
+          markdown: genMd
+        }
+      ];
+    }
+    return { document: finalDoc, warnings: extra };
   }
+
+  // Version history backfill
+  normalized.sourceMarkdown = typeof metadata.sourceMarkdown === "string" ? metadata.sourceMarkdown : answer;
+  const genMd = renderDocumentToMarkdown(normalized, { includeTitle: false, includeCitations: false }).trim();
+  normalized.generatedMarkdown = genMd;
+  if (!normalized.versions || normalized.versions.length === 0) {
+    normalized.versions = [
+      {
+        id: `v1_${Date.now()}`,
+        reason: "최초 생성",
+        createdAt: new Date().toISOString(),
+        markdown: genMd
+      }
+    ];
+  }
+
   return { document: normalized, warnings };
 }
 
@@ -126,8 +161,18 @@ function isOutOfMemoryMessage(text) {
   return /requires more system memory|insufficient memory|out of memory|OOM/i.test(text);
 }
 
-async function callOllamaForDocument({ template, answer, metadata, model, signal }) {
+async function callOllamaForDocument({ template, answer, metadata, model, signal, docTypeObj, presentationStyleObj }) {
   const controller = createLinkedAbortController(signal, TIMEOUT_MS, "Studio document conversion timed out.");
+  const useStructuredFlow = docTypeObj && Array.isArray(docTypeObj.requiredSections) && docTypeObj.requiredSections.length > 0;
+
+  const systemPrompt = useStructuredFlow 
+    ? buildStructuredSystemPrompt(docTypeObj, presentationStyleObj) 
+    : buildSystemPrompt();
+    
+  const userPrompt = useStructuredFlow 
+    ? buildStructuredUserPrompt(docTypeObj, answer, metadata) 
+    : buildUserPrompt({ template, answer, metadata });
+
   try {
     const response = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
@@ -138,8 +183,8 @@ async function callOllamaForDocument({ template, answer, metadata, model, signal
         stream: false,
         format: "json",
         messages: [
-          { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: buildUserPrompt({ template, answer, metadata }) }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
         ],
         options: { temperature: 0.1 }
       })
@@ -154,6 +199,93 @@ async function callOllamaForDocument({ template, answer, metadata, model, signal
   } finally {
     controller.cleanup();
   }
+}
+
+function buildStructuredSystemPrompt(docTypeObj, presentationStyleObj) {
+  const keys = docTypeObj.requiredSections.map(s => `  "${s.id}": string (markdown supported, e.g. bullet lists, text, or tables)`).join(",\n");
+  
+  let styleInstruction = "";
+  if (presentationStyleObj) {
+    if (presentationStyleObj.id === "brief") {
+      styleInstruction = "Keep each section concise. Use short bullet points or summaries. Avoid long paragraphs.";
+    } else if (presentationStyleObj.id === "detailed") {
+      styleInstruction = "Provide comprehensive details, analysis, and thorough background information for each section. Write full paragraphs.";
+    } else if (presentationStyleObj.id === "executive") {
+      styleInstruction = "Focus on high-level conclusions, risk assessments, and recommendations. Use an authoritative, clear, and professional business tone.";
+    } else if (presentationStyleObj.id === "working") {
+      styleInstruction = "Focus on practical fact details, statutory citations, and specific step-by-step actions. Use an objective, analytical working tone.";
+    } else if (presentationStyleObj.id === "internal") {
+      styleInstruction = "Use a collaborative and professional tone suitable for internal team sharing. Use clear spacing and action items.";
+    }
+  }
+
+  return [
+    `You convert an AI answer into a structured work document of type "${docTypeObj.name}".`,
+    `Style constraints: ${styleInstruction || "Use a professional and clear business tone."}`,
+    "Do not invent facts or citations. Map the source content exactly to the respective sections below.",
+    "Preserve citation markers exactly, including [N1], [L1], [P1], [I1], [R1], [O1], [W1].",
+    "If a section has no source content, write \"작성 필요\".",
+    "Write Korean unless the source answer is clearly in another language.",
+    "Return strict JSON only. No prose, no markdown fences.",
+    "",
+    "Output schema:",
+    "{",
+    `  "title": string,`,
+    keys,
+    "}",
+    "",
+    "Rules:",
+    "- Match the source material to each key exactly.",
+    "- Never alter or fabricate citation markers."
+  ].join("\n");
+}
+
+function buildStructuredUserPrompt(docTypeObj, answer, metadata) {
+  const sections = docTypeObj.requiredSections.map(s => {
+    return `- ${s.labels[0]} (key: "${s.id}")\n    instruction: 원본 답변에서 해당 내용을 정리하여 "${s.id}" 키에 입력.`;
+  }).join("\n");
+
+  const citationHint = describeCitationHint(metadata);
+
+  return [
+    `문서 유형: ${docTypeObj.name}`,
+    `문서 설명: ${docTypeObj.description || "-"}`,
+    "",
+    "작성할 섹션 키 리스트:",
+    sections,
+    "",
+    citationHint,
+    "",
+    "원본 답변(markdown):",
+    "<<<ANSWER",
+    answer,
+    "ANSWER",
+    "",
+    "위 리스트의 모든 섹션 키에 맞추어 내용을 분류하고 JSON으로 출력하세요."
+  ].join("\n");
+}
+
+function compileStructuredBlocks(parsed, docTypeObj) {
+  const blocks = [];
+  let index = 0;
+  for (const section of docTypeObj.requiredSections) {
+    const headingText = section.labels[0];
+    blocks.push({
+      id: `block_h_${section.id}`,
+      type: "heading",
+      level: 1,
+      text: `${index + 1}. ${headingText}`
+    });
+    
+    const content = String(parsed[section.id] || "").trim() || "작성 필요";
+    blocks.push({
+      id: `block_p_${section.id}`,
+      type: "paragraph",
+      text: content
+    });
+    index += 1;
+  }
+  return blocks;
 }
 
 function buildSystemPrompt() {
@@ -255,16 +387,20 @@ function parseDocumentJson(raw) {
       }
     }
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.blocks)) return null;
+  if (!parsed || typeof parsed !== "object") return null;
+  // If useStructuredFlow, blocks is built separately so parsed does not need blocks array at first.
+  // We check if blocks is missing but they have title and other keys.
   return parsed;
 }
 
-function buildFallbackDoc({ title, template, answer, metadata, source }) {
+function buildFallbackDoc({ title, template, answer, metadata, source, docType, presentationStyle }) {
   // PRD §17.2: minimal fallback wrapping the raw answer.
   const trimmed = answer.length > DOCUMENT_LIMITS.maxText ? `${answer.slice(0, DOCUMENT_LIMITS.maxText)}\n\n…(이하 생략)` : answer;
   return {
     title,
-    templateId: template.id,
+    templateId: template?.id || null,
+    docType: docType || "summary",
+    presentationStyle: presentationStyle || "default",
     blocks: [
       { type: "heading", level: 1, text: "원문 답변" },
       { type: "paragraph", text: trimmed }

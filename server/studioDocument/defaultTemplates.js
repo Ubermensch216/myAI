@@ -158,6 +158,134 @@ const TEMPLATES = [
 
 const TEMPLATE_BY_ID = new Map(TEMPLATES.map((tpl) => [tpl.id, tpl]));
 
+export const DOCUMENT_TYPES = [
+  {
+    id: "review_report",
+    name: "검토보고서",
+    description: "법령·문서 검토 결과 보고서",
+    allowedSources: ["chat", "law_workbench_report", "grc_review"],
+    lockedForSources: ["law_workbench_report", "grc_review"],
+    requiredSections: [
+      { id: "overview", labels: ["검토 개요", "개요", "검토 배경"] },
+      { id: "target", labels: ["검토 대상", "대상", "검토 자료"] },
+      { id: "grounds", labels: ["관련 근거", "법적 근거", "근거 법령", "관련 법령"] },
+      { id: "analysis", labels: ["주요 검토 내용", "검토 내용", "쟁점 검토"] },
+      { id: "judgment", labels: ["쟁점 및 판단", "판단 기준", "법적 판단"] },
+      { id: "risk", labels: ["리스크", "법적 리스크", "위험 요인"] },
+      { id: "action", labels: ["조치 의견", "조치 사항", "후속 조치", "권고 의견"] },
+      { id: "references", labels: ["참고 자료", "참고자료", "출처"] }
+    ],
+    derivativeTargets: ["summary", "report_memo", "official_draft"]
+  },
+  {
+    id: "summary",
+    name: "요약문",
+    description: "내용 요약 및 요지 정리 문서",
+    allowedSources: ["chat", "law_workbench_report", "grc_review", "studio_document"],
+    requiredSections: [
+      { id: "overview", labels: ["요약 개요", "개요"] },
+      { id: "key_points", labels: ["핵심 요지", "주요 요점", "요점"] },
+      { id: "details", labels: ["주요 세부내용", "세부 내용", "상세 내용"] }
+    ]
+  },
+  {
+    id: "report_memo",
+    name: "보고 메모",
+    description: "상급자 보고용 요약 메모",
+    allowedSources: ["chat", "law_workbench_report", "grc_review", "studio_document"],
+    requiredSections: [
+      { id: "background", labels: ["보고 배경", "배경"] },
+      { id: "content", labels: ["주요 내용", "보고 내용"] },
+      { id: "recommendation", labels: ["건의 및 후속조치", "의견 및 조치", "후속 조치"] }
+    ]
+  },
+  {
+    id: "meeting_minutes",
+    name: "회의록",
+    description: "내부·협의체 회의 기록",
+    allowedSources: ["chat", "studio_document"],
+    requiredSections: [
+      { id: "overview", labels: ["회의 개요", "개요"] },
+      { id: "discussion", labels: ["주요 논의 내용", "논의 내용"] },
+      { id: "decisions", labels: ["결정 사항", "합의 사항"] },
+      { id: "actions", labels: ["후속 조치", "조치 사항"] }
+    ]
+  },
+  {
+    id: "qa_record",
+    name: "질의응답 정리",
+    description: "질의와 답변 맥락 정리 문서",
+    allowedSources: ["chat", "law_workbench_report", "grc_review", "studio_document"],
+    requiredSections: [
+      { id: "query", labels: ["질의 요지", "질문 요지", "질문"] },
+      { id: "summary", labels: ["답변 요약", "답변 요지"] },
+      { id: "explanation", labels: ["상세 설명 및 근거", "상세 설명", "근거 자료"] }
+    ]
+  },
+  {
+    id: "explanatory",
+    name: "설명자료",
+    description: "정보 제공 및 정책 설명용 자료",
+    allowedSources: ["chat", "law_workbench_report", "grc_review", "studio_document"],
+    requiredSections: [
+      { id: "overview", labels: ["개요", "목적"] },
+      { id: "content", labels: ["주요 설명 내용", "상세 설명"] },
+      { id: "notes", labels: ["질의응답 및 참고사항", "참고사항", "주의사항"] }
+    ]
+  },
+  {
+    id: "official_draft",
+    name: "공문 초안",
+    description: "대외 발송 공문서 초안",
+    allowedSources: ["chat", "law_workbench_report", "grc_review", "studio_document"],
+    requiredSections: [
+      { id: "title", labels: ["제목"] },
+      { id: "recipient", labels: ["수신/참조", "수신", "수신자"] },
+      { id: "body", labels: ["본문", "내용"] }
+    ]
+  },
+  {
+    id: "custom",
+    name: "사용자 정의 문서",
+    description: "원하는 구조로 자유롭게 작성하는 문서",
+    allowedSources: ["chat", "law_workbench_report", "grc_review", "studio_document"],
+    requiredSections: []
+  }
+];
+
+export const PRESENTATION_STYLES = [
+  {
+    id: "default",
+    name: "기본형",
+    description: "기본 표준 스타일 서식"
+  },
+  {
+    id: "brief",
+    name: "간략형",
+    description: "핵심 사항 위주로 압축한 서식"
+  },
+  {
+    id: "detailed",
+    name: "상세형",
+    description: "구체적 맥락과 근거를 상술한 서식"
+  },
+  {
+    id: "executive",
+    name: "상급자 보고형",
+    description: "결론과 조치사항이 강조된 보고 서식"
+  },
+  {
+    id: "working",
+    name: "실무 검토형",
+    description: "실무 분석과 사실관계 중심 서식"
+  },
+  {
+    id: "internal",
+    name: "내부 공유형",
+    description: "부서 내 공유에 적합한 캐주얼한 서식"
+  }
+];
+
 export function listDefaultTemplates() {
   return TEMPLATES.map(cloneTemplate);
 }

@@ -54,25 +54,116 @@ export async function renderDocumentTemplatesSettings(mountElement) {
     }
   }
 
+  // Setup state settings defaults if missing
+  if (!state.settings.docTypeDefaults) {
+    state.settings.docTypeDefaults = { chat: "summary", law: "review_report", grc: "review_report" };
+  }
+  if (!state.settings.styleDefaults) {
+    state.settings.styleDefaults = { chat: "default", law: "working", grc: "working" };
+  }
+
   mountElement.innerHTML = `
-    <div class="dtpl-layout">
-      <aside class="dtpl-sidebar">
-        <div class="dtpl-sidebar-header">
-          <div class="dtpl-sidebar-title-group">
-            <h4 class="dtpl-sidebar-title">나의 템플릿</h4>
-            <span class="dtpl-count-badge" id="dtplCount">0</span>
-          </div>
-          <button type="button" class="dtpl-add-btn" id="dtplNewBtn" title="새 템플릿 생성" aria-label="새 템플릿 생성">
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-            </svg>
-          </button>
+    <div class="settings-docs-config-container" style="display: flex; flex-direction: column; gap: 20px;">
+      <!-- 1. 검토보고서 표준 설정 -->
+      <fieldset class="field-section" style="border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 0;">
+        <legend class="field-section-title" style="padding: 0 8px; font-weight: 700; color: var(--ink);">검토보고서 표준 설정</legend>
+        <div class="field" style="margin-top: 8px;">
+          <label class="field-label" for="settingsDocLawStyleDefault" style="display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600;">법령/규정 검토 기본 서식</label>
+          <select id="settingsDocLawStyleDefault" class="text-input" style="width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: var(--surface); color: var(--ink);">
+            <option value="working" ${state.settings.styleDefaults.law === "working" ? "selected" : ""}>실무 검토형 (기본값)</option>
+            <option value="default" ${state.settings.styleDefaults.law === "default" ? "selected" : ""}>기본형</option>
+            <option value="brief" ${state.settings.styleDefaults.law === "brief" ? "selected" : ""}>간략형</option>
+            <option value="detailed" ${state.settings.styleDefaults.law === "detailed" ? "selected" : ""}>상세형</option>
+            <option value="executive" ${state.settings.styleDefaults.law === "executive" ? "selected" : ""}>상급자 보고형</option>
+            <option value="internal" ${state.settings.styleDefaults.law === "internal" ? "selected" : ""}>내부 공유형</option>
+          </select>
         </div>
-        <div id="dtplList" class="dtpl-list"></div>
-      </aside>
-      <section id="dtplEditorContainer" class="dtpl-editor"></section>
+        <p class="field-hint" style="margin: 6px 0 0; font-size: 11px; color: var(--muted);">법령검토 및 내부검토 결과에서 보고서를 최초 생성할 때 기본 적용되는 표현 스타일 서식입니다.</p>
+      </fieldset>
+
+      <!-- 2. 대화 문서화 기본값 설정 -->
+      <fieldset class="field-section" style="border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 0;">
+        <legend class="field-section-title" style="padding: 0 8px; font-weight: 700; color: var(--ink);">대화 문서화 기본값 설정</legend>
+        <div class="field-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+          <div class="field">
+            <label class="field-label" for="settingsDocChatTypeDefault" style="display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600;">기본 문서 유형</label>
+            <select id="settingsDocChatTypeDefault" class="text-input" style="width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: var(--surface); color: var(--ink);">
+              <option value="summary" ${state.settings.docTypeDefaults.chat === "summary" ? "selected" : ""}>요약문</option>
+              <option value="report_memo" ${state.settings.docTypeDefaults.chat === "report_memo" ? "selected" : ""}>보고 메모</option>
+              <option value="meeting_minutes" ${state.settings.docTypeDefaults.chat === "meeting_minutes" ? "selected" : ""}>회의록</option>
+              <option value="official_draft" ${state.settings.docTypeDefaults.chat === "official_draft" ? "selected" : ""}>공문 초안</option>
+              <option value="custom" ${state.settings.docTypeDefaults.chat === "custom" ? "selected" : ""}>사용자 정의 문서</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="settingsDocChatStyleDefault" style="display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600;">기본 표현 서식</label>
+            <select id="settingsDocChatStyleDefault" class="text-input" style="width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; background: var(--surface); color: var(--ink);">
+              <option value="default" ${state.settings.styleDefaults.chat === "default" ? "selected" : ""}>기본형</option>
+              <option value="brief" ${state.settings.styleDefaults.chat === "brief" ? "selected" : ""}>간략형</option>
+              <option value="detailed" ${state.settings.styleDefaults.chat === "detailed" ? "selected" : ""}>상세형</option>
+              <option value="executive" ${state.settings.styleDefaults.chat === "executive" ? "selected" : ""}>상급자 보고형</option>
+              <option value="internal" ${state.settings.styleDefaults.chat === "internal" ? "selected" : ""}>내부 공유형</option>
+            </select>
+          </div>
+        </div>
+        <p class="field-hint" style="margin: 6px 0 0; font-size: 11px; color: var(--muted);">대화(채팅) 메시지를 스튜디오 문서로 내보낼 때 추천 선택되는 기본값입니다.</p>
+      </fieldset>
+
+      <!-- 3. 표현 서식 안내 -->
+      <fieldset class="field-section" style="border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 0;">
+        <legend class="field-section-title" style="padding: 0 8px; font-weight: 700; color: var(--ink);">표현 서식 설명</legend>
+        <div class="style-intro-list" style="display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); padding: 4px 0;">
+          <div><strong>기본형</strong>: 기본 표준 스타일 서식</div>
+          <div><strong>간략형</strong>: 핵심 사항 위주로 압축한 서식</div>
+          <div><strong>상세형</strong>: 구체적 맥락과 근거를 상술한 서식</div>
+          <div><strong>상급자 보고형</strong>: 결론과 조치사항이 강조된 보고 서식</div>
+          <div><strong>실무 검토형</strong>: 실무 분석과 사실관계 중심 서식</div>
+          <div><strong>내부 공유형</strong>: 부서 내 공유에 적합한 캐주얼한 서식</div>
+        </div>
+      </fieldset>
+
+      <!-- 4. 사용자 정의 양식 -->
+      <fieldset class="field-section" style="border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 0;">
+        <legend class="field-section-title" style="padding: 0 8px; font-weight: 700; color: var(--ink);">사용자 정의 양식 (구 문서 템플릿)</legend>
+        <div class="dtpl-layout" style="margin-top: 8px;">
+          <aside class="dtpl-sidebar">
+            <div class="dtpl-sidebar-header">
+              <div class="dtpl-sidebar-title-group">
+                <h4 class="dtpl-sidebar-title">나의 템플릿</h4>
+                <span class="dtpl-count-badge" id="dtplCount">0</span>
+              </div>
+              <button type="button" class="dtpl-add-btn" id="dtplNewBtn" title="새 템플릿 생성" aria-label="새 템플릿 생성">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                </svg>
+              </button>
+            </div>
+            <div id="dtplList" class="dtpl-list"></div>
+          </aside>
+          <section id="dtplEditorContainer" class="dtpl-editor"></section>
+        </div>
+      </fieldset>
     </div>
   `;
+
+  // Bind change events for the defaults
+  const lawStyleSelect = mountElement.querySelector("#settingsDocLawStyleDefault");
+  const chatTypeSelect = mountElement.querySelector("#settingsDocChatTypeDefault");
+  const chatStyleSelect = mountElement.querySelector("#settingsDocChatStyleDefault");
+
+  lawStyleSelect.addEventListener("change", () => {
+    state.settings.styleDefaults.law = lawStyleSelect.value;
+    state.settings.styleDefaults.grc = lawStyleSelect.value;
+    scheduleSave();
+  });
+  chatTypeSelect.addEventListener("change", () => {
+    state.settings.docTypeDefaults.chat = chatTypeSelect.value;
+    scheduleSave();
+  });
+  chatStyleSelect.addEventListener("change", () => {
+    state.settings.styleDefaults.chat = chatStyleSelect.value;
+    scheduleSave();
+  });
 
   const listMount = mountElement.querySelector("#dtplList");
   const editorMount = mountElement.querySelector("#dtplEditorContainer");
