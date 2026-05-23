@@ -1,11 +1,174 @@
 <script lang="ts">
-  import { grcStore, setActiveTab, sendToStudio } from '../stores/grcStore';
+  import { grcStore, setActiveTab, sendToStudio, getGrcOpinionMarkdown } from '../stores/grcStore';
 
   $: reviewResult = $grcStore.reviewResult;
+  $: opinionMarkdown = getGrcOpinionMarkdown(reviewResult);
   $: highCount = reviewResult?.results.filter((r) => r.status === '충돌 가능성').length || 0;
   $: warnCount = reviewResult?.results.filter((r) => r.status === '일부 보완 필요').length || 0;
   $: passCount = reviewResult?.results.filter((r) => r.status === '적합').length || 0;
   $: infoCount = reviewResult?.results.filter((r) => r.status === '확인 불가').length || 0;
+
+  function renderMarkdown(md: string): string {
+    if (!md) return "";
+    const lines = md.split(/\r?\n/);
+    let html: string[] = [];
+    let inList = false;
+    let listType = ""; // 'ul' or 'ol'
+    let inTable = false;
+    let tableRows: string[] = [];
+    let inCode = false;
+    let codeBlockLines: string[] = [];
+
+    const closeList = () => {
+      if (inList) {
+        html.push(`</${listType}>`);
+        inList = false;
+        listType = "";
+      }
+    };
+
+    const closeTable = () => {
+      if (inTable) {
+        if (tableRows.length > 0) {
+          html.push('<div class="table-wrapper"><table class="markdown-table">');
+          let hasHeader = false;
+          let startIdx = 0;
+          if (tableRows.length > 1 && /^\|?\s*:?-+:?\s*(\|?\s*:?-+:?\s*)*\|?$/.test(tableRows[1].trim())) {
+            hasHeader = true;
+          }
+
+          if (hasHeader) {
+            html.push('<thead><tr>');
+            const cols = tableRows[0].split('|').map(c => c.trim()).filter((c, i, a) => {
+              if (i === 0 && c === "") return false;
+              if (i === a.length - 1 && c === "") return false;
+              return true;
+            });
+            cols.forEach(c => html.push(`<th>${formatInline(c)}</th>`));
+            html.push('</tr></thead>');
+            startIdx = 2; // skip header and separator
+          }
+
+          html.push('<tbody>');
+          for (let idx = startIdx; idx < tableRows.length; idx++) {
+            html.push('<tr>');
+            const cols = tableRows[idx].split('|').map(c => c.trim()).filter((c, i, a) => {
+              if (i === 0 && c === "") return false;
+              if (i === a.length - 1 && c === "") return false;
+              return true;
+            });
+            cols.forEach(c => html.push(`<td>${formatInline(c)}</td>`));
+            html.push('</tr>');
+          }
+          html.push('</tbody></table></div>');
+        }
+        inTable = false;
+        tableRows = [];
+      }
+    };
+
+    function formatInline(text: string): string {
+      let escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      escaped = escaped.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      escaped = escaped.replace(/__(.*?)__/g, "<strong>$1</strong>");
+      escaped = escaped.replace(/\*(.*?)\*/g, "<em>$1</em>");
+      escaped = escaped.replace(/_(.*?)_/g, "<em>$1</em>");
+      escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+      return escaped;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('```')) {
+        if (inCode) {
+          html.push(`<pre class="markdown-code"><code>${codeBlockLines.join('\n')}</code></pre>`);
+          inCode = false;
+          codeBlockLines = [];
+        } else {
+          closeList();
+          closeTable();
+          inCode = true;
+        }
+        continue;
+      }
+
+      if (inCode) {
+        codeBlockLines.push(line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+        continue;
+      }
+
+      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+        closeList();
+        inTable = true;
+        tableRows.push(line);
+        continue;
+      } else {
+        closeTable();
+      }
+
+      const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (headingMatch) {
+        closeList();
+        const level = headingMatch[1].length;
+        const content = formatInline(headingMatch[2]);
+        html.push(`<h${level} class="markdown-h${level}">${content}</h${level}>`);
+        continue;
+      }
+
+      const bulletMatch = line.match(/^\s*[-*+\u2022]\s+(.*)$/);
+      if (bulletMatch) {
+        const content = formatInline(bulletMatch[1]);
+        if (!inList || listType !== 'ul') {
+          closeList();
+          html.push('<ul class="markdown-ul">');
+          inList = true;
+          listType = 'ul';
+        }
+        html.push(`<li>${content}</li>`);
+        continue;
+      }
+
+      const numberedMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (numberedMatch) {
+        const content = formatInline(numberedMatch[1]);
+        if (!inList || listType !== 'ol') {
+          closeList();
+          html.push('<ol class="markdown-ol">');
+          inList = true;
+          listType = 'ol';
+        }
+        html.push(`<li>${content}</li>`);
+        continue;
+      }
+
+      if (trimmed === '') {
+        closeList();
+        continue;
+      }
+
+      if (trimmed.startsWith('>') && !trimmed.startsWith('>>')) {
+        closeList();
+        const content = formatInline(trimmed.substring(1).trim());
+        html.push(`<blockquote class="markdown-quote">${content}</blockquote>`);
+        continue;
+      }
+
+      closeList();
+      html.push(`<p class="markdown-p">${formatInline(line)}</p>`);
+    }
+
+    closeList();
+    closeTable();
+
+    return html.join('\n');
+  }
 </script>
 
 <div class="grc-main">
@@ -102,7 +265,7 @@
               ✏️ 스튜디오 문서로 내보내기
             </button>
           </div>
-          <pre class="opinion-text">{reviewResult.draftOpinion}</pre>
+          <div class="opinion-text">{@html renderMarkdown(opinionMarkdown)}</div>
         </div>
       {/if}
     </div>
@@ -442,15 +605,98 @@
 
   .opinion-text {
     font-family: inherit;
-    font-size: 12px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-all;
+    font-size: 13px;
+    line-height: 1.65;
     background: var(--surface-2);
-    padding: 16px;
+    padding: 24px;
     border-radius: 8px;
     border: 1px solid var(--line);
     max-height: 600px;
     overflow-y: auto;
+    color: var(--text);
+  }
+
+  .opinion-text :global(.markdown-p) {
+    margin: 0 0 12px 0;
+  }
+
+  .opinion-text :global(.markdown-h1),
+  .opinion-text :global(.markdown-h2),
+  .opinion-text :global(.markdown-h3),
+  .opinion-text :global(.markdown-h4) {
+    margin: 24px 0 12px 0;
+    font-weight: 700;
+    color: var(--text-bright, #ffffff);
+  }
+
+  .opinion-text :global(.markdown-h1) { font-size: 18px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  .opinion-text :global(.markdown-h2) { font-size: 16px; }
+  .opinion-text :global(.markdown-h3) { font-size: 14px; }
+  .opinion-text :global(.markdown-h4) { font-size: 13px; }
+
+  .opinion-text :global(.markdown-ul),
+  .opinion-text :global(.markdown-ol) {
+    margin: 0 0 16px 0;
+    padding-left: 20px;
+  }
+
+  .opinion-text :global(.markdown-ul li),
+  .opinion-text :global(.markdown-ol li) {
+    margin-bottom: 6px;
+  }
+
+  .opinion-text :global(.markdown-quote) {
+    margin: 16px 0;
+    padding: 8px 16px;
+    border-left: 4px solid var(--accent, #3b82f6);
+    background: var(--surface-3);
+    color: var(--text-muted);
+    border-radius: 0 4px 4px 0;
+  }
+
+  .opinion-text :global(pre.markdown-code) {
+    margin: 16px 0;
+    padding: 12px;
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: monospace;
+    font-size: 12px;
+  }
+
+  .opinion-text :global(code) {
+    background: var(--surface-1);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+
+  .opinion-text :global(.table-wrapper) {
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+
+  .opinion-text :global(.markdown-table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .opinion-text :global(.markdown-table th),
+  .opinion-text :global(.markdown-table td) {
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    text-align: left;
+  }
+
+  .opinion-text :global(.markdown-table th) {
+    background: var(--surface-1);
+    font-weight: 700;
+  }
+
+  .opinion-text :global(.markdown-table tr:nth-child(even)) {
+    background: var(--surface-3);
   }
 </style>

@@ -6,7 +6,7 @@ import pdfParse from "pdf-parse";
 import { XMLParser } from "fast-xml-parser";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
-const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".xls", ".csv", ".pptx", ".hwpx", ".md"]);
+const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".xls", ".csv", ".pptx", ".hwpx", ".md", ".txt"]);
 const MAX_STORED_TABLE_ROWS = 800;
 const MAX_STORED_TABLE_COLUMNS = 60;
 const MAX_PROFILE_VALUES = 12;
@@ -59,6 +59,7 @@ export async function parseUpload(file) {
   if (extension === ".pptx") return parsePptx(file);
   if (extension === ".hwpx") return parseHwpx(file);
   if (extension === ".md") return parseMarkdown(file);
+  if (extension === ".txt") return parseText(file);
 
   throw new Error(`아직 처리할 수 없는 파일입니다: ${file.originalname}`);
 }
@@ -110,6 +111,19 @@ async function parseMarkdown(file) {
   return {
     fileName: file.originalname,
     fileType: "md",
+    kind: "document",
+    text,
+    pages: [{ page: 1, text }]
+  };
+}
+
+async function parseText(file) {
+  const buffer = await fs.readFile(file.path);
+  const text = normalizeText(stripUtf8Bom(buffer.toString("utf8")));
+
+  return {
+    fileName: file.originalname,
+    fileType: "txt",
     kind: "document",
     text,
     pages: [{ page: 1, text }]

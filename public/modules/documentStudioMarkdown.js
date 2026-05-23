@@ -4,17 +4,27 @@ const BULLET_RE = /^\s*[-*+]\s+(?!\[[ xX]\]\s)(.*)$/;
 const NUMBERED_RE = /^\s*\d+[.)]\s+(.*)$/;
 const FENCE_RE = /^\s*```/;
 
+function cleanInlineMarkdown(text) {
+  return String(text ?? "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/_(.*?)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
 export function parseMarkdownToVisualBlocks(markdown) {
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const blocks = [];
   let i = 0;
-
+ 
   while (i < lines.length) {
     if (!lines[i].trim()) {
       i += 1;
       continue;
     }
-
+ 
     if (FENCE_RE.test(lines[i])) {
       const start = i;
       i += 1;
@@ -23,60 +33,60 @@ export function parseMarkdownToVisualBlocks(markdown) {
       blocks.push({ type: "raw", markdown: lines.slice(start, i).join("\n") });
       continue;
     }
-
+ 
     const heading = HEADING_RE.exec(lines[i]);
     if (heading) {
-      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      blocks.push({ type: "heading", level: heading[1].length, text: cleanInlineMarkdown(heading[2]) });
       i += 1;
       continue;
     }
-
+ 
     if (isTableStart(lines, i)) {
       const parsed = readTable(lines, i);
       blocks.push(parsed.block);
       i = parsed.next;
       continue;
     }
-
+ 
     const checklist = CHECKLIST_RE.exec(lines[i]);
     if (checklist) {
       const items = [];
       while (i < lines.length) {
         const match = CHECKLIST_RE.exec(lines[i]);
         if (!match) break;
-        items.push({ checked: match[1].toLowerCase() === "x", text: match[2] });
+        items.push({ checked: match[1].toLowerCase() === "x", text: cleanInlineMarkdown(match[2]) });
         i += 1;
       }
       blocks.push({ type: "checklist", items });
       continue;
     }
-
+ 
     const bullet = BULLET_RE.exec(lines[i]);
     if (bullet) {
       const items = [];
       while (i < lines.length) {
         const match = BULLET_RE.exec(lines[i]);
         if (!match) break;
-        items.push({ text: match[1] });
+        items.push({ text: cleanInlineMarkdown(match[1]) });
         i += 1;
       }
       blocks.push({ type: "bullet_list", items });
       continue;
     }
-
+ 
     const numbered = NUMBERED_RE.exec(lines[i]);
     if (numbered) {
       const items = [];
       while (i < lines.length) {
         const match = NUMBERED_RE.exec(lines[i]);
         if (!match) break;
-        items.push({ text: match[1] });
+        items.push({ text: cleanInlineMarkdown(match[1]) });
         i += 1;
       }
       blocks.push({ type: "numbered_list", items });
       continue;
     }
-
+ 
     if (isUnsupportedStart(lines[i])) {
       const start = i;
       i += 1;
@@ -84,17 +94,17 @@ export function parseMarkdownToVisualBlocks(markdown) {
       blocks.push({ type: "raw", markdown: lines.slice(start, i).join("\n") });
       continue;
     }
-
+ 
     const paragraph = [];
     while (i < lines.length && lines[i].trim() && !isBlockStart(lines, i)) {
       paragraph.push(lines[i]);
       i += 1;
     }
     if (paragraph.length) {
-      blocks.push({ type: "paragraph", text: paragraph.join("\n") });
+      blocks.push({ type: "paragraph", text: cleanInlineMarkdown(paragraph.join("\n")) });
     }
   }
-
+ 
   return blocks;
 }
 
@@ -156,11 +166,11 @@ function isTableStart(lines, index) {
 }
 
 function readTable(lines, index) {
-  const headers = parsePipeRow(lines[index]);
+  const headers = parsePipeRow(lines[index]).map(cleanInlineMarkdown);
   let next = index + 2;
   const rows = [];
   while (next < lines.length && isPipeRow(lines[next])) {
-    rows.push(parsePipeRow(lines[next]));
+    rows.push(parsePipeRow(lines[next]).map(cleanInlineMarkdown));
     next += 1;
   }
   return { block: { type: "table", headers, rows }, next };

@@ -209,12 +209,54 @@ export function resetGrc() {
 
 export function sendToStudio() {
   const state = get(grcStore);
-  if (!state.reviewResult || !state.reviewResult.draftOpinion) return;
+  if (!state.reviewResult) return;
+  const markdown = getGrcOpinionMarkdown(state.reviewResult);
+  if (!markdown) return;
   const event = new CustomEvent('myai:grc:save-output', {
     detail: {
       title: `${state.targetDocName.replace(/\.[^/.]+$/, '')} 규정 검토 보고서`,
-      markdown: state.reviewResult.draftOpinion
+      markdown
     }
   });
   window.dispatchEvent(event);
+}
+
+export function getGrcOpinionMarkdown(result: GrcReviewResult | null): string {
+  if (!result) return '';
+  const draft = typeof result.draftOpinion === 'string' ? result.draftOpinion.trim() : '';
+  if (draft) return result.draftOpinion;
+
+  const riskLabel =
+    result.overallRisk === 'High' ? '높음' : result.overallRisk === 'Medium' ? '보통' : '낮음';
+  const findings = Array.isArray(result.results) && result.results.length
+    ? result.results.map((item, index) => {
+        return [
+          `${index + 1}. ${item.ruleTitle || '검토 항목'}`,
+          `   - 판정: ${item.status || '확인 불가'}`,
+          item.reason ? `   - 검토 의견: ${item.reason}` : '',
+          item.remediation ? `   - 조치 권고: ${item.remediation}` : ''
+        ].filter(Boolean).join('\n');
+      }).join('\n\n')
+    : '구조화된 상세 진단 결과가 충분히 생성되지 않았습니다.';
+  const missing = Array.isArray(result.missingInformation) && result.missingInformation.length
+    ? result.missingInformation.map((item) => `- ${item}`).join('\n')
+    : '- 추가 확인이 필요한 정보는 별도로 식별되지 않았습니다.';
+
+  return [
+    '## 1. 검토 목적',
+    '본 의견서 초안은 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.',
+    '',
+    '## 2. 종합 의견',
+    result.summary || '검토 결과 요약이 충분히 생성되지 않았습니다.',
+    '',
+    `- 종합 위험도: ${riskLabel}`,
+    '',
+    '## 3. 상세 분석',
+    findings,
+    '',
+    '## 4. 조치 권고사항',
+    missing,
+    '',
+    '본 문서는 AI가 생성한 업무 검토용 초안이므로 최종 제출 전 담당자의 사실관계 및 법무/준법 검토가 필요합니다.'
+  ].join('\n');
 }

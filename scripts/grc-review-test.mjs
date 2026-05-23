@@ -5,6 +5,8 @@ let failureCount = 0;
 
 await run("GRC review parameter validation", testParameterValidation);
 await run("GRC review mock execution structure", testMockExecutionStructure);
+await run("GRC review maps Korean opinion draft aliases", testKoreanDraftOpinionAlias);
+await run("GRC review synthesizes opinion draft when model omits it", testSynthesizedDraftOpinion);
 
 if (failureCount > 0) process.exitCode = 1;
 
@@ -82,6 +84,79 @@ async function testMockExecutionStructure() {
     assert.equal(result.results[1].status, "적합");
     assert.ok(result.summary.includes("기밀 유지 조항이"));
     assert.ok(result.draftOpinion.includes("검토 목적"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testKoreanDraftOpinionAlias() {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      message: {
+        content: JSON.stringify({
+          요약: "규정 검토 요약입니다.",
+          종합위험도: "보통",
+          결과: [],
+          필요정보: [],
+          draftOpinion: "",
+          "의견서 초안": "## 1. 검토 목적\n공백이 포함된 한국어 키로 반환된 의견서 초안입니다."
+        })
+      }
+    })
+  });
+
+  try {
+    const result = await runGrcReview({
+      targetText: "검토 대상 문서 본문",
+      policyText: "검토 기준 규정 본문",
+      model: "mock-model"
+    });
+
+    assert.equal(result.draftOpinion, "## 1. 검토 목적\n공백이 포함된 한국어 키로 반환된 의견서 초안입니다.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testSynthesizedDraftOpinion() {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      message: {
+        content: JSON.stringify({
+          summary: "계약서 일부 조항이 내부 규정과 충돌할 가능성이 있습니다.",
+          overallRisk: "Medium",
+          results: [
+            {
+              ruleTitle: "보안 준수 조항",
+              status: "충돌 가능성",
+              reason: "대상 문서의 외부 반출 허용 조항이 내부 보안 규정과 맞지 않습니다.",
+              remediation: "외부 반출 예외 승인 절차를 명시하세요."
+            }
+          ],
+          missingInformation: ["예외 승인권자 정보"],
+          draftOpinion: ""
+        })
+      }
+    })
+  });
+
+  try {
+    const result = await runGrcReview({
+      targetText: "검토 대상 문서 본문",
+      policyText: "검토 기준 규정 본문",
+      model: "mock-model"
+    });
+
+    assert.ok(result.draftOpinion.includes("## 1. 검토 목적"));
+    assert.ok(result.draftOpinion.includes("계약서 일부 조항이"));
+    assert.ok(result.draftOpinion.includes("보안 준수 조항"));
+    assert.ok(result.draftOpinion.includes("예외 승인권자 정보"));
   } finally {
     globalThis.fetch = originalFetch;
   }

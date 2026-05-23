@@ -859,7 +859,6 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
   }
 
   studio.activeDocumentId = draft.id;
-  upsertStudioOutputFromDraft(draft, { type: "document", quiet: true });
   scheduleSave();
   renderDocumentStudio();
 }
@@ -1455,7 +1454,6 @@ async function convertDraft(draft) {
     draft.pending = false;
     draft.updatedAt = new Date().toISOString();
     delete draft.blocks;
-    upsertStudioOutputFromDraft(draft, { type: "document", quiet: true });
     setStatus("");
   } catch (error) {
     if (error.name === "AbortError") return;

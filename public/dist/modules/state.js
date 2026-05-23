@@ -193,6 +193,8 @@ export const state = {
   }
 };
 
+window.state = state;
+
 export function ensureDocumentCacheKey() {
   if (!state.client || typeof state.client !== "object") state.client = { documentCacheKey: "" };
   if (!state.client.documentCacheKey) state.client.documentCacheKey = generateClientSecret();

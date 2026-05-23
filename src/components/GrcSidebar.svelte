@@ -14,6 +14,9 @@
     loadNotebooks();
   });
 
+  let isDragOverPolicy = false;
+  let isDragOverTarget = false;
+
   function onPolicyFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files[0]) handleFileUpload(input.files[0], 'policy');
@@ -27,6 +30,38 @@
   function onNotebookChange(event: Event) {
     const select = event.target as HTMLSelectElement;
     setSelectedNotebookId(select.value);
+  }
+
+  function onDragOverPolicy(event: DragEvent) {
+    event.preventDefault();
+    isDragOverPolicy = true;
+  }
+
+  function onDragLeavePolicy() {
+    isDragOverPolicy = false;
+  }
+
+  function onDropPolicy(event: DragEvent) {
+    event.preventDefault();
+    isDragOverPolicy = false;
+    const files = event.dataTransfer?.files;
+    if (files && files[0]) handleFileUpload(files[0], 'policy');
+  }
+
+  function onDragOverTarget(event: DragEvent) {
+    event.preventDefault();
+    isDragOverTarget = true;
+  }
+
+  function onDragLeaveTarget() {
+    isDragOverTarget = false;
+  }
+
+  function onDropTarget(event: DragEvent) {
+    event.preventDefault();
+    isDragOverTarget = false;
+    const files = event.dataTransfer?.files;
+    if (files && files[0]) handleFileUpload(files[0], 'target');
   }
 </script>
 
@@ -51,7 +86,14 @@
     </div>
 
     {#if $grcStore.policyMode === 'upload'}
-      <div class="upload-zone">
+      <div
+        class="upload-zone"
+        role="region"
+        aria-label="규정 파일 업로드 영역"
+        class:dragover={isDragOverPolicy}
+        on:dragover={onDragOverPolicy}
+        on:dragleave={onDragLeavePolicy}
+        on:drop={onDropPolicy}>
         <input
           type="file"
           id="policyFileInput"
@@ -83,7 +125,14 @@
 
   <div class="sidebar-section">
     <h3>2. 검토 대상 문서</h3>
-    <div class="upload-zone">
+    <div
+      class="upload-zone"
+      role="region"
+      aria-label="검토 대상 문서 업로드 영역"
+      class:dragover={isDragOverTarget}
+      on:dragover={onDragOverTarget}
+      on:dragleave={onDragLeaveTarget}
+      on:drop={onDropTarget}>
       <input
         type="file"
         id="targetFileInput"
@@ -180,6 +229,11 @@
   .upload-zone:hover {
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+  }
+
+  .upload-zone.dragover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
   }
 
   .upload-label {
