@@ -1813,9 +1813,18 @@ async function convertDraft(draft) {
 }
 
 function isDraftAlive(draft) {
-  const studio = getActiveStudio();
-  if (!studio) return false;
-  return studio.documents.includes(draft);
+  if (!draft) return false;
+  if (Array.isArray(state.rooms)) {
+    for (const room of state.rooms) {
+      if (room?.studio?.documents?.includes(draft)) return true;
+    }
+  }
+  if (Array.isArray(state.lawReviews?.items)) {
+    for (const review of state.lawReviews.items) {
+      if (review?.studio?.documents?.includes(draft)) return true;
+    }
+  }
+  return false;
 }
 
 async function regenerateActiveDraft() {

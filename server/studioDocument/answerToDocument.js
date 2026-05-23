@@ -61,7 +61,7 @@ export async function convertAnswerToDocument({
       error.statusCode = 429;
       throw error;
     }
-    if (isOutOfMemoryError(error) && FALLBACK_MODEL && FALLBACK_MODEL !== model) {
+    if ((isOutOfMemoryError(error) || isModelNotFoundError(error)) && FALLBACK_MODEL && FALLBACK_MODEL !== model) {
       try {
         parsed = await analysisQueue.run(
           () => callOllamaForDocument({ template, answer, metadata, model: FALLBACK_MODEL, signal, docTypeObj, presentationStyleObj }),
@@ -147,6 +147,11 @@ function shortReason(message) {
   const text = String(message || "").trim();
   if (!text) return "원인 미상";
   if (isOutOfMemoryMessage(text)) return "모델 로드에 필요한 메모리가 부족합니다 — 더 작은 모델을 사용하세요";
+  if (/\b404\b/.test(text) && /model.*(not found|does not exist|pull )/i.test(text)) {
+    const m = text.match(/model '([^']+)'/);
+    const name = m ? m[1] : "지정된 모델";
+    return `Ollama에 '${name}' 모델이 설치되어 있지 않습니다 — \`ollama pull ${name}\` 또는 .env의 OLLAMA_MODEL을 설치된 모델로 변경하세요`;
+  }
   if (/fetch failed|ECONNREFUSED|ENOTFOUND/i.test(text)) return "Ollama 서버에 연결할 수 없습니다";
   if (/timed out/i.test(text)) return "응답 시간 초과";
   if (/\b4\d\d\b|\b5\d\d\b/.test(text)) return text.slice(0, 120);
@@ -159,6 +164,11 @@ function isOutOfMemoryError(error) {
 
 function isOutOfMemoryMessage(text) {
   return /requires more system memory|insufficient memory|out of memory|OOM/i.test(text);
+}
+
+function isModelNotFoundError(error) {
+  const text = String(error?.message || "");
+  return /\b404\b/.test(text) && /model.*(not found|does not exist|pull )/i.test(text);
 }
 
 async function callOllamaForDocument({ template, answer, metadata, model, signal, docTypeObj, presentationStyleObj }) {
