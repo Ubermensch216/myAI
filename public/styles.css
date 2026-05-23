@@ -226,7 +226,7 @@ body.panel-resizing .panel-resizer::after {
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 16px min(5vw, 56px) 20px;
-  border-top: 1px solid var(--line);
+  border-top: 0;
   background: color-mix(in srgb, var(--surface-3) 94%, transparent);
 }
 
@@ -1296,10 +1296,11 @@ body.panel-resizing .panel-resizer::after {
 
 .chat-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  padding: 16px min(5vw, 56px);
+  min-height: 54px;
+  padding: 14px min(5vw, 56px) 10px;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface-3) 94%, transparent);
 }
@@ -2588,7 +2589,7 @@ body.panel-resizing .panel-resizer::after {
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 16px min(5vw, 56px) 20px;
-  border-top: 1px solid var(--line);
+  border-top: 0;
   background: color-mix(in srgb, var(--surface-3) 94%, transparent);
 }
 
@@ -4159,9 +4160,9 @@ body.panel-resizing .panel-resizer::after {
   }
 
   .chat-header {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px;
-    padding: 12px 18px;
+    padding: 12px 18px 8px;
   }
 
   .messages {
@@ -4351,6 +4352,70 @@ body.panel-resizing .panel-resizer::after {
 
 .sidebar-content[hidden] {
   display: none !important;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+}
+
+.sidebar-footer .settings-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.sidebar-footer .settings-icon-button:hover,
+.sidebar-footer .settings-icon-button:focus-visible {
+  color: var(--accent-dark);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: var(--surface);
+  outline: none;
+}
+
+.sidebar-footer .settings-icon-button svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-footer .settings-button-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-footer .settings-icon-button {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar.collapsed .sidebar-footer .settings-button-label {
+  display: none;
 }
 
 /* ===== Sidebar collapsed state ===== */
