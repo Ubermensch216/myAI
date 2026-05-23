@@ -1,6 +1,32 @@
 name: myai
 
 services:
+  app:
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24-bookworm-slim}
+    image: myai-app:latest
+    container_name: myai-app
+    restart: unless-stopped
+    ports:
+      - "${MYAI_BIND_ADDR:-0.0.0.0}:${MYAI_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      OLLAMA_URL: ${MYAI_CONTAINER_OLLAMA_URL:-http://ollama:11434}
+      QDRANT_URL: ${MYAI_CONTAINER_QDRANT_URL:-http://qdrant:6333}
+    volumes:
+      - myai-data:/app/data
+      - myai-uploads:/app/uploads
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
   qdrant:
     image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-v1.13.6}
     container_name: myai-qdrant
@@ -21,6 +47,26 @@ services:
       retries: 5
       start_period: 15s
 
+  ollama:
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-latest}
+    container_name: myai-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_BIND_ADDR:-127.0.0.1}:${OLLAMA_PORT:-11434}:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-30m}"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc '</dev/tcp/127.0.0.1/11434'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
+  myai-data:
+  myai-uploads:
   qdrant-storage:
   qdrant-snapshots:
+  ollama-data:

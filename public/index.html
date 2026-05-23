@@ -41,12 +41,12 @@
               <path d="M3 10h18"></path>
             </svg>
             <span>일정</span>
-          <button class="primary-nav-item" type="button" data-view-target="grc" data-nav-label="사내 규정 검토" data-shortcut-key="G" aria-pressed="false">
+          <button class="primary-nav-item" type="button" data-view-target="grc" data-nav-label="내부 검토" data-shortcut-key="G" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
               <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
-            <span>사내 규정 검토</span>
+            <span>내부 검토</span>
           </button>
         </nav>
 
@@ -94,12 +94,7 @@
 
         <div class="sidebar-content" data-view-content="grc" hidden>
           <section class="panel grc-sidebar-panel">
-            <div class="panel-heading">
-              <h2>사내 규정 검토</h2>
-            </div>
-            <p style="font-size: 11px; padding: 14px; color: var(--muted); line-height: 1.5; margin: 0;">
-              제출된 계약서, 동의서 등의 문서가 사내 업무 지침 및 보안 규정을 준수하는지 오프라인으로 자동 대조 검증합니다.
-            </p>
+            <div id="grcSidebarMount" class="grc-sidebar-mount"></div>
           </section>
         </div>
 
@@ -416,7 +411,7 @@
 
       </section>
 
-      <section id="grcWorkbenchContainer" class="grc-area" aria-label="사내 규정 검토" hidden>
+      <section id="grcWorkbenchContainer" class="grc-area" aria-label="내부 검토" hidden>
       </section>
 
       <div

@@ -1,20 +1,19 @@
 import GrcWorkbench from './components/GrcWorkbench.svelte';
+import GrcSidebar from './components/GrcSidebar.svelte';
 
 let grcApp: GrcWorkbench | null = null;
+let grcSidebarApp: GrcSidebar | null = null;
 
 export function mountGrcWorkbench() {
   const container = document.getElementById('grcWorkbenchContainer');
-  if (!container) return;
-
-  if (grcApp) {
-    // If already mounted, do nothing
-    return;
+  if (container && !grcApp) {
+    grcApp = new GrcWorkbench({ target: container, props: {} });
   }
 
-  grcApp = new GrcWorkbench({
-    target: container,
-    props: {}
-  });
+  const sidebarContainer = document.getElementById('grcSidebarMount');
+  if (sidebarContainer && !grcSidebarApp) {
+    grcSidebarApp = new GrcSidebar({ target: sidebarContainer, props: {} });
+  }
 }
 
 export function unmountGrcWorkbench() {
@@ -22,15 +21,17 @@ export function unmountGrcWorkbench() {
     grcApp.$destroy();
     grcApp = null;
   }
+  if (grcSidebarApp) {
+    grcSidebarApp.$destroy();
+    grcSidebarApp = null;
+  }
 }
 
-// Expose mounting utilities globally so public/app.js can trigger them on tab switch
 (window as any).MyAIFrontend = {
   mountGrcWorkbench,
   unmountGrcWorkbench
 };
 
-// Automount if container is present on load
 document.addEventListener('DOMContentLoaded', () => {
   mountGrcWorkbench();
 });

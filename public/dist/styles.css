@@ -4254,6 +4254,22 @@ body.panel-resizing .panel-resizer::after {
   display: none !important;
 }
 
+.sidebar-content[data-view-content="grc"] .grc-sidebar-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.grc-sidebar-mount {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .app-shell[data-view="chat"] .calendar-area,
 .app-shell[data-view="chat"] .law-area,
 .app-shell[data-view="law"] .chat-area,
