@@ -58,6 +58,7 @@ function normalizeHexColor(value, fallback) {
 
 export const DEFAULT_LAYOUT = {
   leftPanelWidth: 340,
+  leftPanelCollapsed: false,
   rightPanelWidth: 360,
   rightPanelCollapsed: false
 };
@@ -65,6 +66,7 @@ export const DEFAULT_LAYOUT = {
 export function normalizeLayout(value = {}) {
   return {
     leftPanelWidth: clampNumber(value.leftPanelWidth, DEFAULT_LAYOUT.leftPanelWidth, 260, 520),
+    leftPanelCollapsed: Boolean(value.leftPanelCollapsed),
     rightPanelWidth: clampNumber(value.rightPanelWidth, DEFAULT_LAYOUT.rightPanelWidth, 300, 640),
     rightPanelCollapsed: Boolean(value.rightPanelCollapsed)
   };
@@ -456,6 +458,7 @@ export const elements = {
   adminNotebookAccessSaveButton: document.querySelector("#adminNotebookAccessSaveButton"),
   adminNotebookAccessStatus: document.querySelector("#adminNotebookAccessStatus"),
   leftPanelResizer: document.querySelector("#leftPanelResizer"),
+  sidebarToggleButton: document.querySelector("#sidebarToggleButton"),
   rightPanelResizer: document.querySelector("#rightPanelResizer"),
   studioPanel: document.querySelector("#studioPanel"),
   studioToggleButton: document.querySelector("#studioToggleButton"),

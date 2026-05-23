@@ -3,6 +3,7 @@ import { scheduleSave } from "./persistence.js";
 
 const LEFT_MIN = 260;
 const LEFT_MAX = 520;
+const LEFT_COLLAPSED = 64;
 const RIGHT_MIN = 300;
 const RIGHT_MAX = 640;
 const RIGHT_COLLAPSED = 58;
@@ -12,6 +13,10 @@ export function bindLayoutEvents() {
   applyLayoutState();
   bindResizer(elements.leftPanelResizer, "left");
   bindResizer(elements.rightPanelResizer, "right");
+  elements.sidebarToggleButton?.addEventListener("click", () => {
+    const layout = ensureLayoutState();
+    setSidebarCollapsed(!layout.leftPanelCollapsed);
+  });
   elements.studioToggleButton?.addEventListener("click", () => {
     const layout = ensureLayoutState();
     setStudioCollapsed(!layout.rightPanelCollapsed);
@@ -25,16 +30,39 @@ export function bindLayoutEvents() {
 export function applyLayoutState() {
   const layout = ensureLayoutState();
   if (!elements.appShell) return;
-  elements.appShell.style.setProperty("--left-panel-width", `${layout.leftPanelWidth}px`);
+  elements.appShell.style.setProperty(
+    "--left-panel-width",
+    `${layout.leftPanelCollapsed ? LEFT_COLLAPSED : layout.leftPanelWidth}px`
+  );
   elements.appShell.style.setProperty(
     "--right-panel-width",
     `${layout.rightPanelCollapsed ? RIGHT_COLLAPSED : layout.rightPanelWidth}px`
   );
+  elements.appShell.dataset.sidebarCollapsed = layout.leftPanelCollapsed ? "true" : "false";
   elements.appShell.dataset.studioCollapsed = layout.rightPanelCollapsed ? "true" : "false";
+  const sidebar = document.querySelector(".sidebar");
+  sidebar?.classList.toggle("collapsed", layout.leftPanelCollapsed);
   elements.studioPanel?.classList.toggle("collapsed", layout.rightPanelCollapsed);
+  if (elements.sidebarToggleButton) {
+    elements.sidebarToggleButton.setAttribute(
+      "aria-expanded",
+      layout.leftPanelCollapsed ? "false" : "true"
+    );
+    elements.sidebarToggleButton.setAttribute(
+      "aria-label",
+      layout.leftPanelCollapsed ? "사이드바 펼치기" : "사이드바 접기"
+    );
+  }
   if (elements.studioToggleButton) {
     elements.studioToggleButton.setAttribute("aria-expanded", layout.rightPanelCollapsed ? "false" : "true");
   }
+}
+
+export function setSidebarCollapsed(collapsed) {
+  const layout = ensureLayoutState();
+  layout.leftPanelCollapsed = Boolean(collapsed);
+  applyLayoutState();
+  scheduleSave();
 }
 
 export function setStudioCollapsed(collapsed) {
@@ -55,6 +83,7 @@ function beginResize(event, side) {
   const shell = elements.appShell;
   if (!shell) return;
   event.preventDefault();
+  if (side === "left" && ensureLayoutState().leftPanelCollapsed) setSidebarCollapsed(false);
   if (side === "right" && ensureLayoutState().rightPanelCollapsed) setStudioCollapsed(false);
   const rect = shell.getBoundingClientRect();
   const move = (moveEvent) => updatePanelWidth(side, moveEvent.clientX, rect);
@@ -75,6 +104,7 @@ function handleResizerKey(event, side) {
   const direction = event.key === "ArrowRight" ? 1 : -1;
   const layout = ensureLayoutState();
   if (side === "left") {
+    if (layout.leftPanelCollapsed) layout.leftPanelCollapsed = false;
     layout.leftPanelWidth = clamp(layout.leftPanelWidth + direction * KEYBOARD_STEP, LEFT_MIN, LEFT_MAX);
   } else {
     if (layout.rightPanelCollapsed) layout.rightPanelCollapsed = false;
@@ -87,6 +117,7 @@ function handleResizerKey(event, side) {
 function updatePanelWidth(side, clientX, shellRect) {
   const layout = ensureLayoutState();
   if (side === "left") {
+    layout.leftPanelCollapsed = false;
     layout.leftPanelWidth = clamp(clientX - shellRect.left, LEFT_MIN, LEFT_MAX);
   } else {
     layout.rightPanelCollapsed = false;

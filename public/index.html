@@ -16,6 +16,23 @@
           <img id="appBannerImg" class="app-banner" src="/default-banner.png" alt="수비서 AI" />
         </section>
 
+        <div class="sidebar-toolbar">
+          <button
+            id="sidebarToggleButton"
+            class="icon-button sidebar-toggle-button"
+            type="button"
+            aria-label="사이드바 접기"
+            aria-controls="primaryNav"
+            aria-expanded="true"
+            title="사이드바 접기/펼치기"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="sidebar-toggle-collapse-icon" d="m15 6-6 6 6 6"></path>
+              <path class="sidebar-toggle-expand-icon" d="m9 6 6 6-6 6"></path>
+            </svg>
+          </button>
+        </div>
+
         <nav id="primaryNav" class="primary-nav" aria-label="주요 메뉴">
           <button class="primary-nav-item active" type="button" data-view-target="chat" data-nav-label="대화" data-shortcut-key="D" aria-pressed="true">
             <svg viewBox="0 0 24 24" aria-hidden="true">
