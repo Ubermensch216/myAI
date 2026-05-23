@@ -19,7 +19,7 @@ export async function runGrcReview({ targetText, policyText, model = DEFAULT_MOD
     throw new Error("검토 대상 문서의 텍스트 내용이 비어있습니다.");
   }
   if (!policyText || !policyText.trim()) {
-    throw new Error("비교 검증할 사내 규정/지침의 텍스트 내용이 비어있습니다.");
+    throw new Error("비교 검증할 내부 기준 문서의 텍스트 내용이 비어있습니다.");
   }
 
   const systemPrompt = [
@@ -42,7 +42,7 @@ export async function runGrcReview({ targetText, policyText, model = DEFAULT_MOD
   const userPrompt = [
     "Please perform the compliance review based on the following input data:",
     "",
-    "=== [비교 기준: 사내 규정 및 지침] ===",
+    "=== [비교 기준: 내부 기준 문서] ===",
     policyText.slice(0, 30000), // Bounded to prevent excessive context sizes
     "",
     "=== [검토 대상: 제출된 문서] ===",

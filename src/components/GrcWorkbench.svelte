@@ -188,12 +188,40 @@
 <div class="grc-main">
   {#if $grcStore.analyzing}
     <div class="grc-loader">
-      <div class="progress-spinner"></div>
-      <h3>
-        {policyBaseName}에 따른<br />
-        {targetBaseName} 검토를 실행하고 있습니다.
-      </h3>
-      <p>기준 매핑, 조항 충돌 진단 및 종합 보고서를 구성 중입니다.</p>
+      <div class="loader-card">
+        <div class="loader-spinner-wrap">
+          <div class="loader-ring"></div>
+          <svg class="loader-shield" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+        <h3 class="loader-title">컴플라이언스 검토 진행 중</h3>
+        <p class="loader-subtitle">AI가 두 문서를 정밀하게 대조 분석하고 있습니다.</p>
+
+        <div class="loader-files">
+          <div class="loader-file-row">
+            <span class="loader-file-label policy">기준</span>
+            <span class="loader-file-name">{policyBaseName}</span>
+          </div>
+          <div class="loader-file-row">
+            <span class="loader-file-label target">대상</span>
+            <span class="loader-file-name">{targetBaseName}</span>
+          </div>
+        </div>
+
+        <div class="loader-steps">
+          <span class="loader-step">기준 매핑</span>
+          <span class="loader-step-sep">›</span>
+          <span class="loader-step">조항 충돌 진단</span>
+          <span class="loader-step-sep">›</span>
+          <span class="loader-step">종합 보고서 구성</span>
+        </div>
+
+        <div class="loader-dots" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
     </div>
   {:else if reviewResult}
     <div class="grc-tabs-header">
@@ -316,8 +344,8 @@
   {:else}
     <div class="grc-empty-state">
       <svg class="empty-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
-        <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
       </svg>
       <h3>내부 기준 적합성 검토(GRC)에 오신 것을 환영합니다.</h3>
       <p>왼쪽 패널에서 기준이 되는 내부 기준 파일(혹은 부서 프로젝트)과 검토할 대상 문서를 지정해 검토를 수행해 주세요.</p>
@@ -358,15 +386,27 @@
 <style>
   .grc-main {
     flex: 1;
+    min-width: 0;
     height: 100%;
-    overflow-y: scroll;
-    scrollbar-gutter: stable;
+    overflow: hidden;
     padding: 20px;
     background: var(--surface-3);
     display: flex;
     flex-direction: column;
     gap: 20px;
     box-sizing: border-box;
+  }
+
+  .grc-tabs-content {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
   }
 
   .tab-icon {
@@ -405,21 +445,189 @@
     flex: 1;
     text-align: center;
     color: var(--muted);
+    padding: 24px;
   }
 
-  .progress-spinner {
-    width: 50px;
-    height: 50px;
-    border: 5px solid var(--line);
-    border-top: 5px solid var(--accent);
+  .loader-card {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 36px 32px 28px;
+    box-shadow: 0 10px 32px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loader-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: loader-sweep 2.2s linear infinite;
+  }
+
+  @keyframes loader-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .loader-spinner-wrap {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .loader-ring {
+    position: absolute;
+    inset: 0;
     border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 20px;
+    border: 3px solid var(--line);
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    animation: spin 1.1s cubic-bezier(0.6, 0.1, 0.4, 0.9) infinite;
+  }
+
+  .loader-shield {
+    width: 30px;
+    height: 30px;
+    color: var(--accent);
+    z-index: 1;
   }
 
   @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+  }
+
+  .loader-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--text);
+    margin: 4px 0 0 0;
+    letter-spacing: -0.2px;
+  }
+
+  .loader-subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 6px 0;
+    line-height: 1.5;
+  }
+
+  .loader-files {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 4px 0 8px;
+  }
+
+  .loader-file-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .loader-file-label {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 3px 9px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  .loader-file-label.policy {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+  }
+
+  .loader-file-label.target {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+  }
+
+  .loader-file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .loader-steps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .loader-step {
+    padding: 4px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .loader-step-sep {
+    color: var(--accent);
+    font-weight: 700;
+    opacity: 0.6;
+  }
+
+  .loader-dots {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .loader-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: loader-bounce 1.2s ease-in-out infinite;
+  }
+
+  .loader-dots span:nth-child(2) {
+    animation-delay: 0.18s;
+  }
+
+  .loader-dots span:nth-child(3) {
+    animation-delay: 0.36s;
+  }
+
+  @keyframes loader-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
   }
 
   .grc-empty-state {
@@ -673,6 +881,8 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    flex: 1;
+    min-height: 0;
   }
 
   .opinion-toolbar {
@@ -696,16 +906,14 @@
   }
 
   .opinion-text {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     font-family: inherit;
     font-size: 13px;
     line-height: 1.65;
-    background: var(--surface-2);
-    padding: 24px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    max-height: 600px;
-    overflow-y: auto;
     color: var(--text);
+    padding-right: 4px;
   }
 
   .opinion-text :global(.markdown-p) {

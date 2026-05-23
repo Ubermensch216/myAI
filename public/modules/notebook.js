@@ -658,7 +658,7 @@ function formatIngestStage(stage, status) {
   if (status === "completed") return "완료";
   if (status === "failed") return "실패";
   if (stage === "queued") return "대기";
-  if (stage === "parsing") return "파싱";
+  if (stage === "parsing") return "읽는 중";
   if (stage === "indexing") return "임베딩/인덱싱";
   if (stage === "running") return "처리";
   return "처리";

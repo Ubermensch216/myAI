@@ -5705,6 +5705,18 @@ body.panel-resizing .panel-resizer::after {
   }
 }
 
+/* ===== GRC Workbench main area ===== */
+.grc-area {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-3);
+}
+
 /* ===== Calendar main area ===== */
 .law-area {
   grid-column: 3;
