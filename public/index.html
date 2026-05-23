@@ -50,6 +50,13 @@
             </svg>
             <span>법령검토</span>
           </button>
+          <button class="primary-nav-item" type="button" data-view-target="grc" data-nav-label="내부검토" data-shortcut-key="G" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span>내부검토</span>
+          </button>
           <button class="primary-nav-item" type="button" data-view-target="calendar" data-nav-label="일정" data-shortcut-key="C" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="4" width="18" height="17" rx="2"></rect>
@@ -58,13 +65,6 @@
               <path d="M3 10h18"></path>
             </svg>
             <span>일정</span>
-          </button>
-          <button class="primary-nav-item" type="button" data-view-target="grc" data-nav-label="내부검토" data-shortcut-key="G" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-              <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <span>내부검토</span>
           </button>
         </nav>
 
@@ -449,15 +449,6 @@
               <path d="M9 12h8M9 16h8M9 8h4"></path>
             </svg>
           </button>
-          <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="파일도구" aria-label="파일도구">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="6" cy="6" r="3"></circle>
-              <circle cx="6" cy="18" r="3"></circle>
-              <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-              <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-              <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-            </svg>
-          </button>
           <button id="studioMindmapRailButton" class="studio-rail-button" type="button" title="Mind map" aria-label="Mind map">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="6" cy="12" r="2.8"></circle>
@@ -476,6 +467,15 @@
               <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
             </svg>
           </button>
+          <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="파일도구" aria-label="파일도구">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+              <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+            </svg>
+          </button>
         </div>
 
         <div id="studioContent" class="studio-content" data-active-tool="document">
@@ -487,16 +487,6 @@
                 <path d="M9 12h8M9 16h8M9 8h4"></path>
               </svg>
               <span class="studio-tool-label">&#xBB38;&#xC11C;</span>
-            </button>
-            <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="파일도구">
-              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="6" cy="6" r="3"></circle>
-                <circle cx="6" cy="18" r="3"></circle>
-                <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-                <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-                <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-              </svg>
-              <span class="studio-tool-label">파일도구</span>
             </button>
             <button id="studioMindmapButton" class="studio-tool-card" type="button" data-tool="mindmap" aria-label="마인드맵 생성">
               <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -517,6 +507,16 @@
                 <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
               </svg>
               <span class="studio-tool-label">&#xC9C0;&#xC2DD;&#xADF8;&#xB798;&#xD504;</span>
+            </button>
+            <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="파일도구">
+              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+              </svg>
+              <span class="studio-tool-label">파일도구</span>
             </button>
           </div>
 
