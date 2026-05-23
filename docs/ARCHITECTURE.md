@@ -165,6 +165,30 @@ only after an admin approves it. The promoted document includes provenance such
 as source room/output/message IDs, generation time, review status, and reviewer
 metadata. Rejected requests stay in the promotion store for operational context.
 
+### GRC Compliance Review
+
+```text
+primary nav "사내 규정 검토" (data-view-target="grc")
+-> public/app.js applyActiveView("grc") shows #grcWorkbenchContainer
+-> window.MyAIFrontend.mountGrcWorkbench() mounts the Svelte component
+-> user uploads target document (e.g. contract) and either uploads policy
+   text or picks a department notebook as the policy source
+-> POST /api/compliance/grc/review { targetText, policyText | notebookId, model }
+-> server/compliance/grcReview.js calls Ollama with format:"json", temp 0.1
+   (inputs are truncated to 30,000 chars each)
+-> Svelte UI renders the dashboard (overallRisk, per-rule results,
+   missingInformation) and the markdown draftOpinion
+-> "Studio 저장" dispatches window event myai:grc:save-output
+-> public/app.js calls documentStudio.openWithPreparedDraft() with the
+   draftOpinion markdown so the Studio Document editor opens pre-filled
+```
+
+GRC review is a self-contained internal-policy audit. It does not fetch
+Korean Law Engine evidence and is independent from the Law Workbench review
+flow. The Svelte component lives in `src/components/GrcWorkbench.svelte`
+and is bundled into `public/dist/bundle.js` by Vite (see Frontend Build
+section).
+
 ### Studio Document Editor
 
 ```text
@@ -380,9 +404,10 @@ The LLM does not directly mutate calendar data.
 - `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
 - `server/law/` - Korean Law Engine API surface, law.go.kr and decision API clients/cache, citation verification, research tools, annexes, law-structure links, Constitutional Court and administrative-appeal decisions, impact maps, time-travel/diff/history helpers, and Law Workbench review/report generation.
 - `server/compliance/` - department legal-review intent classification, review-type catalog, and compliance prompt construction.
-- `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images.
+- `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images. The HWPX path uses an order-preserving XML parser that walks the section tree to keep paragraph boundaries (`<p>` -> blank-line separated blocks) and convert HWPX tables (`<tbl>/<tr>/<tc>`) to GitHub-flavored Markdown tables before normalization, so tabular policy and contract documents stay aligned with downstream chunking/RAG.
 - `server/documents.js` - document serializers and `pageSections()`.
-- `server/chunking.js` - shared document section chunking policy for personal uploads and notebook ingest.
+- `server/chunking.js` - shared document section chunking policy for personal uploads and notebook ingest. The default flat mode returns `chunks[]`. Passing `{ hierarchical: true }` returns `{ parentChunks, chunks }`: paragraph-block aware parent chunks (with block-level overlap and table-aware splitting) plus smaller child chunks that carry `parentIndex` back-references. Child window/overlap default to `CHILD_CHUNK_WINDOW_CHARS` (256) / `CHILD_CHUNK_OVERLAP_CHARS` (64) and are overridable per call.
+- `server/compliance/grcReview.js` - GRC internal-policy audit. Calls Ollama with `format:"json"` at low temperature and returns the structured review (`summary`, `overallRisk`, `results[]`, `missingInformation`, `draftOpinion`). Inputs are bounded to 30,000 characters.
 - `server/documentAnalysis.js` - summary/topic extraction for uploaded and notebook documents.
 - `server/notebooks.js` - notebook manifests, document ingest, chunk storage, cache, all-chunk loading.
 - `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
@@ -411,7 +436,8 @@ The LLM does not directly mutate calendar data.
 - `server/visualization.js` - plan normalization, validation, execution, fallback chart specs.
 - `server/auth.js` - admin token middleware.
 - `server/accessControl.js` - department notebook read-access groups, level passwords, Super password, access-token signing/verification, and notebook policy checks.
-- `public/app.js` - orchestrator: init, routing, room management, drag-drop, global key bindings.
+- `public/app.js` - orchestrator: init, routing (chat / calendar / law / grc), room management, drag-drop, global key bindings. On `grc` activation it calls `window.MyAIFrontend.mountGrcWorkbench()` to bring up the Svelte panel; it also listens for `myai:grc:save-output` and forwards the markdown to `documentStudio.openWithPreparedDraft()`.
+- `src/main.ts` / `src/components/GrcWorkbench.svelte` - Svelte + TypeScript GRC Workbench panel. Built by Vite (`vite.config.js`) as an IIFE library bundle into `public/dist/bundle.js`, with the companion stylesheet at `public/dist/style.css`. The bundle exposes `window.MyAIFrontend.{mountGrcWorkbench, unmountGrcWorkbench}` for `public/app.js` to call on tab switch. Run `npm run dev:frontend` (Vite dev) and `npm run build:frontend` (production bundle).
 - `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color/avatar/banner rendering.
 - `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utility functions. No project-level imports.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.

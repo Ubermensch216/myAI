@@ -664,6 +664,58 @@ Uses `law_time_travel` bucket.
 All `/api/law/*` public responses must omit upstream `raw` payloads, upstream
 service URLs, and `OC=` query values.
 
+## GRC Compliance Review
+
+### `POST /api/compliance/grc/review`
+
+Body:
+
+```js
+{
+  targetText,      // text of the document to audit (e.g. contract, consent form)
+  policyText,      // text of the policy/guideline to compare against
+  notebookId,      // optional; when provided, every chunk of the notebook is
+                   // concatenated and used as policyText (overrides body policyText)
+  model            // optional Ollama model name
+}
+```
+
+Runs a structured GRC (Governance/Risk/Compliance) audit by calling Ollama
+with `format: "json"` and `temperature: 0.1`. The server bounds both inputs
+to 30,000 characters before prompting. Either `targetText` or `policyText`/
+`notebookId` being empty returns `400`.
+
+Returns:
+
+```js
+{
+  ok: true,
+  reviewResult: {
+    summary,                 // 3-4 sentence high-level summary (Korean)
+    overallRisk,             // "High" | "Medium" | "Low"
+    results: [               // per-rule findings
+      {
+        ruleTitle,
+        status,              // "적합" | "일부 보완 필요" | "충돌 가능성" | "확인 불가"
+        reason,
+        remediation
+      }
+    ],
+    missingInformation: [],  // documents/data needed to complete the review
+    draftOpinion             // markdown opinion letter (1. 검토 목적 / 2. 종합 의견 /
+                             // 3. 상세 분석 / 4. 조치 권고사항)
+  }
+}
+```
+
+This endpoint is independent from `/api/law/workbench/review`: it audits
+internal policy compliance only and does not fetch official Korean Law Engine
+evidence. The GRC Workbench UI is mounted under the `grc` primary nav view
+and is implemented as a Svelte component (see [DESIGN.md](DESIGN.md) and
+[ARCHITECTURE.md](ARCHITECTURE.md)). Save-to-Studio is triggered client-side
+via the `myai:grc:save-output` window event, which opens the Studio
+Document editor with the GRC `draftOpinion` markdown pre-loaded.
+
 ## Answer Export
 
 ### `GET /api/export/formats`
