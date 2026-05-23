@@ -1,4 +1,4 @@
-﻿import fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
@@ -27,6 +27,7 @@ import { createExportFile, listExportFormats } from "./exportFiles.js";
 import { generateMindmap } from "./mindmap.js";
 import { lawApiRouter } from "./law/lawApi.js";
 import { getLawConfig, getLawRateLimitDefaults } from "./law/lawConfig.js";
+import { runGrcReview } from "./compliance/grcReview.js";
 import {
   listNotebooks,
   getNotebook,
@@ -35,7 +36,8 @@ import {
   updateNotebookAccess,
   deleteNotebook,
   addNotebookDocument,
-  removeNotebookDocument
+  removeNotebookDocument,
+  loadAllNotebookChunks
 } from "./notebooks.js";
 import {
   createNotebookIngestJob,
@@ -343,6 +345,38 @@ function createRequestAbortController(request, response) {
     }
   };
 }
+
+app.post("/api/compliance/grc/review", async (request, response) => {
+  const { targetText, policyText, notebookId, model } = request.body || {};
+  let target = targetText || "";
+  let policy = policyText || "";
+
+  try {
+    if (notebookId) {
+      const chunks = await loadAllNotebookChunks(notebookId).catch(() => []);
+      if (chunks && chunks.length) {
+        policy = chunks.map((c) => c.text).join("\n");
+      }
+    }
+
+    if (!target.trim()) {
+      return response.status(400).json({ error: "검토 대상 문서의 텍스트가 비어있습니다." });
+    }
+    if (!policy.trim()) {
+      return response.status(400).json({ error: "비교 검증할 규정/지침의 텍스트가 비어있습니다." });
+    }
+
+    const reviewResult = await runGrcReview({
+      targetText: target,
+      policyText: policy,
+      model
+    });
+
+    response.json({ ok: true, reviewResult });
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
 
 app.post("/api/chat", async (request, response) => {
   const messages = Array.isArray(request.body.messages) ? request.body.messages : [];

@@ -31,6 +31,13 @@ const xmlParserWithAttributes = new XMLParser({
   trimValues: true
 });
 
+const hwpxXmlParser = new XMLParser({
+  ignoreAttributes: false,
+  preserveOrder: true,
+  parseTagValue: false,
+  trimValues: false
+});
+
 export async function parseUpload(file) {
   const extension = path.extname(file.originalname).toLowerCase();
 
@@ -578,7 +585,7 @@ async function parseHwpx(file) {
   for (const filePath of textFiles) {
     const content = await zip.file(filePath).async("string");
     const text = filePath.toLowerCase().endsWith(".xml")
-      ? normalizeText(collectText(xmlParser.parse(content)).join("\n"))
+      ? parseHwpxSectionXml(content)
       : normalizeText(content);
     pages.push({ page: pages.length + 1, label: filePath, text });
   }
@@ -592,6 +599,127 @@ async function parseHwpx(file) {
     text,
     pages
   };
+}
+
+function getLocalName(tagName) {
+  if (!tagName) return "";
+  const parts = tagName.split(":");
+  return parts[parts.length - 1];
+}
+
+function processHwpxNodes(nodes) {
+  if (!Array.isArray(nodes)) return "";
+  let result = "";
+  for (const node of nodes) {
+    const tagName = Object.keys(node)[0];
+    if (tagName === ":@" || !tagName) continue;
+    const children = node[tagName];
+    const localName = getLocalName(tagName);
+    
+    if (localName === "p") {
+      const pText = processHwpxNodes(children).trim();
+      if (pText) {
+        result += pText + "\n\n";
+      }
+    } else if (localName === "tbl") {
+      const tableMarkdown = processHwpxTable(children);
+      if (tableMarkdown) {
+        result += "\n" + tableMarkdown + "\n\n";
+      }
+    } else if (localName === "t" || tagName === "#text") {
+      if (tagName === "#text") {
+        result += String(children);
+      } else {
+        result += processHwpxNodes(children);
+      }
+    } else if (localName === "tr" || localName === "tc") {
+      result += processHwpxNodes(children);
+    } else {
+      result += processHwpxNodes(children);
+    }
+  }
+  return result;
+}
+
+function processHwpxTable(tableChildren) {
+  const rows = [];
+  const findRows = (nodes) => {
+    if (!Array.isArray(nodes)) return;
+    for (const node of nodes) {
+      const tagName = Object.keys(node)[0];
+      if (tagName === ":@" || !tagName) continue;
+      const localName = getLocalName(tagName);
+      if (localName === "tr") {
+        rows.push(node[tagName]);
+      } else {
+        findRows(node[tagName]);
+      }
+    }
+  };
+  findRows(tableChildren);
+
+  if (rows.length === 0) return "";
+
+  const mdRows = [];
+  let maxCols = 0;
+  for (const row of rows) {
+    const cells = [];
+    const findCells = (nodes) => {
+      if (!Array.isArray(nodes)) return;
+      for (const node of nodes) {
+        const tagName = Object.keys(node)[0];
+        if (tagName === ":@" || !tagName) continue;
+        const localName = getLocalName(tagName);
+        if (localName === "tc") {
+          cells.push(node[tagName]);
+        } else {
+          findCells(node[tagName]);
+        }
+      }
+    };
+    findCells(row);
+    
+    const cellTexts = cells.map(cell => {
+      return processHwpxNodes(cell).replace(/\r?\n/g, " ").trim();
+    });
+    mdRows.push(cellTexts);
+    if (cellTexts.length > maxCols) {
+      maxCols = cellTexts.length;
+    }
+  }
+
+  if (mdRows.length === 0 || maxCols === 0) return "";
+
+  const lines = [];
+  const header = mdRows[0];
+  while (header.length < maxCols) header.push("");
+  lines.push("| " + header.join(" | ") + " |");
+  
+  const separator = Array(maxCols).fill("---");
+  lines.push("| " + separator.join(" | ") + " |");
+  
+  for (let i = 1; i < mdRows.length; i++) {
+    const row = mdRows[i];
+    while (row.length < maxCols) row.push("");
+    lines.push("| " + row.join(" | ") + " |");
+  }
+
+  return lines.join("\n");
+}
+
+function parseHwpxSectionXml(xmlContent) {
+  try {
+    const parsed = hwpxXmlParser.parse(xmlContent);
+    const text = processHwpxNodes(parsed);
+    return normalizeText(text);
+  } catch (error) {
+    console.error(`Error parsing HWPX section XML: ${error.message}`);
+    try {
+      return normalizeText(collectText(xmlParser.parse(xmlContent)).join("\n"));
+    } catch (fallbackError) {
+      return "";
+    }
+  }
 }
 
 function collectText(value, output = []) {
