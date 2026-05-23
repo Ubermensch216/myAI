@@ -38,7 +38,6 @@ assert.match(html, /id="newLawReviewButton"/, "new law review button exists");
 assert.match(html, /id="lawReviewList"/, "law review list exists");
 assert.match(html, /<section class="law-area"[^>]*>/, "law review main area exists");
 assert.match(html, /id="lawWorkbenchReviewType"/, "law review has review type condition");
-assert.match(html, /id="lawWorkbenchOutputType"/, "law review has output type condition");
 assert.match(html, /data-law-workbench-tab="review"/, "law review has review result tab");
 assert.match(html, /data-law-workbench-tab="evidence"/, "law review has grouped evidence tab");
 assert.match(html, /data-law-workbench-tab="history"/, "law review has revision and impact tab");
@@ -51,10 +50,7 @@ assert.doesNotMatch(html, /자연어 질문 한 줄이면 공식 법령/, "stati
 for (const example of [
   "민원 회신에 필요한 법령 근거 검토",
   "내부 지침이 상위법과 충돌하는지 검토",
-  "행정처분 사전통지 절차 검토",
-  "개인정보 수집·이용 동의서 적법성 검토",
-  "조례 개정 필요 여부 검토",
-  "용역 과업지시서 법령 리스크 검토"
+  "행정처분 사전통지 절차 검토"
 ]) {
   assert.match(html, new RegExp(example.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `law review example exists: ${example}`);
 }

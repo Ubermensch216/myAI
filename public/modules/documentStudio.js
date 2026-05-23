@@ -5,7 +5,7 @@
 // fragments. Drafts live in room.studio.documents and persist via the
 // room state.
 
-import { state, elements, ensureRoomStudio, getActiveRoom, accessAuthHeaders } from "./state.js";
+import { state, elements, ensureRoomStudio, getActiveRoom, accessAuthHeaders, ensureLawReviewStudio, getActiveStudio, getActiveLawReview } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { setStudioCollapsed } from "./layout.js";
 import { parseMarkdownToVisualBlocks, serializeVisualBlocksToMarkdown } from "./documentStudioMarkdown.js";
@@ -806,8 +806,8 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
 }
 
 export async function openWithPreparedDraft({ title, markdown, templateId, metadata = {}, citations = [], source = {} } = {}) {
-  const room = getActiveRoom();
-  if (!room) return;
+  const context = state.activeView === "law" ? getActiveLawReview() : getActiveRoom();
+  if (!context) return;
   const text = String(markdown || "").trim();
   if (!text) {
     window.alert("문서로 만들 내용이 없습니다.");
@@ -818,44 +818,73 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
   _switchToDocumentTool?.();
   await ensureTemplatesLoaded();
 
-  const studio = ensureRoomStudio(room);
-  const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const draft = {
-    id: draftId,
-    title: title || deriveTitleFromMarkdown(text),
-    templateId: templateId || pickDefaultTemplateId(metadata),
-    markdown: text,
-    citations: { law: Array.isArray(citations) ? citations : [] },
-    source: {
-      roomId: room.id,
-      sourceType: "law_workbench_report",
-      ...source
-    },
-    metadata,
-    editorMode: "visual",
-    exportOptions: { includeCitations: true },
-    pending: false,
-    warnings: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  studio.documents.unshift(draft);
-  studio.activeDocumentId = draftId;
+  const studio = state.activeView === "law" ? ensureLawReviewStudio(context) : ensureRoomStudio(context);
+  let draft = null;
+  if (state.activeView === "law") {
+    draft = studio.documents.find(
+      (d) => d.source?.sourceType === "law_workbench_report" && d.source?.lawReviewId === context.id
+    );
+  }
+
+  if (draft) {
+    draft.title = title || draft.title || "법령 검토 보고서";
+    draft.markdown = text;
+    draft.citations = { law: Array.isArray(citations) ? citations : [] };
+    if (templateId) draft.templateId = templateId;
+    draft.metadata = { ...draft.metadata, ...metadata };
+    draft.updatedAt = new Date().toISOString();
+  } else {
+    const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    draft = {
+      id: draftId,
+      title: title || deriveTitleFromMarkdown(text),
+      templateId: templateId || pickDefaultTemplateId(metadata),
+      markdown: text,
+      citations: { law: Array.isArray(citations) ? citations : [] },
+      source: {
+        roomId: state.activeView === "law" ? null : context.id,
+        lawReviewId: state.activeView === "law" ? context.id : null,
+        sourceType: "law_workbench_report",
+        ...source
+      },
+      metadata,
+      editorMode: "visual",
+      exportOptions: { includeCitations: true },
+      pending: false,
+      warnings: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    studio.documents.unshift(draft);
+  }
+
+  studio.activeDocumentId = draft.id;
   upsertStudioOutputFromDraft(draft, { type: "document", quiet: true });
   scheduleSave();
   renderDocumentStudio();
 }
 
 export function renderDocumentStudio() {
-  const room = getActiveRoom();
-  const studio = room ? ensureRoomStudio(room) : null;
+  const studio = getActiveStudio();
   const doc = studio ? studio.documents.find((d) => d.id === studio.activeDocumentId) : null;
 
   if (!doc) {
     _openAiMenuKey = "";
     _aiEditDocumentId = "";
     _aiEditStates.clear();
-    if (elements.studioDocumentEmpty) elements.studioDocumentEmpty.hidden = false;
+    const isEmptyNode = elements.studioDocumentEmpty;
+    if (isEmptyNode) {
+      isEmptyNode.hidden = false;
+      const textNode = isEmptyNode.querySelector("p");
+      if (textNode) {
+        textNode.textContent = state.activeView === "law"
+          ? "법령검토 완료 후 '보고서 생성' 버튼을 누르면 검토 보고서를 작성할 수 있어요."
+          : "채팅 답변 옆의 '스튜디오>문서' 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.";
+      }
+    }
+    if (elements.studioSourceGuideEmptyButton) {
+      elements.studioSourceGuideEmptyButton.hidden = state.activeView === "law";
+    }
     if (elements.studioDocumentEditor) elements.studioDocumentEditor.hidden = true;
     if (elements.studioDocumentVisual) elements.studioDocumentVisual.innerHTML = "";
     renderOutputLibrary(studio);
@@ -1002,15 +1031,20 @@ function saveActiveDraftAsOutput() {
 }
 
 function upsertStudioOutputFromDraft(doc, { type = "document", quiet = false } = {}) {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
+  const activeRoom = getActiveRoom();
+  const activeReview = getActiveLawReview();
+  const studio = getActiveStudio();
   const output = upsertStudioOutput({
     id: doc.outputId || "",
     type,
     title: doc.title || "Studio 문서",
     markdown: doc.markdown || "",
     citations: doc.citations || {},
-    source: doc.source || { roomId: room?.id || "", sourceType: "studio_document" },
+    source: doc.source || {
+      roomId: state.activeView === "law" ? "" : activeRoom?.id || "",
+      lawReviewId: state.activeView === "law" ? activeReview?.id || "" : "",
+      sourceType: "studio_document"
+    },
     metadata: doc.metadata || {},
     createdAt: doc.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
@@ -1021,8 +1055,7 @@ function upsertStudioOutputFromDraft(doc, { type = "document", quiet = false } =
 }
 
 function upsertStudioOutput(input) {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
+  const studio = getActiveStudio();
   if (!studio) return null;
   if (!Array.isArray(studio.outputs)) studio.outputs = [];
   const now = new Date().toISOString();
@@ -1045,7 +1078,7 @@ function upsertStudioOutput(input) {
   return output;
 }
 
-function renderOutputLibrary(studio = ensureRoomStudio()) {
+function renderOutputLibrary(studio = getActiveStudio()) {
   const outputs = Array.isArray(studio?.outputs) ? studio.outputs : [];
   const libraryButton = elements.studioDocumentLibraryModeButton;
   if (libraryButton) libraryButton.textContent = `산출물 ${outputs.length}`;
@@ -1098,8 +1131,10 @@ function renderOutputItem(output) {
     }
     renderDocumentStudio();
   }));
-  actions.append(outputActionButton("자료로 추가", () => addOutputAsRoomSource(output).catch((error) => window.alert(error.message))));
-  actions.append(outputActionButton("승인 요청", () => requestOutputPromotion(output).catch((error) => window.alert(error.message))));
+  if (state.activeView !== "law") {
+    actions.append(outputActionButton("자료로 추가", () => addOutputAsRoomSource(output).catch((error) => window.alert(error.message))));
+    actions.append(outputActionButton("승인 요청", () => requestOutputPromotion(output).catch((error) => window.alert(error.message))));
+  }
   actions.append(outputActionButton("삭제", () => deleteOutput(output.id)));
 
   item.append(main, actions);
@@ -1116,8 +1151,10 @@ function outputActionButton(label, onClick) {
 }
 
 function openOutputAsDraft(output, { activate = true } = {}) {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
+  const activeRoom = getActiveRoom();
+  const activeReview = getActiveLawReview();
+  const studio = getActiveStudio();
+  if (!studio) return null;
   const existing = studio.documents.find((doc) => doc.outputId === output.id);
   if (existing) {
     if (activate) studio.activeDocumentId = existing.id;
@@ -1130,7 +1167,11 @@ function openOutputAsDraft(output, { activate = true } = {}) {
     templateId: null,
     markdown: output.markdown || "",
     citations: output.citations || {},
-    source: output.source || { roomId: room?.id || "", sourceType: output.type || "studio_output" },
+    source: output.source || {
+      roomId: state.activeView === "law" ? "" : activeRoom?.id || "",
+      lawReviewId: state.activeView === "law" ? activeReview?.id || "" : "",
+      sourceType: output.type || "studio_output"
+    },
     metadata: output.metadata || {},
     editorMode: "visual",
     exportOptions: { includeCitations: true },
@@ -1193,8 +1234,7 @@ async function requestOutputPromotion(output) {
 }
 
 function deleteOutput(outputId) {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
+  const studio = getActiveStudio();
   if (!studio) return;
   studio.outputs = (studio.outputs || []).filter((output) => output.id !== outputId);
   scheduleSave();
@@ -1431,9 +1471,8 @@ async function convertDraft(draft) {
 }
 
 function isDraftAlive(draft) {
-  const room = getActiveRoom();
-  if (!room) return false;
-  const studio = ensureRoomStudio(room);
+  const studio = getActiveStudio();
+  if (!studio) return false;
   return studio.documents.includes(draft);
 }
 
@@ -1453,9 +1492,8 @@ async function regenerateActiveDraft() {
 }
 
 function deleteActiveDraft() {
-  const room = getActiveRoom();
-  if (!room) return;
-  const studio = ensureRoomStudio(room);
+  const studio = getActiveStudio();
+  if (!studio) return;
   if (_activeAbort) {
     _activeAbort.abort();
     _activeAbort = null;
@@ -1634,9 +1672,8 @@ function triggerDownload(blob, filename) {
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function getActiveDraft() {
-  const room = getActiveRoom();
-  if (!room) return null;
-  const studio = ensureRoomStudio(room);
+  const studio = getActiveStudio();
+  if (!studio) return null;
   return studio.documents.find((d) => d.id === studio.activeDocumentId) || null;
 }
 

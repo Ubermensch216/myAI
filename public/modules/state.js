@@ -506,7 +506,6 @@ export const elements = {
   lawWorkbenchConditionText: document.querySelector("#lawWorkbenchConditionText"),
   lawWorkbenchRunButton: document.querySelector("#lawWorkbenchRunButton"),
   lawWorkbenchResetButton: document.querySelector("#lawWorkbenchResetButton"),
-  lawWorkbenchTerms: document.querySelector("#lawWorkbenchTerms"),
   lawWorkbenchStatus: document.querySelector("#lawWorkbenchStatus"),
   lawWorkbenchTabs: Array.from(document.querySelectorAll("[data-law-workbench-tab]")),
   lawWorkbenchBody: document.querySelector("#lawWorkbenchBody"),
@@ -538,6 +537,25 @@ export function ensureRoomStudio(room = getActiveRoom()) {
   if (!Array.isArray(room.studio.outputs)) room.studio.outputs = [];
   if (typeof room.studio.activeDocumentId !== "string") room.studio.activeDocumentId = "";
   return room.studio;
+}
+
+export function ensureLawReviewStudio(review = getActiveLawReview()) {
+  if (!review) return null;
+  if (!review.studio || typeof review.studio !== "object") review.studio = {};
+  if (!Array.isArray(review.studio.documents)) review.studio.documents = [];
+  if (!Array.isArray(review.studio.outputs)) review.studio.outputs = [];
+  if (typeof review.studio.activeDocumentId !== "string") review.studio.activeDocumentId = "";
+  return review.studio;
+}
+
+export function getActiveStudio() {
+  if (state.activeView === "law") {
+    const review = getActiveLawReview();
+    return review ? ensureLawReviewStudio(review) : null;
+  } else {
+    const room = getActiveRoom();
+    return room ? ensureRoomStudio(room) : null;
+  }
 }
 
 export function ensureLawReviewsState() {
@@ -601,6 +619,7 @@ function normalizeLawReview(review) {
     updatedAt: typeof review.updatedAt === "string" ? review.updatedAt : now
   };
   Object.assign(review, normalized);
+  ensureLawReviewStudio(review);
   return review;
 }
 

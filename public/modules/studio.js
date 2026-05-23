@@ -117,6 +117,17 @@ function setActiveTool(tool) {
 
 export function renderStudio() {
   if (!elements.studioPanel) return;
+  if (_activeTool === "document") {
+    renderDocumentStudio();
+    return;
+  }
+  if (_activeTool === "graph") {
+    showStudioGraphPanel().catch(() => {});
+    return;
+  }
+  if (_activeTool === "doctool") {
+    return;
+  }
   const room = getActiveRoom();
   const studio = ensureRoomStudio(room);
   const documents = getMindmapDocuments();
