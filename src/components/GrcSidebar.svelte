@@ -102,11 +102,20 @@
           hidden />
         <label for="policyFileInput" class="upload-label">
           {#if $grcStore.uploadingPolicy}
-            <span class="spinner"></span> 파싱 중...
+            <span class="spinner"></span> 문서 분석 중...
           {:else if $grcStore.policyDocName}
-            <span class="file-name">📄 {$grcStore.policyDocName}</span>
+            <span class="file-name">
+              <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+              </svg>
+              {$grcStore.policyDocName}
+            </span>
           {:else}
-            <span class="upload-icon">📁</span> 규정 파일 선택 (PDF, HWPX 등)
+            <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+            </svg>
+            규정 파일 선택 (PDF, HWPX 등)
           {/if}
         </label>
       </div>
@@ -141,11 +150,20 @@
         hidden />
       <label for="targetFileInput" class="upload-label">
         {#if $grcStore.uploadingTarget}
-          <span class="spinner"></span> 파싱 중...
+          <span class="spinner"></span> 문서 분석 중...
         {:else if $grcStore.targetDocName}
-          <span class="file-name">📄 {$grcStore.targetDocName}</span>
+          <span class="file-name">
+            <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+            </svg>
+            {$grcStore.targetDocName}
+          </span>
         {:else}
-          <span class="upload-icon">📎</span> 대상 파일 선택 (계약서, 기안 등)
+          <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          대상 파일 선택 (계약서, 기안 등)
         {/if}
       </label>
     </div>
@@ -160,12 +178,20 @@
       {#if $grcStore.analyzing}
         <span class="spinner"></span> 검토 진행 중...
       {:else}
-        🔍 규정 적합성 검토 실행
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
+          <path d="m20 20-3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+        </svg>
+        규정 적합성 검토 실행
       {/if}
     </button>
 
     <button type="button" class="ghost-button reset-grc-btn" on:click={resetGrc}>
-      ↺ 초기화
+      <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        <path d="M20 12a8 8 0 0 1-14 5.3L4 20v-6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      초기화
     </button>
   </div>
 
@@ -237,12 +263,34 @@
   }
 
   .upload-label {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     padding: 24px 10px;
     font-size: 12px;
     cursor: pointer;
     font-weight: 600;
     color: var(--muted);
+  }
+
+  .upload-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .file-icon {
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
+    margin-right: 4px;
+  }
+
+  .btn-icon {
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
+    margin-right: 4px;
   }
 
   .file-name {

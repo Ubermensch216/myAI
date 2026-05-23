@@ -8,6 +8,20 @@
   $: passCount = reviewResult?.results.filter((r) => r.status === '적합').length || 0;
   $: infoCount = reviewResult?.results.filter((r) => r.status === '확인 불가').length || 0;
 
+  function stripExt(name: string): string {
+    return (name || '').replace(/\.[^/.]+$/, '');
+  }
+
+  $: policyBaseName = (() => {
+    const s = $grcStore;
+    if (s.policyMode === 'notebook') {
+      const nb = s.notebooks.find((n) => n.id === s.selectedNotebookId);
+      return nb?.name || '검토 기준';
+    }
+    return stripExt(s.policyDocName) || '검토 기준';
+  })();
+  $: targetBaseName = stripExt($grcStore.targetDocName) || '대상 문서';
+
   function renderMarkdown(md: string): string {
     if (!md) return "";
     const lines = md.split(/\r?\n/);
@@ -175,8 +189,11 @@
   {#if $grcStore.analyzing}
     <div class="grc-loader">
       <div class="progress-spinner"></div>
-      <h3>사내 규정에 따른 계약 및 문서 검토를 실행하고 있습니다.</h3>
-      <p>규정 매핑, 조항 충돌 진단 및 종합 보고서를 구성 중입니다. 잠시만 기다려 주세요...</p>
+      <h3>
+        {policyBaseName}에 따른<br />
+        {targetBaseName} 검토를 실행하고 있습니다.
+      </h3>
+      <p>기준 매핑, 조항 충돌 진단 및 종합 보고서를 구성 중입니다.</p>
     </div>
   {:else if reviewResult}
     <div class="grc-tabs-header">
@@ -185,14 +202,20 @@
         class="grc-tab-btn"
         class:active={$grcStore.activeTab === 'dashboard'}
         on:click={() => setActiveTab('dashboard')}>
-        📊 검토 대시보드
+        <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        검토 대시보드
       </button>
       <button
         type="button"
         class="grc-tab-btn"
         class:active={$grcStore.activeTab === 'opinion'}
         on:click={() => setActiveTab('opinion')}>
-        📝 의견서 초안
+        <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 4l6 6L8 22H2v-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+        </svg>
+        의견서 초안
       </button>
     </div>
 
@@ -238,7 +261,12 @@
                 <p class="finding-desc"><strong>검토 의견:</strong> {item.reason}</p>
                 {#if item.status !== '적합'}
                   <div class="remediation-box">
-                    <strong>💡 권고 조치 사항:</strong>
+                    <strong>
+                      <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c1 1 1.5 1.5 1.5 3v.5h5v-.5c0-1.5.5-2 1.5-3A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                      </svg>
+                      권고 조치 사항:
+                    </strong>
                     <p>{item.remediation}</p>
                   </div>
                 {/if}
@@ -249,7 +277,13 @@
 
         {#if reviewResult.missingInformation && reviewResult.missingInformation.length > 0}
           <div class="grc-card missing-card">
-            <h4>⚠️ 추가 확인이 필요한 정보</h4>
+            <h4>
+              <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3 2 21h20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                <path d="M12 10v5M12 18v.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+              </svg>
+              추가 확인이 필요한 정보
+            </h4>
             <ul>
               {#each reviewResult.missingInformation as info}
                 <li>{info}</li>
@@ -260,9 +294,19 @@
       {:else}
         <div class="grc-card opinion-card">
           <div class="opinion-toolbar">
-            <h3>📄 준수 여부 의견 보고서 초안</h3>
+            <h3>
+              <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+              </svg>
+              준수 여부 의견 보고서 초안
+            </h3>
             <button type="button" class="send-button export-btn" on:click={sendToStudio}>
-              ✏️ 스튜디오 문서로 내보내기
+              <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 4h6v6M20 4l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+              스튜디오 문서로 내보내기
             </button>
           </div>
           <div class="opinion-text">{@html renderMarkdown(opinionMarkdown)}</div>
@@ -271,20 +315,39 @@
     </div>
   {:else}
     <div class="grc-empty-state">
-      <div class="empty-icon">🛡️</div>
-      <h3>사내 규정 적합성 검토(GRC)에 오신 것을 환영합니다.</h3>
-      <p>왼쪽 패널에서 기준이 되는 사내 규정 파일(혹은 부서 프로젝트)과 검토할 대상 문서를 지정해 검토를 수행해 주세요.</p>
+      <svg class="empty-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+        <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      <h3>내부 기준 적합성 검토(GRC)에 오신 것을 환영합니다.</h3>
+      <p>왼쪽 패널에서 기준이 되는 내부 기준 파일(혹은 부서 프로젝트)과 검토할 대상 문서를 지정해 검토를 수행해 주세요.</p>
       <div class="grc-features-list">
         <div class="feat-item">
-          <strong>🔒 강력한 데이터 격리</strong>
+          <strong>
+            <svg class="feat-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+            </svg>
+            강력한 데이터 격리
+          </strong>
           <span>로컬 시스템에서 동작하여 사내 대외비 조항이 클라우드로 나가지 않습니다.</span>
         </div>
         <div class="feat-item">
-          <strong>📊 시각 대시보드</strong>
-          <span>규정 적합 여부와 위험 조항을 통계 대시보드 형식으로 한눈에 파악합니다.</span>
+          <strong>
+            <svg class="feat-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            시각 대시보드
+          </strong>
+          <span>기준 적합 여부와 위험 조항을 통계 대시보드 형식으로 한눈에 파악합니다.</span>
         </div>
         <div class="feat-item">
-          <strong>✍️ 스튜디오 문서 편집기 연계</strong>
+          <strong>
+            <svg class="feat-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 4l6 6L8 22H2v-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+            </svg>
+            스튜디오 문서 편집기 연계
+          </strong>
           <span>완성된 의견서를 Document Studio로 내보내 즉시 편집 및 출력할 수 있습니다.</span>
         </div>
       </div>
@@ -296,13 +359,42 @@
   .grc-main {
     flex: 1;
     height: 100%;
-    overflow-y: auto;
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
     padding: 20px;
     background: var(--surface-3);
     display: flex;
     flex-direction: column;
     gap: 20px;
     box-sizing: border-box;
+  }
+
+  .tab-icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+    margin-right: 4px;
+  }
+
+  .inline-icon {
+    width: 14px;
+    height: 14px;
+    vertical-align: -2px;
+    margin-right: 4px;
+  }
+
+  .empty-icon-svg {
+    width: 64px;
+    height: 64px;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+
+  .feat-icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+    margin-right: 6px;
   }
 
   .grc-loader {
