@@ -3621,25 +3621,19 @@ body.panel-resizing .panel-resizer::after {
 }
 
 /*
- * Docs / Custom-prompts tabs: make the panel a single fill-height column so
- * the inner editor scrolls on its own. Without this, the inner layout's height
- * exceeds the dialog and we get an outer form scrollbar stacked next to the
- * editor's own scrollbar.
+ * Docs tab scrolls its stacked sub-sections vertically. Custom Prompts tab uses
+ * an internal sidebar+editor layout, so its mount fills the panel and the editor
+ * handles its own scrolling.
  */
-#settingsPanelDocs,
+#settingsPanelDocs {
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
 #settingsPanelCustomPrompts {
   overflow: hidden;
 }
 
-#settingsPanelDocs > .field-section,
-#settingsPanelCustomPrompts > .field-section {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-#settingsPanelDocs .settings-document-templates-mount,
 #settingsPanelCustomPrompts .settings-document-templates-mount {
   flex: 1;
   min-height: 0;
