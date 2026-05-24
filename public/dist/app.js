@@ -42,8 +42,133 @@ const ROOM_FILE_SVG = {
   paperclip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"></path></svg>',
   notebook: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"></path><path d="M5 17a3 3 0 0 1 3-3h11"></path></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3l7 7-4 1-4 4-1 5-3-3-5 5 5-5-3-3 5-1 4-4z"></path></svg>',
-  pinFilled: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="currentColor"><path d="M14 3l7 7-4 1-4 4-1 5-3-3-5 5 5-5-3-3 5-1 4-4z"></path></svg>'
+  pinFilled: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" stroke="currentColor"><path d="M14 3l7 7-4 1-4 4-1 5-3-3-5 5 5-5-3-3 5-1 4-4z"></path></svg>',
+  kebab: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="12" cy="5" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="12" cy="19" r="1.7"></circle></svg>',
+  menuPin: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3l7 7-4 1-4 4-1 5-3-3-5 5 5-5-3-3 5-1 4-4z"></path></svg>',
+  menuRename: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M14.5 4.5l5 5L8 21H3v-5z"></path></svg>',
+  menuDelete: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M10 11v6M14 11v6"></path><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"></path><path d="M9 7V4h6v3"></path></svg>'
 };
+
+function closeAllRoomKebabMenus() {
+  document.querySelectorAll(".room-kebab-menu").forEach((menu) => menu.remove());
+  document.querySelectorAll(".room-kebab.open").forEach((btn) => btn.classList.remove("open"));
+}
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".room-kebab") && !event.target.closest(".room-kebab-menu")) {
+    closeAllRoomKebabMenus();
+  }
+});
+window.addEventListener("resize", closeAllRoomKebabMenus);
+window.addEventListener("scroll", closeAllRoomKebabMenus, true);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeAllRoomKebabMenus();
+});
+
+function createRoomKebabMenu({ isPinned, onPin, onRename, onDelete, ariaLabel = "항목 메뉴" }) {
+  const button = document.createElement("span");
+  button.className = "room-kebab";
+  button.setAttribute("role", "button");
+  button.setAttribute("tabindex", "0");
+  button.setAttribute("aria-label", ariaLabel);
+  button.title = ariaLabel;
+  button.innerHTML = ROOM_FILE_SVG.kebab;
+
+  const buildMenuItem = (label, iconHtml, handler, opts = {}) => {
+    const itemBtn = document.createElement("button");
+    itemBtn.type = "button";
+    itemBtn.className = "room-kebab-menu-item" + (opts.danger ? " danger" : "");
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "room-kebab-menu-icon";
+    iconSpan.innerHTML = iconHtml;
+    const textSpan = document.createElement("span");
+    textSpan.textContent = label;
+    itemBtn.append(iconSpan, textSpan);
+    itemBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      closeAllRoomKebabMenus();
+      handler();
+    });
+    return itemBtn;
+  };
+
+  const openMenu = (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const wasOpen = button.classList.contains("open");
+    closeAllRoomKebabMenus();
+    if (wasOpen) return;
+    button.classList.add("open");
+
+    const menu = document.createElement("div");
+    menu.className = "room-kebab-menu";
+    menu.addEventListener("click", (e) => e.stopPropagation());
+
+    menu.append(buildMenuItem(isPinned ? "고정 해제" : "고정", ROOM_FILE_SVG.menuPin, onPin));
+    menu.append(buildMenuItem("이름 변경", ROOM_FILE_SVG.menuRename, onRename));
+
+    const sep = document.createElement("div");
+    sep.className = "room-kebab-menu-sep";
+    menu.append(sep);
+
+    menu.append(buildMenuItem("삭제", ROOM_FILE_SVG.menuDelete, onDelete, { danger: true }));
+
+    document.body.append(menu);
+    const rect = button.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    let top = rect.bottom + 4;
+    if (top + menuHeight > window.innerHeight - 8) top = Math.max(8, rect.top - menuHeight - 4);
+    let left = rect.right - menuWidth;
+    if (left < 8) left = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+  };
+
+  button.addEventListener("click", openMenu);
+  button.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") openMenu(event);
+  });
+
+  return button;
+}
+
+function startInlineRename(itemEl, titleEl, currentTitle, onCommit) {
+  if (!itemEl || !titleEl) return;
+  if (itemEl.querySelector(".room-rename-input")) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "room-rename-input";
+  input.value = currentTitle || "";
+  input.setAttribute("aria-label", "이름 변경");
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+  input.addEventListener("keydown", (e) => e.stopPropagation());
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let finished = false;
+  const finish = (commit) => {
+    if (finished) return;
+    finished = true;
+    if (commit) {
+      const next = input.value.trim();
+      if (next && next !== currentTitle) onCommit(next);
+    }
+    if (typeof window !== "undefined") {
+      // Re-render owner is responsible for replacing the input; if it's still in DOM, restore titleEl.
+      if (input.isConnected) input.replaceWith(titleEl);
+    }
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+}
 
 // ===== Boot =====
 
@@ -333,6 +458,16 @@ function renderRooms() {
     const indicators = document.createElement("span");
     indicators.className = "room-status-indicators";
 
+    if (isPinned) {
+      const pinInd = document.createElement("span");
+      pinInd.className = "room-status-indicator room-pin-indicator";
+      pinInd.title = "고정됨";
+      pinInd.setAttribute("role", "img");
+      pinInd.setAttribute("aria-label", "고정됨");
+      pinInd.innerHTML = ROOM_FILE_SVG.pinFilled;
+      indicators.append(pinInd);
+    }
+
     const attachmentIndicator = document.createElement("span");
     attachmentIndicator.className = "room-status-indicator room-attachment-indicator";
     attachmentIndicator.title = "첨부 있음";
@@ -354,33 +489,27 @@ function renderRooms() {
     }
     indicators.hidden = !indicators.childElementCount;
 
-    const pinButton = document.createElement("span");
-    pinButton.className = "room-pin";
-    pinButton.setAttribute("role", "button");
-    pinButton.setAttribute("tabindex", "0");
-    pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
-    pinButton.title = isPinned ? "고정 해제" : "고정";
-    pinButton.innerHTML = isPinned ? ROOM_FILE_SVG.pinFilled : ROOM_FILE_SVG.pin;
-    const togglePin = (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      room.pinnedAt = room.pinnedAt ? null : new Date().toISOString();
-      scheduleSave();
-      renderRooms();
-    };
-    pinButton.addEventListener("click", togglePin);
-    pinButton.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        togglePin(event);
-      }
+    const kebab = createRoomKebabMenu({
+      isPinned,
+      ariaLabel: "대화방 메뉴",
+      onPin: () => {
+        room.pinnedAt = room.pinnedAt ? null : new Date().toISOString();
+        scheduleSave();
+        renderRooms();
+      },
+      onRename: () => {
+        startInlineRename(item, title, room.title, (next) => {
+          room.title = next;
+          room.updatedAt = new Date().toISOString();
+          scheduleSave();
+          renderRooms();
+          renderHeader();
+        });
+      },
+      onDelete: () => { deleteRoom(room.id); }
     });
 
-    const deleteButton = document.createElement("span");
-    deleteButton.className = "room-delete";
-    deleteButton.title = "대화방 삭제";
-    deleteButton.textContent = "×";
-    deleteButton.addEventListener("click", async (event) => { event.stopPropagation(); await deleteRoom(room.id); });
-    item.append(title, indicators, pinButton, deleteButton);
+    item.append(title, indicators, kebab);
     elements.roomList.append(item);
   }
 }
@@ -453,41 +582,35 @@ function renderLawReviews() {
     title.className = "room-item-title";
     title.textContent = review.title || "새 법령검토";
 
-    const meta = document.createElement("span");
-    meta.className = "law-review-item-meta";
-    meta.textContent = formatLawReviewDate(review.updatedAt || review.createdAt);
+    const pinIndicator = document.createElement("span");
+    pinIndicator.className = "room-pin-indicator";
+    pinIndicator.setAttribute("role", "img");
+    pinIndicator.setAttribute("aria-label", "고정됨");
+    pinIndicator.title = "고정됨";
+    pinIndicator.innerHTML = ROOM_FILE_SVG.pinFilled;
+    pinIndicator.hidden = !isPinned;
 
-    const pinButton = document.createElement("span");
-    pinButton.className = "room-pin";
-    pinButton.setAttribute("role", "button");
-    pinButton.setAttribute("tabindex", "0");
-    pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
-    pinButton.title = isPinned ? "고정 해제" : "고정";
-    pinButton.innerHTML = isPinned ? ROOM_FILE_SVG.pinFilled : ROOM_FILE_SVG.pin;
-    const togglePin = (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      review.pinnedAt = review.pinnedAt ? null : new Date().toISOString();
-      scheduleSave();
-      renderLawReviews();
-    };
-    pinButton.addEventListener("click", togglePin);
-    pinButton.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        togglePin(event);
-      }
+    const kebab = createRoomKebabMenu({
+      isPinned,
+      ariaLabel: "법령검토 메뉴",
+      onPin: () => {
+        review.pinnedAt = review.pinnedAt ? null : new Date().toISOString();
+        review.updatedAt = new Date().toISOString();
+        scheduleSave();
+        renderLawReviews();
+      },
+      onRename: () => {
+        startInlineRename(item, title, review.title, (next) => {
+          review.title = next;
+          review.updatedAt = new Date().toISOString();
+          scheduleSave();
+          renderLawReviews();
+        });
+      },
+      onDelete: () => { deleteLawReview(review.id); }
     });
 
-    const deleteButton = document.createElement("span");
-    deleteButton.className = "room-delete";
-    deleteButton.title = "법령검토 삭제";
-    deleteButton.textContent = "×";
-    deleteButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await deleteLawReview(review.id);
-    });
-
-    item.append(title, meta, pinButton, deleteButton);
+    item.append(title, pinIndicator, kebab);
     elements.lawReviewList.append(item);
   }
 }
@@ -525,39 +648,35 @@ function renderGrcReviews() {
     title.className = "room-item-title";
     title.textContent = review.title || "새 내부검토";
 
-    const meta = document.createElement("span");
-    meta.className = "law-review-item-meta";
-    meta.textContent = formatLawReviewDate(review.updatedAt || review.createdAt);
+    const pinIndicator = document.createElement("span");
+    pinIndicator.className = "room-pin-indicator";
+    pinIndicator.setAttribute("role", "img");
+    pinIndicator.setAttribute("aria-label", "고정됨");
+    pinIndicator.title = "고정됨";
+    pinIndicator.innerHTML = ROOM_FILE_SVG.pinFilled;
+    pinIndicator.hidden = !isPinned;
 
-    const pinButton = document.createElement("span");
-    pinButton.className = "room-pin";
-    pinButton.setAttribute("role", "button");
-    pinButton.setAttribute("tabindex", "0");
-    pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
-    pinButton.title = isPinned ? "고정 해제" : "고정";
-    pinButton.innerHTML = isPinned ? ROOM_FILE_SVG.pinFilled : ROOM_FILE_SVG.pin;
-    const togglePin = (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      review.pinnedAt = review.pinnedAt ? null : new Date().toISOString();
-      scheduleSave();
-      renderGrcReviews();
-    };
-    pinButton.addEventListener("click", togglePin);
-    pinButton.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") togglePin(event);
+    const kebab = createRoomKebabMenu({
+      isPinned,
+      ariaLabel: "내부검토 메뉴",
+      onPin: () => {
+        review.pinnedAt = review.pinnedAt ? null : new Date().toISOString();
+        review.updatedAt = new Date().toISOString();
+        scheduleSave();
+        renderGrcReviews();
+      },
+      onRename: () => {
+        startInlineRename(item, title, review.title, (next) => {
+          review.title = next;
+          review.updatedAt = new Date().toISOString();
+          scheduleSave();
+          renderGrcReviews();
+        });
+      },
+      onDelete: () => { deleteGrcReview(review.id); }
     });
 
-    const deleteButton = document.createElement("span");
-    deleteButton.className = "room-delete";
-    deleteButton.title = "내부검토 삭제";
-    deleteButton.textContent = "×";
-    deleteButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await deleteGrcReview(review.id);
-    });
-
-    item.append(title, meta, pinButton, deleteButton);
+    item.append(title, pinIndicator, kebab);
     elements.grcReviewList.append(item);
   }
 }

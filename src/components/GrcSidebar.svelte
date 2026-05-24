@@ -66,127 +66,138 @@
 </script>
 
 <div class="grc-sidebar-inner">
-  <div class="workflow-step">
-    <header class="step-header">
-      <span class="step-index">1</span>
-      <div>
-        <h3>검토 기준</h3>
-        <p>내부 규정 파일 또는 부서 프로젝트를 기준으로 사용합니다.</p>
-      </div>
-    </header>
+  <div class="workflow-grid">
+    <section class="workflow-step">
+      <header class="step-header">
+        <h3><span class="step-prefix">1.</span> 검토 기준</h3>
+        <div class="step-tabs" role="tablist" aria-label="검토 기준 선택 방식">
+          <button
+            type="button"
+            role="tab"
+            class="step-tab"
+            class:active={$grcStore.policyMode === 'upload'}
+            aria-selected={$grcStore.policyMode === 'upload'}
+            on:click={() => setPolicyMode('upload')}>
+            직접 업로드
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="step-tab"
+            class:active={$grcStore.policyMode === 'notebook'}
+            aria-selected={$grcStore.policyMode === 'notebook'}
+            on:click={() => setPolicyMode('notebook')}>
+            프로젝트 지정
+          </button>
+        </div>
+      </header>
+      <p class="step-desc">내부 규정 파일 또는 부서 프로젝트를 기준으로 사용합니다.</p>
 
-    <div class="toggle-group" aria-label="검토 기준 선택 방식">
-      <button
-        type="button"
-        class="toggle-btn"
-        class:active={$grcStore.policyMode === 'upload'}
-        on:click={() => setPolicyMode('upload')}>
-        직접 업로드
-      </button>
-      <button
-        type="button"
-        class="toggle-btn"
-        class:active={$grcStore.policyMode === 'notebook'}
-        on:click={() => setPolicyMode('notebook')}>
-        프로젝트 지정
-      </button>
-    </div>
+      {#if $grcStore.policyMode === 'upload'}
+        <div
+          class="upload-zone"
+          role="region"
+          aria-label="규정 파일 업로드 영역"
+          class:dragover={isDragOverPolicy}
+          on:dragover={onDragOverPolicy}
+          on:dragleave={onDragLeavePolicy}
+          on:drop={onDropPolicy}>
+          <input
+            type="file"
+            id="policyFileInput"
+            accept=".pdf,.docx,.xlsx,.txt,.hwp,.hwpx,.md"
+            on:change={onPolicyFileChange}
+            hidden />
+          <label for="policyFileInput" class="upload-label">
+            {#if $grcStore.uploadingPolicy}
+              <span class="spinner"></span>
+              <span>문서 분석 중</span>
+            {:else if $grcStore.policyDocName}
+              <span class="file-name">
+                <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                  <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+                </svg>
+                {$grcStore.policyDocName}
+              </span>
+            {:else}
+              <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              </svg>
+              <span>규정 파일 선택</span>
+            {/if}
+          </label>
+        </div>
+      {:else}
+        <select
+          class="text-input select-input"
+          value={$grcStore.selectedNotebookId}
+          aria-label="부서 프로젝트 선택"
+          on:change={onNotebookChange}>
+          <option value="">부서 프로젝트 선택</option>
+          {#each $grcStore.notebooks as nb}
+            <option value={nb.id}>{nb.name}</option>
+          {/each}
+        </select>
+      {/if}
+    </section>
 
-    {#if $grcStore.policyMode === 'upload'}
+    <section class="workflow-step">
+      <header class="step-header">
+        <h3><span class="step-prefix">2.</span> 검토 대상 문서</h3>
+      </header>
+      <p class="step-desc">계약서, 업무위탁계약서, 계획서 등 검토할 문서를 올립니다.</p>
+
       <div
-        class="upload-zone"
+        class="upload-zone target"
         role="region"
-        aria-label="규정 파일 업로드 영역"
-        class:dragover={isDragOverPolicy}
-        on:dragover={onDragOverPolicy}
-        on:dragleave={onDragLeavePolicy}
-        on:drop={onDropPolicy}>
+        aria-label="검토 대상 문서 업로드 영역"
+        class:dragover={isDragOverTarget}
+        on:dragover={onDragOverTarget}
+        on:dragleave={onDragLeaveTarget}
+        on:drop={onDropTarget}>
         <input
           type="file"
-          id="policyFileInput"
+          id="targetFileInput"
           accept=".pdf,.docx,.xlsx,.txt,.hwp,.hwpx,.md"
-          on:change={onPolicyFileChange}
+          on:change={onTargetFileChange}
           hidden />
-        <label for="policyFileInput" class="upload-label">
-          {#if $grcStore.uploadingPolicy}
+        <label for="targetFileInput" class="upload-label">
+          {#if $grcStore.uploadingTarget}
             <span class="spinner"></span>
             <span>문서 분석 중</span>
-          {:else if $grcStore.policyDocName}
+          {:else if $grcStore.targetDocName}
             <span class="file-name">
               <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
                 <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
               </svg>
-              {$grcStore.policyDocName}
+              {$grcStore.targetDocName}
             </span>
           {:else}
             <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
-            <span>규정 파일 선택</span>
+            <span>대상 파일 선택</span>
           {/if}
         </label>
       </div>
-    {:else}
-      <select
-        class="text-input select-input"
-        value={$grcStore.selectedNotebookId}
-        aria-label="부서 프로젝트 선택"
-        on:change={onNotebookChange}>
-        <option value="">부서 프로젝트 선택</option>
-        {#each $grcStore.notebooks as nb}
-          <option value={nb.id}>{nb.name}</option>
-        {/each}
-      </select>
-    {/if}
-  </div>
-
-  <div class="workflow-step">
-    <header class="step-header">
-      <span class="step-index">2</span>
-      <div>
-        <h3>검토 대상 문서</h3>
-        <p>계약서, 업무위탁계약서, 계획서 등 검토할 문서를 올립니다.</p>
-      </div>
-    </header>
-
-    <div
-      class="upload-zone target"
-      role="region"
-      aria-label="검토 대상 문서 업로드 영역"
-      class:dragover={isDragOverTarget}
-      on:dragover={onDragOverTarget}
-      on:dragleave={onDragLeaveTarget}
-      on:drop={onDropTarget}>
-      <input
-        type="file"
-        id="targetFileInput"
-        accept=".pdf,.docx,.xlsx,.txt,.hwp,.hwpx,.md"
-        on:change={onTargetFileChange}
-        hidden />
-      <label for="targetFileInput" class="upload-label">
-        {#if $grcStore.uploadingTarget}
-          <span class="spinner"></span>
-          <span>문서 분석 중</span>
-        {:else if $grcStore.targetDocName}
-          <span class="file-name">
-            <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-              <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
-            </svg>
-            {$grcStore.targetDocName}
-          </span>
-        {:else}
-          <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-          </svg>
-          <span>대상 파일 선택</span>
-        {/if}
-      </label>
-    </div>
+    </section>
   </div>
 
   <div class="workflow-actions">
+    <button
+      type="button"
+      class="ghost-button reset-grc-btn"
+      disabled={$grcStore.analyzing}
+      on:click={resetGrc}>
+      <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        <path d="M20 12a8 8 0 0 1-14 5.3L4 20v-6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      초기화
+    </button>
+
     <button
       type="button"
       class="send-button run-grc-btn"
@@ -202,18 +213,6 @@
         검토
       {/if}
     </button>
-
-    <button
-      type="button"
-      class="ghost-button reset-grc-btn"
-      disabled={$grcStore.analyzing}
-      on:click={resetGrc}>
-      <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-        <path d="M20 12a8 8 0 0 1-14 5.3L4 20v-6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-      </svg>
-      초기화
-    </button>
   </div>
 
   {#if $grcStore.errorMessage}
@@ -223,47 +222,36 @@
 
 <style>
   .grc-sidebar-inner {
-    display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) minmax(180px, 220px);
-    gap: 16px;
-    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     width: 100%;
     box-sizing: border-box;
     padding-bottom: 14px;
     border-bottom: 1px solid var(--line);
   }
 
-  .workflow-step,
-  .workflow-actions {
-    min-width: 0;
-    box-sizing: border-box;
+  .workflow-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: stretch;
   }
 
   .workflow-step {
+    min-width: 0;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   .step-header {
-    display: grid;
-    grid-template-columns: 24px minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     min-width: 0;
-  }
-
-  .step-index {
-    display: inline-grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1;
   }
 
   .step-header h3 {
@@ -272,52 +260,64 @@
     font-size: 13px;
     font-weight: 800;
     line-height: 1.25;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .step-header p {
-    margin: 4px 0 0;
+  .step-prefix {
+    color: var(--muted);
+    font-weight: 700;
+    margin-right: 2px;
+  }
+
+  .step-desc {
+    margin: 0;
     color: var(--muted);
     font-size: 11px;
     line-height: 1.45;
   }
 
-  .toggle-group {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .step-tabs {
+    display: inline-flex;
+    flex: 0 0 auto;
     border: 1px solid var(--line);
-    border-radius: 7px;
+    border-radius: 6px;
     overflow: hidden;
-    min-height: 32px;
+    background: var(--surface-2);
   }
 
-  .toggle-btn {
+  .step-tab {
     min-width: 0;
     border: 0;
-    background: var(--surface-2);
+    background: transparent;
     color: var(--muted);
     font-size: 11px;
-    padding: 8px 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    line-height: 1.4;
     cursor: pointer;
-    font-weight: 800;
     transition: background 0.12s, color 0.12s;
   }
 
-  .toggle-btn + .toggle-btn {
+  .step-tab + .step-tab {
     border-left: 1px solid var(--line);
   }
 
-  .toggle-btn.active {
-    background: var(--accent);
-    color: #fff;
+  .step-tab.active {
+    background: var(--surface);
+    color: var(--accent-dark);
   }
 
   .upload-zone {
-    min-height: 66px;
+    min-height: 64px;
     border: 1px dashed color-mix(in srgb, var(--accent) 48%, var(--line));
     border-radius: 8px;
     background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
+    display: flex;
   }
 
   .upload-zone.target {
@@ -331,6 +331,7 @@
   }
 
   .upload-label {
+    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -375,26 +376,27 @@
 
   .select-input {
     width: 100%;
-    min-height: 38px;
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    background: var(--surface);
+    min-height: 64px;
+    border: 1px dashed color-mix(in srgb, var(--accent) 48%, var(--line));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
     color: var(--ink);
     font-size: 12px;
+    padding: 8px 12px;
+    box-sizing: border-box;
   }
 
   .workflow-actions {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
-    justify-content: center;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
   }
 
   .run-grc-btn,
   .reset-grc-btn {
-    width: 50%;
-    align-self: center;
-    min-height: 42px;
+    min-height: 36px;
+    padding: 8px 18px;
     border-radius: 7px;
     font-size: 12px;
     font-weight: 800;
@@ -404,8 +406,18 @@
     gap: 6px;
   }
 
+  .reset-grc-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+
+  .reset-grc-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent-dark);
+  }
+
   .grc-error {
-    grid-column: 1 / -1;
     background: color-mix(in srgb, var(--danger) 8%, var(--surface));
     border: 1px solid var(--danger);
     color: var(--danger);
@@ -433,14 +445,13 @@
     100% { transform: rotate(360deg); }
   }
 
-  @media (max-width: 1080px) {
-    .grc-sidebar-inner {
+  @media (max-width: 720px) {
+    .workflow-grid {
       grid-template-columns: 1fr;
     }
 
-    .workflow-actions {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(120px, 180px);
+    .step-header {
+      flex-wrap: wrap;
     }
   }
 </style>
