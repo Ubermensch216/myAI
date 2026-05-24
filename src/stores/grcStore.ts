@@ -390,7 +390,7 @@ export function getGrcOpinionMarkdown(result: GrcReviewResult | null): string {
 
   return [
     '## 1. 검토 목적',
-    '본 의견서는 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.',
+    '본 의견서 초안은 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.',
     '',
     '## 2. 종합 의견',
     result.summary || '검토 결과 요약이 충분히 생성되지 않았습니다.',
