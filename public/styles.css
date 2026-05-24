@@ -4699,16 +4699,53 @@ body.panel-resizing .panel-resizer::after {
   min-height: 0;
 }
 
-.studio-document-header {
+.studio-document-tabpanels {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 12px;
+  gap: 10px;
+}
+
+.studio-document-editor-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.studio-document-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 18px;
 }
 
 .studio-document-title {
   width: 100%;
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin-bottom: 4px;
+  outline: none;
+}
+
+.studio-document-title:focus {
+  border-bottom: 1.5px solid var(--accent);
+  margin-bottom: 2.5px; /* offset border-bottom width to prevent layout shift */
 }
 
 .studio-document-header-row {
@@ -5108,6 +5145,13 @@ body.panel-resizing .panel-resizer::after {
   padding: 10px;
 }
 
+.studio-document-tabpanels .studio-document-library {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+}
+
 .studio-document-library .studio-output-list {
   gap: 8px;
 }
@@ -5134,14 +5178,13 @@ body.panel-resizing .panel-resizer::after {
 .studio-document-visual {
   display: flex;
   flex: 1 1 auto;
-  min-height: 320px;
+  min-height: 0;
   flex-direction: column;
   gap: 8px;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 10px 12px;
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .studio-document-visual-block {

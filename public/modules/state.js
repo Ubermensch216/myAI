@@ -474,6 +474,7 @@ export const elements = {
   studioDocumentPanel: document.querySelector("#studioDocumentPanel"),
   studioDocumentEmpty: document.querySelector("#studioDocumentEmpty"),
   studioDocumentEditor: document.querySelector("#studioDocumentEditor"),
+  studioDocumentEditorView: document.querySelector("#studioDocumentEditorView"),
   studioDocumentTitle: document.querySelector("#studioDocumentTitle"),
   studioDocumentType: document.querySelector("#studioDocumentType"),
   studioDocumentStyle: document.querySelector("#studioDocumentStyle"),

@@ -207,7 +207,7 @@ function renderEditorMode(doc) {
   const mode = getDocumentEditorMode(doc);
   const visualActive = mode === "visual";
   const libraryActive = mode === "library";
-  if (elements.studioDocumentVisual) elements.studioDocumentVisual.hidden = !visualActive;
+  if (elements.studioDocumentEditorView) elements.studioDocumentEditorView.hidden = !visualActive;
   if (elements.studioOutputLibrary) elements.studioOutputLibrary.hidden = !libraryActive;
   updateModeButton(elements.studioDocumentVisualModeButton, visualActive);
   updateModeButton(elements.studioDocumentLibraryModeButton, libraryActive);
