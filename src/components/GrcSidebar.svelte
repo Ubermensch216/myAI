@@ -70,11 +70,15 @@
     <section class="workflow-step">
       <header class="step-header">
         <h3><span class="step-prefix">1.</span> 검토 기준</h3>
-        <div class="step-tabs" role="tablist" aria-label="검토 기준 선택 방식">
+      </header>
+      <p class="step-desc">내부 규정 파일 또는 부서 프로젝트를 기준으로 사용합니다.</p>
+
+      <div class="policy-zone" class:dragover={isDragOverPolicy && $grcStore.policyMode === 'upload'}>
+        <div class="policy-tabs" role="tablist" aria-label="검토 기준 선택 방식">
           <button
             type="button"
             role="tab"
-            class="step-tab"
+            class="policy-tab"
             class:active={$grcStore.policyMode === 'upload'}
             aria-selected={$grcStore.policyMode === 'upload'}
             on:click={() => setPolicyMode('upload')}>
@@ -83,63 +87,63 @@
           <button
             type="button"
             role="tab"
-            class="step-tab"
+            class="policy-tab"
             class:active={$grcStore.policyMode === 'notebook'}
             aria-selected={$grcStore.policyMode === 'notebook'}
             on:click={() => setPolicyMode('notebook')}>
             프로젝트 지정
           </button>
         </div>
-      </header>
-      <p class="step-desc">내부 규정 파일 또는 부서 프로젝트를 기준으로 사용합니다.</p>
 
-      {#if $grcStore.policyMode === 'upload'}
-        <div
-          class="upload-zone"
-          role="region"
-          aria-label="규정 파일 업로드 영역"
-          class:dragover={isDragOverPolicy}
-          on:dragover={onDragOverPolicy}
-          on:dragleave={onDragLeavePolicy}
-          on:drop={onDropPolicy}>
-          <input
-            type="file"
-            id="policyFileInput"
-            accept=".pdf,.docx,.xlsx,.txt,.hwp,.hwpx,.md"
-            on:change={onPolicyFileChange}
-            hidden />
-          <label for="policyFileInput" class="upload-label">
-            {#if $grcStore.uploadingPolicy}
-              <span class="spinner"></span>
-              <span>문서 분석 중</span>
-            {:else if $grcStore.policyDocName}
-              <span class="file-name">
-                <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-                  <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
-                </svg>
-                {$grcStore.policyDocName}
-              </span>
-            {:else}
-              <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-              </svg>
-              <span>규정 파일 선택</span>
-            {/if}
-          </label>
+        <div class="policy-content">
+          {#if $grcStore.policyMode === 'upload'}
+            <div
+              class="upload-zone policy-upload"
+              role="region"
+              aria-label="규정 파일 업로드 영역"
+              on:dragover={onDragOverPolicy}
+              on:dragleave={onDragLeavePolicy}
+              on:drop={onDropPolicy}>
+              <input
+                type="file"
+                id="policyFileInput"
+                accept=".pdf,.docx,.xlsx,.txt,.hwp,.hwpx,.md"
+                on:change={onPolicyFileChange}
+                hidden />
+              <label for="policyFileInput" class="upload-label">
+                {#if $grcStore.uploadingPolicy}
+                  <span class="spinner"></span>
+                  <span>문서 분석 중</span>
+                {:else if $grcStore.policyDocName}
+                  <span class="file-name">
+                    <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                      <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+                    </svg>
+                    {$grcStore.policyDocName}
+                  </span>
+                {:else}
+                  <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                  </svg>
+                  <span>규정 파일 선택</span>
+                {/if}
+              </label>
+            </div>
+          {:else}
+            <select
+              class="text-input select-input"
+              value={$grcStore.selectedNotebookId}
+              aria-label="부서 프로젝트 선택"
+              on:change={onNotebookChange}>
+              <option value="">부서 프로젝트 선택</option>
+              {#each $grcStore.notebooks as nb}
+                <option value={nb.id}>{nb.name}</option>
+              {/each}
+            </select>
+          {/if}
         </div>
-      {:else}
-        <select
-          class="text-input select-input"
-          value={$grcStore.selectedNotebookId}
-          aria-label="부서 프로젝트 선택"
-          on:change={onNotebookChange}>
-          <option value="">부서 프로젝트 선택</option>
-          {#each $grcStore.notebooks as nb}
-            <option value={nb.id}>{nb.name}</option>
-          {/each}
-        </select>
-      {/if}
+      </div>
     </section>
 
     <section class="workflow-step">
@@ -279,35 +283,72 @@
     line-height: 1.45;
   }
 
-  .step-tabs {
-    display: inline-flex;
-    flex: 0 0 auto;
-    border: 1px solid var(--line);
-    border-radius: 6px;
+  .policy-zone {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: stretch;
+    min-height: 64px;
+    border: 1px dashed color-mix(in srgb, var(--accent) 48%, var(--line));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
     overflow: hidden;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .policy-zone.dragover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 9%, var(--surface-2));
+  }
+
+  .policy-tabs {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
     background: var(--surface-2);
   }
 
-  .step-tab {
+  .policy-tab {
+    flex: 1;
     min-width: 0;
     border: 0;
     background: transparent;
     color: var(--muted);
     font-size: 11px;
     font-weight: 700;
-    padding: 4px 10px;
-    line-height: 1.4;
+    padding: 8px 12px;
+    line-height: 1.35;
     cursor: pointer;
+    white-space: nowrap;
     transition: background 0.12s, color 0.12s;
   }
 
-  .step-tab + .step-tab {
-    border-left: 1px solid var(--line);
+  .policy-tab + .policy-tab {
+    border-top: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
   }
 
-  .step-tab.active {
+  .policy-tab.active {
     background: var(--surface);
     color: var(--accent-dark);
+  }
+
+  .policy-content {
+    display: flex;
+    min-width: 0;
+  }
+
+  .policy-upload {
+    flex: 1;
+    border: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    min-height: 62px;
+  }
+
+  .policy-content .select-input {
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+    min-height: 62px;
   }
 
   .upload-zone {
