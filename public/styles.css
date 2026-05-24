@@ -238,18 +238,22 @@ body.panel-resizing .panel-resizer::after {
 
 .room-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 2px;
   align-items: center;
   width: 100%;
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 8px 4px 8px 10px;
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
   text-align: left;
+}
+
+.room-item > .room-item-title {
+  margin-right: 6px;
 }
 
 .room-item.active {
