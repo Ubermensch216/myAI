@@ -695,7 +695,7 @@
           <div id="studioDocumentPanel" class="studio-tool-panel studio-document-panel" data-tool-panel="document">
             <div id="studioDocumentEmpty" class="studio-document-empty">
               <p>채팅 답변 옆의 "스튜디오&gt;문서" 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.</p>
-              <button id="studioSourceGuideEmptyButton" class="ghost-button" type="button">소스 가이드 생성</button>
+              <button id="studioSourceGuideEmptyButton" class="ghost-button" type="button">자료 브리핑 받기</button>
               <section id="studioOutputLibraryEmpty" class="studio-output-library" aria-label="Studio 산출물 라이브러리"></section>
             </div>
             <div id="studioDocumentEditor" class="studio-document-editor" hidden>
@@ -724,7 +724,7 @@
                       <path d="M3 20v-4h4"/>
                     </svg>
                   </button>
-                  <button id="studioSourceGuideButton" class="icon-button studio-doc-icon-btn" type="button" title="소스 가이드 생성" aria-label="소스 가이드 생성">
+                  <button id="studioSourceGuideButton" class="icon-button studio-doc-icon-btn" type="button" title="자료 브리핑 받기" aria-label="자료 브리핑 받기">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M4 5h10a4 4 0 0 1 4 4v10H8a4 4 0 0 1-4-4z"/>
                       <path d="M8 9h6M8 13h5"/>
@@ -767,7 +767,6 @@
 
               <div class="studio-document-modebar" role="group" aria-label="문서 편집 모드">
                 <button id="studioDocumentVisualModeButton" class="studio-document-mode-button" type="button" data-doc-mode="visual">문서 편집</button>
-                <button id="studioDocumentRawModeButton" class="studio-document-mode-button" type="button" data-doc-mode="raw">원문 보기</button>
                 <button id="studioDocumentLibraryModeButton" class="studio-document-mode-button" type="button" data-doc-mode="library">산출물</button>
               </div>
 
@@ -775,28 +774,6 @@
 
               <div id="studioDocumentVisual" class="studio-document-visual" aria-label="문서 편집"></div>
 
-              <div id="studioDocumentRaw" class="studio-document-raw" hidden>
-                <div id="studioDocumentToolbar" class="studio-document-edit-toolbar" role="toolbar" aria-label="문서 편집 도구">
-                  <button type="button" data-md-action="h1" title="제목 1 (H1)"><strong>H1</strong></button>
-                  <button type="button" data-md-action="h2" title="제목 2 (H2)"><strong>H2</strong></button>
-                  <button type="button" data-md-action="h3" title="제목 3 (H3)"><strong>H3</strong></button>
-                  <span class="studio-document-toolbar-sep"></span>
-                  <button type="button" data-md-action="bold" title="굵게 (Ctrl+B)"><strong>B</strong></button>
-                  <button type="button" data-md-action="italic" title="기울임 (Ctrl+I)"><em>I</em></button>
-                  <button type="button" data-md-action="code" title="인라인 코드"><code>{}</code></button>
-                  <span class="studio-document-toolbar-sep"></span>
-                  <button type="button" data-md-action="ul" title="글머리 목록">• 목록</button>
-                  <button type="button" data-md-action="ol" title="번호 목록">1. 목록</button>
-                  <button type="button" data-md-action="check" title="체크리스트">☐ 체크</button>
-                  <button type="button" data-md-action="quote" title="인용">&gt; 인용</button>
-                  <span class="studio-document-toolbar-sep"></span>
-                  <button type="button" data-md-action="table" title="표 삽입">표</button>
-                  <button type="button" data-md-action="hr" title="구분선">─</button>
-                  <button type="button" data-md-action="link" title="링크">링크</button>
-                </div>
-
-                <textarea id="studioDocumentMarkdown" class="studio-document-markdown" aria-label="문서 편집기" spellcheck="false" wrap="soft"></textarea>
-              </div>
             </div>
           </div>
         </div>

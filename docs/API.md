@@ -16,8 +16,8 @@ Example shape:
 {
   "ok": true,
   "ollamaUrl": "http://127.0.0.1:11434",
-  "defaultModel": "gemma4:e4b",
-  "models": ["bge-m3:latest", "gemma4:e4b"],
+  "defaultModel": "gemma4:e2b",
+  "models": ["bge-m3:latest", "gemma4:e2b"],
   "rag": {
     "department": {
       "backend": { "vector": "qdrant", "lexical": "sqlite" },
@@ -813,7 +813,7 @@ Body:
   title: "감사자료 소스 가이드",
   documents: [/* current room document payloads */],
   notebookId: "nb_...", // optional selected department notebook
-  model: "gemma4:e4b"
+  model: "gemma4:e2b"
 }
 ```
 
@@ -922,6 +922,9 @@ Body:
 ```
 
 Converts an AI answer into a template-structured JSON document draft using Ollama.
+When model output cannot be parsed or the conversion falls back, the client
+opens the original answer in the visual editor as plain text rather than
+parsing it as Markdown.
 
 ### `POST /api/studio/document/export`
 
@@ -930,12 +933,14 @@ Body:
 ```js
 {
   format: "docx",
-  document: { title: "...", blocks: [], citations: {} },
+  document: { title: "...", markdown: "...", blocks: [], citations: {} },
   options: { includeCitations: true }
 }
 ```
 
-Exports the edited Studio document model as a binary file (HWPX, DOCX, PDF, or MD).
+Exports the edited Studio document as a binary file (HWPX, DOCX, PDF, or MD).
+The current client sends edited Markdown; legacy block-based payloads are still
+accepted through server normalization.
 
 ### `POST /api/studio/mindmap`
 

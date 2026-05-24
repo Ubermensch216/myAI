@@ -133,10 +133,6 @@ export function bindDocumentStudioEvents() {
     setDocumentEditorMode("visual");
   });
 
-  elements.studioDocumentRawModeButton?.addEventListener("click", () => {
-    setDocumentEditorMode("raw");
-  });
-
   elements.studioDocumentLibraryModeButton?.addEventListener("click", () => {
     setDocumentEditorMode("library");
   });
@@ -192,7 +188,6 @@ function setEditorValue(text) {
 function resizeEditor() { /* textarea sizes itself via flex; nothing to do */ }
 
 function getDocumentEditorMode(doc) {
-  if (doc?.editorMode === "raw") return "raw";
   if (doc?.editorMode === "library") return "library";
   return "visual";
 }
@@ -200,7 +195,7 @@ function getDocumentEditorMode(doc) {
 function setDocumentEditorMode(mode) {
   const doc = getActiveDraft();
   if (!doc) return;
-  const next = mode === "raw" ? "raw" : mode === "library" ? "library" : "visual";
+  const next = mode === "library" ? "library" : "visual";
   if (getDocumentEditorMode(doc) === next) return;
   _openAiMenuKey = "";
   doc.editorMode = next;
@@ -211,13 +206,10 @@ function setDocumentEditorMode(mode) {
 function renderEditorMode(doc) {
   const mode = getDocumentEditorMode(doc);
   const visualActive = mode === "visual";
-  const rawActive = mode === "raw";
   const libraryActive = mode === "library";
   if (elements.studioDocumentVisual) elements.studioDocumentVisual.hidden = !visualActive;
-  if (elements.studioDocumentRaw) elements.studioDocumentRaw.hidden = !rawActive;
   if (elements.studioOutputLibrary) elements.studioOutputLibrary.hidden = !libraryActive;
   updateModeButton(elements.studioDocumentVisualModeButton, visualActive);
-  updateModeButton(elements.studioDocumentRawModeButton, rawActive);
   updateModeButton(elements.studioDocumentLibraryModeButton, libraryActive);
   if (visualActive) renderVisualEditor(doc);
 }
@@ -231,7 +223,9 @@ function updateModeButton(button, active) {
 function renderVisualEditor(doc) {
   const root = elements.studioDocumentVisual;
   if (!root) return;
-  _visualBlocks = parseMarkdownToVisualBlocks(doc.markdown || "");
+  _visualBlocks = doc.plainTextFallback
+    ? [{ type: "paragraph", text: String(doc.markdown || "") }]
+    : parseMarkdownToVisualBlocks(doc.markdown || "");
   root.innerHTML = "";
   for (let index = 0; index < _visualBlocks.length; index += 1) {
     root.append(renderVisualBlock(doc, _visualBlocks[index], index));
@@ -1793,6 +1787,13 @@ async function convertDraft(draft) {
     draft.generatedMarkdown = body.document?.generatedMarkdown || draft.generatedMarkdown;
     draft.versions = body.document?.versions || draft.versions || [];
     draft.markdown = typeof body.document?.generatedMarkdown === "string" ? body.document.generatedMarkdown : (typeof body.markdown === "string" ? body.markdown : blocksToMarkdown(body.document?.blocks || []));
+    if (hasPlainTextFallbackWarning(body.warnings)) {
+      draft.markdown = plainTextFallbackContent(draft);
+      draft.plainTextFallback = true;
+      draft.editorMode = "visual";
+    } else {
+      delete draft.plainTextFallback;
+    }
     draft.citations = body.document?.citations || {};
     draft.warnings = Array.isArray(body.warnings) ? body.warnings : [];
     draft.pending = false;
@@ -1804,12 +1805,25 @@ async function convertDraft(draft) {
     // Draft was deleted while the conversion was in flight — surface nothing.
     if (!isDraftAlive(draft)) return;
     draft.pending = false;
+    draft.markdown = plainTextFallbackContent(draft);
+    draft.plainTextFallback = true;
+    draft.editorMode = "visual";
     draft.warnings = [...(draft.warnings || []), { code: "convert_failed", message: `변환 오류: ${error.message}` }];
     setStatus(`변환 실패: ${error.message}`, true);
-    throw error;
   } finally {
     if (_activeAbort === controller) _activeAbort = null;
   }
+}
+
+function hasPlainTextFallbackWarning(warnings) {
+  return (Array.isArray(warnings) ? warnings : []).some((warning) => {
+    const code = typeof warning === "object" ? warning?.code : String(warning || "").split(":")[0];
+    return ["model_fallback", "invalid_json", "empty_blocks"].includes(code);
+  });
+}
+
+function plainTextFallbackContent(draft) {
+  return String(draft?.answerMarkdown || draft?.sourceMarkdown || draft?.generatedMarkdown || draft?.markdown || "").trim();
 }
 
 function isDraftAlive(draft) {

@@ -12649,3 +12649,290 @@ body.panel-resizing .panel-resizer::after {
   border-style: dashed;
   border-color: currentColor;
 }
+
+/* ===== 자료 브리핑 (source guide) inline chat cards ===== */
+
+.briefing-prompt {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.briefing-prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.briefing-prompt-header svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.briefing-prompt-filename {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.briefing-prompt-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.briefing-prompt-summary {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.briefing-prompt-topics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.briefing-prompt-topics svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  margin-right: 2px;
+}
+
+.briefing-prompt-topic-chip {
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.briefing-prompt-divider {
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--line));
+  margin: 2px 0;
+}
+
+.briefing-prompt-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.briefing-prompt-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+
+.briefing-prompt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.briefing-prompt-actions .briefing-cta {
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.briefing-prompt-actions .briefing-cta:hover,
+.briefing-prompt-actions .briefing-cta:focus-visible {
+  filter: brightness(0.95);
+  outline: none;
+}
+
+.briefing-prompt-actions .briefing-dismiss {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.briefing-prompt-actions .briefing-dismiss:hover,
+.briefing-prompt-actions .briefing-dismiss:focus-visible {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  outline: none;
+}
+
+.briefing-prompt[data-state="loading"] .briefing-prompt-actions,
+.briefing-prompt[data-state="error"] .briefing-prompt-actions {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.briefing-prompt-status {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+.briefing-prompt[data-state="error"] .briefing-prompt-status {
+  color: #b91c1c;
+}
+
+.briefing-result {
+  margin: 12px 0;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 12px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.briefing-result-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.briefing-result-header svg {
+  width: 18px;
+  height: 18px;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.briefing-result-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.briefing-result-save {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.briefing-result-save:hover,
+.briefing-result-save:focus-visible {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  outline: none;
+}
+
+.briefing-result-save[data-saved="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.briefing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.briefing-section-heading {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-transform: none;
+}
+
+.briefing-section-summary {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.briefing-section-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.briefing-section-list li {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.briefing-section-questions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.briefing-question-chip {
+  max-width: min(720px, 100%);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.briefing-question-chip:hover,
+.briefing-question-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  outline: none;
+}
+
+.briefing-result-warnings {
+  font-size: 12px;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 10px;
+}

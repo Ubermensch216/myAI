@@ -6,16 +6,16 @@ myAI is a local Ollama-based AI secretary web app. It provides chat, document an
 
 - App URL: <http://localhost:3000>
 - Ollama URL: <http://127.0.0.1:11434>
-- Recommended local chat/review model: `gemma4:e4b`
+- Current local chat/review model: `gemma4:e2b`
 - Recommended embedding model: `bge-m3`
 - Current local `.env` should use:
 
 ```env
-OLLAMA_MODEL=gemma4:e4b
+OLLAMA_MODEL=gemma4:e2b
 EMBED_MODEL=bge-m3
 ```
 
-On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `/api/embed` returns 1024-dimensional vectors. The portable fallback remains `gemma3n:e2b` in `.env.example`; the current local `.env` uses `gemma4:e4b` for stronger law-review output. If `/api/status` fails, start the app server first.
+On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `/api/embed` returns 1024-dimensional vectors. The portable fallback remains `gemma3n:e2b` in `.env.example`; the current local `.env` uses `gemma4:e2b`. Use `gemma4:e4b` only on hosts with enough memory for stronger law-review output. If `/api/status` fails, start the app server first.
 
 ## Features
 
@@ -39,7 +39,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Studio Source Guide can summarize uploaded files and/or the selected department notebook into key issues, related laws, recommended questions, and possible outputs.
 - Studio output library stores generated documents and source guides under `room.studio.outputs`; outputs can be reopened, added back as room sources, or submitted for department-notebook promotion review.
 - Admin-reviewed promotion requests let an operator approve selected Studio outputs into department notebooks with provenance metadata.
-- Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit the generated markdown draft and export as HWPX, DOCX, PDF, or MD.
+- Studio document editor converts AI answers into structured public-sector document drafts using built-in or personal templates, allowing users to edit the visual draft and export as HWPX, DOCX, PDF, or MD. If AI structuring fails, the original answer is shown in the editor as plain text rather than parsed Markdown.
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, structured document editor, and file tools (merging/splitting PDF, XLSX, TXT).
 - File Tools for merging multiple files into one or splitting a large file into smaller parts (PDF, XLSX, TXT supported; entirely client-side for privacy).
 - Whole-document or whole-notebook **Precision Analysis** ("정밀 분석") through the Map-Reduce mode. The control is available only when the active room has uploaded documents or a selected department notebook.
@@ -58,7 +58,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Required local models:
 
 ```bash
-ollama pull gemma4:e4b
+ollama pull gemma4:e2b
 ollama pull bge-m3
 ```
 
@@ -442,8 +442,8 @@ public/
     evidenceSummary.js classification and formatting of citations
     lawWorkbench.js    Law Workbench UI for Korean legal research, dedicated review documents, LLM review results, and impact mapping
     studio.js          Studio panel UI and mind-map SVG renderer
-    documentStudio.js  Studio Document Editor tab: template selection, markdown editing, source guides, output library, export
-    documentStudioMarkdown.js  markdown <-> visual block conversion for Studio documents
+    documentStudio.js  Studio Document Editor tab: template selection, visual draft editing, plain-text fallback, source guides, output library, export
+    documentStudioMarkdown.js  markdown <-> visual block conversion for generated Studio documents
     documentTemplates.js built-in/personal Studio document templates
     docTool.js         Studio File Tools: client-side PDF/XLSX/TXT merge and split
     html.js            DOM escaping/sanitizing helpers

@@ -32,6 +32,7 @@ import { bindLawWorkbenchEvents, renderLawWorkbench } from "./modules/lawWorkben
 import { initDocTool } from "./modules/docTool.js";
 import { toggleSelectionMode, exitSelectionMode, requestDeleteMessages, getSelectedIndicesSnapshot, refreshBulkBar } from "./modules/messageDelete.js";
 import { openWithPreparedDraft } from "./modules/documentStudio.js";
+import { isBriefingMessage, renderBriefingMessage } from "./modules/briefing.js";
 
 let titleTimer = null;
 let dragDepth = 0;
@@ -663,6 +664,11 @@ function renderMessages() {
     return;
   }
   for (const [index, message] of room.messages.entries()) {
+    if (isBriefingMessage(message)) {
+      const card = renderBriefingMessage(message, index);
+      if (card) elements.messages.append(card);
+      continue;
+    }
     appendMessage(message.role, message.content, {
       persist: false,
       messageIndex: index,

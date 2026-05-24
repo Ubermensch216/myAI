@@ -198,7 +198,7 @@ assistant answer action menu "스튜디오로 보내기"
 -> user selects a template
 -> POST /api/studio/document/from-answer
 -> server/studioDocument/answerToDocument.js asks Ollama to structure the answer into JSON blocks
--> browser renders block editor (paragraphs, tables, checklists)
+-> browser renders the visual editor (paragraphs, tables, checklists)
 -> user edits draft
 -> browser saves draft to room state (IndexedDB)
 -> user selects export (HWPX, DOCX, PDF, MD)
@@ -209,7 +209,9 @@ assistant answer action menu "스튜디오로 보내기"
 This feature converts AI answers into structured, template-driven public-sector
 document drafts while preserving source citations. Completed drafts are also
 stored as Studio outputs so they can be reused as room sources or submitted for
-admin-reviewed notebook promotion.
+admin-reviewed notebook promotion. If the model cannot structure the answer or
+the conversion request fails, the original answer is opened in the visual editor
+as plain text rather than being interpreted as Markdown.
 
 ### Studio Mind Map
 
@@ -443,8 +445,8 @@ The LLM does not directly mutate calendar data.
 - `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
 - `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
 - `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
-- `public/modules/documentStudio.js` - Studio Document Editor tab rendering, visual/raw markdown editing, source guide creation, output library actions, and export handling.
-- `public/modules/documentStudioMarkdown.js` - Markdown to visual-block conversion and serialization for Studio documents.
+- `public/modules/documentStudio.js` - Studio Document Editor tab rendering, visual draft editing, plain-text fallback, source guide creation, output library actions, and export handling.
+- `public/modules/documentStudioMarkdown.js` - Markdown to visual-block conversion and serialization for generated Studio documents.
 - `public/modules/documentTemplates.js` - built-in and personal Studio document template state.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
 - `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, and chat-triggered calendar intent helpers.

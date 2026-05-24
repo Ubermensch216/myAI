@@ -15,10 +15,10 @@ export async function buildSourceGuide({
 } = {}) {
   const sourcePack = await collectSourceGuideInputs({ documents, notebookId });
   if (!sourcePack.items.length) {
-    throw new Error("소스 가이드를 만들 자료가 없습니다.");
+    throw new Error("자료 브리핑을 만들 자료가 없습니다.");
   }
 
-  const requestedTitle = sanitizeInline(title, 120) || "소스 가이드";
+  const requestedTitle = sanitizeInline(title, 120) || "자료 브리핑";
   const fallback = buildFallbackGuide({ title: requestedTitle, sourcePack });
 
   try {
@@ -200,7 +200,7 @@ function buildFallbackGuide({ title, sourcePack }) {
     title,
     summary: summaries.length
       ? summaries.slice(0, 4).join(" ")
-      : `${names.join(", ") || "선택한 자료"}를 기반으로 만든 소스 가이드입니다. 핵심 쟁점과 후속 질문은 원문 검토를 전제로 사용하세요.`,
+      : `${names.join(", ") || "선택한 자료"}를 기반으로 정리한 자료 브리핑입니다. 핵심 쟁점과 후속 질문은 원문 검토를 전제로 사용하세요.`,
     keyIssues: sourcePack.items.map((item) => `${item.title}: 주요 사실관계와 근거 확인`).slice(0, 8),
     relatedLaws: ["법령 확인 필요"],
     recommendedQuestions: [
@@ -222,7 +222,7 @@ function renderGuideMarkdown(guide) {
     ["가능한 산출물", listMarkdown(guide.possibleOutputs)]
   ];
   return [
-    `# ${guide.title || "소스 가이드"}`,
+    `# ${guide.title || "자료 브리핑"}`,
     "",
     ...sections.flatMap(([heading, body]) => [`## ${heading}`, "", body || "- 작성 필요", ""])
   ].join("\n").replace(/\n{3,}/g, "\n\n").trim();

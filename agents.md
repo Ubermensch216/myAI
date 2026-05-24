@@ -31,12 +31,13 @@ npm.cmd run test:live
 
 ## Current Local Model Notes
 
-- `.env` should use `OLLAMA_MODEL=gemma4:e4b`.
+- `.env` currently uses `OLLAMA_MODEL=gemma4:e2b`.
 - `.env` should use `EMBED_MODEL=bge-m3`.
 - On 2026-05-05, direct Ollama checks showed:
   - `bge-m3:latest` is installed.
   - `gemma4:e2b` is installed.
-  - `gemma4:e4b` is installed and is the current local `.env` model for chat and Law Workbench review testing.
+  - `gemma4:e2b` is installed and is the current local `.env` model for chat and Law Workbench review testing.
+  - `gemma4:e4b` may be used on hosts with enough memory for stronger review output.
   - `POST /api/embed` with `bge-m3` returns 1024-dimensional vectors.
 - `/api/status` requires the app server to be running on port 3000.
 - Code fallback model in `server/ollama.js`: `gemma3n:e2b`.
@@ -105,8 +106,8 @@ Frontend:
 - `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
 - `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
 - `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
-- `public/modules/documentStudio.js` - Studio Document Editor tab: template selection, block editing, export.
-- `public/modules/documentStudioMarkdown.js` - Studio document visual-block/markdown conversion.
+- `public/modules/documentStudio.js` - Studio Document Editor tab: template selection, visual draft editing, plain-text fallback, export.
+- `public/modules/documentStudioMarkdown.js` - Studio document visual-block/markdown conversion for generated drafts.
 - `public/modules/documentTemplates.js` - built-in and personal Studio document templates.
 - `public/modules/docTool.js` - Studio File Tools: client-side PDF/XLSX/TXT merge and split.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer for selected department notebooks.

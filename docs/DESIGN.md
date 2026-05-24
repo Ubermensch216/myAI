@@ -302,9 +302,10 @@ compact, and functional.
 
 ## Current Tool Notes
 
-- **Document Studio** uses visual and raw markdown modes. Keep
-  `documentStudioMarkdown.js` as the conversion boundary between rendered
-  blocks and persisted markdown.
+- **Document Studio** uses the visual editor plus the output library. Keep
+  `documentStudioMarkdown.js` as the conversion boundary for generated
+  Markdown-backed drafts. When answer-to-document conversion fails, show the
+  original answer in the visual editor as plain text, not parsed Markdown.
 - **Law Explorer** has impact-map and article-history modes. Article-history
   actions require law name, article, and selected effective date(s); disabled
   actions should be visually distinct.
