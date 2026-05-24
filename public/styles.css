@@ -455,6 +455,25 @@ body.panel-resizing .panel-resizer::after {
   margin: 4px 2px;
 }
 
+.room-rename-input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 5px;
+  padding: 4px 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  outline: none;
+}
+
+.room-rename-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
 .field-label {
   display: block;
   margin-bottom: 8px;

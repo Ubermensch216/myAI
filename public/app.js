@@ -134,11 +134,40 @@ function createRoomKebabMenu({ isPinned, onPin, onRename, onDelete, ariaLabel = 
   return button;
 }
 
-function promptRename(currentTitle, label) {
-  const next = window.prompt(`${label} 새 이름을 입력하세요.`, currentTitle || "");
-  if (next === null) return null;
-  const trimmed = next.trim();
-  return trimmed || null;
+function startInlineRename(itemEl, titleEl, currentTitle, onCommit) {
+  if (!itemEl || !titleEl) return;
+  if (itemEl.querySelector(".room-rename-input")) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "room-rename-input";
+  input.value = currentTitle || "";
+  input.setAttribute("aria-label", "이름 변경");
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+  input.addEventListener("keydown", (e) => e.stopPropagation());
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let finished = false;
+  const finish = (commit) => {
+    if (finished) return;
+    finished = true;
+    if (commit) {
+      const next = input.value.trim();
+      if (next && next !== currentTitle) onCommit(next);
+    }
+    if (typeof window !== "undefined") {
+      // Re-render owner is responsible for replacing the input; if it's still in DOM, restore titleEl.
+      if (input.isConnected) input.replaceWith(titleEl);
+    }
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
 }
 
 // ===== Boot =====
@@ -459,13 +488,13 @@ function renderRooms() {
         renderRooms();
       },
       onRename: () => {
-        const next = promptRename(room.title, "대화방");
-        if (!next) return;
-        room.title = next;
-        room.updatedAt = new Date().toISOString();
-        scheduleSave();
-        renderRooms();
-        renderHeader();
+        startInlineRename(item, title, room.title, (next) => {
+          room.title = next;
+          room.updatedAt = new Date().toISOString();
+          scheduleSave();
+          renderRooms();
+          renderHeader();
+        });
       },
       onDelete: () => { deleteRoom(room.id); }
     });
@@ -557,12 +586,12 @@ function renderLawReviews() {
         renderLawReviews();
       },
       onRename: () => {
-        const next = promptRename(review.title, "법령검토");
-        if (!next) return;
-        review.title = next;
-        review.updatedAt = new Date().toISOString();
-        scheduleSave();
-        renderLawReviews();
+        startInlineRename(item, title, review.title, (next) => {
+          review.title = next;
+          review.updatedAt = new Date().toISOString();
+          scheduleSave();
+          renderLawReviews();
+        });
       },
       onDelete: () => { deleteLawReview(review.id); }
     });
@@ -619,12 +648,12 @@ function renderGrcReviews() {
         renderGrcReviews();
       },
       onRename: () => {
-        const next = promptRename(review.title, "내부검토");
-        if (!next) return;
-        review.title = next;
-        review.updatedAt = new Date().toISOString();
-        scheduleSave();
-        renderGrcReviews();
+        startInlineRename(item, title, review.title, (next) => {
+          review.title = next;
+          review.updatedAt = new Date().toISOString();
+          scheduleSave();
+          renderGrcReviews();
+        });
       },
       onDelete: () => { deleteGrcReview(review.id); }
     });
