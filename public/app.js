@@ -458,6 +458,16 @@ function renderRooms() {
     const indicators = document.createElement("span");
     indicators.className = "room-status-indicators";
 
+    if (isPinned) {
+      const pinInd = document.createElement("span");
+      pinInd.className = "room-status-indicator room-pin-indicator";
+      pinInd.title = "고정됨";
+      pinInd.setAttribute("role", "img");
+      pinInd.setAttribute("aria-label", "고정됨");
+      pinInd.innerHTML = ROOM_FILE_SVG.pinFilled;
+      indicators.append(pinInd);
+    }
+
     const attachmentIndicator = document.createElement("span");
     attachmentIndicator.className = "room-status-indicator room-attachment-indicator";
     attachmentIndicator.title = "첨부 있음";
@@ -572,9 +582,13 @@ function renderLawReviews() {
     title.className = "room-item-title";
     title.textContent = review.title || "새 법령검토";
 
-    const meta = document.createElement("span");
-    meta.className = "law-review-item-meta";
-    meta.textContent = formatLawReviewDate(review.updatedAt || review.createdAt);
+    const pinIndicator = document.createElement("span");
+    pinIndicator.className = "room-pin-indicator";
+    pinIndicator.setAttribute("role", "img");
+    pinIndicator.setAttribute("aria-label", "고정됨");
+    pinIndicator.title = "고정됨";
+    pinIndicator.innerHTML = ROOM_FILE_SVG.pinFilled;
+    pinIndicator.hidden = !isPinned;
 
     const kebab = createRoomKebabMenu({
       isPinned,
@@ -596,7 +610,7 @@ function renderLawReviews() {
       onDelete: () => { deleteLawReview(review.id); }
     });
 
-    item.append(title, meta, kebab);
+    item.append(title, pinIndicator, kebab);
     elements.lawReviewList.append(item);
   }
 }
@@ -634,9 +648,13 @@ function renderGrcReviews() {
     title.className = "room-item-title";
     title.textContent = review.title || "새 내부검토";
 
-    const meta = document.createElement("span");
-    meta.className = "law-review-item-meta";
-    meta.textContent = formatLawReviewDate(review.updatedAt || review.createdAt);
+    const pinIndicator = document.createElement("span");
+    pinIndicator.className = "room-pin-indicator";
+    pinIndicator.setAttribute("role", "img");
+    pinIndicator.setAttribute("aria-label", "고정됨");
+    pinIndicator.title = "고정됨";
+    pinIndicator.innerHTML = ROOM_FILE_SVG.pinFilled;
+    pinIndicator.hidden = !isPinned;
 
     const kebab = createRoomKebabMenu({
       isPinned,
@@ -658,7 +676,7 @@ function renderGrcReviews() {
       onDelete: () => { deleteGrcReview(review.id); }
     });
 
-    item.append(title, meta, kebab);
+    item.append(title, pinIndicator, kebab);
     elements.grcReviewList.append(item);
   }
 }

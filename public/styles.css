@@ -4591,21 +4591,33 @@ body.panel-resizing .panel-resizer::after {
   display: none;
 }
 
-.law-review-item {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-}
-
-.law-review-item-meta,
 .law-review-list-empty {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+  padding: 12px 4px;
 }
 
-.law-review-list-empty {
-  padding: 12px 4px;
+.room-pin-indicator {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.room-pin-indicator[hidden] {
+  display: none;
+}
+
+.law-review-item .room-pin-indicator,
+.law-review-item.grc-review-item .room-pin-indicator {
+  width: 22px;
+  height: 24px;
+}
+
+.law-review-item .room-pin-indicator svg,
+.room-status-indicator.room-pin-indicator svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* ===== Studio panel ===== */
