@@ -1468,7 +1468,7 @@ function sendArticleToStudio(article) {
   if (Array.isArray(message?.citations) && message.citations.length) metadata.citations = message.citations;
   openDocumentStudioWithAnswer({
     title: room?.title || "",
-    markdown: stripCitationMarkersForDocument(text),
+    markdown: text,
     messageId: message?.id || (Number.isInteger(idx) ? `msg_${idx}` : null),
     metadata,
     model: elements.modelInput?.value?.trim() || ""
@@ -1476,16 +1476,6 @@ function sendArticleToStudio(article) {
     console.error("send-to-studio failed", error);
     window.alert(error?.message || "스튜디오로 전송에 실패했습니다.");
   });
-}
-
-function stripCitationMarkersForDocument(text) {
-  return String(text || "")
-    .replace(/\s*\[(?:AI-L|L-S|[NLPDIROW])\d+(?:\s*,\s*(?:AI-L|L-S|[NLPDIROW])\d+)*\]/gi, "")
-    .replace(/[ \t]+([.。!?？！,，])/g, "$1")
-    .replace(/([.。!?？！])\s*,+/g, "$1")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 export function setAssistantAnswerTime(article, createdAt) {

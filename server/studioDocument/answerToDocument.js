@@ -233,7 +233,7 @@ function buildStructuredSystemPrompt(docTypeObj, presentationStyleObj) {
     `You convert an AI answer into a structured work document of type "${docTypeObj.name}".`,
     `Style constraints: ${styleInstruction || "Use a professional and clear business tone."}`,
     "Do not invent facts or citations. Map the source content exactly to the respective sections below.",
-    "Omit inline citation markers such as [N1], [L1], [P1], [I1], [R1], [O1], [W1], [AI-L1], and [L-S1] from the document body.",
+    "Preserve inline citation markers exactly, including [N1], [L1], [P1], [I1], [R1], [O1], [W1], [AI-L1], and [L-S1].",
     "If a section has no source content, write \"작성 필요\".",
     "Write Korean unless the source answer is clearly in another language.",
     "Return strict JSON only. No prose, no markdown fences.",
@@ -246,7 +246,7 @@ function buildStructuredSystemPrompt(docTypeObj, presentationStyleObj) {
     "",
     "Rules:",
     "- Match the source material to each key exactly.",
-    "- Never add citation markers to the document body."
+    "- Never alter or fabricate citation markers."
   ].join("\n");
 }
 
@@ -302,7 +302,7 @@ function buildSystemPrompt() {
   return [
     "You convert an AI answer into a structured public-sector work document.",
     "Use the selected template exactly. Do not invent facts or citations.",
-    "Omit inline citation markers such as [N1], [L1], [P1], [I1], [R1], [O1], [W1], [AI-L1], and [L-S1] from the document body.",
+    "Preserve inline citation markers exactly, including [N1], [L1], [P1], [I1], [R1], [O1], [W1], [AI-L1], and [L-S1].",
     "If a template section has no source content, write \"작성 필요\".",
     "Write Korean unless the source answer is clearly in another language.",
     "Return strict JSON only. No prose, no fences.",
@@ -327,7 +327,7 @@ function buildSystemPrompt() {
     "- Heading level should be 1 for top-level numbered sections.",
     "- For a template block of type \"table\", emit a real table block with the given columns; rows come from the answer where possible.",
     "- Never add sections not listed in the template.",
-    "- Never add citation markers to the document body."
+    "- Never alter or fabricate citation markers."
   ].join("\n");
 }
 
@@ -444,15 +444,15 @@ function pickCitationsFromMetadata(metadata) {
 }
 
 function describeExportCitationHint(metadata) {
-  if (!metadata || typeof metadata !== "object") return "Reference note: omit inline citation markers from the document body.";
+  if (!metadata || typeof metadata !== "object") return "Reference note: preserve inline citation markers in the document body.";
   const families = [];
   if (metadata.notebook || hasCitationFamily(metadata, "notebook")) families.push("[N#] project");
   if (metadata.law || metadata.compliance || ["law", "precedent", "interpretation", "adminRule", "ordinance"].some((key) => hasCitationFamily(metadata, key))) {
     families.push("[L#/P#/I#/R#/O#] legal");
   }
   if (metadata.webSearch || metadata.web || hasCitationFamily(metadata, "web")) families.push("[W#] web");
-  if (!families.length) return "Reference note: omit inline citation markers from the document body.";
-  return `Reference note: the source answer may contain citation markers (${families.join(", ")}). Omit those markers from the document body; source details are stored separately for export.`;
+  if (!families.length) return "Reference note: preserve inline citation markers in the document body.";
+  return `Reference note: the source answer may contain citation markers (${families.join(", ")}). Preserve those markers in the document body so they match the exported source list.`;
 }
 
 function hasCitationFamily(metadata, family) {
