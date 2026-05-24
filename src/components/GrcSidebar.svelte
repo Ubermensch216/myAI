@@ -124,7 +124,8 @@
                   </span>
                 {:else}
                   <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
                   </svg>
                   <span>규정 파일 선택</span>
                 {/if}
@@ -193,13 +194,14 @@
     <button
       type="button"
       class="ghost-button reset-grc-btn"
+      aria-label="초기화"
+      title="초기화"
       disabled={$grcStore.analyzing}
       on:click={resetGrc}>
       <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 12a8 8 0 0 1 14-5.3L20 4v6h-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
         <path d="M20 12a8 8 0 0 1-14 5.3L4 20v-6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
       </svg>
-      초기화
     </button>
 
     <button
@@ -208,14 +210,14 @@
       disabled={$grcStore.analyzing || $grcStore.uploadingPolicy || $grcStore.uploadingTarget}
       on:click={startGrcReview}>
       {#if $grcStore.analyzing}
-        <span class="spinner"></span> 검토 진행 중
+        <span class="spinner"></span>
       {:else}
         <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
           <path d="m20 20-3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
         </svg>
-        검토
       {/if}
+      검토
     </button>
   </div>
 
@@ -436,8 +438,7 @@
 
   .run-grc-btn,
   .reset-grc-btn {
-    min-height: 36px;
-    padding: 8px 18px;
+    height: 36px;
     border-radius: 7px;
     font-size: 12px;
     font-weight: 800;
@@ -445,9 +446,17 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
+    box-sizing: border-box;
+  }
+
+  .run-grc-btn {
+    padding: 0 18px;
+    min-width: 96px;
   }
 
   .reset-grc-btn {
+    width: 36px;
+    padding: 0;
     background: transparent;
     border: 1px solid var(--line);
     color: var(--muted);
