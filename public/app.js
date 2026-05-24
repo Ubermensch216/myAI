@@ -81,14 +81,16 @@ window.addEventListener("myai:setview", (event) => {
 });
 
 window.addEventListener("myai:grc:save-output", async (event) => {
-  const { title, markdown } = event.detail;
+  const { title, markdown, metadata = {}, source = {} } = event.detail;
   try {
     await openWithPreparedDraft({
       title,
       markdown,
+      metadata,
       source: {
         sourceType: "grc_review",
-        roomId: state.activeView === "law" ? "" : state.activeRoomId || ""
+        roomId: state.activeView === "law" ? "" : state.activeRoomId || "",
+        ...source
       }
     });
   } catch (error) {

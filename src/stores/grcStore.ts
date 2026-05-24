@@ -70,10 +70,12 @@ let syncBackTimer: ReturnType<typeof setTimeout> | null = null;
 const inFlightReviews = new Map<string, Promise<void>>();
 
 function getActiveReviewId(): string {
+  if (typeof window === 'undefined') return '';
   return String((window as any).state?.grcReviews?.activeId || '');
 }
 
 function getReviewById(reviewId: string): any {
+  if (typeof window === 'undefined') return null;
   const reviews = (window as any).state?.grcReviews?.items;
   if (!Array.isArray(reviews)) return null;
   return reviews.find((item: any) => item?.id === reviewId) || null;
@@ -336,15 +338,33 @@ export function resetGrc() {
 export function sendToStudio() {
   const state = get(grcStore);
   if (!state.reviewResult) return;
-  const markdown = getGrcOpinionMarkdown(state.reviewResult);
+  const markdown = getGrcReportMarkdown(state.reviewResult, {
+    targetDocName: state.targetDocName,
+    policyDocName: state.policyMode === 'notebook'
+      ? state.notebooks.find((notebook) => notebook.id === state.selectedNotebookId)?.name || ''
+      : state.policyDocName,
+    policyMode: state.policyMode
+  });
   if (!markdown) return;
   const event = new CustomEvent('myai:grc:save-output', {
     detail: {
       title: `${state.targetDocName.replace(/\.[^/.]+$/, '')} 규정 검토 보고서`,
-      markdown
+      markdown,
+      metadata: { compliance: true, grc: true },
+      source: { sourceType: 'grc_review' }
     }
   });
   window.dispatchEvent(event);
+}
+
+export function getGrcReportMarkdown(
+  result: GrcReviewResult | null,
+  context: { targetDocName?: string; policyDocName?: string; policyMode?: PolicyMode } = {}
+): string {
+  if (!result) return '';
+  const opinion = getGrcOpinionMarkdown(result).trim();
+  const dashboard = getGrcDashboardAttachmentMarkdown(result, context).trim();
+  return [opinion, dashboard].filter(Boolean).join('\n\n---\n\n');
 }
 
 export function getGrcOpinionMarkdown(result: GrcReviewResult | null): string {
@@ -370,7 +390,7 @@ export function getGrcOpinionMarkdown(result: GrcReviewResult | null): string {
 
   return [
     '## 1. 검토 목적',
-    '본 의견서 초안은 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.',
+    '본 의견서는 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.',
     '',
     '## 2. 종합 의견',
     result.summary || '검토 결과 요약이 충분히 생성되지 않았습니다.',
@@ -385,4 +405,103 @@ export function getGrcOpinionMarkdown(result: GrcReviewResult | null): string {
     '',
     '본 문서는 AI가 생성한 업무 검토용 초안이므로 최종 제출 전 담당자의 사실관계 및 법무/준법 검토가 필요합니다.'
   ].join('\n');
+}
+
+function getGrcDashboardAttachmentMarkdown(
+  result: GrcReviewResult,
+  context: { targetDocName?: string; policyDocName?: string; policyMode?: PolicyMode } = {}
+): string {
+  const items = Array.isArray(result.results) ? result.results : [];
+  const counts = {
+    high: items.filter((item) => statusLevel(item.status) === 'high').length,
+    medium: items.filter((item) => statusLevel(item.status) === 'medium').length,
+    low: items.filter((item) => statusLevel(item.status) === 'low').length,
+    info: items.filter((item) => statusLevel(item.status) === 'info').length
+  };
+  const risk = result.overallRisk === 'High' ? '높음' : result.overallRisk === 'Medium' ? '보통' : '낮음';
+  const policyName = String(context.policyDocName || '').trim() || (context.policyMode === 'notebook' ? '부서 프로젝트' : '검토 기준');
+  const targetName = String(context.targetDocName || '').trim() || '대상 문서';
+
+  const lines = [
+    '## 첨부자료 A. 검토 대시보드',
+    '',
+    '> 아래 내용은 내부검토 화면의 검토 대시보드 정보를 보고서 첨부자료로 옮긴 것입니다.',
+    '',
+    '### A-1. 대시보드 요약 카드',
+    '',
+    '| 항목 | 내용 |',
+    '| --- | --- |',
+    `| 검토 기준 | ${tableCell(policyName)} |`,
+    `| 검토 대상 | ${tableCell(targetName)} |`,
+    `| 종합 위험도 | ${tableCell(risk)} |`,
+    `| 종합 요약 | ${tableCell(result.summary || '요약 없음')} |`,
+    '',
+    '### A-2. 판정 통계 카드',
+    '',
+    '| 충돌 가능성 | 보완 필요 | 적합 | 확인 불가 |',
+    '| ---: | ---: | ---: | ---: |',
+    `| ${counts.high} | ${counts.medium} | ${counts.low} | ${counts.info} |`,
+    '',
+    '### A-3. 상세 진단 카드',
+    ''
+  ];
+
+  if (items.length) {
+    lines.push('| 번호 | 판정 | 검토 항목 | 검토 의견 | 조치 권고 |');
+    lines.push('| ---: | --- | --- | --- | --- |');
+    items.forEach((item, index) => {
+      lines.push([
+        `| ${index + 1}`,
+        tableCell(item.status || '확인 불가'),
+        tableCell(item.ruleTitle || '검토 항목'),
+        tableCell(item.reason || '검토 의견 없음'),
+        tableCell(item.remediation || (statusLevel(item.status) === 'low' ? '별도 조치 없음' : '조치 권고 없음'))
+      ].join(' | ') + ' |');
+    });
+  } else {
+    lines.push('상세 진단 항목이 없습니다.');
+  }
+
+  lines.push('', '### A-4. 추가 확인 필요 정보', '');
+  const missing = Array.isArray(result.missingInformation) ? result.missingInformation.filter(Boolean) : [];
+  if (missing.length) {
+    missing.forEach((item) => lines.push(`- ${item}`));
+  } else {
+    lines.push('- 추가 확인 필요 정보가 별도로 식별되지 않았습니다.');
+  }
+
+  lines.push(
+    '',
+    '### A-5. 원본 대시보드 데이터',
+    '',
+    '```json',
+    JSON.stringify({
+      summary: result.summary || '',
+      overallRisk: result.overallRisk || 'Low',
+      counts,
+      results: items,
+      missingInformation: missing
+    }, null, 2),
+    '```'
+  );
+
+  return lines.join('\n');
+}
+
+function statusLevel(status: string): 'high' | 'medium' | 'low' | 'info' {
+  const text = String(status || '').toLowerCase();
+  if (text === 'high') return 'high';
+  if (text === 'medium') return 'medium';
+  if (text === 'low') return 'low';
+  if (text.includes('충돌') || text.includes('위반') || text.includes('부적합') || text.includes('conflict') || text.includes('non-compliant')) return 'high';
+  if (text.includes('보완') || text.includes('주의') || text.includes('warn')) return 'medium';
+  if (text.includes('적합') || text.includes('통과') || text.includes('compliant') || text.includes('pass')) return 'low';
+  return 'info';
+}
+
+function tableCell(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\r?\n+/g, '<br>')
+    .replace(/\|/g, '\\|')
+    .trim();
 }

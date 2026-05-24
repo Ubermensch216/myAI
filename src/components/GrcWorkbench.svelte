@@ -223,7 +223,7 @@
         <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M14 4l6 6L8 22H2v-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
         </svg>
-        의견서 초안
+        의견서
       </button>
     </div>
 
@@ -313,7 +313,7 @@
                 <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
                 <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
               </svg>
-              내부검토 의견서 초안
+              내부검토 의견서
             </h3>
             <button type="button" class="send-button export-btn" on:click={sendToStudio}>
               <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -334,7 +334,7 @@
         <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
       </svg>
       <h3>내부 기준 적합성 검토</h3>
-      <p>상단에서 기준 문서와 검토 대상 문서를 지정하면 규정 충돌, 보완 필요 항목, 의견서 초안을 한 화면에서 확인할 수 있습니다.</p>
+      <p>상단에서 기준 문서와 검토 대상 문서를 지정하면 규정 충돌, 보완 필요 항목, 의견서를 한 화면에서 확인할 수 있습니다.</p>
       <div class="grc-features-list">
         <div class="feat-item">
           <strong>자료 분리</strong>

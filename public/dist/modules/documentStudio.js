@@ -859,6 +859,9 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
   if (draft) {
     draft.title = title || draft.title || "법령 검토 보고서";
     draft.markdown = text;
+    draft.answerMarkdown = text;
+    draft.sourceMarkdown = text;
+    draft.generatedMarkdown = text;
     draft.citations = { law: Array.isArray(citations) ? citations : [] };
     if (templateId) draft.templateId = templateId;
 
@@ -899,6 +902,9 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
       docType,
       presentationStyle,
       markdown: text,
+      answerMarkdown: text,
+      sourceMarkdown: text,
+      generatedMarkdown: text,
       citations: { law: Array.isArray(citations) ? citations : [] },
       source: resolvedSource,
       metadata,

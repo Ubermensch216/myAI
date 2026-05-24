@@ -36,7 +36,7 @@ export async function runGrcReview({ targetText, policyText, model = DEFAULT_MOD
     "  * reason: Clear explanation of why this status was given (referencing specific parts of the target document and the policy).",
     "  * remediation: Practical step-by-step remediation recommendation if not '적합'.",
     "- missingInformation: List of any missing information or documents needed to complete the review.",
-    "- draftOpinion: A formal compliance opinion letter (마크다운 형식 보고서 초안) detailing the findings, structured with '1. 검토 목적', '2. 종합 의견', '3. 상세 분석', '4. 조치 권고사항'."
+    "- draftOpinion: A formal compliance opinion letter detailing the findings, structured with '1. 검토 목적', '2. 종합 의견', '3. 상세 분석', '4. 조치 권고사항'."
   ].join("\n");
 
   const userPrompt = [
@@ -224,7 +224,7 @@ function buildFallbackDraftOpinion({ summary = "", overallRisk = "Low", results 
 
   return [
     "## 1. 검토 목적",
-    "본 의견서 초안은 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.",
+    "본 의견서는 제출된 검토 대상 문서가 내부 규정 및 지침에 부합하는지 확인하기 위해 작성되었습니다.",
     "",
     "## 2. 종합 의견",
     summary || "검토 결과 요약이 충분히 생성되지 않았습니다.",
