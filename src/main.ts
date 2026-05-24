@@ -28,7 +28,6 @@ export function persistActiveGrcReview(patch: Record<string, any>) {
   const review = getActiveGrcReview();
   if (!review) return;
   Object.assign(review, patch);
-  // Derive title from the target doc name when user hasn't customized it
   if (patch.targetDocName && (!review.title || review.title === '새 내부검토')) {
     review.title = String(patch.targetDocName).replace(/\.[^/.]+$/, '').slice(0, 80) || '새 내부검토';
   }

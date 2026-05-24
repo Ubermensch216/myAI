@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
 
 export type PolicyMode = 'upload' | 'notebook';
-export type GrcStatus = '적합' | '일부 보완 필요' | '충돌 가능성' | '확인 불가';
+export type GrcStatus = '적합' | '일부 보완 필요' | '충돌 가능성' | '확인 불가' | string;
 export type OverallRisk = 'High' | 'Medium' | 'Low';
 
 export interface GrcResult {
@@ -66,11 +66,54 @@ const initialState: GrcState = {
 export const grcStore = writable<GrcState>({ ...initialState });
 
 let suppressSyncBack = false;
-let syncBackTimer: any = null;
+let syncBackTimer: ReturnType<typeof setTimeout> | null = null;
+const inFlightReviews = new Map<string, Promise<void>>();
+
+function getActiveReviewId(): string {
+  return String((window as any).state?.grcReviews?.activeId || '');
+}
+
+function getReviewById(reviewId: string): any {
+  const reviews = (window as any).state?.grcReviews?.items;
+  if (!Array.isArray(reviews)) return null;
+  return reviews.find((item: any) => item?.id === reviewId) || null;
+}
+
+function persistReviewPatch(reviewId: string, patch: Record<string, any>) {
+  const review = getReviewById(reviewId);
+  if (!review) return;
+  Object.assign(review, patch);
+  if (patch.targetDocName && (!review.title || review.title === '새 내부검토')) {
+    review.title = String(patch.targetDocName).replace(/\.[^/.]+$/, '').slice(0, 80) || '새 내부검토';
+  }
+  review.updatedAt = new Date().toISOString();
+  const w = window as any;
+  if (typeof w.scheduleSave === 'function') w.scheduleSave();
+  if (typeof w.renderGrcReviews === 'function') w.renderGrcReviews();
+}
+
+function isReviewInFlight(reviewId: string): boolean {
+  return Boolean(reviewId && inFlightReviews.has(reviewId));
+}
+
+function activeReviewPatchFromState(s: GrcState) {
+  return {
+    selectedNotebookId: s.selectedNotebookId,
+    policyMode: s.policyMode,
+    targetDocName: s.targetDocName,
+    targetText: s.targetText,
+    policyDocName: s.policyDocName,
+    policyText: s.policyText,
+    reviewResult: s.reviewResult,
+    activeTab: s.activeTab,
+    errorMessage: s.errorMessage
+  };
+}
 
 export function syncFromActiveReview() {
   const w = window as any;
   const review = w.MyAIFrontend?.getActiveGrcReview?.();
+  const activeReviewId = review?.id || '';
   suppressSyncBack = true;
   if (!review) {
     const current = get(grcStore);
@@ -88,33 +131,22 @@ export function syncFromActiveReview() {
       policyDocName: review.policyDocName || '',
       policyText: review.policyText || '',
       uploadingPolicy: false,
-      analyzing: false,
+      analyzing: isReviewInFlight(activeReviewId),
       errorMessage: review.errorMessage || '',
       reviewResult: review.reviewResult || null,
-      activeTab: (review.activeTab === 'opinion' ? 'opinion' : 'dashboard')
+      activeTab: review.activeTab === 'opinion' ? 'opinion' : 'dashboard'
     }));
   }
-  // Release suppress on next microtask so the subscription that fires synchronously is skipped
   Promise.resolve().then(() => { suppressSyncBack = false; });
 }
 
 grcStore.subscribe((s) => {
   if (suppressSyncBack) return;
-  clearTimeout(syncBackTimer);
+  if (syncBackTimer) clearTimeout(syncBackTimer);
   syncBackTimer = setTimeout(() => {
-    const w = window as any;
-    if (typeof w.MyAIFrontend?.persistActiveGrcReview !== 'function') return;
-    w.MyAIFrontend.persistActiveGrcReview({
-      selectedNotebookId: s.selectedNotebookId,
-      policyMode: s.policyMode,
-      targetDocName: s.targetDocName,
-      targetText: s.targetText,
-      policyDocName: s.policyDocName,
-      policyText: s.policyText,
-      reviewResult: s.reviewResult,
-      activeTab: s.activeTab,
-      errorMessage: s.errorMessage
-    });
+    const reviewId = getActiveReviewId();
+    if (!reviewId) return;
+    persistReviewPatch(reviewId, activeReviewPatchFromState(s));
   }, 200);
 });
 
@@ -123,23 +155,40 @@ function getHeaders(): Record<string, string> {
   return { 'x-myai-document-key': key };
 }
 
+async function readJson(response: Response): Promise<any> {
+  return response.json().catch(() => ({}));
+}
+
+function userFacingError(error: any, fallback: string): string {
+  const raw = String(error?.message || error || '').trim();
+  if (!raw) return fallback;
+  if (/fetch failed|failed to fetch|networkerror/i.test(raw)) {
+    return '서버 또는 Ollama 연결에 실패했습니다. 서버가 실행 중인지, Ollama 모델이 응답 가능한지 확인해 주세요.';
+  }
+  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|UND_ERR|socket|aborted/i.test(raw)) {
+    return `연결 오류: ${raw}`;
+  }
+  return raw;
+}
+
 export async function loadNotebooks() {
   try {
     const response = await fetch('/api/notebooks');
     if (!response.ok) return;
-    const data = await response.json();
+    const data = await readJson(response);
     grcStore.update((s) => ({ ...s, notebooks: data.notebooks || [] }));
-  } catch (e) {
-    console.error('Notebooks fetch failed:', e);
+  } catch (error) {
+    console.error('Notebooks fetch failed:', error);
   }
 }
 
 export async function handleFileUpload(file: File, type: 'target' | 'policy') {
+  const reviewId = getActiveReviewId();
   grcStore.update((s) => {
     if (type === 'target') {
-      return { ...s, targetDocName: file.name, uploadingTarget: true };
+      return { ...s, targetDocName: file.name, uploadingTarget: true, errorMessage: '' };
     }
-    return { ...s, policyDocName: file.name, uploadingPolicy: true };
+    return { ...s, policyDocName: file.name, uploadingPolicy: true, errorMessage: '' };
   });
 
   try {
@@ -151,24 +200,26 @@ export async function handleFileUpload(file: File, type: 'target' | 'policy') {
       headers: getHeaders(),
       body: formData
     });
-    if (!response.ok) throw new Error(`파일 업로드 실패: status ${response.status}`);
+    const resData = await readJson(response);
+    if (!response.ok) throw new Error(resData.error || `파일 업로드 실패: status ${response.status}`);
 
-    const resData = await response.json();
     const doc = resData.document;
-
     const detailRes = await fetch(`/api/documents/${doc.id}`, { headers: getHeaders() });
-    const detailData = await detailRes.json();
+    const detailData = await readJson(detailRes);
+    if (!detailRes.ok) throw new Error(detailData.error || `문서 참조 실패: status ${detailRes.status}`);
     const parsedText = detailData.document?.text || '';
 
-    grcStore.update((s) =>
-      type === 'target'
+    grcStore.update((s) => {
+      const next = type === 'target'
         ? { ...s, targetDocId: doc.id, targetText: parsedText }
-        : { ...s, policyDocId: doc.id, policyText: parsedText }
-    );
-  } catch (err: any) {
+        : { ...s, policyDocId: doc.id, policyText: parsedText };
+      if (reviewId) persistReviewPatch(reviewId, activeReviewPatchFromState(next));
+      return next;
+    });
+  } catch (error: any) {
     grcStore.update((s) => ({
       ...s,
-      errorMessage: `${file.name} 처리 중 오류 발생: ${err.message}`
+      errorMessage: `${file.name} 처리 중 오류: ${userFacingError(error, '파일 처리 중 오류가 발생했습니다.')}`
     }));
   } finally {
     grcStore.update((s) =>
@@ -190,6 +241,13 @@ export function setActiveTab(tab: 'dashboard' | 'opinion') {
 }
 
 export async function startGrcReview() {
+  const reviewId = getActiveReviewId();
+  if (!reviewId) {
+    grcStore.update((s) => ({ ...s, errorMessage: '내부검토 항목을 먼저 선택해 주세요.' }));
+    return;
+  }
+  if (inFlightReviews.has(reviewId)) return inFlightReviews.get(reviewId);
+
   grcStore.update((s) => ({ ...s, errorMessage: '', reviewResult: null }));
 
   const state = get(grcStore);
@@ -200,7 +258,7 @@ export async function startGrcReview() {
 
   if (state.policyMode === 'notebook') {
     if (!state.selectedNotebookId) {
-      grcStore.update((s) => ({ ...s, errorMessage: '참조할 부서 프로젝트를 선택해주세요.' }));
+      grcStore.update((s) => ({ ...s, errorMessage: '참조할 부서 프로젝트를 선택해 주세요.' }));
       return;
     }
     payload.notebookId = state.selectedNotebookId;
@@ -217,35 +275,50 @@ export async function startGrcReview() {
     return;
   }
 
+  const initialPatch = { ...activeReviewPatchFromState(state), reviewResult: null, errorMessage: '' };
+  persistReviewPatch(reviewId, initialPatch);
   grcStore.update((s) => ({ ...s, analyzing: true }));
 
-  try {
-    const response = await fetch('/api/compliance/grc/review', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `서버 오류: status ${response.status}`);
+  const run = (async () => {
+    try {
+      const response = await fetch('/api/compliance/grc/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const resData = await readJson(response);
+      if (!response.ok || resData.ok === false) {
+        throw new Error(resData.error || `서버 오류: status ${response.status}`);
+      }
+      const patch = {
+        reviewResult: resData.reviewResult,
+        activeTab: 'dashboard' as const,
+        errorMessage: ''
+      };
+      persistReviewPatch(reviewId, patch);
+      if (getActiveReviewId() === reviewId) {
+        grcStore.update((s) => ({ ...s, ...patch }));
+      }
+    } catch (error: any) {
+      const message = userFacingError(error, 'GRC 분석 중 오류가 발생했습니다.');
+      persistReviewPatch(reviewId, { errorMessage: message });
+      if (getActiveReviewId() === reviewId) {
+        grcStore.update((s) => ({ ...s, errorMessage: message }));
+      }
+    } finally {
+      inFlightReviews.delete(reviewId);
+      if (getActiveReviewId() === reviewId) {
+        grcStore.update((s) => ({ ...s, analyzing: false }));
+      }
     }
-    const resData = await response.json();
-    grcStore.update((s) => ({
-      ...s,
-      reviewResult: resData.reviewResult,
-      activeTab: 'dashboard'
-    }));
-  } catch (err: any) {
-    grcStore.update((s) => ({
-      ...s,
-      errorMessage: err.message || 'GRC 분석 중 오류가 발생했습니다.'
-    }));
-  } finally {
-    grcStore.update((s) => ({ ...s, analyzing: false }));
-  }
+  })();
+
+  inFlightReviews.set(reviewId, run);
+  return run;
 }
 
 export function resetGrc() {
+  if (inFlightReviews.has(getActiveReviewId())) return;
   grcStore.update((s) => ({
     ...s,
     targetDocId: '',

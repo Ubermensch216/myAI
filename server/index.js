@@ -374,7 +374,11 @@ app.post("/api/compliance/grc/review", async (request, response) => {
 
     response.json({ ok: true, reviewResult });
   } catch (error) {
-    response.status(500).json({ error: error.message });
+    const rawMessage = String(error?.message || error || "").trim();
+    const userMessage = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|UND_ERR|socket|aborted/i.test(rawMessage)
+      ? "Ollama 또는 내부 검토 서버 연결에 실패했습니다. Ollama가 실행 중인지, 선택한 모델이 응답 가능한지 확인해 주세요."
+      : rawMessage || "내부검토 처리 중 오류가 발생했습니다.";
+    response.status(500).json({ error: userMessage, detail: rawMessage });
   }
 });
 
