@@ -199,7 +199,7 @@
           <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
           <path d="m20 20-3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
         </svg>
-        규정 적합성 검토 실행
+        검토
       {/if}
     </button>
 
@@ -229,15 +229,13 @@
     align-items: stretch;
     width: 100%;
     box-sizing: border-box;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
   }
 
   .workflow-step,
   .workflow-actions {
     min-width: 0;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
-    padding: 14px;
     box-sizing: border-box;
   }
 
@@ -394,7 +392,8 @@
 
   .run-grc-btn,
   .reset-grc-btn {
-    width: 100%;
+    width: 50%;
+    align-self: center;
     min-height: 42px;
     border-radius: 7px;
     font-size: 12px;

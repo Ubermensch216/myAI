@@ -25,6 +25,7 @@ let _activeAbort = null;
 let _switchToDocumentTool = null;
 let _suppressEditorChange = false;
 let _visualBlocks = [];
+let _attachmentBlockStart = -1;
 let _openAiMenuKey = "";
 let _aiEditDocumentId = "";
 const _aiEditStates = new Map();
@@ -226,6 +227,9 @@ function renderVisualEditor(doc) {
   _visualBlocks = doc.plainTextFallback
     ? [{ type: "paragraph", text: String(doc.markdown || "") }]
     : parseMarkdownToVisualBlocks(doc.markdown || "");
+  _attachmentBlockStart = _visualBlocks.findIndex(
+    (b) => b.type === "heading" && /^\s*첨부자료\b/.test(String(b.text || ""))
+  );
   root.innerHTML = "";
   for (let index = 0; index < _visualBlocks.length; index += 1) {
     root.append(renderVisualBlock(doc, _visualBlocks[index], index));
@@ -401,7 +405,10 @@ function createTableInput(value, onInput) {
 function createTableCellEditor(doc, block, blockIndex, value, onInput, target) {
   const editor = document.createElement("div");
   editor.className = "studio-document-table-cell-editor";
-  editor.append(createTableInput(value, onInput), createAiEditControls(doc, block, blockIndex, target, { compact: true }));
+  editor.append(createTableInput(value, onInput));
+  if (target) {
+    editor.append(createAiEditControls(doc, block, blockIndex, target, { compact: true }));
+  }
   return editor;
 }
 
@@ -551,7 +558,12 @@ function createAiPreviewButton(label, onClick) {
   return button;
 }
 
+function isAttachmentBlock(blockIndex) {
+  return _attachmentBlockStart >= 0 && blockIndex >= _attachmentBlockStart;
+}
+
 function makeBlockAiTarget(block, blockIndex) {
+  if (isAttachmentBlock(blockIndex)) return null;
   if (block.type === "heading") return { key: `block:${blockIndex}`, blockIndex, targetType: "heading", label: "제목" };
   if (block.type === "paragraph") return { key: `block:${blockIndex}`, blockIndex, targetType: "paragraph", label: "문단" };
   if (block.type === "bullet_list" || block.type === "numbered_list") {
@@ -563,6 +575,7 @@ function makeBlockAiTarget(block, blockIndex) {
 }
 
 function makeTableCellAiTarget(blockIndex, isHeader, rowIndex, colIndex) {
+  if (isAttachmentBlock(blockIndex)) return null;
   const rowKey = isHeader ? "h" : String(rowIndex);
   const label = isHeader ? `표 머리글 ${colIndex + 1}` : `표 ${rowIndex + 1}행 ${colIndex + 1}열`;
   return {

@@ -470,21 +470,6 @@ function getGrcDashboardAttachmentMarkdown(
     lines.push('- 추가 확인 필요 정보가 별도로 식별되지 않았습니다.');
   }
 
-  lines.push(
-    '',
-    '### A-5. 원본 대시보드 데이터',
-    '',
-    '```json',
-    JSON.stringify({
-      summary: result.summary || '',
-      overallRisk: result.overallRisk || 'Low',
-      counts,
-      results: items,
-      missingInformation: missing
-    }, null, 2),
-    '```'
-  );
-
   return lines.join('\n');
 }
 
