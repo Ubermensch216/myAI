@@ -191,7 +191,7 @@ async function runMapBatchNow({ batch, query, model, batchIndex, signal, attempt
   try {
     const chunkBlock = batch.map((chunk, localIndex) => {
       const locator = formatChunkLocator(chunk);
-      const header = locator ? `청크 ${batchIndex + 1}.${localIndex + 1} (${locator})` : `청크 ${batchIndex + 1}.${localIndex + 1}`;
+      const header = locator ? `${batchIndex + 1}.${localIndex + 1} (${locator})` : `${batchIndex + 1}.${localIndex + 1}`;
       return `[${header}]\n${chunk.text}`;
     }).join("\n\n");
 
@@ -211,7 +211,7 @@ async function runMapBatchNow({ batch, query, model, batchIndex, signal, attempt
               "사용자 질문에 답하는 데 필요한 사실, 수치, 인물, 결정, 일정, 쟁점을 이 청크들에서만 추출해라.",
               "추출할 게 없으면 '관련 정보 없음'이라고만 답해라.",
               "답변은 한국어 평문 단락 또는 짧은 불릿 목록(- 형식)으로 작성. 마크다운 제목/굵게는 사용 금지.",
-              "각 사실 뒤에는 가능하면 청크 번호 (예: [청크 3.2])를 붙여 출처를 명시.",
+              "각 사실 뒤에는 가능하면 청크 번호 (예: [3.2])를 붙여 출처를 명시.",
               "본문에 없는 사실을 추측·일반화해 추가하지 마라.",
               `한 응답은 ${MAP_PARTIAL_MAX_CHARS}자 이내로 압축.`
             ].join("\n")
@@ -260,8 +260,8 @@ async function runReduceStreamNow({ partials, query, model, systemDirective, onC
     "여러 항목을 비교할 때는 마크다운 표(| 헤더 | … |)를 사용해도 좋다. 표 외 마크다운 제목·굵게·코드블록은 사용 금지.",
     "본문에 명시된 사실만 사용. 부분 결과들 사이에 충돌이 있으면 충돌을 그대로 노출하라.",
     "부분 결과 어디에서도 답을 찾을 수 없으면 '제공된 자료에서는 해당 질문의 답을 찾을 수 없습니다.'라고만 답해라.",
-    "출처가 부분 결과에 [청크 N.M]로 표기돼 있으면 최종 답변에도 그대로 인용 가능.",
-    "이모지(😀 🎉 👍 등 Unicode Emoji 표준의 컬러 이모지 캐릭터)는 사용하지 마라. ◆ ● ✓ ※ → 같은 텍스트 기호·픽토그램은 사용 가능."
+    "출처가 부분 결과에 [N.M]로 표기돼 있으면 최종 답변에도 그대로 인용 가능.",
+    "이모지(😀 🎉 👍 등 Unicode Emoji 표준 of 컬러 이모지 캐릭터)는 사용하지 마라. ◆ ● ✓ ※ → 같은 텍스트 기호·픽토그램은 사용 가능."
   ];
   const directive = String(systemDirective ?? "").trim();
   if (directive) systemParts.push(directive);

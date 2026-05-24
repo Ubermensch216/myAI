@@ -512,7 +512,7 @@ export async function requestTextAssistantResponse(room) {
         trackInflightAssistant(assistant);
       }
       assistant.dataset.copyText = answer;
-      renderAssistantContent(assistantBody, answer);
+      renderAssistantContent(assistantBody, answer, allCitations);
       maybeScrollToBottom(stickToBottom);
     }
 
@@ -525,7 +525,7 @@ export async function requestTextAssistantResponse(room) {
       trackInflightAssistant(assistant);
     }
     assistant.dataset.copyText = finalAnswer;
-    renderAssistantContent(assistantBody, finalAnswer);
+    renderAssistantContent(assistantBody, finalAnswer, allCitations);
     assistant.classList.remove("streaming");
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
 
@@ -995,7 +995,7 @@ export function appendMessage(role, text, options = {}) {
   const body = document.createElement("div");
   body.className = "message-body";
   if (role === "assistant") {
-    renderAssistantContent(body, text);
+    renderAssistantContent(body, text, options.citations);
     if (options.visualization) {
       body.append(renderVisualizationSpec(options.visualization));
       body.classList.add("has-visualization");

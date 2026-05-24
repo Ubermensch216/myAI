@@ -316,6 +316,21 @@ compact, and functional.
 - **Knowledge Graph** renders Cytoscape in a canvas/detail split and honors
   normal notebook read access.
 
+## Inline Citation Popups
+
+Precision Analysis (Map-Reduce) 답변에서 LLM이 출력한 출처 마커(`[1.2]`, `[1.2, 1.3]` 등)는 클릭 가능한 인라인 버튼으로 렌더링된다.
+
+- 마커 형식: 번호만 표시, 대괄호 없음, 마침표 뒤 배치 (예: `문장입니다. ¹·²`)
+- 스타일: 일반 텍스트 색상(`color: inherit`), `vertical-align: baseline`, 점선 밑줄(`border-bottom: 1px dotted var(--muted)`), `opacity: 0.65`
+- hover 시 `opacity: 1`, 밑줄 진하게
+- 클릭 시 `.inline-citation-popup` 팝업 표시:
+  - 헤더: 문서명 + 위치 정보 (`.inline-citation-popup-header`)
+  - 바디: 청크 본문 발췌 (`.inline-citation-popup-body`)
+  - 닫기: ×버튼, ESC, 외부 클릭
+  - 화면 경계 자동 위치 보정
+- 함수: `renderTextWithCitations()`, `buildCitationButtons()`, `showCitationPopup()` in `public/answerRenderer.js`
+- CSS: `.inline-citation-btn`, `.inline-citation-popup`, `.inline-citation-popup-*` in `public/styles.css`
+
 ## Interactions
 
 - Hover transitions should be short (`0.12s-0.15s`) and limited to background,

@@ -449,11 +449,12 @@ app.post("/api/chat", async (request, response) => {
             analysisMode: meta.analysisMode || null,
             citations: (meta.citations || []).map((chunk) => ({
               citationId: chunk.citationId,
-              sourceType: "notebook",
+              sourceType: chunk.sourceType || "notebook",
               documentId: chunk.documentId,
               documentName: chunk.documentName,
               documentType: chunk.documentType,
-              locator: chunk.locator
+              locator: chunk.locator,
+              excerpt: chunk.excerpt || chunk.text || ""
             })),
             webSearch: meta.webSearch
               ? {

@@ -85,7 +85,7 @@ export function bindDocumentStudioEvents() {
     regenerateActiveDraft().catch((error) => setStatus(`재구성 실패: ${error.message}`, true));
   });
   elements.studioSourceGuideButton?.addEventListener("click", () => {
-    createSourceGuideOutput().catch((error) => setStatus(`소스 가이드 생성 실패: ${error.message}`, true));
+    createSourceGuideOutput().catch((error) => setStatus(`자료 브리핑 생성 실패: ${error.message}`, true));
   });
   elements.studioSourceGuideEmptyButton?.addEventListener("click", () => {
     createSourceGuideOutput().catch((error) => window.alert(error.message));
@@ -207,7 +207,7 @@ function renderEditorMode(doc) {
   const mode = getDocumentEditorMode(doc);
   const visualActive = mode === "visual";
   const libraryActive = mode === "library";
-  if (elements.studioDocumentVisual) elements.studioDocumentVisual.hidden = !visualActive;
+  if (elements.studioDocumentEditorView) elements.studioDocumentEditorView.hidden = !visualActive;
   if (elements.studioOutputLibrary) elements.studioOutputLibrary.hidden = !libraryActive;
   updateModeButton(elements.studioDocumentVisualModeButton, visualActive);
   updateModeButton(elements.studioDocumentLibraryModeButton, libraryActive);
@@ -791,6 +791,7 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
   const { docType, presentationStyle } = choice;
 
   const studio = ensureRoomStudio(room);
+  pruneDeadDrafts(studio);
   const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const draft = {
     id: draftId,
@@ -839,6 +840,7 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
   await ensureTemplatesLoaded();
 
   const studio = state.activeView === "law" ? ensureLawReviewStudio(context) : ensureRoomStudio(context);
+  pruneDeadDrafts(studio);
   let draft = null;
   if (state.activeView === "law") {
     draft = studio.documents.find(
@@ -917,9 +919,9 @@ export function renderDocumentStudio() {
       isEmptyNode.hidden = false;
       const textNode = isEmptyNode.querySelector("p");
       if (textNode) {
-        textNode.textContent = state.activeView === "law"
-          ? "법령검토 완료 후 '보고서 생성' 버튼을 누르면 검토 보고서를 작성할 수 있어요."
-          : "채팅 답변 옆의 '스튜디오>문서' 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.";
+        textNode.innerHTML = state.activeView === "law"
+          ? `법령검토 완료 후 하단의 <strong class="highlight-term">'보고서 생성'</strong> 버튼을 누르면 검토 보고서를 작성할 수 있어요.`
+          : `채팅 답변 하단의 <strong class="highlight-term">'문서만들기'</strong> 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.`;
       }
     }
     if (elements.studioSourceGuideEmptyButton) {
@@ -1016,15 +1018,15 @@ async function createSourceGuideOutput() {
   if (!room) throw new Error("활성 대화방이 없습니다.");
   const documents = Array.isArray(room.documents) ? room.documents.filter((doc) => doc?.kind === "document") : [];
   if (!documents.length && !room.selectedNotebookId) {
-    throw new Error("소스 가이드를 만들 첨부 자료나 선택된 프로젝트가 없습니다.");
+    throw new Error("자료 브리핑을 만들 첨부 자료나 선택된 프로젝트가 없습니다.");
   }
 
-  setStatus("소스 가이드 생성 중", false, true);
+  setStatus("자료 브리핑 정리 중", false, true);
   const response = await fetch("/api/source-workflow/source-guide", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...accessAuthHeaders() },
     body: JSON.stringify({
-      title: `${room.title || "자료"} 소스 가이드`,
+      title: `${room.title || "자료"} 브리핑`,
       documents,
       notebookId: room.selectedNotebookId || "",
       model: elements.modelInput?.value?.trim() || undefined
@@ -1040,7 +1042,7 @@ async function createSourceGuideOutput() {
   const output = upsertStudioOutput({
     id: guide.id,
     type: "source_guide",
-    title: guide.title || "소스 가이드",
+    title: guide.title || "자료 브리핑",
     markdown: guide.markdown || "",
     source: {
       roomId: room.id,
@@ -1056,7 +1058,7 @@ async function createSourceGuideOutput() {
   });
   const draft = openOutputAsDraft(output, { activate: false });
   studio.activeDocumentId = draft.id;
-  setStatus("소스 가이드를 생성했습니다.");
+  setStatus("자료 브리핑을 정리했습니다.");
   scheduleSave();
   renderDocumentStudio();
 }
@@ -1065,7 +1067,7 @@ function saveActiveDraftAsOutput() {
   const doc = getActiveDraft();
   if (!doc) return;
   const output = upsertStudioOutputFromDraft(doc, { type: "document" });
-  setStatus(`산출물 보관됨: ${output.title}`);
+  setStatus(`문서 보관됨: ${output.title}`);
   scheduleSave();
   renderDocumentStudio();
 }
@@ -1094,7 +1096,7 @@ function upsertStudioOutputFromDraft(doc, { type = "document", quiet = false } =
   return output;
 }
 
-function upsertStudioOutput(input) {
+export function upsertStudioOutput(input) {
   const studio = getActiveStudio();
   if (!studio) return null;
   if (!Array.isArray(studio.outputs)) studio.outputs = [];
@@ -1103,7 +1105,7 @@ function upsertStudioOutput(input) {
   const output = {
     id,
     type: input.type || "document",
-    title: String(input.title || "Studio 산출물").trim().slice(0, 160),
+    title: String(input.title || "Studio 문서").trim().slice(0, 160),
     markdown: String(input.markdown || "").trim(),
     citations: input.citations || {},
     source: input.source || {},
@@ -1121,7 +1123,30 @@ function upsertStudioOutput(input) {
 function renderOutputLibrary(studio = getActiveStudio()) {
   const outputs = Array.isArray(studio?.outputs) ? studio.outputs : [];
   const libraryButton = elements.studioDocumentLibraryModeButton;
-  if (libraryButton) libraryButton.textContent = `산출물 ${outputs.length}`;
+  if (libraryButton) {
+    const span = libraryButton.querySelector("span");
+    if (span) {
+      const oldBadge = span.querySelector(".count-badge");
+      const oldVal = oldBadge ? parseInt(oldBadge.textContent, 10) : null;
+      const newVal = outputs.length;
+      span.innerHTML = `문서보관 <span class="count-badge">${newVal}</span>`;
+
+      if (oldVal !== null && oldVal !== newVal) {
+        const newBadge = span.querySelector(".count-badge");
+        const icon = libraryButton.querySelector(".modebar-icon");
+        if (newBadge) {
+          newBadge.classList.add("pop-active");
+          newBadge.addEventListener("animationend", () => newBadge.classList.remove("pop-active"), { once: true });
+        }
+        if (icon) {
+          icon.classList.add("wiggle-active");
+          icon.addEventListener("animationend", () => icon.classList.remove("wiggle-active"), { once: true });
+        }
+      }
+    } else {
+      libraryButton.textContent = `문서보관 ${outputs.length}`;
+    }
+  }
   for (const root of [elements.studioOutputLibrary, elements.studioOutputLibraryEmpty]) {
     if (!root) continue;
     root.innerHTML = "";
@@ -1130,14 +1155,14 @@ function renderOutputLibrary(studio = getActiveStudio()) {
       const header = document.createElement("div");
       header.className = "studio-output-library-header";
       const title = document.createElement("h4");
-      title.textContent = `산출물 ${outputs.length}`;
+      title.textContent = `문서보관 ${outputs.length}`;
       header.append(title);
       root.append(header);
     }
     if (!outputs.length) {
       const empty = document.createElement("p");
       empty.className = "studio-output-empty";
-      empty.textContent = "보관된 Studio 산출물이 없습니다.";
+      empty.textContent = "보관된 Studio 문서가 없습니다.";
       root.append(empty);
       continue;
     }
@@ -1155,10 +1180,10 @@ function renderOutputItem(output) {
   main.className = "studio-output-main";
   const title = document.createElement("div");
   title.className = "studio-output-title";
-  title.textContent = output.title || "Studio 산출물";
+  title.textContent = output.title || "Studio 문서";
   const meta = document.createElement("div");
   meta.className = "studio-output-meta";
-  meta.textContent = `${output.type === "source_guide" ? "소스 가이드" : "문서"} · ${formatOutputDate(output.updatedAt || output.createdAt)}`;
+  meta.textContent = `${output.type === "source_guide" ? "자료 브리핑" : "문서"} · ${formatOutputDate(output.updatedAt || output.createdAt)}`;
   main.append(title, meta);
 
   const actions = document.createElement("div");
@@ -1195,6 +1220,7 @@ function openOutputAsDraft(output, { activate = true } = {}) {
   const activeReview = getActiveLawReview();
   const studio = getActiveStudio();
   if (!studio) return null;
+  pruneDeadDrafts(studio);
   const existing = studio.documents.find((doc) => doc.outputId === output.id);
   if (existing) {
     if (activate) studio.activeDocumentId = existing.id;
@@ -1203,7 +1229,7 @@ function openOutputAsDraft(output, { activate = true } = {}) {
   const draft = {
     id: `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     outputId: output.id,
-    title: output.title || "Studio 산출물",
+    title: output.title || "Studio 문서",
     templateId: null,
     markdown: output.markdown || "",
     citations: output.citations || {},
@@ -1229,13 +1255,13 @@ function openOutputAsDraft(output, { activate = true } = {}) {
 async function addOutputAsRoomSource(output) {
   const room = getActiveRoom();
   if (!room) throw new Error("활성 대화방이 없습니다.");
-  if (!String(output.markdown || "").trim()) throw new Error("자료로 추가할 산출물 내용이 없습니다.");
+  if (!String(output.markdown || "").trim()) throw new Error("자료로 추가할 문서 내용이 없습니다.");
   const response = await fetch("/api/source-workflow/from-answer", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       messageId: output.source?.messageId || output.source?.sourceMessageId || "",
-      title: output.title || "Studio 산출물",
+      title: output.title || "Studio 문서",
       answerMarkdown: output.markdown,
       format: "md",
       metadata: output.metadata || {}
@@ -1245,7 +1271,7 @@ async function addOutputAsRoomSource(output) {
   if (!response.ok || !body.ok) throw new Error(body.error || "자료 생성에 실패했습니다.");
   addGeneratedSourceToRoom(room, body.generatedSource);
   window.dispatchEvent(new CustomEvent("myai:renderrooms"));
-  window.alert("Studio 산출물을 현재 방 자료로 추가했습니다.");
+  window.alert("Studio 보관 문서를 현재 방 자료로 추가했습니다.");
 }
 
 async function requestOutputPromotion(output) {
@@ -1277,6 +1303,10 @@ function deleteOutput(outputId) {
   const studio = getActiveStudio();
   if (!studio) return;
   studio.outputs = (studio.outputs || []).filter((output) => output.id !== outputId);
+  studio.documents = (studio.documents || []).filter((doc) => doc.outputId !== outputId);
+  if (studio.activeDocumentId && !studio.documents.some((doc) => doc.id === studio.activeDocumentId)) {
+    studio.activeDocumentId = studio.documents[0]?.id || "";
+  }
   scheduleSave();
   renderDocumentStudio();
 }
@@ -1857,6 +1887,17 @@ async function regenerateActiveDraft() {
   renderDocumentStudio();
 }
 
+function pruneDeadDrafts(studio) {
+  if (!studio) return;
+  const outputs = Array.isArray(studio.outputs) ? studio.outputs : [];
+  const outputIds = new Set(outputs.map((o) => o.id));
+  studio.documents = (studio.documents || []).filter((doc) => {
+    if (doc.id === studio.activeDocumentId) return true;
+    if (doc.outputId && outputIds.has(doc.outputId)) return true;
+    return false;
+  });
+}
+
 function deleteActiveDraft() {
   const studio = getActiveStudio();
   if (!studio) return;
@@ -1865,6 +1906,7 @@ function deleteActiveDraft() {
     _activeAbort = null;
   }
   studio.documents = studio.documents.filter((d) => d.id !== studio.activeDocumentId);
+  pruneDeadDrafts(studio);
   studio.activeDocumentId = studio.documents[0]?.id || "";
   closeDownloadMenu();
   clearStatus();

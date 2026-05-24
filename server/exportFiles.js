@@ -382,7 +382,6 @@ function contentToHwpxXml(content) {
     return `<hp:p id="${index}" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
     ${secPr}
     <hp:run charPrIDRef="0"><hp:t>${xmlEscape(text)}</hp:t></hp:run>
-    <hp:linesegarray><hp:lineseg textpos="0" vertpos="0" vertsize="1200" textheight="1200" baseline="1020" spacing="600" horzpos="0" horzsize="42520" flags="393216"/></hp:linesegarray>
   </hp:p>`;
   }).join("\n  ");
 }

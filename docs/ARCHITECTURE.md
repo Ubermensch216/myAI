@@ -347,7 +347,12 @@ composer material panel "정밀 분석" toggle
 -> POST /api/chat { mode: "map_reduce" }
 -> server/ollama.js loads all notebook chunks or active room document chunks
 -> server/mapReduce.js runs map calls with bounded parallelism
+   -> each batch produces citation metadata (citationId "1.1"/"1.2", documentName, excerpt, locator/page)
 -> reduce answer streams to the browser
+-> citation metadata array sent via X-Notebook-Meta header
+-> browser (public/answerRenderer.js) renders inline citation buttons
+   -> [1.2] / [청크 1.2] markers parsed into clickable .inline-citation-btn elements
+   -> clicking a marker shows .inline-citation-popup (document name, location, excerpt)
 ```
 
 The toggle is visible inside the composer material panel and is enabled only

@@ -26,7 +26,7 @@ const SECTION_LABELS = new Set([
   "결론"
 ]);
 
-export function renderAssistantAnswer(container, rawText) {
+export function renderAssistantAnswer(container, rawText, citations = []) {
   container.innerHTML = "";
   const { progress, errors, remaining } = extractProgressLines(rawText);
   const answerText = remaining.join("\n");
@@ -55,12 +55,12 @@ export function renderAssistantAnswer(container, rawText) {
     }
 
     if (block.type === "list") {
-      container.append(createList(block.items, block.ordered, block.startNumber));
+      container.append(createList(block.items, block.ordered, block.startNumber, citations));
       continue;
     }
 
     if (block.type === "table") {
-      container.append(createTable(block.rows));
+      container.append(createTable(block.rows, citations));
       continue;
     }
 
@@ -70,7 +70,7 @@ export function renderAssistantAnswer(container, rawText) {
     }
 
     const paragraph = document.createElement("p");
-    paragraph.textContent = cleanPlainText(block.text);
+    renderTextWithCitations(cleanPlainText(block.text), paragraph, citations);
     container.append(paragraph);
   }
 }
@@ -338,7 +338,7 @@ function getSectionSymbol(text = "") {
   return "•";
 }
 
-function createList(items, ordered, startNumber) {
+function createList(items, ordered, startNumber, citations) {
   const list = document.createElement(ordered ? "ol" : "ul");
   list.className = "answer-list";
   if (ordered && Number.isInteger(startNumber) && startNumber > 1) {
@@ -347,7 +347,7 @@ function createList(items, ordered, startNumber) {
 
   for (const item of items) {
     const li = document.createElement("li");
-    li.textContent = item;
+    renderTextWithCitations(item, li, citations);
     list.append(li);
   }
 
@@ -450,7 +450,7 @@ function parseTableRows(lines) {
     );
 }
 
-function createTable(rows) {
+function createTable(rows, citations) {
   const wrapper = document.createElement("div");
   wrapper.className = "table-wrap";
 
@@ -462,7 +462,7 @@ function createTable(rows) {
     const tr = document.createElement("tr");
     for (const cell of headerRow) {
       const th = document.createElement("th");
-      th.textContent = cell;
+      renderTextWithCitations(cell, th, citations);
       tr.append(th);
     }
     thead.append(tr);
@@ -474,7 +474,7 @@ function createTable(rows) {
     const tr = document.createElement("tr");
     for (const cell of row) {
       const td = document.createElement("td");
-      td.textContent = cell;
+      renderTextWithCitations(cell, td, citations);
       tr.append(td);
     }
     tbody.append(tr);
@@ -499,4 +499,207 @@ function cleanPlainText(text) {
     .replace(EMOJI_STRIP_RE, "")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+const CITATION_BRACKET_REGEX = /(\[(?:(?:청크\s+)?\d+(?:\.\d+)?|[a-zA-Z]+-?[a-zA-Z]*\d+)(?:\s*,\s*(?:(?:청크\s+)?\d+(?:\.\d+)?|[a-zA-Z]+-?[a-zA-Z]*\d+))*\])/g;
+
+function buildCitationButtons(bracketContent, citations) {
+  const citStrings = bracketContent.split(",");
+  const result = [];
+  citStrings.forEach((citStr, idx) => {
+    if (idx > 0) result.push(document.createTextNode(" "));
+    const trimmed = citStr.trim();
+    const displayText = trimmed.replace(/^청크\s+/, "");
+    const normalize = (id) => String(id || "").replace(/^청크\s+/, "").trim().toLowerCase();
+    const normKey = normalize(trimmed);
+    const citation = citations.find(c => {
+      const cid = String(c.citationId || c.id || "").trim();
+      return normalize(cid) === normKey;
+    });
+    if (citation) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "inline-citation-btn";
+      btn.textContent = displayText;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showCitationPopup(citation, btn);
+      });
+      result.push(btn);
+    } else {
+      result.push(document.createTextNode(displayText));
+    }
+  });
+  return result;
+}
+
+function renderTextWithCitations(text, parentElement, citations) {
+  parentElement.innerHTML = "";
+  if (!text) return;
+
+  if (!Array.isArray(citations) || !citations.length) {
+    parentElement.textContent = text;
+    return;
+  }
+
+  // Split on citation brackets, then re-assemble moving them after a preceding period.
+  // Pattern: "...text. [N.M]" → "...text. N.M" or "...text [N.M]." → "...text. N.M"
+  const parts = text.split(CITATION_BRACKET_REGEX);
+
+  // Collect segments: { type: 'text'|'citation', value }
+  const segments = parts.map(p => {
+    if (p.startsWith("[") && p.endsWith("]")) {
+      return { type: "citation", value: p.slice(1, -1) };
+    }
+    return { type: "text", value: p };
+  });
+
+  // Move any citation immediately before a period to after the period.
+  // E.g. "some text [1.2]." → rebuild so period comes first, then citation.
+  const reordered = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.type === "citation") {
+      const next = segments[i + 1];
+      if (next && next.type === "text" && next.value.startsWith(".")) {
+        // Emit the period, then citation with a space before it
+        reordered.push({ type: "text", value: "." });
+        reordered.push({ type: "citation", value: seg.value });
+        segments[i + 1] = { type: "text", value: next.value.slice(1) };
+      } else {
+        reordered.push(seg);
+      }
+    } else {
+      // Check if this text ends with '.' and next is citation — reorder
+      if (seg.type === "text" && seg.value.endsWith(".")) {
+        const next = segments[i + 1];
+        if (next && next.type === "citation") {
+          // Text without trailing period
+          reordered.push({ type: "text", value: seg.value.slice(0, -1) });
+          // Period
+          reordered.push({ type: "text", value: "." });
+          // Citation will be processed next iteration (unchanged)
+          reordered.push(next);
+          i++; // skip next citation since we've handled it
+        } else {
+          reordered.push(seg);
+        }
+      } else {
+        reordered.push(seg);
+      }
+    }
+  }
+
+  for (const seg of reordered) {
+    if (seg.type === "citation") {
+      // Space before citation buttons
+      parentElement.appendChild(document.createTextNode(" "));
+      const btns = buildCitationButtons(seg.value, citations);
+      btns.forEach(b => parentElement.appendChild(b));
+    } else {
+      if (seg.value) parentElement.appendChild(document.createTextNode(seg.value));
+    }
+  }
+}
+
+let activeCitationPopup = null;
+
+function showCitationPopup(citation, btn) {
+  if (activeCitationPopup) {
+    activeCitationPopup.remove();
+    activeCitationPopup = null;
+  }
+
+  const popup = document.createElement("div");
+  popup.className = "inline-citation-popup";
+
+  const header = document.createElement("div");
+  header.className = "inline-citation-popup-header";
+
+  const title = document.createElement("span");
+  title.className = "inline-citation-popup-title";
+
+  let docName = citation.documentName || "출처 파일";
+  let locatorText = citation.locator || "";
+  if (citation.page != null && !locatorText) {
+    locatorText = `${citation.page}쪽`;
+  }
+  title.textContent = locatorText ? `${docName} (${locatorText})` : docName;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "inline-citation-popup-close";
+  closeBtn.innerHTML = "&times;";
+  closeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    popup.remove();
+    if (activeCitationPopup === popup) {
+      activeCitationPopup = null;
+    }
+  });
+
+  header.append(title, closeBtn);
+
+  const body = document.createElement("div");
+  body.className = "inline-citation-popup-body";
+
+  const content = document.createElement("div");
+  content.className = "inline-citation-popup-content";
+  content.textContent = citation.excerpt || citation.text || "근거 내용이 존재하지 않습니다.";
+  body.append(content);
+
+  popup.append(header, body);
+  document.body.appendChild(popup);
+  activeCitationPopup = popup;
+
+  const rect = btn.getBoundingClientRect();
+  const scrollX = window.scrollX || window.pageXOffset;
+  const scrollY = window.scrollY || window.pageYOffset;
+
+  // Let popup size be calculated
+  const popupWidth = popup.offsetWidth || 320;
+  const popupHeight = popup.offsetHeight || 120;
+
+  let left = rect.left + rect.width / 2 - popupWidth / 2 + scrollX;
+  let top = rect.top - popupHeight - 8 + scrollY;
+
+  const padding = 12;
+  const viewportWidth = window.innerWidth;
+
+  if (left < padding) {
+    left = padding;
+  } else if (left + popupWidth > viewportWidth - padding) {
+    left = viewportWidth - popupWidth - padding;
+  }
+
+  if (rect.top - popupHeight - 8 < padding) {
+    top = rect.bottom + 8 + scrollY;
+  }
+
+  popup.style.left = `${left}px`;
+  popup.style.top = `${top}px`;
+
+  const onOutsideClick = (e) => {
+    if (!popup.contains(e.target) && e.target !== btn) {
+      cleanup();
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") {
+      cleanup();
+    }
+  };
+
+  function cleanup() {
+    popup.remove();
+    if (activeCitationPopup === popup) {
+      activeCitationPopup = null;
+    }
+    document.removeEventListener("mousedown", onOutsideClick);
+    document.removeEventListener("keydown", onKeyDown);
+  }
+
+  document.addEventListener("mousedown", onOutsideClick);
+  document.addEventListener("keydown", onKeyDown);
 }

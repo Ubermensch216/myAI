@@ -43,6 +43,7 @@ On 2026-05-05, direct Ollama checks confirmed `bge-m3:latest` is installed and `
 - Three-pane workspace with a resizable left panel, resizable/collapsible Studio panel, and tools for uploaded-document mind maps, notebook knowledge graphs, law exploration, structured document editor, and file tools (merging/splitting PDF, XLSX, TXT).
 - File Tools for merging multiple files into one or splitting a large file into smaller parts (PDF, XLSX, TXT supported; entirely client-side for privacy).
 - Whole-document or whole-notebook **Precision Analysis** ("정밀 분석") through the Map-Reduce mode. The control is available only when the active room has uploaded documents or a selected department notebook.
+- Precision Analysis 결과에서 AI 답변 내 출처 마커를 클릭하면 해당 청크의 문서명과 본문 발췌를 팝업으로 즉시 확인할 수 있다. 마커는 인용 번호만 표시되며(예: `1.2`) 마침표 뒤에 배치된다.
 - Plan-first CSV/XLSX visualizations rendered as SVG/table/KPI/infographic views.
 - Refined AI calendar intent classification with hardened client-side orchestration.
 - Browser IndexedDB persistence encrypted with WebCrypto AES-GCM.

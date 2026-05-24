@@ -9,7 +9,7 @@ import { searchNotebook } from "./rag/departmentRag.js";
 import { PROFILE_PERSONAL } from "./rag/ragConfig.js";
 import { analysisQueue, chatQueue, isChatQueueEnabled } from "./modelQueue.js";
 import { loadAllNotebookChunks, getNotebookManifestSummary } from "./notebooks.js";
-import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS } from "./mapReduce.js";
+import { streamMapReduceAnalysis, MAP_REDUCE_MAX_CHUNKS, MAP_REDUCE_BATCH_CHUNKS } from "./mapReduce.js";
 import { buildNaverSearchContext } from "./naverSearch.js";
 import { buildLawContext, buildForcedLawContext, buildLawContextFromArticleRefs, mergeLawContexts } from "./law/lawContextBuilder.js";
 import { LAW_ERROR_MARKERS } from "./law/lawErrors.js";
@@ -399,10 +399,23 @@ async function runMapReduceChat({ messages, documents, model, personalization, n
     }));
   }
 
+  const BATCH_CHUNKS = MAP_REDUCE_BATCH_CHUNKS;
+  const mrCitations = chunks.map((chunk, index) => {
+    const batchIdx = Math.floor(index / BATCH_CHUNKS);
+    const localIdx = index % BATCH_CHUNKS;
+    return {
+      citationId: `${batchIdx + 1}.${localIdx + 1}`,
+      sourceType: "map_reduce_chunk",
+      documentName: chunk.documentName || (notebookSummary ? notebookSummary.name : "첨부 파일"),
+      locator: chunk.locator || "",
+      excerpt: chunk.text || ""
+    };
+  });
+
   if (typeof onMeta === "function") {
     onMeta({
       notebook: notebookSummary,
-      citations: [],
+      citations: mrCitations,
       analysisMode: "map_reduce"
     });
   }

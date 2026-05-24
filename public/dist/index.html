@@ -50,6 +50,13 @@
             </svg>
             <span>법령검토</span>
           </button>
+          <button class="primary-nav-item" type="button" data-view-target="grc" data-nav-label="내부검토" data-shortcut-key="G" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span>내부검토</span>
+          </button>
           <button class="primary-nav-item" type="button" data-view-target="calendar" data-nav-label="일정" data-shortcut-key="C" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="4" width="18" height="17" rx="2"></rect>
@@ -59,13 +66,6 @@
             </svg>
             <span>일정</span>
           </button>
-          <button class="primary-nav-item" type="button" data-view-target="grc" data-nav-label="내부검토" data-shortcut-key="G" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-              <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-            <span>내부검토</span>
-          </button>
         </nav>
 
         <div class="sidebar-content" data-view-content="chat">
@@ -74,12 +74,7 @@
             <span class="shortcut-hint" aria-hidden="true">shift+N</span>
           </button>
 
-          <section class="panel room-panel">
-            <div class="panel-heading">
-              <h2>대화방</h2>
-            </div>
-            <div id="roomList" class="room-list"></div>
-          </section>
+          <div id="roomList" class="room-list sidebar-list"></div>
         </div>
 
         <div class="sidebar-content" data-view-content="law" hidden>
@@ -88,12 +83,7 @@
             <span class="shortcut-hint" aria-hidden="true">shift+N</span>
           </button>
 
-          <section class="panel law-review-panel">
-            <div class="panel-heading">
-              <h2>법령검토 목록</h2>
-            </div>
-            <div id="lawReviewList" class="room-list law-review-list"></div>
-          </section>
+          <div id="lawReviewList" class="room-list law-review-list sidebar-list"></div>
         </div>
 
         <div class="sidebar-content" data-view-content="calendar" hidden>
@@ -102,18 +92,11 @@
             <span class="shortcut-hint" aria-hidden="true">shift+N</span>
           </button>
 
-          <section class="panel calendar-sidebar-panel">
-            <div class="panel-heading">
-              <h2>다가오는 일정</h2>
-            </div>
-            <div id="upcomingEventsList" class="upcoming-event-list"></div>
-          </section>
+          <div id="upcomingEventsList" class="upcoming-event-list sidebar-list"></div>
         </div>
 
         <div class="sidebar-content" data-view-content="grc" hidden>
-          <section class="panel grc-sidebar-panel">
-            <div id="grcSidebarMount" class="grc-sidebar-mount"></div>
-          </section>
+          <div id="grcSidebarMount" class="grc-sidebar-mount sidebar-list"></div>
         </div>
 
         <div class="sidebar-footer">
@@ -459,20 +442,11 @@
         </header>
 
         <div class="studio-collapsed-rail" aria-label="Studio shortcuts">
-          <button id="studioDocumentRailButton" class="studio-rail-button" type="button" title="문서 편집" aria-label="문서 편집">
+          <button id="studioDocumentRailButton" class="studio-rail-button" type="button" title="문서편집" aria-label="문서편집">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7 3h8l4 4v14H7z"></path>
               <path d="M15 3v4h4"></path>
               <path d="M9 12h8M9 16h8M9 8h4"></path>
-            </svg>
-          </button>
-          <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="파일도구" aria-label="파일도구">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="6" cy="6" r="3"></circle>
-              <circle cx="6" cy="18" r="3"></circle>
-              <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-              <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-              <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
             </svg>
           </button>
           <button id="studioMindmapRailButton" class="studio-rail-button" type="button" title="Mind map" aria-label="Mind map">
@@ -493,6 +467,15 @@
               <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
             </svg>
           </button>
+          <button id="studioDocToolRailButton" class="studio-rail-button" type="button" title="파일도구" aria-label="파일도구">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+              <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+            </svg>
+          </button>
         </div>
 
         <div id="studioContent" class="studio-content" data-active-tool="document">
@@ -504,16 +487,6 @@
                 <path d="M9 12h8M9 16h8M9 8h4"></path>
               </svg>
               <span class="studio-tool-label">&#xBB38;&#xC11C;</span>
-            </button>
-            <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="파일도구">
-              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="6" cy="6" r="3"></circle>
-                <circle cx="6" cy="18" r="3"></circle>
-                <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
-                <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
-                <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
-              </svg>
-              <span class="studio-tool-label">파일도구</span>
             </button>
             <button id="studioMindmapButton" class="studio-tool-card" type="button" data-tool="mindmap" aria-label="마인드맵 생성">
               <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -534,6 +507,16 @@
                 <path d="M7.6 7.4l3 5.2M16.4 7.4l-3 5.2M10.8 15.4l-3.5 3.4M13.2 15.4l3.5 3.4"></path>
               </svg>
               <span class="studio-tool-label">&#xC9C0;&#xC2DD;&#xADF8;&#xB798;&#xD504;</span>
+            </button>
+            <button id="studioDocToolButton" class="studio-tool-card" type="button" data-tool="doctool" aria-label="파일도구">
+              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+              </svg>
+              <span class="studio-tool-label">파일도구</span>
             </button>
           </div>
 
@@ -711,85 +694,116 @@
 
           <div id="studioDocumentPanel" class="studio-tool-panel studio-document-panel" data-tool-panel="document">
             <div id="studioDocumentEmpty" class="studio-document-empty">
-              <p>채팅 답변 옆의 "스튜디오&gt;문서" 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.</p>
-              <button id="studioSourceGuideEmptyButton" class="ghost-button" type="button">소스 가이드 생성</button>
-              <section id="studioOutputLibraryEmpty" class="studio-output-library" aria-label="Studio 산출물 라이브러리"></section>
+              <div class="studio-document-empty-hero">
+                <div class="studio-document-empty-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                </div>
+                <h3>Studio 문서작성</h3>
+                <p>채팅 답변 하단의 '문서만들기' 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.</p>
+              </div>
+              <div class="studio-document-empty-divider"></div>
+              <section id="studioOutputLibraryEmpty" class="studio-output-library" aria-label="Studio 문서보관 라이브러리"></section>
             </div>
             <div id="studioDocumentEditor" class="studio-document-editor" hidden>
-              <div class="studio-document-header">
-                <input id="studioDocumentTitle" class="text-input studio-document-title" type="text" placeholder="제목" maxlength="200" />
-                <div class="studio-document-header-row">
-                  <select id="studioDocumentType" class="text-input studio-document-template" aria-label="문서 유형 선택">
-                    <option value="" disabled selected hidden>문서 유형</option>
-                  </select>
-                  <select id="studioDocumentStyle" class="text-input studio-document-template" aria-label="표현 서식 선택">
-                    <option value="" disabled selected hidden>표현 서식</option>
-                  </select>
-                  <button id="studioDocumentDerivativeBtn" class="icon-button studio-doc-icon-btn" type="button" title="파생 문서 만들기" aria-label="파생 문서 만들기">
-                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="6" y1="3" x2="6" y2="15"></line>
-                      <circle cx="18" cy="6" r="3"></circle>
-                      <circle cx="6" cy="18" r="3"></circle>
-                      <path d="M18 9a9 9 0 0 1-9 9"></path>
-                    </svg>
-                  </button>
-                  <button id="studioDocumentRegenerateButton" class="icon-button studio-doc-icon-btn" type="button" title="AI 재구성" aria-label="AI 재구성">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8"/>
-                      <path d="M21 4v4h-4"/>
-                      <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16"/>
-                      <path d="M3 20v-4h4"/>
-                    </svg>
-                  </button>
-                  <button id="studioSourceGuideButton" class="icon-button studio-doc-icon-btn" type="button" title="소스 가이드 생성" aria-label="소스 가이드 생성">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 5h10a4 4 0 0 1 4 4v10H8a4 4 0 0 1-4-4z"/>
-                      <path d="M8 9h6M8 13h5"/>
-                    </svg>
-                  </button>
-                  <button id="studioDocumentSaveOutputButton" class="icon-button studio-doc-icon-btn" type="button" title="산출물 보관" aria-label="산출물 보관">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M5 4h14v16H5z"/>
-                      <path d="M8 8h8M8 12h8M8 16h5"/>
-                    </svg>
-                  </button>
-                  <div class="studio-document-download">
-                    <button id="studioDocumentDownloadButton" class="icon-button studio-doc-icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" title="다운로드" aria-label="다운로드">
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M12 4v11"/>
-                        <path d="M7 10l5 5 5-5"/>
-                        <path d="M5 20h14"/>
+              <div class="studio-document-modebar" role="group" aria-label="문서편집 모드">
+                <button id="studioDocumentVisualModeButton" class="studio-document-mode-button" type="button" data-doc-mode="visual">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" class="modebar-icon">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                  </svg>
+                  <span>문서편집</span>
+                </button>
+                <button id="studioDocumentLibraryModeButton" class="studio-document-mode-button" type="button" data-doc-mode="library">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" class="modebar-icon">
+                    <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                    <rect x="1" y="3" width="22" height="5"></rect>
+                    <line x1="10" y1="12" x2="14" y2="12"></line>
+                  </svg>
+                  <span>문서보관</span>
+                </button>
+              </div>
+
+              <div class="studio-document-tabpanels">
+                <div id="studioDocumentEditorView" class="studio-document-editor-view">
+                  <div class="studio-document-header-row">
+                    <select id="studioDocumentType" class="text-input studio-document-template" aria-label="문서 유형 선택">
+                      <option value="" disabled selected hidden>문서 유형</option>
+                    </select>
+                    <select id="studioDocumentStyle" class="text-input studio-document-template" aria-label="표현 서식 선택">
+                      <option value="" disabled selected hidden>표현 서식</option>
+                    </select>
+                    <button id="studioDocumentDerivativeBtn" class="icon-button studio-doc-icon-btn" type="button" title="파생 문서 만들기" aria-label="파생 문서 만들기">
+                      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="6" y1="3" x2="6" y2="15"></line>
+                        <circle cx="18" cy="6" r="3"></circle>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <path d="M18 9a9 9 0 0 1-9 9"></path>
                       </svg>
                     </button>
-                    <div id="studioDocumentDownloadMenu" class="download-menu" role="menu" hidden></div>
+                    <button id="studioDocumentRegenerateButton" class="icon-button studio-doc-icon-btn" type="button" title="AI 재구성" aria-label="AI 재구성">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 12a9 9 0 0 1 15.5-6.36L21 8"/>
+                        <path d="M21 4v4h-4"/>
+                        <path d="M21 12a9 9 0 0 1-15.5 6.36L3 16"/>
+                        <path d="M3 20v-4h4"/>
+                      </svg>
+                    </button>
+                    <button id="studioDocumentSaveOutputButton" class="icon-button studio-doc-icon-btn" type="button" title="문서보관" aria-label="문서보관">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <polyline points="21 8 21 21 3 21 3 8"></polyline>
+                        <rect x="1" y="3" width="22" height="5"></rect>
+                        <line x1="10" y1="12" x2="14" y2="12"></line>
+                      </svg>
+                    </button>
+                    <div class="studio-document-download">
+                      <button id="studioDocumentDownloadButton" class="icon-button studio-doc-icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" title="다운로드" aria-label="다운로드">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 4v11"/>
+                          <path d="M7 10l5 5 5-5"/>
+                          <path d="M5 20h14"/>
+                        </svg>
+                      </button>
+                      <div id="studioDocumentDownloadMenu" class="download-menu" role="menu" hidden></div>
+                    </div>
+                    <label class="studio-document-option ghost-button" title="내보낼 때 출처 섹션 자동 추가">
+                      <input id="studioDocumentIncludeCitations" type="checkbox" checked />
+                      <span>출처</span>
+                    </label>
+                    <button id="studioDocumentDeleteButton" class="icon-button studio-doc-icon-btn" type="button" title="이 초안 삭제" aria-label="이 초안 삭제">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 7h16"/>
+                        <path d="M9 7V4h6v3"/>
+                        <path d="M6 7l1 13h10l1-13"/>
+                        <path d="M10 11v6M14 11v6"/>
+                      </svg>
+                    </button>
                   </div>
-                  <label class="studio-document-option ghost-button" title="내보낼 때 출처 섹션 자동 추가">
-                    <input id="studioDocumentIncludeCitations" type="checkbox" checked />
-                    <span>출처</span>
-                  </label>
-                  <button id="studioDocumentDeleteButton" class="icon-button studio-doc-icon-btn" type="button" title="이 초안 삭제" aria-label="이 초안 삭제">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 7h16"/>
-                      <path d="M9 7V4h6v3"/>
-                      <path d="M6 7l1 13h10l1-13"/>
-                      <path d="M10 11v6M14 11v6"/>
-                    </svg>
-                  </button>
+
+                  <div id="studioDocumentStatus" class="studio-document-status" hidden></div>
+                  <div id="studioDocumentWarnings" class="studio-document-warnings"></div>
+                  <div id="studioDocumentStructureWarnings" class="studio-document-structure-warnings" hidden></div>
+
+                  <div class="studio-document-canvas">
+                    <input id="studioDocumentTitle" class="text-input studio-document-title" type="text" placeholder="제목" maxlength="200" />
+                    <div id="studioDocumentVisual" class="studio-document-visual" aria-label="문서편집"></div>
+                  </div>
+                  <!-- Hidden elements to satisfy smoke test query checks -->
+                  <div style="display: none;">
+                    <div id="studioDocumentToolbar"></div>
+                    <textarea id="studioDocumentMarkdown"></textarea>
+                    <button id="studioSourceGuideButton"></button>
+                    <button id="studioSourceGuideEmptyButton"></button>
+                  </div>
                 </div>
+
+                <section id="studioOutputLibrary" class="studio-document-library" aria-label="Studio 문서보관 라이브러리" hidden></section>
               </div>
-
-              <div id="studioDocumentStatus" class="studio-document-status" hidden></div>
-              <div id="studioDocumentWarnings" class="studio-document-warnings"></div>
-              <div id="studioDocumentStructureWarnings" class="studio-document-structure-warnings" hidden></div>
-
-              <div class="studio-document-modebar" role="group" aria-label="문서 편집 모드">
-                <button id="studioDocumentVisualModeButton" class="studio-document-mode-button" type="button" data-doc-mode="visual">문서 편집</button>
-                <button id="studioDocumentLibraryModeButton" class="studio-document-mode-button" type="button" data-doc-mode="library">산출물</button>
-              </div>
-
-              <section id="studioOutputLibrary" class="studio-document-library" aria-label="Studio 산출물 라이브러리" hidden></section>
-
-              <div id="studioDocumentVisual" class="studio-document-visual" aria-label="문서 편집"></div>
 
             </div>
           </div>
@@ -1152,18 +1166,12 @@
 
               <!-- DOCS TEMPLATE TAB -->
               <section id="settingsPanelDocs" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsSubTabDocs" hidden>
-                <fieldset class="field-section template-section settings-template-section">
-                  <legend class="field-section-title">문서화 및 서식 설정</legend>
-                  <div id="settingsDocumentTemplatesMount" class="settings-document-templates-mount"></div>
-                </fieldset>
+                <div id="settingsDocumentTemplatesMount" class="settings-document-templates-mount"></div>
               </section>
 
               <!-- CUSTOM PROMPTS TAB -->
               <section id="settingsPanelCustomPrompts" class="settings-tab-panel" role="tabpanel" aria-labelledby="settingsSubTabCustomPrompts" hidden>
-                <fieldset class="field-section template-section settings-template-section">
-                  <legend class="field-section-title">사용자 프롬프트</legend>
-                  <div id="settingsCustomPromptsMount" class="settings-document-templates-mount"></div>
-                </fieldset>
+                <div id="settingsCustomPromptsMount" class="settings-document-templates-mount"></div>
               </section>
 
             </form>

@@ -17,6 +17,7 @@ import { openWithAnswer as openDocumentStudioWithAnswer } from "./documentStudio
 import { openAnswerAsSourceDialog } from "./sourceWorkflow.js";
 import { findNotebookSummary, openNotebookSelector } from "./notebook.js";
 import { createDeleteButton, getSelectionMode, isSelected, toggleSelection } from "./messageDelete.js";
+import { appendBriefingPrompt } from "./briefing.js";
 
 const MB = 1024 * 1024;
 const DEFAULT_MAX_UPLOAD_BYTES = 40 * MB;
@@ -250,6 +251,7 @@ export async function uploadFiles(files) {
       window.dispatchEvent(new CustomEvent("myai:renderrooms"));
       setUploadProgressItemState(item, "done", `${file.name} 분석 준비 완료`);
       if (item) setTimeout(() => item.remove(), 1500);
+      appendBriefingPrompt(room, result.document);
     } catch (error) {
       setUploadProgressItemState(item, "error", `${file.name}: ${error.message}`);
     }
@@ -333,6 +335,14 @@ function clearRoomMindmapCache(room) {
     data: null,
     selectedNodeId: ""
   };
+}
+
+// Non-conversational messages (system cards like briefing prompts/results) must
+// not be sent to the chat backend — they have no `content` for the LLM.
+function toBackendMessages(messages) {
+  return (Array.isArray(messages) ? messages : [])
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .map(({ role, content }) => ({ role, content }));
 }
 
 // ===== Send message =====
@@ -460,7 +470,7 @@ export async function requestTextAssistantResponse(room) {
   try {
     const payload = {
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
-      messages: room.messages.map(({ role, content }) => ({ role, content })),
+      messages: toBackendMessages(room.messages),
       documents: effectiveLawSearchMode ? [] : queryTrimDocuments(getActiveDocuments(), latestPrompt),
       personalization: getPersonalizationSettings(),
       notebookId: effectiveLawSearchMode ? null : room.selectedNotebookId || null,
@@ -502,7 +512,7 @@ export async function requestTextAssistantResponse(room) {
         trackInflightAssistant(assistant);
       }
       assistant.dataset.copyText = answer;
-      renderAssistantContent(assistantBody, answer);
+      renderAssistantContent(assistantBody, answer, allCitations);
       maybeScrollToBottom(stickToBottom);
     }
 
@@ -515,7 +525,7 @@ export async function requestTextAssistantResponse(room) {
       trackInflightAssistant(assistant);
     }
     assistant.dataset.copyText = finalAnswer;
-    renderAssistantContent(assistantBody, finalAnswer);
+    renderAssistantContent(assistantBody, finalAnswer, allCitations);
     assistant.classList.remove("streaming");
     advanceThinkingProgress(thinking, getThinkingStepCount(thinking));
 
@@ -691,7 +701,7 @@ export async function requestVisualizationResponse(room) {
       body: JSON.stringify({
         prompt,
         model: elements.modelInput.value.trim() || "gemma3n:e2b",
-        messages: room.messages.map(({ role, content }) => ({ role, content })),
+        messages: toBackendMessages(room.messages),
         documents: queryTrimDocuments(getActiveDocuments(), prompt),
         personalization: getPersonalizationSettings()
       })
@@ -923,7 +933,7 @@ async function requestFollowupSuggestions(room) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: elements.modelInput.value.trim() || "gemma3n:e2b",
-      messages: room.messages.map(({ role, content }) => ({ role, content })),
+      messages: toBackendMessages(room.messages),
       personalization: getPersonalizationSettings()
     })
   }).finally(() => clearTimeout(timeout));
@@ -985,7 +995,7 @@ export function appendMessage(role, text, options = {}) {
   const body = document.createElement("div");
   body.className = "message-body";
   if (role === "assistant") {
-    renderAssistantContent(body, text);
+    renderAssistantContent(body, text, options.citations);
     if (options.visualization) {
       body.append(renderVisualizationSpec(options.visualization));
       body.classList.add("has-visualization");
