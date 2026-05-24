@@ -27,7 +27,7 @@ import {
 } from "./modules/notebook.js";
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
 import { renderCustomPromptPicker } from "./modules/customPrompts.js";
-import { applyLayoutState, bindLayoutEvents, setStudioCollapsed } from "./modules/layout.js";
+import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
 import { bindStudioEvents, renderStudio } from "./modules/studio.js";
 import { bindLawWorkbenchEvents, renderLawWorkbench } from "./modules/lawWorkbench.js";
 import { initDocTool } from "./modules/docTool.js";
@@ -267,7 +267,6 @@ function applyActiveView(view) {
   if (state.activeView === next) return;
   if (next === "law") ensureLawReview();
   state.activeView = next;
-  if (next === "calendar") setStudioCollapsed(true);
   scheduleSave();
   renderPrimaryNav();
   renderStudio();
