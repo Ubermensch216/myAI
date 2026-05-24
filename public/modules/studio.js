@@ -128,17 +128,15 @@ export function renderStudio() {
   if (_activeTool === "doctool") {
     return;
   }
-  if (state.activeView === "grc" || state.activeView === "calendar") {
+  if (state.activeView === "calendar") {
     clearSvg();
     _map = null;
-    renderEmpty(state.activeView === "grc"
-      ? "내부검토 메뉴에서는 아직 마인드맵이 생성되지 않았습니다."
-      : "일정 메뉴에서는 아직 마인드맵이 생성되지 않았습니다.");
+    renderEmpty("일정 메뉴에서는 아직 마인드맵이 생성되지 않았습니다.");
     renderDetails(null);
     return;
   }
   const studio = getActiveStudio();
-  const room = state.activeView === "law" ? null : getActiveRoom();
+  const room = (state.activeView === "law" || state.activeView === "grc") ? null : getActiveRoom();
   const documents = getMindmapDocuments();
   const signature = buildDocumentSignature(documents);
   const cache = studio?.mindmap;
@@ -148,9 +146,10 @@ export function renderStudio() {
   if (!studio) {
     clearSvg();
     _map = null;
-    renderEmpty(state.activeView === "law"
-      ? "법령검토 항목을 선택하면 스튜디오를 사용할 수 있습니다."
-      : "대화방을 선택하면 스튜디오를 사용할 수 있습니다.");
+    const msg = state.activeView === "law" ? "법령검토 항목을 선택하면 스튜디오를 사용할 수 있습니다."
+      : state.activeView === "grc" ? "내부검토 항목을 선택하면 스튜디오를 사용할 수 있습니다."
+      : "대화방을 선택하면 스튜디오를 사용할 수 있습니다.";
+    renderEmpty(msg);
     renderDetails(null);
     return;
   }

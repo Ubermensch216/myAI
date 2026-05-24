@@ -1,7 +1,8 @@
 import { displayFileName as formatDisplayFileName, fileTypeIcon as getFileTypeIcon } from "./fileDisplay.js";
 import {
   state, elements, getActiveRoom, createRoom, showConfirmDialog, documentCacheHeaders,
-  ensureLawReviewsState, createLawReview
+  ensureLawReviewsState, createLawReview,
+  ensureGrcReviewsState, createGrcReview, getActiveGrcReview
 } from "./modules/state.js";
 import { initializeEncryptedStorage, loadAppState, scheduleSave, persistAppState } from "./modules/persistence.js";
 import {
@@ -70,6 +71,9 @@ window.addEventListener("myai:renderrooms", () => { renderRooms(); renderMateria
 window.addEventListener("myai:renderlawreviews", () => renderLawReviews());
 window.addEventListener("myai:rendermessages", () => renderMessages());
 window.addEventListener("myai:renderall", () => renderAll());
+
+window.scheduleSave = scheduleSave;
+window.renderGrcReviews = renderGrcReviews;
 window.addEventListener("myai:closeattachmenu", () => closeAttachMenu());
 window.addEventListener("myai:closesettings", () => closeSettings());
 window.addEventListener("myai:setview", (event) => {
@@ -139,6 +143,50 @@ function createNewLawReview() {
   elements.lawWorkbenchQuery?.focus();
 }
 
+function ensureGrcReview() {
+  const reviews = ensureGrcReviewsState();
+  if (!reviews.items.length) {
+    const review = createGrcReview();
+    reviews.items.unshift(review);
+    reviews.activeId = review.id;
+    scheduleSave();
+  }
+  return reviews.items.find((item) => item.id === reviews.activeId) || null;
+}
+
+function createNewGrcReview() {
+  const reviews = ensureGrcReviewsState();
+  const review = createGrcReview();
+  reviews.items.unshift(review);
+  reviews.activeId = review.id;
+  state.activeView = "grc";
+  scheduleSave();
+  renderAll();
+  window.dispatchEvent(new CustomEvent("myai:grcreviewchange", { detail: { reviewId: review.id } }));
+  if (window.MyAIFrontend?.mountGrcWorkbench) window.MyAIFrontend.mountGrcWorkbench();
+}
+
+async function deleteGrcReview(reviewId) {
+  const confirmed = await showConfirmDialog({
+    title: "내부검토 삭제",
+    body: "이 내부검토 항목을 삭제할까요? 검토 결과와 입력 내용이 모두 삭제됩니다.",
+    okText: "삭제",
+    cancelText: "취소",
+    danger: true
+  });
+  if (!confirmed) return;
+  const reviews = ensureGrcReviewsState();
+  const wasActive = reviews.activeId === reviewId;
+  reviews.items = reviews.items.filter((item) => item.id !== reviewId);
+  if (wasActive) reviews.activeId = reviews.items[0]?.id || "";
+  scheduleSave();
+  renderAll();
+  if (wasActive) {
+    window.dispatchEvent(new CustomEvent("myai:grcreviewchange", { detail: { reviewId: reviews.activeId } }));
+    if (window.MyAIFrontend?.mountGrcWorkbench) window.MyAIFrontend.mountGrcWorkbench();
+  }
+}
+
 async function deleteRoom(roomId) {
   const confirmed = await showConfirmDialog({
     title: "대화방 삭제",
@@ -176,6 +224,7 @@ export function renderAll() {
   renderPrimaryNav();
   renderRooms();
   renderLawReviews();
+  renderGrcReviews();
   renderHeader();
   renderMessages();
   renderCalendar();
@@ -218,6 +267,7 @@ function applyActiveView(view) {
   state.activeView = next;
   scheduleSave();
   renderPrimaryNav();
+  renderStudio();
   if (next === "calendar") renderCalendar();
   if (next === "law") {
     renderLawReviews();
@@ -225,10 +275,13 @@ function applyActiveView(view) {
     elements.lawWorkbenchQuery?.focus();
   }
   if (next === "grc") {
+    ensureGrcReview();
+    renderGrcReviews();
     if (window.MyAIFrontend && typeof window.MyAIFrontend.mountGrcWorkbench === "function") {
       window.MyAIFrontend.mountGrcWorkbench();
     }
   }
+  window.dispatchEvent(new CustomEvent("myai:viewchange", { detail: { view: next } }));
 }
 
 function normalizeView(view) {
@@ -434,6 +487,76 @@ function renderLawReviews() {
 
     item.append(title, meta, pinButton, deleteButton);
     elements.lawReviewList.append(item);
+  }
+}
+
+function renderGrcReviews() {
+  if (!elements.grcReviewList) return;
+  const reviews = ensureGrcReviewsState();
+  elements.grcReviewList.innerHTML = "";
+  const sortedReviews = sortLawReviewsForRender(reviews.items);
+
+  if (!sortedReviews.length) {
+    const empty = document.createElement("div");
+    empty.className = "law-review-list-empty";
+    empty.textContent = "아직 내부검토 항목이 없습니다.";
+    elements.grcReviewList.append(empty);
+    return;
+  }
+
+  for (const review of sortedReviews) {
+    const isPinned = Boolean(review.pinnedAt);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `room-item law-review-item${review.id === reviews.activeId ? " active" : ""}${isPinned ? " pinned" : ""}`;
+    item.addEventListener("click", () => {
+      if (reviews.activeId === review.id) return;
+      reviews.activeId = review.id;
+      state.activeView = "grc";
+      scheduleSave();
+      renderAll();
+      window.dispatchEvent(new CustomEvent("myai:grcreviewchange", { detail: { reviewId: review.id } }));
+      if (window.MyAIFrontend?.mountGrcWorkbench) window.MyAIFrontend.mountGrcWorkbench();
+    });
+
+    const title = document.createElement("span");
+    title.className = "room-item-title";
+    title.textContent = review.title || "새 내부검토";
+
+    const meta = document.createElement("span");
+    meta.className = "law-review-item-meta";
+    meta.textContent = formatLawReviewDate(review.updatedAt || review.createdAt);
+
+    const pinButton = document.createElement("span");
+    pinButton.className = "room-pin";
+    pinButton.setAttribute("role", "button");
+    pinButton.setAttribute("tabindex", "0");
+    pinButton.setAttribute("aria-pressed", isPinned ? "true" : "false");
+    pinButton.title = isPinned ? "고정 해제" : "고정";
+    pinButton.innerHTML = isPinned ? ROOM_FILE_SVG.pinFilled : ROOM_FILE_SVG.pin;
+    const togglePin = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      review.pinnedAt = review.pinnedAt ? null : new Date().toISOString();
+      scheduleSave();
+      renderGrcReviews();
+    };
+    pinButton.addEventListener("click", togglePin);
+    pinButton.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") togglePin(event);
+    });
+
+    const deleteButton = document.createElement("span");
+    deleteButton.className = "room-delete";
+    deleteButton.title = "내부검토 삭제";
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await deleteGrcReview(review.id);
+    });
+
+    item.append(title, meta, pinButton, deleteButton);
+    elements.grcReviewList.append(item);
   }
 }
 
@@ -934,6 +1057,7 @@ function bindEvents() {
   // Rooms
   elements.newRoomButton.addEventListener("click", createNewRoom);
   elements.newLawReviewButton?.addEventListener("click", createNewLawReview);
+  elements.newGrcReviewButton?.addEventListener("click", createNewGrcReview);
   elements.roomTitleInput.addEventListener("input", () => {
     const room = getActiveRoom();
     if (!room) return;

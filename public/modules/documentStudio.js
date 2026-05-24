@@ -5,7 +5,7 @@
 // fragments. Drafts live in room.studio.documents and persist via the
 // room state.
 
-import { state, elements, ensureRoomStudio, getActiveRoom, accessAuthHeaders, ensureLawReviewStudio, getActiveStudio, getActiveLawReview } from "./state.js";
+import { state, elements, ensureRoomStudio, getActiveRoom, accessAuthHeaders, ensureLawReviewStudio, getActiveStudio, getActiveLawReview, getActiveGrcReview, ensureGrcReviewStudio } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { setStudioCollapsed } from "./layout.js";
 import { parseMarkdownToVisualBlocks, serializeVisualBlocksToMarkdown } from "./documentStudioMarkdown.js";
@@ -827,7 +827,9 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
 }
 
 export async function openWithPreparedDraft({ title, markdown, templateId, metadata = {}, citations = [], source = {} } = {}) {
-  const context = state.activeView === "law" ? getActiveLawReview() : getActiveRoom();
+  const context = state.activeView === "law" ? getActiveLawReview()
+    : state.activeView === "grc" ? getActiveGrcReview()
+    : getActiveRoom();
   if (!context) return;
   const text = String(markdown || "").trim();
   if (!text) {
@@ -839,12 +841,18 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
   _switchToDocumentTool?.();
   await ensureTemplatesLoaded();
 
-  const studio = state.activeView === "law" ? ensureLawReviewStudio(context) : ensureRoomStudio(context);
+  const studio = state.activeView === "law" ? ensureLawReviewStudio(context)
+    : state.activeView === "grc" ? ensureGrcReviewStudio(context)
+    : ensureRoomStudio(context);
   pruneDeadDrafts(studio);
   let draft = null;
   if (state.activeView === "law") {
     draft = studio.documents.find(
       (d) => d.source?.sourceType === "law_workbench_report" && d.source?.lawReviewId === context.id
+    );
+  } else if (state.activeView === "grc") {
+    draft = studio.documents.find(
+      (d) => d.source?.sourceType === "grc_review" && d.source?.grcReviewId === context.id
     );
   }
 
@@ -868,9 +876,12 @@ export async function openWithPreparedDraft({ title, markdown, templateId, metad
   } else {
     const draftId = `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const resolvedSource = {
-      roomId: state.activeView === "law" ? null : context.id,
+      roomId: (state.activeView === "law" || state.activeView === "grc") ? null : context.id,
       lawReviewId: state.activeView === "law" ? context.id : null,
-      sourceType: state.activeView === "law" ? "law_workbench_report" : (source.sourceType || "assistant_answer"),
+      grcReviewId: state.activeView === "grc" ? context.id : null,
+      sourceType: state.activeView === "law" ? "law_workbench_report"
+        : state.activeView === "grc" ? "grc_review"
+        : (source.sourceType || "assistant_answer"),
       ...source
     };
 

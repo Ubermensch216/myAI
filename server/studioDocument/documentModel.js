@@ -263,6 +263,8 @@ function normalizeSource(raw) {
   if (!raw || typeof raw !== "object") return null;
   return {
     roomId: sanitizeInline(raw.roomId, 200) || null,
+    lawReviewId: sanitizeInline(raw.lawReviewId, 200) || null,
+    grcReviewId: sanitizeInline(raw.grcReviewId, 200) || null,
     messageId: sanitizeInline(raw.messageId, 200) || null,
     sourceType: sanitizeInline(raw.sourceType, 64) || "assistant_answer"
   };

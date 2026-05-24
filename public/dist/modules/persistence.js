@@ -5,7 +5,8 @@ import {
   normalizeCalendarViewMode, normalizeCalendarEvent, normalizeColorTheme,
   normalizeCustomColorTheme, normalizeLayout, normalizeResponseStyle,
   ensureRoomStudio, ensureDocumentTemplatesState, ensureCustomPromptsState,
-  ensureLawReviewsState, createLawReview
+  ensureLawReviewsState, createLawReview,
+  ensureGrcReviewsState
 } from "./state.js";
 
 let saveTimer = null;
@@ -123,8 +124,15 @@ export async function loadAppState() {
     : { items: [], activeId: "" };
   ensureLawReviewsState();
   migrateLegacyLawWorkbenchFromRooms();
+  state.grcReviews = stored.grcReviews && typeof stored.grcReviews === "object"
+    ? {
+        items: Array.isArray(stored.grcReviews.items) ? stored.grcReviews.items : [],
+        activeId: typeof stored.grcReviews.activeId === "string" ? stored.grcReviews.activeId : ""
+      }
+    : { items: [], activeId: "" };
+  ensureGrcReviewsState();
   state.activeRoomId = stored.activeRoomId || null;
-  state.activeView = ["chat", "law", "calendar"].includes(stored.activeView) ? stored.activeView : "chat";
+  state.activeView = ["chat", "law", "grc", "calendar"].includes(stored.activeView) ? stored.activeView : "chat";
   state.client = {
     documentCacheKey: typeof stored.client?.documentCacheKey === "string" && stored.client.documentCacheKey
       ? stored.client.documentCacheKey
@@ -222,6 +230,7 @@ export async function saveAppState() {
     activeRoomId: state.activeRoomId,
     activeView: state.activeView,
     lawReviews: ensureLawReviewsState(),
+    grcReviews: ensureGrcReviewsState(),
     layout: normalizeLayout(state.layout),
     client: {
       documentCacheKey: ensureDocumentCacheKey()

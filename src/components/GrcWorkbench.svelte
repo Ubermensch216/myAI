@@ -1,5 +1,6 @@
 <script lang="ts">
   import { grcStore, setActiveTab, sendToStudio, getGrcOpinionMarkdown } from '../stores/grcStore';
+  import GrcSidebar from './GrcSidebar.svelte';
 
   $: reviewResult = $grcStore.reviewResult;
   $: opinionMarkdown = getGrcOpinionMarkdown(reviewResult);
@@ -186,6 +187,9 @@
 </script>
 
 <div class="grc-main">
+  <section class="grc-inputs-top">
+    <GrcSidebar />
+  </section>
   {#if $grcStore.analyzing}
     <div class="grc-loader">
       <div class="loader-card">
@@ -388,13 +392,43 @@
     flex: 1;
     min-width: 0;
     height: 100%;
-    overflow: hidden;
+    overflow: auto;
     padding: 20px;
     background: var(--surface-3);
     display: flex;
     flex-direction: column;
     gap: 20px;
     box-sizing: border-box;
+  }
+
+  .grc-inputs-top {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    flex: 0 0 auto;
+  }
+
+  .grc-inputs-top :global(.grc-sidebar-inner) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 14px;
+    overflow: visible;
+    align-items: flex-start;
+  }
+
+  .grc-inputs-top :global(.grc-sidebar-inner .sidebar-section) {
+    flex: 1 1 280px;
+    min-width: 240px;
+  }
+
+  .grc-inputs-top :global(.grc-sidebar-inner .action-buttons) {
+    flex: 0 0 200px;
+    margin-top: 0;
+  }
+
+  .grc-inputs-top :global(.grc-sidebar-inner .grc-error) {
+    flex-basis: 100%;
   }
 
   .grc-tabs-content {

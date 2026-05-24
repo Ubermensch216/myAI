@@ -65,6 +65,59 @@ const initialState: GrcState = {
 
 export const grcStore = writable<GrcState>({ ...initialState });
 
+let suppressSyncBack = false;
+let syncBackTimer: any = null;
+
+export function syncFromActiveReview() {
+  const w = window as any;
+  const review = w.MyAIFrontend?.getActiveGrcReview?.();
+  suppressSyncBack = true;
+  if (!review) {
+    const current = get(grcStore);
+    grcStore.set({ ...initialState, notebooks: current.notebooks });
+  } else {
+    grcStore.update((s) => ({
+      ...s,
+      selectedNotebookId: review.selectedNotebookId || '',
+      policyMode: review.policyMode === 'notebook' ? 'notebook' : 'upload',
+      targetDocId: '',
+      targetDocName: review.targetDocName || '',
+      targetText: review.targetText || '',
+      uploadingTarget: false,
+      policyDocId: '',
+      policyDocName: review.policyDocName || '',
+      policyText: review.policyText || '',
+      uploadingPolicy: false,
+      analyzing: false,
+      errorMessage: review.errorMessage || '',
+      reviewResult: review.reviewResult || null,
+      activeTab: (review.activeTab === 'opinion' ? 'opinion' : 'dashboard')
+    }));
+  }
+  // Release suppress on next microtask so the subscription that fires synchronously is skipped
+  Promise.resolve().then(() => { suppressSyncBack = false; });
+}
+
+grcStore.subscribe((s) => {
+  if (suppressSyncBack) return;
+  clearTimeout(syncBackTimer);
+  syncBackTimer = setTimeout(() => {
+    const w = window as any;
+    if (typeof w.MyAIFrontend?.persistActiveGrcReview !== 'function') return;
+    w.MyAIFrontend.persistActiveGrcReview({
+      selectedNotebookId: s.selectedNotebookId,
+      policyMode: s.policyMode,
+      targetDocName: s.targetDocName,
+      targetText: s.targetText,
+      policyDocName: s.policyDocName,
+      policyText: s.policyText,
+      reviewResult: s.reviewResult,
+      activeTab: s.activeTab,
+      errorMessage: s.errorMessage
+    });
+  }, 200);
+});
+
 function getHeaders(): Record<string, string> {
   const key = (window as any).state?.client?.documentCacheKey || '';
   return { 'x-myai-document-key': key };

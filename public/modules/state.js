@@ -142,6 +142,10 @@ export const state = {
     items: [],
     activeId: ""
   },
+  grcReviews: {
+    items: [],
+    activeId: ""
+  },
   settings: {
     userTitle: "사용자님",
     aiName: "myAI",
@@ -505,6 +509,8 @@ export const elements = {
   grcArea: document.querySelector("#grcWorkbenchContainer"),
   newLawReviewButton: document.querySelector("#newLawReviewButton"),
   lawReviewList: document.querySelector("#lawReviewList"),
+  newGrcReviewButton: document.querySelector("#newGrcReviewButton"),
+  grcReviewList: document.querySelector("#grcReviewList"),
   lawWorkbenchQuery: document.querySelector("#lawWorkbenchQuery"),
   lawWorkbenchLawName: document.querySelector("#lawWorkbenchLawName"),
   lawWorkbenchArticle: document.querySelector("#lawWorkbenchArticle"),
@@ -556,12 +562,25 @@ export function ensureLawReviewStudio(review = getActiveLawReview()) {
   return review.studio;
 }
 
+export function ensureGrcReviewStudio(review = getActiveGrcReview()) {
+  if (!review) return null;
+  if (!review.studio || typeof review.studio !== "object") review.studio = {};
+  if (!Array.isArray(review.studio.documents)) review.studio.documents = [];
+  if (!Array.isArray(review.studio.outputs)) review.studio.outputs = [];
+  if (typeof review.studio.activeDocumentId !== "string") review.studio.activeDocumentId = "";
+  return review.studio;
+}
+
 export function getActiveStudio() {
   if (state.activeView === "law") {
     const review = getActiveLawReview();
     return review ? ensureLawReviewStudio(review) : null;
   }
-  if (state.activeView === "grc" || state.activeView === "calendar") {
+  if (state.activeView === "grc") {
+    const review = getActiveGrcReview();
+    return review ? ensureGrcReviewStudio(review) : null;
+  }
+  if (state.activeView === "calendar") {
     return null;
   }
   const room = getActiveRoom();
@@ -606,6 +625,67 @@ export function createLawReview(seed = {}) {
 export function getActiveLawReview() {
   const reviews = ensureLawReviewsState();
   return reviews.items.find((item) => item.id === reviews.activeId) || null;
+}
+
+export function ensureGrcReviewsState() {
+  if (!state.grcReviews || typeof state.grcReviews !== "object") {
+    state.grcReviews = { items: [], activeId: "" };
+  }
+  if (!Array.isArray(state.grcReviews.items)) state.grcReviews.items = [];
+  state.grcReviews.items = state.grcReviews.items
+    .filter((item) => item && typeof item === "object")
+    .map(normalizeGrcReview);
+  if (!state.grcReviews.items.some((item) => item.id === state.grcReviews.activeId)) {
+    state.grcReviews.activeId = state.grcReviews.items[0]?.id || "";
+  }
+  return state.grcReviews;
+}
+
+export function createGrcReview(seed = {}) {
+  const now = new Date().toISOString();
+  return normalizeGrcReview({
+    id: seed.id || crypto.randomUUID(),
+    title: seed.title || "새 내부검토",
+    policyMode: seed.policyMode || "upload",
+    selectedNotebookId: seed.selectedNotebookId || "",
+    policyDocName: seed.policyDocName || "",
+    policyText: seed.policyText || "",
+    targetDocName: seed.targetDocName || "",
+    targetText: seed.targetText || "",
+    reviewResult: seed.reviewResult || null,
+    activeTab: seed.activeTab || "dashboard",
+    errorMessage: seed.errorMessage || "",
+    createdAt: seed.createdAt || now,
+    updatedAt: seed.updatedAt || now
+  });
+}
+
+export function getActiveGrcReview() {
+  const reviews = ensureGrcReviewsState();
+  return reviews.items.find((item) => item.id === reviews.activeId) || null;
+}
+
+function normalizeGrcReview(review) {
+  const now = new Date().toISOString();
+  const normalized = {
+    id: typeof review.id === "string" && review.id ? review.id : crypto.randomUUID(),
+    title: typeof review.title === "string" && review.title.trim() ? review.title.trim() : "새 내부검토",
+    policyMode: review.policyMode === "notebook" ? "notebook" : "upload",
+    selectedNotebookId: typeof review.selectedNotebookId === "string" ? review.selectedNotebookId : "",
+    policyDocName: typeof review.policyDocName === "string" ? review.policyDocName : "",
+    policyText: typeof review.policyText === "string" ? review.policyText : "",
+    targetDocName: typeof review.targetDocName === "string" ? review.targetDocName : "",
+    targetText: typeof review.targetText === "string" ? review.targetText : "",
+    reviewResult: review.reviewResult && typeof review.reviewResult === "object" ? review.reviewResult : null,
+    activeTab: typeof review.activeTab === "string" ? review.activeTab : "dashboard",
+    errorMessage: typeof review.errorMessage === "string" ? review.errorMessage : "",
+    pinnedAt: typeof review.pinnedAt === "string" && review.pinnedAt ? review.pinnedAt : null,
+    createdAt: typeof review.createdAt === "string" ? review.createdAt : now,
+    updatedAt: typeof review.updatedAt === "string" ? review.updatedAt : now
+  };
+  Object.assign(review, normalized);
+  ensureGrcReviewStudio(review);
+  return review;
 }
 
 function normalizeLawReview(review) {
