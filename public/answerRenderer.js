@@ -354,6 +354,44 @@ function createList(items, ordered, startNumber, citations) {
   return list;
 }
 
+function isWebCitation(citation) {
+  const sourceType = String(citation?.sourceType || "").toLowerCase();
+  const citationId = String(citation?.citationId || citation?.id || "");
+  return sourceType === "naver" || sourceType === "web" || /^W\d+/i.test(citationId);
+}
+
+function createWebCitationPopupBody(citation) {
+  const fragment = document.createDocumentFragment();
+  const sourceMeta = [citation.sourceName, citation.documentType].filter(Boolean).join(" · ");
+  if (sourceMeta) {
+    const meta = document.createElement("div");
+    meta.className = "inline-citation-popup-meta";
+    meta.textContent = sourceMeta;
+    fragment.append(meta);
+  }
+
+  const content = document.createElement("div");
+  content.className = "inline-citation-popup-content";
+  content.textContent = citation.excerpt
+    || citation.summary
+    || citation.description
+    || citation.text
+    || "네이버 검색 결과에 요약문이 없습니다.";
+  fragment.append(content);
+
+  if (citation.url) {
+    const link = document.createElement("a");
+    link.className = "inline-citation-popup-link";
+    link.href = citation.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "원문 열기";
+    fragment.append(link);
+  }
+
+  return fragment;
+}
+
 function createCodeBlock(code, language = "") {
   const wrapper = document.createElement("div");
   wrapper.className = "answer-code-block";
@@ -554,41 +592,7 @@ function renderTextWithCitations(text, parentElement, citations) {
     return { type: "text", value: p };
   });
 
-  // Move any citation immediately before a period to after the period.
-  // E.g. "some text [1.2]." → rebuild so period comes first, then citation.
-  const reordered = [];
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (seg.type === "citation") {
-      const next = segments[i + 1];
-      if (next && next.type === "text" && next.value.startsWith(".")) {
-        // Emit the period, then citation with a space before it
-        reordered.push({ type: "text", value: "." });
-        reordered.push({ type: "citation", value: seg.value });
-        segments[i + 1] = { type: "text", value: next.value.slice(1) };
-      } else {
-        reordered.push(seg);
-      }
-    } else {
-      // Check if this text ends with '.' and next is citation — reorder
-      if (seg.type === "text" && seg.value.endsWith(".")) {
-        const next = segments[i + 1];
-        if (next && next.type === "citation") {
-          // Text without trailing period
-          reordered.push({ type: "text", value: seg.value.slice(0, -1) });
-          // Period
-          reordered.push({ type: "text", value: "." });
-          // Citation will be processed next iteration (unchanged)
-          reordered.push(next);
-          i++; // skip next citation since we've handled it
-        } else {
-          reordered.push(seg);
-        }
-      } else {
-        reordered.push(seg);
-      }
-    }
-  }
+  const reordered = normalizeCitationSegments(segments);
 
   for (const seg of reordered) {
     if (seg.type === "citation") {
@@ -600,6 +604,64 @@ function renderTextWithCitations(text, parentElement, citations) {
       if (seg.value) parentElement.appendChild(document.createTextNode(seg.value));
     }
   }
+}
+
+function normalizeCitationSegments(segments) {
+  const reordered = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.type !== "citation") {
+      if (seg.value) reordered.push(seg);
+      continue;
+    }
+
+    const cluster = [seg.value];
+    let terminalPunctuation = "";
+    let trailingText = "";
+    let j = i + 1;
+
+    while (j < segments.length) {
+      const separator = segments[j];
+      const nextCitation = segments[j + 1];
+      if (separator?.type !== "text") break;
+
+      const match = String(separator.value || "").match(/^([\s,，.。!?？！]*)([\s\S]*)$/);
+      const citationSeparator = match?.[1] || "";
+      const remainder = match?.[2] || "";
+      if (/[.。!?？！]/.test(citationSeparator)) {
+        terminalPunctuation = citationSeparator.match(/[.。!?？！]/)?.[0] || terminalPunctuation;
+      }
+
+      if (nextCitation?.type === "citation" && !remainder.trim()) {
+        cluster.push(nextCitation.value);
+        j += 2;
+        continue;
+      }
+
+      trailingText = remainder && /\s$/.test(citationSeparator) ? ` ${remainder}` : remainder;
+      j += 1;
+      break;
+    }
+
+    appendTerminalPunctuation(reordered, terminalPunctuation);
+    reordered.push({ type: "citation", value: cluster.join(",") });
+    if (trailingText) reordered.push({ type: "text", value: trailingText });
+    i = j - 1;
+  }
+  return reordered;
+}
+
+function appendTerminalPunctuation(segments, punctuation) {
+  if (!punctuation) return;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i];
+    if (seg.type !== "text") continue;
+    if (!seg.value) continue;
+    if (/[.。!?？！]\s*$/.test(seg.value)) return;
+    seg.value = `${seg.value.replace(/[\s,，]+$/, "")}${punctuation}`;
+    return;
+  }
+  segments.push({ type: "text", value: punctuation });
 }
 
 let activeCitationPopup = null;
@@ -645,8 +707,15 @@ function showCitationPopup(citation, btn) {
 
   const content = document.createElement("div");
   content.className = "inline-citation-popup-content";
-  content.textContent = citation.excerpt || citation.text || "근거 내용이 존재하지 않습니다.";
+  content.textContent = citation.excerpt
+    || citation.summary
+    || citation.description
+    || citation.text
+    || "근거 내용이 존재하지 않습니다.";
   body.append(content);
+  if (isWebCitation(citation)) {
+    body.replaceChildren(createWebCitationPopupBody(citation));
+  }
 
   popup.append(header, body);
   document.body.appendChild(popup);

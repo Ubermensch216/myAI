@@ -472,7 +472,9 @@ app.post("/api/chat", async (request, response) => {
                     documentType: item.documentType,
                     locator: item.locator,
                     url: item.url,
-                    sourceName: item.sourceName
+                    sourceName: item.sourceName,
+                    excerpt: item.excerpt || item.summary || item.text || "",
+                    summary: item.summary || item.excerpt || ""
                   }))
                 }
               : null,

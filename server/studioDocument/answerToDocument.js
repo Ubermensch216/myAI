@@ -233,7 +233,7 @@ function buildStructuredSystemPrompt(docTypeObj, presentationStyleObj) {
     `You convert an AI answer into a structured work document of type "${docTypeObj.name}".`,
     `Style constraints: ${styleInstruction || "Use a professional and clear business tone."}`,
     "Do not invent facts or citations. Map the source content exactly to the respective sections below.",
-    "Preserve citation markers exactly, including [N1], [L1], [P1], [I1], [R1], [O1], [W1].",
+    "Omit inline citation markers such as [N1], [L1], [P1], [I1], [R1], [O1], [W1], [AI-L1], and [L-S1] from the document body.",
     "If a section has no source content, write \"작성 필요\".",
     "Write Korean unless the source answer is clearly in another language.",
     "Return strict JSON only. No prose, no markdown fences.",
@@ -246,7 +246,7 @@ function buildStructuredSystemPrompt(docTypeObj, presentationStyleObj) {
     "",
     "Rules:",
     "- Match the source material to each key exactly.",
-    "- Never alter or fabricate citation markers."
+    "- Never add citation markers to the document body."
   ].join("\n");
 }
 
@@ -255,7 +255,7 @@ function buildStructuredUserPrompt(docTypeObj, answer, metadata) {
     return `- ${s.labels[0]} (key: "${s.id}")\n    instruction: 원본 답변에서 해당 내용을 정리하여 "${s.id}" 키에 입력.`;
   }).join("\n");
 
-  const citationHint = describeCitationHint(metadata);
+  const citationHint = describeExportCitationHint(metadata);
 
   return [
     `문서 유형: ${docTypeObj.name}`,
@@ -302,7 +302,7 @@ function buildSystemPrompt() {
   return [
     "You convert an AI answer into a structured public-sector work document.",
     "Use the selected template exactly. Do not invent facts or citations.",
-    "Preserve citation markers exactly, including [N1], [L1], [P1], [I1], [R1], [O1], [W1].",
+    "Omit inline citation markers such as [N1], [L1], [P1], [I1], [R1], [O1], [W1], [AI-L1], and [L-S1] from the document body.",
     "If a template section has no source content, write \"작성 필요\".",
     "Write Korean unless the source answer is clearly in another language.",
     "Return strict JSON only. No prose, no fences.",
@@ -327,7 +327,7 @@ function buildSystemPrompt() {
     "- Heading level should be 1 for top-level numbered sections.",
     "- For a template block of type \"table\", emit a real table block with the given columns; rows come from the answer where possible.",
     "- Never add sections not listed in the template.",
-    "- Never alter or fabricate citation markers."
+    "- Never add citation markers to the document body."
   ].join("\n");
 }
 
@@ -340,7 +340,7 @@ function buildUserPrompt({ template, answer, metadata }) {
     return `- ${block.title}\n    instruction: ${block.instruction || "관련 내용을 본문에서 정리."}`;
   }).join("\n");
 
-  const citationHint = describeCitationHint(metadata);
+  const citationHint = describeExportCitationHint(metadata);
 
   return [
     `템플릿 이름: ${template.name}`,
@@ -423,6 +423,15 @@ function buildFallbackDoc({ title, template, answer, metadata, source, docType, 
 function pickCitationsFromMetadata(metadata) {
   const out = {};
   if (!metadata || typeof metadata !== "object") return out;
+  if (Array.isArray(metadata.citations)) {
+    for (const citation of metadata.citations) {
+      const normalized = normalizeMetadataCitation(citation);
+      if (!normalized) continue;
+      const key = citationGroupKey(citation);
+      if (!out[key]) out[key] = [];
+      out[key].push(normalized);
+    }
+  }
   for (const key of ["notebook", "law", "precedent", "interpretation", "adminRule", "ordinance", "web"]) {
     const raw = metadata[key];
     if (Array.isArray(raw) && raw.length) {
@@ -432,6 +441,57 @@ function pickCitationsFromMetadata(metadata) {
     }
   }
   return out;
+}
+
+function describeExportCitationHint(metadata) {
+  if (!metadata || typeof metadata !== "object") return "Reference note: omit inline citation markers from the document body.";
+  const families = [];
+  if (metadata.notebook || hasCitationFamily(metadata, "notebook")) families.push("[N#] project");
+  if (metadata.law || metadata.compliance || ["law", "precedent", "interpretation", "adminRule", "ordinance"].some((key) => hasCitationFamily(metadata, key))) {
+    families.push("[L#/P#/I#/R#/O#] legal");
+  }
+  if (metadata.webSearch || metadata.web || hasCitationFamily(metadata, "web")) families.push("[W#] web");
+  if (!families.length) return "Reference note: omit inline citation markers from the document body.";
+  return `Reference note: the source answer may contain citation markers (${families.join(", ")}). Omit those markers from the document body; source details are stored separately for export.`;
+}
+
+function hasCitationFamily(metadata, family) {
+  if (Array.isArray(metadata?.[family]) && metadata[family].length) return true;
+  if (Array.isArray(metadata?.citations)) return metadata.citations.some((item) => citationGroupKey(item) === family);
+  return false;
+}
+
+function normalizeMetadataCitation(citation) {
+  if (!citation || typeof citation !== "object") return null;
+  const id = String(citation.citationId || citation.id || citation.marker || "").trim();
+  const marker = id ? `[${id.replace(/^\[|\]$/g, "")}]` : "";
+  const label = String(
+    citation.label
+    || citation.documentName
+    || citation.title
+    || citation.locator
+    || citation.sourceName
+    || citation.url
+    || ""
+  ).trim();
+  if (!marker && !label) return null;
+  const out = { marker, label };
+  if (citation.url) out.url = citation.url;
+  if (citation.sourceName) out.source = citation.sourceName;
+  return out;
+}
+
+function citationGroupKey(citation) {
+  const id = String(citation?.citationId || citation?.id || "").trim();
+  const sourceType = String(citation?.sourceType || "").toLowerCase();
+  const recordType = String(citation?.recordType || "").toLowerCase();
+  if (sourceType === "naver" || sourceType === "web" || /^W\d+/i.test(id)) return "web";
+  if (sourceType.includes("precedent") || recordType === "precedent" || /^P\d+/i.test(id)) return "precedent";
+  if (sourceType.includes("interpretation") || recordType === "interpretation" || /^I\d+/i.test(id)) return "interpretation";
+  if (sourceType.includes("admin_rule") || recordType === "admin_rule" || /^R\d+/i.test(id)) return "adminRule";
+  if (sourceType.includes("ordinance") || recordType === "ordinance" || /^O\d+/i.test(id)) return "ordinance";
+  if (sourceType.includes("law") || /^L\d+/i.test(id) || /^AI-L\d+/i.test(id) || /^L-S\d+/i.test(id)) return "law";
+  return "notebook";
 }
 
 function deriveTitleFromAnswer(answer) {

@@ -106,7 +106,9 @@ export async function buildNaverSearchContext(prompt, { signal } = {}) {
     documentType: item.type,
     locator: item.date || TYPE_LABELS[item.type] || "Naver",
     url: item.link,
-    sourceName: item.sourceName || TYPE_LABELS[item.type] || "Naver"
+    sourceName: item.sourceName || TYPE_LABELS[item.type] || "Naver",
+    excerpt: item.description || item.title || "",
+    summary: item.description || ""
   }));
 
   return {

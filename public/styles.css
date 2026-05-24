@@ -5668,7 +5668,7 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-document-visual-heading,
 .studio-document-visual-paragraph,
-.studio-document-visual-list input[type="text"],
+.studio-document-visual-list textarea,
 .studio-document-visual-table input {
   width: 100%;
   box-sizing: border-box;
@@ -5684,7 +5684,7 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-document-visual-heading:focus,
 .studio-document-visual-paragraph:focus,
-.studio-document-visual-list input[type="text"]:focus,
+.studio-document-visual-list textarea:focus,
 .studio-document-visual-table input:focus {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
@@ -5722,8 +5722,14 @@ body.panel-resizing .panel-resizer::after {
   padding-left: 2px;
 }
 
-.studio-document-visual-list input[type="text"] {
+.studio-document-visual-list textarea {
+  display: block;
   padding: 3px 5px;
+  min-height: 28px;
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .studio-document-visual-checklist {
@@ -13358,7 +13364,28 @@ body.panel-resizing .panel-resizer::after {
   color: var(--ink);
 }
 
+.inline-citation-popup-meta {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .inline-citation-popup-content {
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.inline-citation-popup-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  text-decoration: none;
+}
+
+.inline-citation-popup-link:hover {
+  text-decoration: underline;
 }
