@@ -218,6 +218,7 @@ function applyActiveView(view) {
   state.activeView = next;
   scheduleSave();
   renderPrimaryNav();
+  renderStudio();
   if (next === "calendar") renderCalendar();
   if (next === "law") {
     renderLawReviews();
@@ -229,6 +230,7 @@ function applyActiveView(view) {
       window.MyAIFrontend.mountGrcWorkbench();
     }
   }
+  window.dispatchEvent(new CustomEvent("myai:viewchange", { detail: { view: next } }));
 }
 
 function normalizeView(view) {

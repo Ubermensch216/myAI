@@ -560,10 +560,12 @@ export function getActiveStudio() {
   if (state.activeView === "law") {
     const review = getActiveLawReview();
     return review ? ensureLawReviewStudio(review) : null;
-  } else {
-    const room = getActiveRoom();
-    return room ? ensureRoomStudio(room) : null;
   }
+  if (state.activeView === "grc" || state.activeView === "calendar") {
+    return null;
+  }
+  const room = getActiveRoom();
+  return room ? ensureRoomStudio(room) : null;
 }
 
 export function ensureLawReviewsState() {
