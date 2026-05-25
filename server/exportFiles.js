@@ -396,7 +396,7 @@ async function createHwpxBuffer({ title, content, profile }) {
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
   ${contentToHwpxXml(content, styleProfile)}
 </hs:sec>`);
-  zip.file("Preview/PrvText.txt", Buffer.from(`\ufeff${stripMarkdown(content)}`, "utf8"));
+  zip.file("Preview/PrvText.txt", Buffer.from(`\ufeff${hwpxPreviewText(content)}`, "utf8"));
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
@@ -577,6 +577,47 @@ function hwpxTableXml(rows, paragraphIndex) {
       </hp:tbl>
     </hp:run>
   </hp:p>`;
+}
+
+// HWPX 미리보기 텍스트용: 마크다운 표·헤딩 마커를 제거하여 평문화.
+function hwpxPreviewText(content) {
+  const lines = String(content || "").split(/\n/);
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const header = parseTableRow(lines[i]);
+    const divider = parseTableDivider(lines[i + 1]);
+    if (header && divider && header.length >= 2) {
+      const rows = [header];
+      i += 2;
+      while (i < lines.length) {
+        const row = parseTableRow(lines[i]);
+        if (!row) break;
+        rows.push(row);
+        i += 1;
+      }
+      const widths = [];
+      for (const row of rows) {
+        row.forEach((cell, idx) => {
+          const len = stripMarkdown(cell).length;
+          widths[idx] = Math.max(widths[idx] || 0, len);
+        });
+      }
+      for (const row of rows) {
+        const cells = row.map((cell, idx) => stripMarkdown(cell).padEnd(widths[idx] || 0, " "));
+        out.push(`  ${cells.join("  ")}`);
+      }
+      out.push("");
+      continue;
+    }
+    if (parseTableDivider(lines[i])) {
+      i += 1;
+      continue;
+    }
+    out.push(stripMarkdown(lines[i]));
+    i += 1;
+  }
+  return out.join("\n");
 }
 
 function contentToHwpxXml(content, profile) {

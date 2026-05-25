@@ -299,6 +299,30 @@ await check("POST /export converts markdown tables to HWPX <hp:tbl>", async () =
   }
 });
 
+await check("POST /export strips markdown table markers from HWPX PrvText.txt", async () => {
+  const res = await fetch(`${base}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      format: "hwpx",
+      document: {
+        title: "프리뷰 테스트",
+        markdown: "## 통계\n\n| 항목 | 값 |\n| ---: | ---: |\n| A | 3 |\n| B | 2 |"
+      }
+    })
+  });
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buf);
+  const prv = await zip.file("Preview/PrvText.txt").async("string");
+  if (prv.includes("|")) throw new Error("PrvText still contains markdown pipe");
+  if (prv.includes("---")) throw new Error("PrvText still contains markdown divider");
+  if (!prv.includes("항목") || !prv.includes("A") || !prv.includes("3")) {
+    throw new Error("PrvText missing table content");
+  }
+});
+
 await check("POST /export rejects empty document", async () => {
   const res = await fetch(`${base}/export`, {
     method: "POST",
