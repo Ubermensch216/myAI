@@ -124,10 +124,11 @@
                   </span>
                 {:else}
                   <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M9 11l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M7 18a5 5 0 1 1 .6-9.96A6 6 0 0 1 19 10a4 4 0 0 1 0 8H7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+                    <path d="M12 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                    <path d="m9 14 3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
                   </svg>
-                  <span>규정 파일 선택</span>
+                  <span>파일을 끌어다 놓거나 클릭하여 업로드</span>
                 {/if}
               </label>
             </div>
@@ -181,9 +182,11 @@
             </span>
           {:else}
             <svg class="upload-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.48-8.48" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M7 18a5 5 0 1 1 .6-9.96A6 6 0 0 1 19 10a4 4 0 0 1 0 8H7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+              <path d="M12 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+              <path d="m9 14 3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
-            <span>대상 파일 선택</span>
+            <span>파일을 끌어다 놓거나 클릭하여 업로드</span>
           {/if}
         </label>
       </div>
@@ -306,7 +309,7 @@
     display: flex;
     flex-direction: column;
     border-right: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
-    background: var(--surface-2);
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
   }
 
   .policy-tab {
@@ -314,7 +317,7 @@
     min-width: 0;
     border: 0;
     background: transparent;
-    color: var(--muted);
+    color: color-mix(in srgb, var(--accent-dark) 55%, var(--muted));
     font-size: 11px;
     font-weight: 700;
     padding: 8px 12px;
@@ -329,7 +332,7 @@
   }
 
   .policy-tab.active {
-    background: var(--surface);
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
     color: var(--accent-dark);
   }
 
@@ -382,12 +385,18 @@
     min-height: 64px;
     padding: 10px 12px;
     box-sizing: border-box;
-    color: var(--ink);
+    color: color-mix(in srgb, var(--muted) 70%, transparent);
     cursor: pointer;
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 11px;
+    font-weight: 500;
     line-height: 1.35;
     text-align: center;
+  }
+
+  .upload-label .file-name {
+    color: var(--ink);
+    font-weight: 800;
+    font-size: 12px;
   }
 
   .upload-icon {

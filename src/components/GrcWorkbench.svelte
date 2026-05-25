@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { grcStore, setActiveTab, sendToStudio, getGrcOpinionMarkdown } from '../stores/grcStore';
+  import { grcStore, sendToStudio, getGrcOpinionMarkdown } from '../stores/grcStore';
   import GrcSidebar from './GrcSidebar.svelte';
 
   $: reviewResult = $grcStore.reviewResult;
@@ -9,15 +9,36 @@
   $: passCount = reviewResult?.results.filter((r) => statusLevel(r.status) === 'low').length || 0;
   $: infoCount = reviewResult?.results.filter((r) => statusLevel(r.status) === 'info').length || 0;
 
+  $: roadmapItems = (() => {
+    if (!reviewResult?.results) return [];
+    return reviewResult.results
+      .filter((r) => statusLevel(r.status) !== 'low' && r.remediation)
+      .sort((a, b) => {
+        const order: Record<string, number> = { high: 0, medium: 1, info: 2 };
+        return (order[statusLevel(a.status)] ?? 2) - (order[statusLevel(b.status)] ?? 2);
+      });
+  })();
+
+  $: formattedReviewedAt = (() => {
+    const at = $grcStore.reviewedAt;
+    if (!at) return '–';
+    const d = new Date(at);
+    if (isNaN(d.getTime())) return '–';
+    return d.toLocaleString('ko-KR', {
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric'
+    });
+  })();
+
   function stripExt(name: string): string {
     return (name || '').replace(/\.[^/.]+$/, '');
   }
 
   function statusLevel(status: string): 'high' | 'medium' | 'low' | 'info' {
     const text = String(status || '').toLowerCase();
-    if (text.includes('충돌') || text.includes('위반') || text.includes('부적합') || text.includes('異⑸룎') || text.includes('conflict') || text.includes('non-compliant')) return 'high';
-    if (text.includes('보완') || text.includes('주의') || text.includes('蹂댁셿') || text.includes('warn')) return 'medium';
-    if (text.includes('적합') || text.includes('통과') || text.includes('?곹빀') || text.includes('compliant') || text.includes('pass')) return 'low';
+    if (text.includes('충돌') || text.includes('위반') || text.includes('부적합') || text.includes('conflict') || text.includes('non-compliant')) return 'high';
+    if (text.includes('보완') || text.includes('주의') || text.includes('warn')) return 'medium';
+    if (text.includes('적합') || text.includes('통과') || text.includes('compliant') || text.includes('pass')) return 'low';
     return 'info';
   }
 
@@ -125,7 +146,7 @@
         html.push(`<h${level} class="markdown-h${level}">${formatInline(headingMatch[2])}</h${level}>`);
         continue;
       }
-      const bulletMatch = line.match(/^\s*[-*+\u2022]\s+(.*)$/);
+      const bulletMatch = line.match(/^\s*[-*+•]\s+(.*)$/);
       if (bulletMatch) {
         if (!inList || listType !== 'ul') {
           closeList();
@@ -204,128 +225,153 @@
       </div>
     </div>
   {:else if reviewResult}
-    <div class="grc-tabs-header">
-      <button
-        type="button"
-        class="grc-tab-btn"
-        class:active={$grcStore.activeTab === 'dashboard'}
-        on:click={() => setActiveTab('dashboard')}>
-        <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+    <div class="report-toolbar">
+      <h2 class="report-title">내부검토 보고서</h2>
+      <button type="button" class="send-button export-btn" on:click={sendToStudio}>
+        <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 4h6v6M20 4l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
-        검토 대시보드
-      </button>
-      <button
-        type="button"
-        class="grc-tab-btn"
-        class:active={$grcStore.activeTab === 'opinion'}
-        on:click={() => setActiveTab('opinion')}>
-        <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M14 4l6 6L8 22H2v-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-        </svg>
-        의견서 초안
+        스튜디오 문서로 보내기
       </button>
     </div>
 
-    <div class="grc-tabs-content">
-      {#if $grcStore.activeTab === 'dashboard'}
-        <section class="grc-card summary-card">
-          <div class="summary-header">
-            <div>
-              <h3>종합 검토 결과</h3>
-              <p>{targetBaseName} 기준 적합성 요약</p>
-            </div>
-            <span class="risk-badge risk-{reviewResult.overallRisk.toLowerCase()}">
-              종합 위험도 {riskLabel(reviewResult.overallRisk)}
-            </span>
-          </div>
-          <p class="summary-text">{reviewResult.summary}</p>
+    <div class="grc-report-content">
 
-          <div class="risk-summary-grid">
-            <div class="risk-stat-item count-high">
-              <span class="stat-num">{highCount}</span>
-              <span class="stat-label">충돌 가능성</span>
-            </div>
-            <div class="risk-stat-item count-medium">
-              <span class="stat-num">{warnCount}</span>
-              <span class="stat-label">보완 필요</span>
-            </div>
-            <div class="risk-stat-item count-low">
-              <span class="stat-num">{passCount}</span>
-              <span class="stat-label">적합</span>
-            </div>
-            <div class="risk-stat-item count-info">
-              <span class="stat-num">{infoCount}</span>
-              <span class="stat-label">확인 불가</span>
-            </div>
+      <!-- (1) 요약 카드 -->
+      <section class="grc-card summary-card">
+        <div class="info-row">
+          <div class="info-box">
+            <span class="info-label">검토 대상</span>
+            <span class="info-value" title={$grcStore.targetDocName}>{$grcStore.targetDocName || targetBaseName}</span>
+          </div>
+          <div class="info-box">
+            <span class="info-label">검토 기준</span>
+            <span class="info-value" title={policyBaseName}>{policyBaseName}</span>
+          </div>
+          <div class="info-box">
+            <span class="info-label">생성일</span>
+            <span class="info-value">{formattedReviewedAt}</span>
+          </div>
+          <div class="info-box risk-box risk-{reviewResult.overallRisk.toLowerCase()}">
+            <span class="info-label">종합 위험도</span>
+            <span class="info-value risk-val">{riskLabel(reviewResult.overallRisk)}</span>
+          </div>
+        </div>
+
+        <p class="summary-text">{reviewResult.summary}</p>
+
+        <div class="risk-summary-grid">
+          <div class="risk-stat-item count-high">
+            <span class="stat-num">{highCount}</span>
+            <span class="stat-label">충돌 가능성</span>
+          </div>
+          <div class="risk-stat-item count-medium">
+            <span class="stat-num">{warnCount}</span>
+            <span class="stat-label">보완 필요</span>
+          </div>
+          <div class="risk-stat-item count-low">
+            <span class="stat-num">{passCount}</span>
+            <span class="stat-label">적합</span>
+          </div>
+          <div class="risk-stat-item count-info">
+            <span class="stat-num">{infoCount}</span>
+            <span class="stat-label">확인 불가</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- (2) LLM 의견서 초안 전문 -->
+      <section class="grc-card opinion-section">
+        <h3 class="section-heading">
+          <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+            <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+          </svg>
+          LLM 의견서 초안 전문
+        </h3>
+        <div class="opinion-text">{@html renderMarkdown(opinionMarkdown)}</div>
+      </section>
+
+      <!-- (3) 쟁점별 판단 매트릭스 -->
+      {#if reviewResult.results && reviewResult.results.length > 0}
+        <section class="grc-card matrix-section">
+          <h3 class="section-heading">
+            <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+              <path d="M3 9h18M3 15h18M9 3v18" fill="none" stroke="currentColor" stroke-width="1.8"></path>
+            </svg>
+            쟁점별 판단 매트릭스
+          </h3>
+          <div class="table-wrapper">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th>검토 항목</th>
+                  <th>판정</th>
+                  <th>검토 의견</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each reviewResult.results as item}
+                  <tr class="matrix-row status-{statusLevel(item.status)}">
+                    <td class="matrix-rule">{item.ruleTitle || '검토 항목'}</td>
+                    <td class="matrix-status">
+                      <span class="status-tag tag-{statusLevel(item.status)}">{item.status || '확인 불가'}</span>
+                    </td>
+                    <td class="matrix-reason">{item.reason}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
         </section>
+      {/if}
 
-        <section class="findings-section">
-          <h3 class="section-title">상세 진단</h3>
-          <div class="findings-list">
-            {#each reviewResult.results as item}
-              <article class="grc-card finding-item status-{statusLevel(item.status)}">
-                <div class="finding-header">
-                  <h4>{item.ruleTitle || '검토 항목'}</h4>
-                  <span class="status-tag">{item.status || '확인 불가'}</span>
+      <!-- (4) 우선 조치 로드맵 -->
+      {#if roadmapItems.length > 0}
+        <section class="grc-card roadmap-section">
+          <h3 class="section-heading">
+            <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c1 1 1.5 1.5 1.5 3v.5h5v-.5c0-1.5.5-2 1.5-3A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            우선 조치 로드맵
+          </h3>
+          <div class="roadmap-list">
+            {#each roadmapItems as item, i}
+              <div class="roadmap-item status-{statusLevel(item.status)}">
+                <div class="roadmap-num">{i + 1}</div>
+                <div class="roadmap-content">
+                  <div class="roadmap-header">
+                    <span class="roadmap-rule">{item.ruleTitle || '검토 항목'}</span>
+                    <span class="status-tag tag-{statusLevel(item.status)}">{item.status}</span>
+                  </div>
+                  <p class="roadmap-remediation">{item.remediation}</p>
                 </div>
-                <div class="finding-body">
-                  <p class="finding-desc"><strong>검토 의견:</strong> {item.reason}</p>
-                  {#if statusLevel(item.status) !== 'low' && item.remediation}
-                    <div class="remediation-box">
-                      <strong>
-                        <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c1 1 1.5 1.5 1.5 3v.5h5v-.5c0-1.5.5-2 1.5-3A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
-                        조치 권고
-                      </strong>
-                      <p>{item.remediation}</p>
-                    </div>
-                  {/if}
-                </div>
-              </article>
+              </div>
             {/each}
           </div>
         </section>
+      {/if}
 
-        {#if reviewResult.missingInformation && reviewResult.missingInformation.length > 0}
-          <section class="grc-card missing-card">
-            <h4>
-              <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3 2 21h20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-                <path d="M12 10v5M12 18v.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
-              </svg>
-              추가 확인 필요 정보
-            </h4>
-            <ul>
-              {#each reviewResult.missingInformation as info}
-                <li>{info}</li>
-              {/each}
-            </ul>
-          </section>
-        {/if}
-      {:else}
-        <section class="grc-card opinion-card">
-          <div class="opinion-toolbar">
-            <h3>
-              <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M5 4h10l4 4v12H5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
-                <path d="M14 4v5h5" fill="none" stroke="currentColor" stroke-width="1.8"></path>
-              </svg>
-              내부검토 의견서 초안
-            </h3>
-            <button type="button" class="send-button export-btn" on:click={sendToStudio}>
-              <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M14 4h6v6M20 4l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                <path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-              </svg>
-              스튜디오 문서로 보내기
-            </button>
-          </div>
-          <div class="opinion-text">{@html renderMarkdown(opinionMarkdown)}</div>
+      <!-- (5) 추가 확인 필요 자료 -->
+      {#if reviewResult.missingInformation && reviewResult.missingInformation.length > 0}
+        <section class="grc-card missing-card">
+          <h3 class="section-heading">
+            <svg class="inline-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3 2 21h20z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M12 10v5M12 18v.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+            </svg>
+            추가 확인 필요 자료
+          </h3>
+          <ul class="missing-list">
+            {#each reviewResult.missingInformation as info}
+              <li>{info}</li>
+            {/each}
+          </ul>
         </section>
       {/if}
+
     </div>
   {:else}
     <div class="grc-empty-state">
@@ -358,7 +404,7 @@
     flex: 1;
     min-width: 0;
     height: 100%;
-    overflow: auto;
+    overflow-y: auto;
     padding: 18px min(3vw, 28px) 24px;
     background: var(--surface-3);
     display: flex;
@@ -372,19 +418,27 @@
     min-width: 0;
   }
 
-  .grc-tabs-content {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scrollbar-gutter: stable;
+  .report-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .report-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+
+  .grc-report-content {
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
 
-  .tab-icon,
   .inline-icon {
     width: 15px;
     height: 15px;
@@ -608,38 +662,7 @@
     color: var(--muted);
   }
 
-  .grc-tabs-header {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    width: fit-content;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 4px;
-    background: var(--surface);
-  }
-
-  .grc-tab-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 32px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 800;
-    padding: 6px 12px;
-    cursor: pointer;
-  }
-
-  .grc-tab-btn.active {
-    background: var(--surface-2);
-    border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
-    color: var(--accent-dark);
-  }
-
+  /* ── 공통 카드 ── */
   .grc-card {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -648,43 +671,70 @@
     box-shadow: 0 4px 12px var(--shadow);
   }
 
+  .section-heading {
+    margin: 0 0 14px;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--accent-dark);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── (1) 요약 카드 ── */
   .summary-card {
     display: flex;
     flex-direction: column;
     gap: 14px;
   }
 
-  .summary-header {
+  .info-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .info-box {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 14px;
+    flex-direction: column;
+    gap: 5px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 10px 12px;
+    min-width: 0;
   }
 
-  .summary-header h3 {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 800;
-    color: var(--ink);
-  }
-
-  .summary-header p {
-    margin: 4px 0 0;
+  .info-label {
+    font-size: 10px;
+    font-weight: 700;
     color: var(--muted);
-    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
-  .risk-badge {
-    flex: 0 0 auto;
-    font-size: 11px;
+  .info-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+
+  .risk-box.risk-high { background: #fef2f2; border-color: #fecaca; }
+  .risk-box.risk-medium { background: #fffbeb; border-color: #fde68a; }
+  .risk-box.risk-low { background: #f0fdf4; border-color: #bbf7d0; }
+
+  .risk-val {
+    font-size: 14px;
     font-weight: 800;
-    padding: 5px 10px;
-    border-radius: 6px;
   }
 
-  .risk-high { background: #fee2e2; color: #b91c1c; }
-  .risk-medium { background: #fef3c7; color: #92400e; }
-  .risk-low { background: #dcfce7; color: #166534; }
+  .risk-box.risk-high .risk-val { color: #b91c1c; }
+  .risk-box.risk-medium .risk-val { color: #92400e; }
+  .risk-box.risk-low .risk-val { color: #166534; }
 
   .summary-text {
     margin: 0;
@@ -728,155 +778,19 @@
   .count-low { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
   .count-info { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
 
-  .section-title {
-    font-size: 14px;
-    font-weight: 800;
-    margin: 0 0 10px;
-    color: var(--accent-dark);
-  }
-
-  .findings-list {
+  /* ── (2) LLM 의견서 초안 전문 ── */
+  .opinion-section {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-  }
-
-  .finding-item {
-    border-left-width: 4px;
-    border-left-style: solid;
-  }
-
-  .finding-item.status-high { border-left-color: #dc2626; }
-  .finding-item.status-medium { border-left-color: #d97706; }
-  .finding-item.status-low { border-left-color: #16a34a; }
-  .finding-item.status-info { border-left-color: #64748b; }
-
-  .finding-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-
-  .finding-header h4 {
-    font-size: 13px;
-    font-weight: 800;
-    margin: 0;
-    color: var(--ink);
-  }
-
-  .status-tag {
-    flex: 0 0 auto;
-    font-size: 10px;
-    font-weight: 800;
-    padding: 3px 8px;
-    border-radius: 5px;
-    background: var(--surface-2);
-    color: var(--accent-dark);
-  }
-
-  .finding-body {
-    font-size: 12px;
-    line-height: 1.55;
-  }
-
-  .finding-desc {
-    margin: 0;
-  }
-
-  .remediation-box {
-    margin-top: 12px;
-    background: var(--surface-2);
-    border-radius: 7px;
-    padding: 10px 12px;
-    border-left: 2px solid var(--accent);
-  }
-
-  .remediation-box strong {
-    color: var(--accent-dark);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 5px;
-  }
-
-  .remediation-box p {
-    margin: 0;
-  }
-
-  .missing-card {
-    border: 1px dashed #d97706;
-    background: #fffbeb;
-  }
-
-  .missing-card h4 {
-    color: #92400e;
-    font-size: 13px;
-    font-weight: 800;
-    margin: 0 0 8px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .missing-card ul {
-    margin: 0;
-    padding-left: 20px;
-    font-size: 12px;
-    line-height: 1.5;
-    color: #78350f;
-  }
-
-  .opinion-card {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    flex: 1;
-    min-height: 0;
-  }
-
-  .opinion-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid var(--line);
-    padding-bottom: 12px;
-  }
-
-  .opinion-toolbar h3 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .export-btn {
-    min-height: 34px;
-    padding: 7px 12px;
-    font-size: 12px;
-    border-radius: 7px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
   }
 
   .opinion-text {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
     font-size: 13px;
     line-height: 1.65;
     color: var(--ink);
-    padding-right: 4px;
   }
 
-  .opinion-text :global(.markdown-p) {
-    margin: 0 0 12px 0;
-  }
+  .opinion-text :global(.markdown-p) { margin: 0 0 12px 0; }
 
   .opinion-text :global(.markdown-h1),
   .opinion-text :global(.markdown-h2),
@@ -899,9 +813,7 @@
   }
 
   .opinion-text :global(.markdown-ul li),
-  .opinion-text :global(.markdown-ol li) {
-    margin-bottom: 6px;
-  }
+  .opinion-text :global(.markdown-ol li) { margin-bottom: 6px; }
 
   .opinion-text :global(.markdown-quote) {
     margin: 16px 0;
@@ -931,10 +843,7 @@
     font-size: 12px;
   }
 
-  .opinion-text :global(.table-wrapper) {
-    margin: 16px 0;
-    overflow-x: auto;
-  }
+  .opinion-text :global(.table-wrapper) { margin: 16px 0; overflow-x: auto; }
 
   .opinion-text :global(.markdown-table) {
     width: 100%;
@@ -958,21 +867,174 @@
     background: var(--surface-3);
   }
 
+  /* ── (3) 쟁점별 판단 매트릭스 ── */
+  .matrix-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+  }
+
+  .matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .matrix-table th {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 800;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .matrix-table td {
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+    vertical-align: top;
+    color: var(--ink);
+  }
+
+  .matrix-row.status-high td:first-child { border-left: 3px solid #dc2626; }
+  .matrix-row.status-medium td:first-child { border-left: 3px solid #d97706; }
+  .matrix-row.status-low td:first-child { border-left: 3px solid #16a34a; }
+  .matrix-row.status-info td:first-child { border-left: 3px solid #64748b; }
+
+  .matrix-rule { font-weight: 700; min-width: 120px; }
+  .matrix-status { white-space: nowrap; }
+  .matrix-reason { min-width: 200px; }
+
+  /* ── (4) 우선 조치 로드맵 ── */
+  .roadmap-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .roadmap-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .roadmap-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+
+  .roadmap-item.status-high { border-left: 4px solid #dc2626; background: color-mix(in srgb, #dc2626 4%, var(--surface-2)); }
+  .roadmap-item.status-medium { border-left: 4px solid #d97706; background: color-mix(in srgb, #d97706 4%, var(--surface-2)); }
+  .roadmap-item.status-info { border-left: 4px solid #64748b; }
+
+  .roadmap-num {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 11px;
+    font-weight: 800;
+    display: grid;
+    place-items: center;
+  }
+
+  .roadmap-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .roadmap-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .roadmap-rule {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+
+  .roadmap-remediation {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink);
+  }
+
+  /* ── 공통 상태 태그 ── */
+  .status-tag {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 5px;
+  }
+
+  .tag-high { background: #fee2e2; color: #b91c1c; }
+  .tag-medium { background: #fef3c7; color: #92400e; }
+  .tag-low { background: #dcfce7; color: #166534; }
+  .tag-info { background: #f1f5f9; color: #475569; }
+
+  /* ── (5) 추가 확인 필요 자료 ── */
+  .missing-card {
+    border: 1px dashed #d97706;
+    background: #fffbeb;
+  }
+
+  .missing-card .section-heading {
+    color: #92400e;
+  }
+
+  .missing-list {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #78350f;
+  }
+
+  .missing-list li {
+    margin-bottom: 4px;
+  }
+
+  /* ── 버튼 ── */
+  .export-btn {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 7px 14px;
+    font-size: 12px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   @media (max-width: 900px) {
-    .grc-main {
-      padding: 14px;
-    }
-
+    .grc-main { padding: 14px; }
+    .info-row,
     .risk-summary-grid,
-    .grc-features-list {
-      grid-template-columns: 1fr;
-    }
+    .grc-features-list { grid-template-columns: repeat(2, 1fr); }
+    .report-toolbar { flex-direction: column; align-items: stretch; }
+  }
 
-    .summary-header,
-    .finding-header,
-    .opinion-toolbar {
-      flex-direction: column;
-      align-items: stretch;
-    }
+  @media (max-width: 560px) {
+    .info-row,
+    .risk-summary-grid { grid-template-columns: 1fr 1fr; }
   }
 </style>

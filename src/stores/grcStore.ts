@@ -43,6 +43,7 @@ interface GrcState {
   errorMessage: string;
   reviewResult: GrcReviewResult | null;
   activeTab: 'dashboard' | 'opinion';
+  reviewedAt: string;
 }
 
 const initialState: GrcState = {
@@ -60,7 +61,8 @@ const initialState: GrcState = {
   analyzing: false,
   errorMessage: '',
   reviewResult: null,
-  activeTab: 'dashboard'
+  activeTab: 'dashboard',
+  reviewedAt: ''
 };
 
 export const grcStore = writable<GrcState>({ ...initialState });
@@ -108,7 +110,8 @@ function activeReviewPatchFromState(s: GrcState) {
     policyText: s.policyText,
     reviewResult: s.reviewResult,
     activeTab: s.activeTab,
-    errorMessage: s.errorMessage
+    errorMessage: s.errorMessage,
+    reviewedAt: s.reviewedAt
   };
 }
 
@@ -136,7 +139,8 @@ export function syncFromActiveReview() {
       analyzing: isReviewInFlight(activeReviewId),
       errorMessage: review.errorMessage || '',
       reviewResult: review.reviewResult || null,
-      activeTab: review.activeTab === 'opinion' ? 'opinion' : 'dashboard'
+      activeTab: review.activeTab === 'opinion' ? 'opinion' : 'dashboard',
+      reviewedAt: review.reviewedAt || review.updatedAt || ''
     }));
   }
   Promise.resolve().then(() => { suppressSyncBack = false; });
@@ -295,7 +299,8 @@ export async function startGrcReview() {
       const patch = {
         reviewResult: resData.reviewResult,
         activeTab: 'dashboard' as const,
-        errorMessage: ''
+        errorMessage: '',
+        reviewedAt: new Date().toISOString()
       };
       persistReviewPatch(reviewId, patch);
       if (getActiveReviewId() === reviewId) {
