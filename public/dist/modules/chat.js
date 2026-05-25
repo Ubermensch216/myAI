@@ -469,7 +469,7 @@ export async function requestTextAssistantResponse(room) {
 
   try {
     const payload = {
-      model: elements.modelInput.value.trim() || "gemma3n:e2b",
+      model: elements.modelInput.value.trim() || "gemma4:e2b",
       messages: toBackendMessages(room.messages),
       documents: effectiveLawSearchMode ? [] : queryTrimDocuments(getActiveDocuments(), latestPrompt),
       personalization: getPersonalizationSettings(),
@@ -700,7 +700,7 @@ export async function requestVisualizationResponse(room) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
-        model: elements.modelInput.value.trim() || "gemma3n:e2b",
+        model: elements.modelInput.value.trim() || "gemma4:e2b",
         messages: toBackendMessages(room.messages),
         documents: queryTrimDocuments(getActiveDocuments(), prompt),
         personalization: getPersonalizationSettings()
@@ -932,7 +932,7 @@ async function requestFollowupSuggestions(room) {
     signal: controller.signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: elements.modelInput.value.trim() || "gemma3n:e2b",
+      model: elements.modelInput.value.trim() || "gemma4:e2b",
       messages: toBackendMessages(room.messages),
       personalization: getPersonalizationSettings()
     })

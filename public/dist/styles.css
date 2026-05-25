@@ -5089,7 +5089,9 @@ body.panel-resizing .panel-resizer::after {
 
 .studio-document-download .download-menu {
   position: absolute;
+  left: auto;
   right: 0;
+  bottom: auto;
   top: calc(100% + 4px);
   min-width: 160px;
   z-index: 1000;

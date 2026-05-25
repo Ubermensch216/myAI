@@ -921,7 +921,7 @@ export async function classifyMessageIntent(prompt, room = getActiveRoom()) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         prompt,
-        model: elements.modelInput.value.trim() || "gemma3n:e2b",
+        model: elements.modelInput.value.trim() || "gemma4:e2b",
         currentDate: new Date().toISOString(),
         messages: room ? room.messages.slice(-8).map(({ role, content }) => ({ role, content })) : [],
         pendingAction: room?.pendingCalendarAction || null

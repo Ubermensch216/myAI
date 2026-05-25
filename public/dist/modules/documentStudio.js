@@ -813,7 +813,7 @@ export async function openWithAnswer({ title, markdown, messageId, metadata = {}
       messageId: messageId || null,
       sourceType: "assistant_answer"
     },
-    model: model || elements.modelInput?.value?.trim() || "gemma3n:e2b",
+    model: model || elements.modelInput?.value?.trim() || "gemma4:e2b",
     answerMarkdown: text,
     metadata,
     editorMode: "visual",
@@ -1686,7 +1686,7 @@ async function createDerivativeDocument() {
       roomId: room ? room.id : null,
       parentDocumentId: parent.id
     },
-    model: parent.model || "gemma3n:e2b",
+    model: parent.model || "gemma4:e2b",
     answerMarkdown: parent.sourceMarkdown || parent.markdown || "",
     metadata: { ...parent.metadata, parentDocumentId: parent.id },
     editorMode: "visual",

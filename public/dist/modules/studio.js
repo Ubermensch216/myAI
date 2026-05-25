@@ -187,7 +187,7 @@ async function generateMindmap() {
 
   try {
     const requestDocuments = buildMindmapRequestDocuments(documents);
-    const requestPayload = { model: elements.modelInput?.value?.trim() || "gemma3n:e2b", documents: requestDocuments };
+    const requestPayload = { model: elements.modelInput?.value?.trim() || "gemma4:e2b", documents: requestDocuments };
     validateMindmapPayloadSize(requestPayload);
     _mindmapAbortController = new AbortController();
     setMindmapBusy(true);

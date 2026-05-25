@@ -976,7 +976,7 @@ async function checkStatus() {
     const response = await fetch("/api/status");
     const status = await response.json();
     if (!status.ok) throw new Error(status.error || "Ollama 연결 실패");
-    elements.modelInput.value = status.defaultModel || "gemma3n:e2b";
+    elements.modelInput.value = status.defaultModel || "gemma4:e2b";
     elements.modelHint.textContent = "설정에서 개인화와 테마를 변경할 수 있습니다.";
   } catch (error) {
     elements.modelHint.textContent = `Ollama 연결 오류: ${error.message}`;
