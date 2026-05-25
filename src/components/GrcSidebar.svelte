@@ -315,7 +315,7 @@
     min-width: 0;
     border: 0;
     background: transparent;
-    color: color-mix(in srgb, var(--accent-dark) 55%, var(--muted));
+    color: var(--muted);
     font-size: 11px;
     font-weight: 700;
     padding: 8px 12px;
