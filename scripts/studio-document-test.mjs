@@ -236,6 +236,39 @@ await check("POST /export applies docType-specific style profile to DOCX", async
   if (reviewXml === meetingXml) throw new Error("review and meeting profiles produced identical XML");
 });
 
+await check("POST /export applies docType-specific style profile to HWPX", async () => {
+  async function fetchHwpxBytes(docType) {
+    const res = await fetch(`${base}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format: "hwpx", document: { ...exportDoc, docType } })
+    });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  const JSZip = (await import("jszip")).default;
+  async function extractHeaderAndSection(buf) {
+    const zip = await JSZip.loadAsync(buf);
+    const header = await zip.file("Contents/header.xml").async("string");
+    const section = await zip.file("Contents/section0.xml").async("string");
+    return { header, section };
+  }
+  const review = await extractHeaderAndSection(await fetchHwpxBytes("review_report"));
+  const dflt = await extractHeaderAndSection(await fetchHwpxBytes(null));
+  // 법령 검토 프로파일: 제목 색상 #1F3A68 가 header.xml 의 charPr 에 포함되어야 함
+  if (!review.header.includes("#1F3A68")) throw new Error("review profile color missing from HWPX header");
+  // 제목용 charPr (id=1) 가 정의되어야 함 + bold flag
+  if (!review.header.includes('id="1"') || !review.header.includes("<hh:bold/>")) {
+    throw new Error("title charPr with bold missing from HWPX header");
+  }
+  // section0.xml 의 첫 헤딩 단락이 styleIDRef="1" 을 사용해야 함
+  if (!review.section.includes('styleIDRef="1"')) {
+    throw new Error("section did not reference title style id");
+  }
+  // 프로파일별 header 가 달라야 함
+  if (review.header === dflt.header) throw new Error("review and default HWPX headers identical");
+});
+
 await check("POST /export rejects empty document", async () => {
   const res = await fetch(`${base}/export`, {
     method: "POST",

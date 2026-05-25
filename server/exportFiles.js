@@ -55,7 +55,7 @@ export async function createExportFile({ format, title = "myAI answer", content 
   if (normalizedFormat === "pdf") buffer = await createPdfBuffer({ title: safeTitle, content: text, profile });
   if (normalizedFormat === "xlsx") buffer = await createXlsxBuffer({ title: safeTitle, content: text });
   if (normalizedFormat === "docx") buffer = await createDocxBuffer({ title: safeTitle, content: text, profile });
-  if (normalizedFormat === "hwpx") buffer = await createHwpxBuffer({ title: safeTitle, content: text });
+  if (normalizedFormat === "hwpx") buffer = await createHwpxBuffer({ title: safeTitle, content: text, profile });
 
   return {
     buffer,
@@ -357,7 +357,8 @@ function wordTableXml(rows) {
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>${rows.map((row) => `<w:tr>${row.map((cell) => `<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">${xmlEscape(stripMarkdown(cell))}</w:t></w:r></w:p></w:tc>`).join("")}</w:tr>`).join("")}</w:tbl>`;
 }
 
-async function createHwpxBuffer({ title, content }) {
+async function createHwpxBuffer({ title, content, profile }) {
+  const styleProfile = profile || getStyleProfile(null);
   const zip = new JSZip();
   zip.file("mimetype", "application/hwp+zip", { compression: "STORE" });
   zip.file("META-INF/container.xml", `<?xml version="1.0" encoding="UTF-8"?>
@@ -390,16 +391,81 @@ async function createHwpxBuffer({ title, content }) {
   <odf:file-entry odf:media-type="application/xml" odf:full-path="Contents/section0.xml"/>
   <odf:file-entry odf:media-type="text/plain" odf:full-path="Preview/PrvText.txt"/>
 </odf:manifest>`);
-  zip.file("Contents/header.xml", createHwpxHeaderXml());
+  zip.file("Contents/header.xml", createHwpxHeaderXml(styleProfile));
   zip.file("Contents/section0.xml", `<?xml version="1.0" encoding="UTF-8"?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
-  ${contentToHwpxXml(content)}
+  ${contentToHwpxXml(content, styleProfile)}
 </hs:sec>`);
   zip.file("Preview/PrvText.txt", Buffer.from(`\ufeff${stripMarkdown(content)}`, "utf8"));
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
-function createHwpxHeaderXml() {
+// HWPX 단위: height = pt * 100, color = "#RRGGBB"
+function hwpxHeight(pt) { return Math.round(pt * 100); }
+function hwpxColor(hex) {
+  const c = String(hex || "").trim();
+  if (!c) return "#000000";
+  return c.startsWith("#") ? c.toUpperCase() : `#${c.toUpperCase()}`;
+}
+function hwpxAlign(align) {
+  const map = { left: "LEFT", center: "CENTER", right: "RIGHT", justify: "JUSTIFY" };
+  return map[align] || "LEFT";
+}
+
+function buildHwpxCharPr(id, style) {
+  const height = hwpxHeight(style.fontSize || 10);
+  const color = hwpxColor(style.color || "#000000");
+  const flags = [];
+  if (style.bold) flags.push("<hh:bold/>");
+  if (style.italic) flags.push("<hh:italic/>");
+  if (style.underline) flags.push('<hh:underline type="SOLID" shape="SOLID" color="#000000"/>');
+  return `<hh:charPr id="${id}" height="${height}" textColor="${color}" shadeColor="none" useFontSpace="0" useKerning="0">
+        <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
+        <hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
+        <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
+        <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
+        <hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>${flags.length ? "\n        " + flags.join("\n        ") : ""}
+      </hh:charPr>`;
+}
+
+function buildHwpxParaPr(id, align, lineSpacingPct, borderFillIDRef = 1) {
+  return `<hh:paraPr id="${id}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1" suppressLineNumbers="0" checked="0">
+        <hh:align horizontal="${align}" vertical="BASELINE"/>
+        <hh:heading type="NONE" idRef="0" level="0"/>
+        <hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/>
+        <hh:margin intent="0" left="0" right="0" prev="0" next="0"/>
+        <hh:lineSpacing type="PERCENT" value="${lineSpacingPct}"/>
+        <hh:border borderFillIDRef="${borderFillIDRef}" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/>
+      </hh:paraPr>`;
+}
+
+// id 매핑 (charPr/paraPr 공통)
+// 0 = body, 1 = title, 2 = h2, 3 = h3
+const HWPX_ID_BODY = 0;
+const HWPX_ID_TITLE = 1;
+const HWPX_ID_H2 = 2;
+const HWPX_ID_H3 = 3;
+
+function createHwpxHeaderXml(profile) {
+  const bodyLineSpacing = Math.round((profile.body.lineHeight || 1.35) * 100);
+  const charPrs = [
+    buildHwpxCharPr(HWPX_ID_BODY, { fontSize: profile.body.fontSize, color: profile.body.color }),
+    buildHwpxCharPr(HWPX_ID_TITLE, { fontSize: profile.title.fontSize, color: profile.title.color, bold: profile.title.bold, underline: profile.title.underline }),
+    buildHwpxCharPr(HWPX_ID_H2, { fontSize: profile.h2.fontSize, color: profile.h2.color, bold: profile.h2.bold }),
+    buildHwpxCharPr(HWPX_ID_H3, { fontSize: profile.h3.fontSize, color: profile.h3.color, bold: profile.h3.bold })
+  ];
+  const paraPrs = [
+    buildHwpxParaPr(HWPX_ID_BODY, "JUSTIFY", bodyLineSpacing),
+    buildHwpxParaPr(HWPX_ID_TITLE, hwpxAlign(profile.title.align), 130),
+    buildHwpxParaPr(HWPX_ID_H2, hwpxAlign(profile.h2.align), 130),
+    buildHwpxParaPr(HWPX_ID_H3, "LEFT", 130)
+  ];
+  const styles = [
+    `<hh:style id="${HWPX_ID_BODY}" type="PARA" name="바탕글" engName="Normal" paraPrIDRef="${HWPX_ID_BODY}" charPrIDRef="${HWPX_ID_BODY}" nextStyleIDRef="${HWPX_ID_BODY}" langID="1042" lockForm="0"/>`,
+    `<hh:style id="${HWPX_ID_TITLE}" type="PARA" name="문서제목" engName="Title" paraPrIDRef="${HWPX_ID_TITLE}" charPrIDRef="${HWPX_ID_TITLE}" nextStyleIDRef="${HWPX_ID_BODY}" langID="1042" lockForm="0"/>`,
+    `<hh:style id="${HWPX_ID_H2}" type="PARA" name="소제목" engName="Heading2" paraPrIDRef="${HWPX_ID_H2}" charPrIDRef="${HWPX_ID_H2}" nextStyleIDRef="${HWPX_ID_BODY}" langID="1042" lockForm="0"/>`,
+    `<hh:style id="${HWPX_ID_H3}" type="PARA" name="소소제목" engName="Heading3" paraPrIDRef="${HWPX_ID_H3}" charPrIDRef="${HWPX_ID_H3}" nextStyleIDRef="${HWPX_ID_BODY}" langID="1042" lockForm="0"/>`
+  ];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head" xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core" version="1.5" secCnt="1">
   <hh:beginNum page="1" footnote="1" endnote="1" pic="1" tbl="1" equation="1"/>
@@ -418,36 +484,32 @@ function createHwpxHeaderXml() {
         <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
       </hh:borderFill>
     </hh:borderFills>
-    <hh:charProperties itemCnt="1">
-      <hh:charPr id="0" height="1000" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0">
-        <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
-        <hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
-        <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
-        <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>
-        <hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
-      </hh:charPr>
+    <hh:charProperties itemCnt="${charPrs.length}">
+      ${charPrs.join("\n      ")}
     </hh:charProperties>
-    <hh:paraProperties itemCnt="1">
-      <hh:paraPr id="0" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1" suppressLineNumbers="0" checked="0">
-        <hh:align horizontal="JUSTIFY" vertical="BASELINE"/>
-        <hh:heading type="NONE" idRef="0" level="0"/>
-        <hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD" widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0" lineWrap="BREAK"/>
-        <hh:margin intent="0" left="0" right="0" prev="0" next="0"/>
-        <hh:lineSpacing type="PERCENT" value="160"/>
-        <hh:border borderFillIDRef="1" offsetLeft="0" offsetRight="0" offsetTop="0" offsetBottom="0" connect="0" ignoreMargin="0"/>
-      </hh:paraPr>
+    <hh:paraProperties itemCnt="${paraPrs.length}">
+      ${paraPrs.join("\n      ")}
     </hh:paraProperties>
-    <hh:styles itemCnt="1"><hh:style id="0" type="PARA" name="바탕글" engName="Normal" paraPrIDRef="0" charPrIDRef="0" nextStyleIDRef="0" langID="1042" lockForm="0"/></hh:styles>
+    <hh:styles itemCnt="${styles.length}">${styles.join("")}</hh:styles>
     <hh:tabProperties itemCnt="1"><hh:tabPr id="0" autoTabLeft="1" autoTabRight="1"/></hh:tabProperties>
   </hh:refList>
 </hh:head>`;
 }
 
-function contentToHwpxXml(content) {
+function contentToHwpxXml(content, profile) {
+  void profile;
   const lines = content.split(/\n/);
   const paragraphs = lines.length ? lines : [""];
   return paragraphs.map((line, index) => {
     const text = stripMarkdown(line);
+    const heading = /^(#{1,3})\s+/.exec(line);
+    let idRef = HWPX_ID_BODY;
+    if (heading) {
+      const level = Math.min(heading[1].length, 3);
+      if (level === 1) idRef = HWPX_ID_TITLE;
+      else if (level === 2) idRef = HWPX_ID_H2;
+      else idRef = HWPX_ID_H3;
+    }
     const secPr = index === 0 ? `<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000" tabStopVal="LEFT" tabStopUnit="MILLIMETER">
       <hp:grid lineGrid="0" charGrid="0" wonggojiFormat="0"/>
       <hp:startNum pageStartsOn="BOTH" page="1" pic="1" tbl="1" equation="1"/>
@@ -461,9 +523,9 @@ function contentToHwpxXml(content) {
         <hp:offset left="0" right="0" top="0" bottom="0"/>
       </hp:pageBorderFill>
     </hp:secPr>` : "";
-    return `<hp:p id="${index}" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
+    return `<hp:p id="${index}" paraPrIDRef="${idRef}" styleIDRef="${idRef}" pageBreak="0" columnBreak="0" merged="0">
     ${secPr}
-    <hp:run charPrIDRef="0"><hp:t>${xmlEscape(text)}</hp:t></hp:run>
+    <hp:run charPrIDRef="${idRef}"><hp:t>${xmlEscape(text)}</hp:t></hp:run>
   </hp:p>`;
   }).join("\n  ");
 }
