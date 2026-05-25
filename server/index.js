@@ -348,7 +348,7 @@ function createRequestAbortController(request, response) {
 }
 
 app.post("/api/compliance/grc/review", async (request, response) => {
-  const { targetText, policyText, notebookId, model } = request.body || {};
+  const { targetText, policyText, notebookId } = request.body || {};
   let target = targetText || "";
   let policy = policyText || "";
 
@@ -369,8 +369,7 @@ app.post("/api/compliance/grc/review", async (request, response) => {
 
     const reviewResult = await runGrcReview({
       targetText: target,
-      policyText: policy,
-      model: model || undefined
+      policyText: policy
     });
 
     response.json({ ok: true, reviewResult });
