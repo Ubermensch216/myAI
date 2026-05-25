@@ -282,15 +282,18 @@ function renderListBlock(doc, block, blockIndex) {
   const items = Array.isArray(block.items) ? block.items : [];
   for (const item of items) {
     const li = document.createElement("li");
-    const input = document.createElement("input");
-    input.type = "text";
+    const input = document.createElement("textarea");
+    input.rows = 1;
+    input.dataset.minHeight = "28";
     input.value = item.text || "";
     input.addEventListener("input", () => {
       item.text = input.value;
       syncVisualBlocks(doc);
+      autosizeVisualTextarea(input);
     });
     li.append(input);
     list.append(li);
+    requestAnimationFrame(() => autosizeVisualTextarea(input));
   }
   appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
   appendVisualContent(wrap, list);
@@ -312,15 +315,18 @@ function renderChecklistBlock(doc, block, blockIndex) {
       item.checked = checkbox.checked;
       syncVisualBlocks(doc);
     });
-    const input = document.createElement("input");
-    input.type = "text";
+    const input = document.createElement("textarea");
+    input.rows = 1;
+    input.dataset.minHeight = "28";
     input.value = item.text || "";
     input.addEventListener("input", () => {
       item.text = input.value;
       syncVisualBlocks(doc);
+      autosizeVisualTextarea(input);
     });
     li.append(checkbox, input);
     list.append(li);
+    requestAnimationFrame(() => autosizeVisualTextarea(input));
   }
   appendBlockAiControls(wrap, doc, block, blockIndex, makeBlockAiTarget(block, blockIndex));
   appendVisualContent(wrap, list);
@@ -760,7 +766,8 @@ function syncVisualBlocks(doc) {
 
 function autosizeVisualTextarea(input) {
   input.style.height = "auto";
-  input.style.height = `${Math.max(48, input.scrollHeight)}px`;
+  const minHeight = Number(input.dataset.minHeight || 48);
+  input.style.height = `${Math.max(Number.isFinite(minHeight) ? minHeight : 48, input.scrollHeight)}px`;
 }
 
 // ── Entry point from chat.js ─────────────────────────────────────────────

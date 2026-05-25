@@ -9,8 +9,8 @@ import { DOCUMENT_TYPES, PRESENTATION_STYLES } from "./defaultTemplates.js";
 import { renderDocumentToMarkdown } from "./documentRenderer.js";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
-const FALLBACK_MODEL = process.env.STUDIO_DOCUMENT_FALLBACK_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
+const FALLBACK_MODEL = process.env.STUDIO_DOCUMENT_FALLBACK_MODEL || "gemma4:e2b";
 const TIMEOUT_MS = clampInt(process.env.STUDIO_DOCUMENT_OLLAMA_TIMEOUT_MS, 90_000, 5_000, 600_000);
 const MAX_ANSWER_CHARS = Number(process.env.STUDIO_DOCUMENT_ANSWER_MAX_CHARS || 120_000);
 

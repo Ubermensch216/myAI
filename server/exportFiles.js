@@ -434,7 +434,7 @@ function createPdfBuffer({ title, content }) {
   });
 }
 
-function resolvePdfFontPath() {
+export function resolvePdfFontPath() {
   const configured = process.env.EXPORT_PDF_FONT_PATH;
   const candidates = [
     configured,

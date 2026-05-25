@@ -27,7 +27,7 @@ import {
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 const MAX_CONTEXT_CHARS = Number(process.env.MAX_CONTEXT_CHARS || 24000);
 const LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE =
   "법령검색 모드에서 관련 법령 정보를 찾을 수 없습니다. Korea Law Engine(law.go.kr)에서 해당 질의에 맞는 법령·판례·해석례·행정규칙 근거가 확인되지 않았습니다. 근거 없이 답변할 수 없으므로, 구체적인 법령명·조문 번호·사건번호·지침명을 포함하여 다시 질의해 주세요.";

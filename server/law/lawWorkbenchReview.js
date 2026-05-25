@@ -5,7 +5,7 @@ import { analysisQueue } from "../modelQueue.js";
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 const TIMEOUT_MS = clampInt(process.env.LAW_WORKBENCH_REVIEW_TIMEOUT_MS, 300_000, 5_000, 600_000);
 const MAX_PROMPT_CHARS = clampInt(process.env.LAW_WORKBENCH_REVIEW_MAX_PROMPT_CHARS, 90000, 10000, 200000);
 const MAX_DOCUMENT_CHARS = clampInt(process.env.LAW_WORKBENCH_REVIEW_DOCUMENT_CHARS, 16000, 1000, 60000);

@@ -6,7 +6,7 @@ import { analysisQueue } from "./modelQueue.js";
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 const MINDMAP_MODEL = String(process.env.MINDMAP_MODEL || "").trim();
 
 const OUTLINE_MAX_CONTEXT = clampInt(process.env.MINDMAP_P1_MAX_CONTEXT, 12000, 2000, 80000);

@@ -3,7 +3,7 @@ import { loadLocalEnv } from "../env.js";
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 
 /**
  * Executes a structured GRC compliance review on a target document text against policy guidelines.

@@ -5,7 +5,7 @@ import { analysisQueue } from "./modelQueue.js";
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 const ENABLED = String(process.env.QUERY_EXPANSION_ENABLED ?? "true").toLowerCase() !== "false";
 const MAX_VARIANTS = clampInt(process.env.QUERY_EXPANSION_VARIANTS, 3, 1, 6);
 const TIMEOUT_MS = clampInt(process.env.QUERY_EXPANSION_TIMEOUT_MS, 6000, 1000, 30000);

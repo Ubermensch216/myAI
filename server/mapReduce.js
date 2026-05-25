@@ -5,7 +5,7 @@ import { mapReduceQueue } from "./modelQueue.js";
 loadLocalEnv();
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma3n:e2b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 const BATCH_CHUNKS = clampInt(process.env.MAP_REDUCE_BATCH_CHUNKS, 4, 1, 20);
 const MAX_CHUNKS = clampInt(process.env.MAP_REDUCE_MAX_CHUNKS, 80, 4, 400);
 const PARALLELISM = clampInt(process.env.MAP_REDUCE_PARALLELISM, 2, 1, 8);

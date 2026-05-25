@@ -28,6 +28,7 @@ import { generateMindmap } from "./mindmap.js";
 import { lawApiRouter } from "./law/lawApi.js";
 import { getLawConfig, getLawRateLimitDefaults } from "./law/lawConfig.js";
 import { runGrcReview } from "./compliance/grcReview.js";
+import { contentDispositionForFilename, createGrcReportPdf, grcReportFilename } from "./compliance/grcReport.js";
 import {
   listNotebooks,
   getNotebook,
@@ -379,6 +380,24 @@ app.post("/api/compliance/grc/review", async (request, response) => {
       ? "Ollama 또는 내부 검토 서버 연결에 실패했습니다. Ollama가 실행 중인지, 선택한 모델이 응답 가능한지 확인해 주세요."
       : rawMessage || "내부검토 처리 중 오류가 발생했습니다.";
     response.status(500).json({ error: userMessage, detail: rawMessage });
+  }
+});
+
+app.post("/api/compliance/grc/report/pdf", async (request, response) => {
+  try {
+    const artifact = request.body?.artifact || {};
+    const buffer = await createGrcReportPdf({ artifact });
+    const filename = grcReportFilename(artifact);
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Content-Disposition", contentDispositionForFilename(filename));
+    response.send(buffer);
+  } catch (error) {
+    const status = error?.statusCode || 500;
+    response.status(status).json({
+      ok: false,
+      error: error?.message || "PDF 보고서 생성 중 오류가 발생했습니다.",
+      code: error?.code || null
+    });
   }
 });
 
