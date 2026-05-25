@@ -2056,6 +2056,8 @@ async function downloadCurrent(format, trigger) {
         document: {
           title: doc.title,
           templateId: doc.templateId,
+          docType: doc.docType || null,
+          presentationStyle: doc.presentationStyle || null,
           markdown: doc.markdown,
           citations: doc.citations
         },
