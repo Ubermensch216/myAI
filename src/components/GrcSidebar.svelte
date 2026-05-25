@@ -128,7 +128,6 @@
                     <path d="M12 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
                     <path d="m9 14 3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
                   </svg>
-                  <span>파일을 끌어다 놓거나 클릭하여 업로드</span>
                 {/if}
               </label>
             </div>
@@ -186,7 +185,6 @@
               <path d="M12 11v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
               <path d="m9 14 3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
             </svg>
-            <span>파일을 끌어다 놓거나 클릭하여 업로드</span>
           {/if}
         </label>
       </div>
@@ -396,7 +394,7 @@
   .upload-label .file-name {
     color: var(--ink);
     font-weight: 800;
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .upload-icon {
@@ -414,16 +412,18 @@
 
   .file-name {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     gap: 6px;
     min-width: 0;
     max-width: 100%;
     color: var(--ink);
     font-weight: 800;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.4;
   }
 
   .select-input {
