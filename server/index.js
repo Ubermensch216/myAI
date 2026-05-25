@@ -370,7 +370,7 @@ app.post("/api/compliance/grc/review", async (request, response) => {
     const reviewResult = await runGrcReview({
       targetText: target,
       policyText: policy,
-      model
+      model: model || undefined
     });
 
     response.json({ ok: true, reviewResult });
