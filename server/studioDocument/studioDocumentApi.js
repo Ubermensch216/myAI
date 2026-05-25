@@ -155,9 +155,13 @@ studioDocumentRouter.post("/export", async (req, res) => {
     const rawDoc = body.document;
     const rawMarkdown = typeof rawDoc.markdown === "string" ? rawDoc.markdown : "";
     const rawTitle = typeof rawDoc.title === "string" ? rawDoc.title.trim() : "";
+    const rawDocType = typeof rawDoc.docType === "string" && rawDoc.docType.trim()
+      ? rawDoc.docType.trim()
+      : null;
 
     let title;
     let content;
+    let resolvedDocType = rawDocType;
     if (rawMarkdown.trim()) {
       title = rawTitle || "myAI 문서";
       const parts = [];
@@ -186,6 +190,9 @@ studioDocumentRouter.post("/export", async (req, res) => {
       }
       title = normalized.title;
       content = renderDocumentToMarkdown(normalized, { includeCitations, includeGeneratedAt });
+      if (!resolvedDocType && normalized.docType) {
+        resolvedDocType = normalized.docType;
+      }
     }
 
     if (!content.trim()) {
@@ -195,7 +202,8 @@ studioDocumentRouter.post("/export", async (req, res) => {
     const file = await createExportFile({
       format,
       title,
-      content
+      content,
+      docType: resolvedDocType
     });
 
     res.setHeader("Content-Type", file.contentType);

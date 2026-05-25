@@ -210,6 +210,32 @@ for (const format of ["md", "docx", "hwpx", "pdf"]) {
   });
 }
 
+await check("POST /export applies docType-specific style profile to DOCX", async () => {
+  async function fetchDocxBytes(docType) {
+    const res = await fetch(`${base}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ format: "docx", document: { ...exportDoc, docType } })
+    });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  const JSZip = (await import("jszip")).default;
+  async function extractDocXml(buf) {
+    const zip = await JSZip.loadAsync(buf);
+    return zip.file("word/document.xml").async("string");
+  }
+  const reviewXml = await extractDocXml(await fetchDocxBytes("review_report"));
+  const meetingXml = await extractDocXml(await fetchDocxBytes("meeting_minutes"));
+  const defaultXml = await extractDocXml(await fetchDocxBytes(null));
+  // 법령 검토 프로파일: 제목에 #1F3A68 색상 + 하단 경계선
+  if (!reviewXml.includes("1F3A68")) throw new Error("review profile color missing from DOCX");
+  if (!reviewXml.includes("w:pBdr")) throw new Error("review profile border missing from DOCX");
+  // 프로파일별 결과가 달라야 함
+  if (reviewXml === defaultXml) throw new Error("review profile produced same XML as default");
+  if (reviewXml === meetingXml) throw new Error("review and meeting profiles produced identical XML");
+});
+
 await check("POST /export rejects empty document", async () => {
   const res = await fetch(`${base}/export`, {
     method: "POST",

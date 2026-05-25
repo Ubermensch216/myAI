@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import JSZip from "jszip";
+import { getStyleProfile } from "./exportStyles.js";
 
 const MAX_EXPORT_CHARS = Number(process.env.EXPORT_MAX_CHARS || 180_000);
 
@@ -32,7 +33,7 @@ export function listExportFormats() {
   return Object.entries(FORMATS).map(([id, config]) => ({ id, extension: config.extension, contentType: config.contentType }));
 }
 
-export async function createExportFile({ format, title = "myAI answer", content = "" } = {}) {
+export async function createExportFile({ format, title = "myAI answer", content = "", docType = null } = {}) {
   const normalizedFormat = String(format || "").trim().toLowerCase();
   const config = FORMATS[normalizedFormat];
   if (!config) {
@@ -47,11 +48,13 @@ export async function createExportFile({ format, title = "myAI answer", content 
     throw new Error(`Export content is too large. Limit is ${MAX_EXPORT_CHARS.toLocaleString()} characters.`);
   }
 
+  const profile = getStyleProfile(docType);
+
   let buffer;
   if (normalizedFormat === "md") buffer = Buffer.from(text, "utf8");
-  if (normalizedFormat === "pdf") buffer = await createPdfBuffer({ title: safeTitle, content: text });
+  if (normalizedFormat === "pdf") buffer = await createPdfBuffer({ title: safeTitle, content: text, profile });
   if (normalizedFormat === "xlsx") buffer = await createXlsxBuffer({ title: safeTitle, content: text });
-  if (normalizedFormat === "docx") buffer = await createDocxBuffer({ title: safeTitle, content: text });
+  if (normalizedFormat === "docx") buffer = await createDocxBuffer({ title: safeTitle, content: text, profile });
   if (normalizedFormat === "hwpx") buffer = await createHwpxBuffer({ title: safeTitle, content: text });
 
   return {
@@ -206,7 +209,8 @@ function columnName(index) {
   return name;
 }
 
-async function createDocxBuffer({ title, content }) {
+async function createDocxBuffer({ title, content, profile }) {
+  const styleProfile = profile || getStyleProfile(null);
   const zip = new JSZip();
   zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -225,7 +229,7 @@ async function createDocxBuffer({ title, content }) {
   zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    ${contentToWordXml(content)}
+    ${contentToWordXml(content, styleProfile)}
     <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
   </w:body>
 </w:document>`);
@@ -235,7 +239,7 @@ async function createDocxBuffer({ title, content }) {
   return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
-function contentToWordXml(content) {
+function contentToWordXml(content, profile) {
   const lines = content.split("\n");
   const out = [];
   let i = 0;
@@ -257,18 +261,96 @@ function contentToWordXml(content) {
     if (!lines[i].trim()) {
       out.push("<w:p/>");
     } else {
-      out.push(wordParagraphXml(lines[i]));
+      out.push(wordParagraphXml(lines[i], profile));
     }
     i += 1;
   }
   return out.join("\n    ");
 }
 
-function wordParagraphXml(line) {
+// pt → half-points (DOCX w:sz 단위)
+function ptToHalfPt(pt) {
+  return Math.round(pt * 2);
+}
+// pt → twentieths-of-a-point (DOCX w:spacing/w:ind 단위)
+function ptToTwip(pt) {
+  return Math.round(pt * 20);
+}
+
+function hexNoHash(color) {
+  return String(color || "").replace(/^#/, "").toUpperCase() || "000000";
+}
+
+function buildRunProps(style) {
+  const parts = [];
+  if (style.bold) parts.push("<w:b/>");
+  if (style.italic) parts.push("<w:i/>");
+  if (style.underline) parts.push('<w:u w:val="single"/>');
+  if (style.fontSize) {
+    const sz = ptToHalfPt(style.fontSize);
+    parts.push(`<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/>`);
+  }
+  if (style.color) parts.push(`<w:color w:val="${hexNoHash(style.color)}"/>`);
+  if (!parts.length) return "";
+  return `<w:rPr>${parts.join("")}</w:rPr>`;
+}
+
+function buildParaProps(style, opts = {}) {
+  const parts = [];
+  if (style.align && style.align !== "left") {
+    const map = { center: "center", right: "right", justify: "both" };
+    const val = map[style.align] || "left";
+    parts.push(`<w:jc w:val="${val}"/>`);
+  }
+  if (style.indent && style.indent > 0) {
+    parts.push(`<w:ind w:left="${ptToTwip(style.indent)}"/>`);
+  }
+  const before = style.spacingBefore ? ptToTwip(style.spacingBefore) : 0;
+  const after = style.spacingAfter ? ptToTwip(style.spacingAfter) : 0;
+  if (before || after) {
+    parts.push(`<w:spacing w:before="${before}" w:after="${after}"/>`);
+  }
+  if (opts.borderBottom) {
+    const sz = Math.max(4, Math.round(opts.borderBottom.width * 8));
+    parts.push(`<w:pBdr><w:bottom w:val="single" w:sz="${sz}" w:space="2" w:color="${hexNoHash(opts.borderBottom.color)}"/></w:pBdr>`);
+  }
+  if (opts.accentBar) {
+    const sz = Math.max(4, Math.round(opts.accentBar.width * 8));
+    parts.push(`<w:pBdr><w:left w:val="single" w:sz="${sz}" w:space="4" w:color="${hexNoHash(opts.accentBar.color)}"/></w:pBdr>`);
+  }
+  if (opts.shading) {
+    parts.push(`<w:shd w:val="clear" w:color="auto" w:fill="${hexNoHash(opts.shading)}"/>`);
+  }
+  if (!parts.length) return "";
+  return `<w:pPr>${parts.join("")}</w:pPr>`;
+}
+
+function wordParagraphXml(line, profile) {
   const text = stripMarkdown(line);
   const heading = /^(#{1,3})\s+/.exec(line);
-  const style = heading ? `<w:pPr><w:pStyle w:val="Heading${Math.min(heading[1].length, 3)}"/></w:pPr>` : "";
-  return `<w:p>${style}<w:r><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+  if (heading) {
+    const level = Math.min(heading[1].length, 3);
+    if (level === 1) {
+      const s = profile.title;
+      const pPr = buildParaProps(s, { borderBottom: s.borderBottom });
+      const rPr = buildRunProps(s);
+      return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+    }
+    if (level === 2) {
+      const s = profile.h2;
+      const pPr = buildParaProps(s, { accentBar: s.accentBar });
+      const rPr = buildRunProps(s);
+      return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+    }
+    const s = profile.h3;
+    const pPr = buildParaProps(s);
+    const rPr = buildRunProps(s);
+    return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+  }
+  const body = profile.body;
+  const pPr = buildParaProps({ indent: body.indent });
+  const rPr = buildRunProps({ fontSize: body.fontSize, color: body.color });
+  return `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
 }
 
 function wordTableXml(rows) {
@@ -402,7 +484,8 @@ function addOfficeProps(zip, title, appName) {
 </Properties>`);
 }
 
-function createPdfBuffer({ title, content }) {
+function createPdfBuffer({ title, content, profile }) {
+  const styleProfile = profile || getStyleProfile(null);
   return new Promise((resolve, reject) => {
     const chunks = [];
     const doc = new PDFDocument({
@@ -427,9 +510,7 @@ function createPdfBuffer({ title, content }) {
       doc.font("Helvetica");
     }
 
-    doc.fontSize(16).text(title, { lineGap: 4 });
-    doc.moveDown(0.8);
-    writePdfMarkdown(doc, content);
+    writePdfMarkdown(doc, content, styleProfile);
     doc.end();
   });
 }
@@ -447,9 +528,71 @@ export function resolvePdfFontPath() {
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
 }
 
-function writePdfMarkdown(doc, content) {
+function writePdfMarkdown(doc, content, profile) {
   const lines = content.split("\n");
   let inFence = false;
+  const bodyFontSize = profile.body.fontSize;
+  const bodyLineGap = Math.max(1, Math.round((profile.body.lineHeight - 1) * bodyFontSize));
+  const bodyColor = profile.body.color;
+  const bodyIndent = profile.body.indent || 0;
+
+  const renderTitle = (text) => {
+    const s = profile.title;
+    doc.moveDown(0.2);
+    doc.fontSize(s.fontSize).fillColor(s.color || "#000000").text(text, {
+      align: s.align || "left",
+      lineGap: 4
+    });
+    if (s.borderBottom) {
+      const y = doc.y + 2;
+      doc.save();
+      doc.lineWidth(s.borderBottom.width || 1)
+        .strokeColor(s.borderBottom.color || "#000000")
+        .moveTo(doc.page.margins.left, y)
+        .lineTo(doc.page.width - doc.page.margins.right, y)
+        .stroke();
+      doc.restore();
+      doc.y = y + 4;
+    }
+    if (s.spacingAfter) doc.moveDown(s.spacingAfter / 12);
+    doc.fillColor(bodyColor);
+  };
+
+  const renderH2 = (text) => {
+    const s = profile.h2;
+    if (s.spacingBefore) doc.moveDown(s.spacingBefore / 14);
+    if (s.accentBar) {
+      const startY = doc.y;
+      const lineH = s.fontSize * 1.2;
+      doc.save();
+      doc.lineWidth(s.accentBar.width || 2)
+        .strokeColor(s.accentBar.color || "#000000")
+        .moveTo(doc.page.margins.left, startY + 2)
+        .lineTo(doc.page.margins.left, startY + lineH)
+        .stroke();
+      doc.restore();
+      doc.fontSize(s.fontSize).fillColor(s.color || "#000000").text(text, {
+        indent: (s.accentBar.width || 2) + 4,
+        lineGap: 3
+      });
+    } else {
+      doc.fontSize(s.fontSize).fillColor(s.color || "#000000").text(text, { lineGap: 3 });
+    }
+    if (s.spacingAfter) doc.moveDown(s.spacingAfter / 14);
+    doc.fillColor(bodyColor);
+  };
+
+  const renderH3 = (text) => {
+    const s = profile.h3;
+    if (s.spacingBefore) doc.moveDown(s.spacingBefore / 14);
+    doc.fontSize(s.fontSize).fillColor(s.color || "#000000").text(text, {
+      indent: s.indent || 0,
+      lineGap: 3
+    });
+    if (s.spacingAfter) doc.moveDown(s.spacingAfter / 14);
+    doc.fillColor(bodyColor);
+  };
+
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (/^```/.test(line.trim())) {
@@ -463,22 +606,29 @@ function writePdfMarkdown(doc, content) {
     }
     const heading = /^(#{1,3})\s+(.+)/.exec(line);
     if (heading && !inFence) {
-      const size = heading[1].length === 1 ? 15 : heading[1].length === 2 ? 13 : 12;
-      doc.moveDown(0.25).fontSize(size).text(stripMarkdown(heading[2]), { lineGap: 3 });
-      doc.moveDown(0.15);
+      const text = stripMarkdown(heading[2]);
+      if (heading[1].length === 1) renderTitle(text);
+      else if (heading[1].length === 2) renderH2(text);
+      else renderH3(text);
       continue;
     }
     const bullet = /^\s*([-*+]|\d+\.)\s+(.+)/.exec(line);
     if (bullet && !inFence) {
-      doc.fontSize(10.5).text(`• ${stripMarkdown(bullet[2])}`, { indent: 12, lineGap: 3 });
+      doc.fontSize(bodyFontSize).fillColor(bodyColor)
+        .text(`• ${stripMarkdown(bullet[2])}`, { indent: 12 + bodyIndent, lineGap: bodyLineGap });
       continue;
     }
     if (parseTableRow(line) && !parseTableDivider(line) && !inFence) {
-      doc.fontSize(9.8).text(parseTableRow(line).map(stripMarkdown).join("    "), { lineGap: 3 });
+      doc.fontSize(bodyFontSize - 0.7).fillColor(bodyColor)
+        .text(parseTableRow(line).map(stripMarkdown).join("    "), { lineGap: bodyLineGap });
       continue;
     }
     if (!parseTableDivider(line)) {
-      doc.fontSize(inFence ? 9.5 : 10.5).text(stripMarkdown(line), { lineGap: inFence ? 2 : 3 });
+      doc.fontSize(inFence ? bodyFontSize - 1 : bodyFontSize).fillColor(bodyColor)
+        .text(stripMarkdown(line), {
+          indent: bodyIndent,
+          lineGap: inFence ? Math.max(1, bodyLineGap - 1) : bodyLineGap
+        });
     }
   }
 }
