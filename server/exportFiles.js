@@ -473,7 +473,7 @@ function createHwpxHeaderXml(profile) {
     <hh:fontfaces itemCnt="1">
       <hh:fontface lang="KO" fontCnt="1"><hh:font id="0" face="맑은 고딕" type="TTF"/></hh:fontface>
     </hh:fontfaces>
-    <hh:borderFills itemCnt="1">
+    <hh:borderFills itemCnt="2">
       <hh:borderFill id="1" threeD="0" shadow="0" centerLine="NONE">
         <hh:slash type="NONE" Crooked="0" isCounter="0"/>
         <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
@@ -481,6 +481,15 @@ function createHwpxHeaderXml(profile) {
         <hh:rightBorder type="NONE" width="0.1 mm" color="#000000"/>
         <hh:topBorder type="NONE" width="0.1 mm" color="#000000"/>
         <hh:bottomBorder type="NONE" width="0.1 mm" color="#000000"/>
+        <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
+      </hh:borderFill>
+      <hh:borderFill id="2" threeD="0" shadow="0" centerLine="NONE">
+        <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+        <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+        <hh:leftBorder type="SOLID" width="0.12 mm" color="#666666"/>
+        <hh:rightBorder type="SOLID" width="0.12 mm" color="#666666"/>
+        <hh:topBorder type="SOLID" width="0.12 mm" color="#666666"/>
+        <hh:bottomBorder type="SOLID" width="0.12 mm" color="#666666"/>
         <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
       </hh:borderFill>
     </hh:borderFills>
@@ -496,21 +505,10 @@ function createHwpxHeaderXml(profile) {
 </hh:head>`;
 }
 
-function contentToHwpxXml(content, profile) {
-  void profile;
-  const lines = content.split(/\n/);
-  const paragraphs = lines.length ? lines : [""];
-  return paragraphs.map((line, index) => {
-    const text = stripMarkdown(line);
-    const heading = /^(#{1,3})\s+/.exec(line);
-    let idRef = HWPX_ID_BODY;
-    if (heading) {
-      const level = Math.min(heading[1].length, 3);
-      if (level === 1) idRef = HWPX_ID_TITLE;
-      else if (level === 2) idRef = HWPX_ID_H2;
-      else idRef = HWPX_ID_H3;
-    }
-    const secPr = index === 0 ? `<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000" tabStopVal="LEFT" tabStopUnit="MILLIMETER">
+const HWPX_TEXT_WIDTH = 42520; // 페이지 텍스트 영역 폭 (HWPUNIT)
+const HWPX_CELL_HEIGHT = 1700;
+
+const HWPX_SECPR = `<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000" tabStopVal="LEFT" tabStopUnit="MILLIMETER">
       <hp:grid lineGrid="0" charGrid="0" wonggojiFormat="0"/>
       <hp:startNum pageStartsOn="BOTH" page="1" pic="1" tbl="1" equation="1"/>
       <hp:visibility hideFirstHeader="0" hideFirstFooter="0" hideFirstMasterPage="0" border="SHOW" fill="SHOW" hideFirstPageNum="0" hideFirstEmptyLine="0" showLineNumber="0"/>
@@ -522,12 +520,105 @@ function contentToHwpxXml(content, profile) {
       <hp:pageBorderFill type="BOTH" borderFillIDRef="1" textBorder="PAPER" headerInside="0" footerInside="0" fillArea="PAPER">
         <hp:offset left="0" right="0" top="0" bottom="0"/>
       </hp:pageBorderFill>
-    </hp:secPr>` : "";
-    return `<hp:p id="${index}" paraPrIDRef="${idRef}" styleIDRef="${idRef}" pageBreak="0" columnBreak="0" merged="0">
+    </hp:secPr>`;
+
+function hwpxTextParagraphXml(line, index, includeSecPr) {
+  const text = stripMarkdown(line);
+  const heading = /^(#{1,3})\s+/.exec(line);
+  let idRef = HWPX_ID_BODY;
+  if (heading) {
+    const level = Math.min(heading[1].length, 3);
+    if (level === 1) idRef = HWPX_ID_TITLE;
+    else if (level === 2) idRef = HWPX_ID_H2;
+    else idRef = HWPX_ID_H3;
+  }
+  const secPr = includeSecPr ? HWPX_SECPR : "";
+  return `<hp:p id="${index}" paraPrIDRef="${idRef}" styleIDRef="${idRef}" pageBreak="0" columnBreak="0" merged="0">
     ${secPr}
     <hp:run charPrIDRef="${idRef}"><hp:t>${xmlEscape(text)}</hp:t></hp:run>
   </hp:p>`;
-  }).join("\n  ");
+}
+
+function hwpxCellXml(text, rowIdx, colIdx, cellWidth) {
+  const safe = xmlEscape(stripMarkdown(text));
+  return `<hp:tc name="" header="0" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="2">
+        <hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" padding="0" lang="KOREAN">
+          <hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
+            <hp:run charPrIDRef="0"><hp:t>${safe}</hp:t></hp:run>
+          </hp:p>
+        </hp:subList>
+        <hp:cellAddr colAddr="${colIdx}" rowAddr="${rowIdx}"/>
+        <hp:cellSpan colSpan="1" rowSpan="1"/>
+        <hp:cellSz width="${cellWidth}" height="${HWPX_CELL_HEIGHT}"/>
+        <hp:cellMargin left="141" right="141" top="141" bottom="141"/>
+      </hp:tc>`;
+}
+
+function hwpxTableXml(rows, paragraphIndex) {
+  const rowCnt = rows.length;
+  const colCnt = Math.max(...rows.map((r) => r.length));
+  const cellWidth = Math.floor(HWPX_TEXT_WIDTH / colCnt);
+  const totalHeight = HWPX_CELL_HEIGHT * rowCnt;
+  const trXml = rows.map((row, rIdx) => {
+    const cells = [];
+    for (let c = 0; c < colCnt; c++) {
+      cells.push(hwpxCellXml(row[c] || "", rIdx, c, cellWidth));
+    }
+    return `<hp:tr>${cells.join("")}</hp:tr>`;
+  }).join("");
+  return `<hp:p id="${paragraphIndex}" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">
+    <hp:run charPrIDRef="0">
+      <hp:tbl id="${paragraphIndex}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="${rowCnt}" colCnt="${colCnt}" cellSpacing="0" borderFillIDRef="2" noAdjust="0">
+        <hp:sz width="${HWPX_TEXT_WIDTH}" widthRelTo="ABSOLUTE" height="${totalHeight}" heightRelTo="ABSOLUTE" protect="0"/>
+        <hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>
+        <hp:outMargin left="0" right="0" top="0" bottom="0"/>
+        <hp:inMargin left="141" right="141" top="141" bottom="141"/>
+        ${trXml}
+      </hp:tbl>
+    </hp:run>
+  </hp:p>`;
+}
+
+function contentToHwpxXml(content, profile) {
+  void profile;
+  const lines = content.split(/\n/);
+  if (!lines.length) lines.push("");
+  const out = [];
+  let paragraphIndex = 0;
+  let i = 0;
+  while (i < lines.length) {
+    const header = parseTableRow(lines[i]);
+    const divider = parseTableDivider(lines[i + 1]);
+    if (header && divider) {
+      const rows = [header];
+      i += 2;
+      while (i < lines.length) {
+        const row = parseTableRow(lines[i]);
+        if (!row) break;
+        rows.push(row);
+        i += 1;
+      }
+      const includeSecPr = paragraphIndex === 0;
+      let tableXml = hwpxTableXml(rows, paragraphIndex);
+      if (includeSecPr) {
+        // 첫 단락이 표인 경우 secPr 를 표 단락 내부에 삽입
+        tableXml = tableXml.replace('<hp:run charPrIDRef="0">', `${HWPX_SECPR}<hp:run charPrIDRef="0">`);
+      }
+      out.push(tableXml);
+      paragraphIndex += 1;
+      continue;
+    }
+    if (parseTableDivider(lines[i])) {
+      // 단독으로 남은 구분선은 무시
+      i += 1;
+      continue;
+    }
+    const includeSecPr = paragraphIndex === 0;
+    out.push(hwpxTextParagraphXml(lines[i], paragraphIndex, includeSecPr));
+    paragraphIndex += 1;
+    i += 1;
+  }
+  return out.join("\n  ");
 }
 
 function addOfficeProps(zip, title, appName) {

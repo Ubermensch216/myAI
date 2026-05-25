@@ -269,6 +269,36 @@ await check("POST /export applies docType-specific style profile to HWPX", async
   if (review.header === dflt.header) throw new Error("review and default HWPX headers identical");
 });
 
+await check("POST /export converts markdown tables to HWPX <hp:tbl>", async () => {
+  const res = await fetch(`${base}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      format: "hwpx",
+      document: {
+        title: "표 테스트",
+        markdown: "| 항목 | 내용 |\n| --- | --- |\n| 위탁 | 보완 |\n| 재위탁 | 승인 |",
+        docType: "review_report"
+      }
+    })
+  });
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buf);
+  const section = await zip.file("Contents/section0.xml").async("string");
+  if (!section.includes("<hp:tbl ")) throw new Error("hp:tbl missing");
+  const trCnt = (section.match(/<hp:tr>/g) || []).length;
+  if (trCnt !== 3) throw new Error(`expected 3 <hp:tr>, got ${trCnt}`);
+  const tcCnt = (section.match(/<hp:tc /g) || []).length;
+  if (tcCnt !== 6) throw new Error(`expected 6 <hp:tc>, got ${tcCnt}`);
+  if (!section.includes('borderFillIDRef="2"')) throw new Error("cell borderFill missing");
+  if (section.includes("| 위탁 |")) throw new Error("markdown pipe leaked into HWPX");
+  if (!section.includes(">위탁</hp:t>") || !section.includes(">승인</hp:t>")) {
+    throw new Error("cell text content missing");
+  }
+});
+
 await check("POST /export rejects empty document", async () => {
   const res = await fetch(`${base}/export`, {
     method: "POST",
