@@ -39,6 +39,7 @@ export async function loadNotebooks() {
     }
     renderActiveNotebookUi();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+    window.dispatchEvent(new CustomEvent("myai:notebooksloaded"));
   } catch (error) {
     console.warn("지식팩 목록을 불러오지 못했습니다:", error.message);
   }

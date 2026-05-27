@@ -209,9 +209,33 @@ async function markRecoveryFailed(job, message) {
   });
 }
 
+async function renameWithRetry(src, dest, retries = 5, delay = 10) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fs.rename(src, dest);
+      return;
+    } catch (err) {
+      if (i === retries - 1) {
+        await fs.unlink(src).catch(() => {});
+        throw err;
+      }
+      if (err.code === "EPERM" || err.code === "EBUSY" || err.code === "EACCES") {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        await fs.unlink(src).catch(() => {});
+        throw err;
+      }
+    }
+  }
+}
+
 async function writeJob(job) {
-  await fs.mkdir(path.dirname(jobPath(job.id)), { recursive: true });
-  await fs.writeFile(jobPath(job.id), JSON.stringify(job, null, 2), "utf8");
+  const dir = path.dirname(jobPath(job.id));
+  await fs.mkdir(dir, { recursive: true });
+  const finalPath = jobPath(job.id);
+  const tempPath = `${finalPath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify(job, null, 2), "utf8");
+  await renameWithRetry(tempPath, finalPath);
 }
 
 function jobPath(jobId) {

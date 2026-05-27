@@ -99,9 +99,33 @@ async function readManifest(notebookId) {
   }
 }
 
+async function renameWithRetry(src, dest, retries = 5, delay = 10) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await fs.rename(src, dest);
+      return;
+    } catch (err) {
+      if (i === retries - 1) {
+        await fs.unlink(src).catch(() => {});
+        throw err;
+      }
+      if (err.code === "EPERM" || err.code === "EBUSY" || err.code === "EACCES") {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        await fs.unlink(src).catch(() => {});
+        throw err;
+      }
+    }
+  }
+}
+
 async function writeManifest(notebookId, manifest) {
-  await fs.mkdir(notebookDir(notebookId), { recursive: true });
-  await fs.writeFile(manifestPath(notebookId), JSON.stringify(manifest, null, 2), "utf8");
+  const dir = notebookDir(notebookId);
+  await fs.mkdir(dir, { recursive: true });
+  const finalPath = manifestPath(notebookId);
+  const tempPath = `${finalPath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify(manifest, null, 2), "utf8");
+  await renameWithRetry(tempPath, finalPath);
 }
 
 function summarizeNotebook(manifest) {
@@ -400,9 +424,13 @@ export async function addNotebookDocument(notebookId, parsedDocument, onProgress
     parentChunks
   };
 
-  await fs.mkdir(docsDir(notebookId), { recursive: true });
+  const docDir = docsDir(notebookId);
+  await fs.mkdir(docDir, { recursive: true });
   const serialized = JSON.stringify(documentRecord);
-  await fs.writeFile(docPath(notebookId, id), serialized, "utf8");
+  const finalDocPath = docPath(notebookId, id);
+  const tempDocPath = `${finalDocPath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  await fs.writeFile(tempDocPath, serialized, "utf8");
+  await renameWithRetry(tempDocPath, finalDocPath);
 
   manifest.documents = manifest.documents || [];
   manifest.documents.push({

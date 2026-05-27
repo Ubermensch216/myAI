@@ -11,7 +11,7 @@
 
 import { state, elements, accessAuthHeaders, createRoomFromKnowledgePack } from "./state.js";
 import { scheduleSave } from "./persistence.js";
-import { loadNotebooks, getCurrentAccessLabel } from "./notebook.js";
+import { loadNotebooks, getCurrentAccessLabel, openNotebookSelector } from "./notebook.js";
 import { openSettingsAdminPanel } from "./settings.js";
 
 let packSearchQuery = "";
@@ -137,7 +137,28 @@ function buildPackCard(pack) {
 export function renderAccessSummary() {
   const label = getCurrentAccessLabel();
   if (elements.packAccessSummary) {
-    elements.packAccessSummary.textContent = label;
+    elements.packAccessSummary.innerHTML = "";
+    
+    const span = document.createElement("span");
+    span.className = "pack-access-label";
+    span.textContent = label;
+    elements.packAccessSummary.append(span);
+    
+    if (state.access.configured) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ghost-button pack-access-btn";
+      btn.style.marginLeft = "10px";
+      btn.style.padding = "2px 8px";
+      btn.style.fontSize = "12px";
+      btn.style.height = "26px";
+      btn.style.minHeight = "auto";
+      btn.textContent = state.access.authenticated ? "권한 변경" : "권한 인증";
+      btn.addEventListener("click", () => {
+        openNotebookSelector();
+      });
+      elements.packAccessSummary.append(btn);
+    }
   }
   if (elements.packSidebarAccess) {
     elements.packSidebarAccess.textContent = label;
@@ -171,9 +192,26 @@ export function renderKnowledgePackCards() {
   if (filtered.length === 0) {
     if (elements.packEmptyState) {
       elements.packEmptyState.hidden = false;
-      elements.packEmptyState.textContent = packs.length === 0
+      elements.packEmptyState.innerHTML = "";
+      
+      const p = document.createElement("p");
+      p.className = "pack-empty-text";
+      p.textContent = packs.length === 0
         ? "이용 가능한 지식팩이 없습니다. 권한을 확인하거나 관리자에게 문의하세요."
         : "검색 조건에 맞는 지식팩이 없습니다.";
+      elements.packEmptyState.append(p);
+
+      if (packs.length === 0 && state.access.configured && !state.access.authenticated) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "send-button pack-empty-login-btn";
+        btn.style.marginTop = "12px";
+        btn.textContent = "권한 인증하기";
+        btn.addEventListener("click", () => {
+          openNotebookSelector();
+        });
+        elements.packEmptyState.append(btn);
+      }
     }
     return;
   }
@@ -617,6 +655,16 @@ export function bindKnowledgePackEvents() {
     if (event?.detail?.view === "knowledge") {
       renderAccessSummary();
       applyTabState();
+    }
+  });
+
+  // 지식팩 목록이 로드/업데이트되면 화면 갱신.
+  window.addEventListener("myai:notebooksloaded", () => {
+    if (state.activeView === "knowledge") {
+      renderAccessSummary();
+      if (packActiveTab === "list" && !packDetailMode) {
+        renderKnowledgePackCards();
+      }
     }
   });
 
