@@ -12,12 +12,23 @@
 import { state, elements, accessAuthHeaders, createRoomFromKnowledgePack } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { loadNotebooks, getCurrentAccessLabel } from "./notebook.js";
+import { openSettingsAdminPanel } from "./settings.js";
 
 let packSearchQuery = "";
 let packEventsBound = false;
 let packDetailMode = false;         // 상세 화면 표시 여부
 let packDetailId = null;            // 현재 상세로 열린 지식팩 id
 let packDetailLoadSeq = 0;          // 동시 클릭/취소 처리용 시퀀스
+let packActiveTab = "list";         // 현재 활성 탭: list|manage|access|stats
+let packStatsLoadSeq = 0;
+
+function adminAuthHeader() {
+  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
+}
+
+function isAdminAuthenticated() {
+  return Boolean(state.admin?.authenticated && state.admin?.token);
+}
 
 function formatRelativeDate(iso) {
   if (!iso) return "";
@@ -158,17 +169,21 @@ export function renderKnowledgePackCards() {
 
 export async function renderKnowledgePackPage() {
   renderAccessSummary();
-  if (packDetailMode && packDetailId) {
-    // 뷰 재진입 시 상세 화면 유지.
-    renderDetailPanel(packDetailId);
-  } else {
-    applyListMode();
-    renderKnowledgePackCards();
+  applyTabState();
+  if (packActiveTab === "list") {
+    if (packDetailMode && packDetailId) {
+      renderDetailPanel(packDetailId);
+    } else {
+      applyListMode();
+      renderKnowledgePackCards();
+    }
+  } else if (packActiveTab === "stats" && isAdminAuthenticated()) {
+    renderInlineStats();
   }
   // 최신 목록 동기화 — 비동기, 백그라운드.
   try {
     await loadNotebooks();
-    if (!packDetailMode) renderKnowledgePackCards();
+    if (packActiveTab === "list" && !packDetailMode) renderKnowledgePackCards();
   } catch {
     /* loadNotebooks 자체가 내부에서 경고만 — 추가 처리 없음 */
   }
@@ -405,6 +420,86 @@ export function startRoomWithKnowledgePack(packId) {
   window.dispatchEvent(new CustomEvent("myai:roomchange", { detail: { roomId: room.id } }));
 }
 
+/* ===== 탭 (목록 / 관리 / 권한 / 통계) ===== */
+
+function applyTabState() {
+  const tabs = elements.packTabs || [];
+  for (const tab of tabs) {
+    const key = tab.dataset.packTab;
+    const isActive = key === packActiveTab;
+    tab.classList.toggle("active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    // 관리자 전용 탭: 인증 여부에 따라 잠금 표시.
+    if (tab.dataset.adminOnly === "true") {
+      tab.classList.toggle("locked", !isAdminAuthenticated());
+    }
+  }
+  const panels = elements.packTabPanels || [];
+  for (const panel of panels) {
+    panel.hidden = panel.dataset.packTabPanel !== packActiveTab;
+  }
+  if (elements.packManageAuthHint) {
+    elements.packManageAuthHint.hidden = isAdminAuthenticated();
+  }
+}
+
+export function switchKnowledgePackTab(tabKey) {
+  const allowed = new Set(["list", "manage", "access", "stats"]);
+  packActiveTab = allowed.has(tabKey) ? tabKey : "list";
+  applyTabState();
+  if (packActiveTab === "list") {
+    if (packDetailMode && packDetailId) renderDetailPanel(packDetailId);
+    else { applyListMode(); renderKnowledgePackCards(); }
+  } else if (packActiveTab === "stats" && isAdminAuthenticated()) {
+    renderInlineStats();
+  }
+}
+
+async function renderInlineStats() {
+  const container = elements.packStatsInline;
+  if (!container) return;
+  container.innerHTML = "<div class='pack-stats-loading'>통계를 불러오는 중...</div>";
+  const seq = ++packStatsLoadSeq;
+  try {
+    const response = await fetch("/api/admin/stats/notebooks?range=30d", { headers: adminAuthHeader() });
+    if (seq !== packStatsLoadSeq) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json().catch(() => ({}));
+    if (seq !== packStatsLoadSeq) return;
+    const rows = Array.isArray(result?.notebooks) ? result.notebooks : [];
+    if (!rows.length) {
+      container.innerHTML = "<div class='pack-stats-empty'>최근 30일 사용 기록이 없습니다.</div>";
+      return;
+    }
+    const top = rows.slice(0, 10);
+    container.innerHTML = "";
+    const heading = document.createElement("h4");
+    heading.className = "pack-stats-heading";
+    heading.textContent = "지식팩별 사용량 (최근 30일, Top 10)";
+    container.append(heading);
+    const table = document.createElement("table");
+    table.className = "pack-stats-table";
+    table.innerHTML = "<thead><tr><th>#</th><th>지식팩</th><th>쿼리</th><th>세션</th></tr></thead>";
+    const tbody = document.createElement("tbody");
+    top.forEach((row, idx) => {
+      const tr = document.createElement("tr");
+      const nb = (state.notebooks || []).find((n) => n.id === row.notebookId);
+      const name = nb?.name || row.notebookId;
+      tr.innerHTML = `<td>${idx + 1}</td><td>${escapeHtml(name)}</td><td>${row.queryCount || 0}</td><td>${row.uniqueSessions || 0}</td>`;
+      tbody.append(tr);
+    });
+    table.append(tbody);
+    container.append(table);
+  } catch (error) {
+    if (seq !== packStatsLoadSeq) return;
+    container.innerHTML = `<div class='pack-stats-error'>통계 로드 실패: ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch]));
+}
+
 export function bindKnowledgePackEvents() {
   if (packEventsBound) return;
   packEventsBound = true;
@@ -412,8 +507,10 @@ export function bindKnowledgePackEvents() {
   if (elements.packSearchInput) {
     elements.packSearchInput.addEventListener("input", (event) => {
       packSearchQuery = event.target.value || "";
-      // 검색 시 자연스럽게 목록 화면으로 복귀.
-      if (packDetailMode) closeKnowledgePackDetail();
+      // 검색 시 자연스럽게 목록 탭/화면으로 복귀.
+      if (packActiveTab !== "list") {
+        switchKnowledgePackTab("list");
+      } else if (packDetailMode) closeKnowledgePackDetail();
       else renderKnowledgePackCards();
     });
   }
@@ -431,10 +528,37 @@ export function bindKnowledgePackEvents() {
     });
   }
 
+  // 탭 클릭
+  for (const tab of elements.packTabs || []) {
+    tab.addEventListener("click", () => {
+      const key = tab.dataset.packTab;
+      if (key === "list") {
+        switchKnowledgePackTab("list");
+        return;
+      }
+      // 관리자 탭은 클릭 시 settings admin 콘솔로 진입.
+      switchKnowledgePackTab(key);
+      const panelMap = { manage: "notebooks", access: "access", stats: "stats" };
+      const adminPanel = panelMap[key];
+      if (adminPanel) openSettingsAdminPanel(adminPanel);
+    });
+  }
+
+  if (elements.packOpenAdminNotebooksButton) {
+    elements.packOpenAdminNotebooksButton.addEventListener("click", () => openSettingsAdminPanel("notebooks"));
+  }
+  if (elements.packOpenAdminAccessButton) {
+    elements.packOpenAdminAccessButton.addEventListener("click", () => openSettingsAdminPanel("access"));
+  }
+  if (elements.packOpenAdminStatsButton) {
+    elements.packOpenAdminStatsButton.addEventListener("click", () => openSettingsAdminPanel("stats"));
+  }
+
   // 접근 상태가 바뀌면 권한 라벨도 갱신.
   window.addEventListener("myai:viewchange", (event) => {
     if (event?.detail?.view === "knowledge") {
       renderAccessSummary();
+      applyTabState();
     }
   });
 
@@ -445,4 +569,7 @@ export function bindKnowledgePackEvents() {
       closeKnowledgePackDetail();
     }
   });
+
+  // 초기 탭 상태 적용.
+  applyTabState();
 }

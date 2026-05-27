@@ -1924,6 +1924,33 @@ export function bindAdminEvents({ hideDropOverlay, resetDragDepth }) {
     await loadAdminStatus();
     await renderAdminDialogState();
   });
+  // 외부 모듈(지식팩 페이지 탭 등)의 admin sub-panel 전환 요청.
+  // 인증 후에만 의미가 있으므로 인증되지 않은 경우에는 무시한다.
+  window.addEventListener("myai:adminpanel", (event) => {
+    const panel = event?.detail?.panel || "notebooks";
+    if (!state.admin.authenticated || !state.admin.token) return;
+    switch (panel) {
+      case "access":
+        showAdminAccessPanel().catch((error) => alert(error.message));
+        break;
+      case "stats":
+        showAdminStats();
+        break;
+      case "status":
+        showAdminStatus();
+        break;
+      case "sourcePromotions":
+        showAdminSourcePromotions();
+        break;
+      case "ragEval":
+        showAdminRagEval();
+        break;
+      case "notebooks":
+      default:
+        showAdminNotebooksPanel();
+        break;
+    }
+  });
   if (elements.closeAdminNotebookButton) {
     elements.closeAdminNotebookButton.addEventListener("click", (event) => {
       event.preventDefault();

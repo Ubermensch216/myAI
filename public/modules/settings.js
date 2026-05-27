@@ -33,6 +33,22 @@ export function closeSettings() {
   elements.settingsDialog.close();
 }
 
+/**
+ * 외부 모듈(예: 지식팩 페이지)에서 settings의 admin 콘솔로 진입하기 위한 헬퍼.
+ * settings 다이얼로그를 열고 admin 탭으로 전환한 뒤,
+ * 특정 sub-panel(notebooks|access|stats|status|sourcePromotions|ragEval)을 활성화한다.
+ * notebook.js의 bindAdminEvents에서 `myai:adminpanel` 이벤트를 수신하여 패널을 전환한다.
+ */
+export function openSettingsAdminPanel(panel) {
+  openSettings();
+  switchSettingsTab("admin");
+  // admin console mount + 인증 상태 렌더링이 microtask 큐에서 진행되므로
+  // 패널 전환 요청도 동일하게 microtask 후 dispatch한다.
+  queueMicrotask(() => {
+    window.dispatchEvent(new CustomEvent("myai:adminpanel", { detail: { panel: panel || "notebooks" } }));
+  });
+}
+
 function openSettings() {
   elements.userTitleInput.value = state.settings.userTitle;
   elements.appNameInput.value = state.settings.appName || "myAI";

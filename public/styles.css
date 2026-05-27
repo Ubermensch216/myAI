@@ -4895,6 +4895,162 @@ body.panel-resizing .panel-resizer::after {
   cursor: pointer;
 }
 
+/* ===== 지식팩 페이지 탭 ===== */
+.pack-tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.pack-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted, #6b7280);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.pack-tab:hover {
+  color: var(--text, #111827);
+}
+
+.pack-tab.active {
+  color: var(--accent, #2563eb);
+  border-bottom-color: var(--accent, #2563eb);
+}
+
+.pack-tab-lock {
+  font-size: 11px;
+  opacity: 0.6;
+  display: none;
+}
+
+.pack-tab.locked .pack-tab-lock {
+  display: inline;
+}
+
+.pack-tab.locked {
+  color: var(--muted, #9ca3af);
+}
+
+/* 탭 패널 */
+.pack-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pack-tab-panel[hidden] {
+  display: none;
+}
+
+/* 관리자 위임 패널 (관리/권한/통계) */
+.pack-admin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  align-items: flex-start;
+  max-width: 720px;
+}
+
+.pack-admin-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text, #111827);
+}
+
+.pack-admin-desc {
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.pack-admin-hint {
+  font-size: 12px;
+  color: #b45309;
+  margin: 0;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border-radius: 6px;
+}
+
+/* 인라인 통계 표 */
+.pack-stats-inline {
+  margin-top: 16px;
+  width: 100%;
+}
+
+.pack-stats-loading,
+.pack-stats-empty,
+.pack-stats-error {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  border: 1px dashed var(--border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.pack-stats-error {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.pack-stats-heading {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text, #111827);
+}
+
+.pack-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pack-stats-table th,
+.pack-stats-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  text-align: left;
+}
+
+.pack-stats-table th {
+  font-weight: 600;
+  color: var(--muted, #6b7280);
+  background: var(--surface-2, #f9fafb);
+}
+
+.pack-stats-table td:nth-child(1),
+.pack-stats-table th:nth-child(1),
+.pack-stats-table td:nth-child(3),
+.pack-stats-table th:nth-child(3),
+.pack-stats-table td:nth-child(4),
+.pack-stats-table th:nth-child(4) {
+  text-align: right;
+  width: 60px;
+}
+
+.pack-stats-table td:nth-child(2) {
+  word-break: break-all;
+}
+
 /* 사이드바 영역 (지식팩 뷰) */
 .pack-sidebar-intro {
   padding: 12px 12px 8px;
