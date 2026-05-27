@@ -4,6 +4,7 @@ import {
   aggregateSummary,
   aggregateByGroup,
   aggregateByNotebook,
+  aggregateKnowledgePackKpis,
   aggregateSessions
 } from "./statsLogReader.js";
 
@@ -49,6 +50,18 @@ statsApiRouter.get("/notebooks", async (req, res) => {
     res.json({ ok: true, range: `${days}d`, notebooks });
   } catch (err) {
     console.error("[stats/notebooks]", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+statsApiRouter.get("/knowledge-packs", async (req, res) => {
+  try {
+    const days = parseRangeDays(req.query);
+    const records = await readUsageLogs({ days });
+    const kpi = aggregateKnowledgePackKpis(records);
+    res.json({ ok: true, range: `${days}d`, kpi });
+  } catch (err) {
+    console.error("[stats/knowledge-packs]", err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

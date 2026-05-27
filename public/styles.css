@@ -5018,6 +5018,45 @@ body.panel-resizing .panel-resizer::after {
   color: var(--text, #111827);
 }
 
+.pack-stats-heading-secondary {
+  margin-top: 20px;
+}
+
+.pack-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.pack-kpi-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pack-kpi-label {
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+}
+
+.pack-kpi-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text, #111827);
+  line-height: 1.1;
+}
+
+.pack-kpi-hint {
+  font-size: 10px;
+  color: var(--muted, #9ca3af);
+  margin-top: 2px;
+}
+
 .pack-stats-table {
   width: 100%;
   border-collapse: collapse;

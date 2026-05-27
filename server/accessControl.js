@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./env.js";
 import { extractRequestToken } from "./auth.js";
+import { logUsageEvent } from "./stats/statsLogger.js";
 
 loadLocalEnv();
 
@@ -330,6 +331,17 @@ export async function requireNotebookAccess(request, response, notebook) {
   if (!await isAccessControlConfigured()) return null;
   const access = await getAccessFromRequest(request);
   if (canAccessNotebook(access, notebook)) return access;
+  // 접근 거부 이벤트 로깅. raw 비밀번호/토큰은 저장되지 않으며 메타만 기록.
+  logUsageEvent({
+    rawToken: extractRequestToken(request),
+    groupId: access?.groupId || "anon",
+    level: access?.level != null ? `L${access.level}` : "anon",
+    eventType: "access_denied",
+    endpoint: request.originalUrl || request.url || null,
+    notebookId: notebook?.id || null,
+    success: false,
+    errorType: access ? "forbidden" : "unauthenticated"
+  });
   response.status(access ? 403 : 401).json({
     error: access ? "Notebook access denied." : "Notebook access authentication required."
   });

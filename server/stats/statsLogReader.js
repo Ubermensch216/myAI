@@ -150,6 +150,40 @@ export function aggregateByGroup(records) {
     .sort((a, b) => b.queryCount - a.queryCount);
 }
 
+/**
+ * 지식팩 메뉴 관련 지표를 집계한다.
+ *  - pageViews:        pack_page_view 이벤트 수
+ *  - roomsStarted:     pack_room_started 이벤트 수
+ *  - accessDenied:     access_denied 이벤트 수
+ *  - conversionRate:   roomsStarted / pageViews (페이지 → 새 대화 전환율)
+ *  - perPack:          지식팩별 roomsStarted 누적 (top N은 호출 측에서 자름)
+ */
+export function aggregateKnowledgePackKpis(records) {
+  let pageViews = 0;
+  let roomsStarted = 0;
+  let accessDenied = 0;
+  const perPack = {};
+  for (const r of records) {
+    if (r.eventType === "pack_page_view") pageViews++;
+    if (r.eventType === "pack_room_started") {
+      roomsStarted++;
+      if (r.notebookId) {
+        if (!perPack[r.notebookId]) perPack[r.notebookId] = { notebookId: r.notebookId, roomsStarted: 0 };
+        perPack[r.notebookId].roomsStarted++;
+      }
+    }
+    if (r.eventType === "access_denied") accessDenied++;
+  }
+  const conversionRate = pageViews ? roomsStarted / pageViews : 0;
+  return {
+    pageViews,
+    roomsStarted,
+    accessDenied,
+    conversionRate: +conversionRate.toFixed(4),
+    perPack: Object.values(perPack).sort((a, b) => b.roomsStarted - a.roomsStarted)
+  };
+}
+
 export function aggregateByNotebook(records) {
   const map = {};
   for (const r of records) {

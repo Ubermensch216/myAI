@@ -30,6 +30,24 @@ function isAdminAuthenticated() {
   return Boolean(state.admin?.authenticated && state.admin?.token);
 }
 
+/**
+ * 사용량 이벤트를 서버에 보고한다. 백그라운드 best-effort — 실패해도 UI에 영향을 주지 않는다.
+ * 같은 페이지 진입에서 중복 보고를 피하기 위해 호출 측에서 가드한다.
+ */
+function reportUsageEvent(eventType, notebookId) {
+  try {
+    fetch("/api/usage/event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...accessAuthHeaders() },
+      body: JSON.stringify({ eventType, notebookId: notebookId || null }),
+      keepalive: true
+    }).catch(() => {});
+  } catch { /* swallow */ }
+}
+
+let lastPageViewReportedAt = 0;
+const PAGE_VIEW_THROTTLE_MS = 30_000;
+
 function formatRelativeDate(iso) {
   if (!iso) return "";
   const date = new Date(iso);
@@ -170,6 +188,12 @@ export function renderKnowledgePackCards() {
 export async function renderKnowledgePackPage() {
   renderAccessSummary();
   applyTabState();
+  // 페이지 조회 이벤트 (30초 스로틀 — 같은 세션의 짧은 재진입은 1건으로 계산).
+  const now = Date.now();
+  if (now - lastPageViewReportedAt > PAGE_VIEW_THROTTLE_MS) {
+    lastPageViewReportedAt = now;
+    reportUsageEvent("pack_page_view", null);
+  }
   if (packActiveTab === "list") {
     if (packDetailMode && packDetailId) {
       renderDetailPanel(packDetailId);
@@ -413,6 +437,9 @@ export function startRoomWithKnowledgePack(packId) {
   state.activeRoomId = room.id;
   state.activeView = "chat";
 
+  // 핵심 전환 이벤트: 지식팩 → 새 대화 시작.
+  reportUsageEvent("pack_room_started", pack.id);
+
   scheduleSave();
   window.dispatchEvent(new CustomEvent("myai:viewchange", { detail: { view: "chat" } }));
   window.dispatchEvent(new CustomEvent("myai:renderrooms"));
@@ -455,41 +482,72 @@ export function switchKnowledgePackTab(tabKey) {
   }
 }
 
+function buildKpiCard(label, value, hint) {
+  const card = document.createElement("div");
+  card.className = "pack-kpi-card";
+  card.innerHTML = `<div class="pack-kpi-label">${escapeHtml(label)}</div><div class="pack-kpi-value">${escapeHtml(String(value))}</div>${hint ? `<div class="pack-kpi-hint">${escapeHtml(hint)}</div>` : ""}`;
+  return card;
+}
+
 async function renderInlineStats() {
   const container = elements.packStatsInline;
   if (!container) return;
   container.innerHTML = "<div class='pack-stats-loading'>통계를 불러오는 중...</div>";
   const seq = ++packStatsLoadSeq;
   try {
-    const response = await fetch("/api/admin/stats/notebooks?range=30d", { headers: adminAuthHeader() });
+    // 두 API를 병렬로 호출 — 지식팩 KPI + 지식팩별 사용량.
+    const [kpiRes, byNbRes] = await Promise.all([
+      fetch("/api/admin/stats/knowledge-packs?range=30d", { headers: adminAuthHeader() }),
+      fetch("/api/admin/stats/notebooks?range=30d", { headers: adminAuthHeader() })
+    ]);
     if (seq !== packStatsLoadSeq) return;
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json().catch(() => ({}));
+    if (!kpiRes.ok) throw new Error(`KPI HTTP ${kpiRes.status}`);
+    if (!byNbRes.ok) throw new Error(`per-pack HTTP ${byNbRes.status}`);
+    const kpiResult = await kpiRes.json().catch(() => ({}));
+    const byNbResult = await byNbRes.json().catch(() => ({}));
     if (seq !== packStatsLoadSeq) return;
-    const rows = Array.isArray(result?.notebooks) ? result.notebooks : [];
-    if (!rows.length) {
-      container.innerHTML = "<div class='pack-stats-empty'>최근 30일 사용 기록이 없습니다.</div>";
-      return;
-    }
-    const top = rows.slice(0, 10);
+
+    const kpi = kpiResult?.kpi || {};
+    const rows = Array.isArray(byNbResult?.notebooks) ? byNbResult.notebooks : [];
+
     container.innerHTML = "";
-    const heading = document.createElement("h4");
-    heading.className = "pack-stats-heading";
-    heading.textContent = "지식팩별 사용량 (최근 30일, Top 10)";
-    container.append(heading);
-    const table = document.createElement("table");
-    table.className = "pack-stats-table";
-    table.innerHTML = "<thead><tr><th>#</th><th>지식팩</th><th>쿼리</th><th>세션</th></tr></thead>";
-    const tbody = document.createElement("tbody");
-    top.forEach((row, idx) => {
-      const tr = document.createElement("tr");
-      const nb = (state.notebooks || []).find((n) => n.id === row.notebookId);
-      const name = nb?.name || row.notebookId;
-      tr.innerHTML = `<td>${idx + 1}</td><td>${escapeHtml(name)}</td><td>${row.queryCount || 0}</td><td>${row.uniqueSessions || 0}</td>`;
-      tbody.append(tr);
-    });
-    table.append(tbody);
-    container.append(table);
+
+    // KPI 카드 4종 (페이지 조회·새 대화·전환율·접근 거부).
+    const kpiHeading = document.createElement("h4");
+    kpiHeading.className = "pack-stats-heading";
+    kpiHeading.textContent = "지식팩 핵심 지표 (최근 30일)";
+    container.append(kpiHeading);
+    const cards = document.createElement("div");
+    cards.className = "pack-kpi-grid";
+    cards.append(
+      buildKpiCard("페이지 조회", kpi.pageViews || 0, "지식팩 메뉴 진입 수"),
+      buildKpiCard("새 대화 시작", kpi.roomsStarted || 0, "지식팩 기반 신규 대화"),
+      buildKpiCard("전환율", `${Math.round(((kpi.conversionRate || 0) * 1000)) / 10}%`, "조회 → 새 대화"),
+      buildKpiCard("접근 거부", kpi.accessDenied || 0, "권한 부족 발생")
+    );
+    container.append(cards);
+
+    // 지식팩별 사용량 표 (Top 10).
+    if (rows.length) {
+      const heading = document.createElement("h4");
+      heading.className = "pack-stats-heading pack-stats-heading-secondary";
+      heading.textContent = "지식팩별 사용량 (최근 30일, Top 10)";
+      container.append(heading);
+      const top = rows.slice(0, 10);
+      const table = document.createElement("table");
+      table.className = "pack-stats-table";
+      table.innerHTML = "<thead><tr><th>#</th><th>지식팩</th><th>쿼리</th><th>세션</th></tr></thead>";
+      const tbody = document.createElement("tbody");
+      top.forEach((row, idx) => {
+        const tr = document.createElement("tr");
+        const nb = (state.notebooks || []).find((n) => n.id === row.notebookId);
+        const name = nb?.name || row.notebookId;
+        tr.innerHTML = `<td>${idx + 1}</td><td>${escapeHtml(name)}</td><td>${row.queryCount || 0}</td><td>${row.uniqueSessions || 0}</td>`;
+        tbody.append(tr);
+      });
+      table.append(tbody);
+      container.append(table);
+    }
   } catch (error) {
     if (seq !== packStatsLoadSeq) return;
     container.innerHTML = `<div class='pack-stats-error'>통계 로드 실패: ${escapeHtml(error.message)}</div>`;

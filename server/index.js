@@ -47,7 +47,7 @@ import {
   recoverNotebookIngestJobs,
   retryNotebookIngestJob
 } from "./ingest/notebookIngestJobs.js";
-import { isAdminConfigured, isAdminRequest, requireAdmin } from "./auth.js";
+import { isAdminConfigured, isAdminRequest, requireAdmin, extractRequestToken } from "./auth.js";
 import { ragEvalRouter } from "./ragEvalApi.js";
 import { graphAdminRouter } from "./graphAdminApi.js";
 import { graphStudioRouter } from "./graphStudioApi.js";
@@ -943,6 +943,33 @@ app.get("/api/admin/rag/status", requireAdmin, async (_request, response) => {
 app.use("/api/admin/rag-eval", ragEvalRouter);
 app.use("/api/admin/graph", graphAdminRouter);
 app.use("/api/admin/stats", requireAdmin, statsApiRouter);
+
+// 프론트엔드에서 지식팩 페이지 조회/새 대화 시작과 같은 화면 이벤트를 보고할 때 사용.
+// 허용된 eventType만 받고, raw 내용은 저장하지 않는다. 다른 통계 이벤트와 동일하게
+// data/logs/usage-YYYY-MM-DD.jsonl에 누적된다.
+const USER_REPORTED_EVENT_TYPES = new Set(["pack_page_view", "pack_room_started"]);
+app.post("/api/usage/event", async (request, response) => {
+  try {
+    const eventType = String(request.body?.eventType || "").trim();
+    if (!USER_REPORTED_EVENT_TYPES.has(eventType)) {
+      response.status(400).json({ ok: false, error: "허용되지 않은 이벤트 유형입니다." });
+      return;
+    }
+    const access = await getAccessFromRequest(request);
+    await logUsageEvent({
+      rawToken: extractRequestToken(request),
+      groupId: access?.groupId || "anon",
+      level: access?.level != null ? `L${access.level}` : "anon",
+      eventType,
+      endpoint: "/api/usage/event",
+      notebookId: String(request.body?.notebookId || "") || null,
+      success: true
+    });
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
 app.use("/api/studio/graph", graphStudioRouter);
 app.use("/api/studio/document", studioDocumentRouter);
 
