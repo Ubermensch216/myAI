@@ -522,6 +522,8 @@ export const elements = {
   packOpenAdminAccessButton: document.querySelector("#packOpenAdminAccessButton"),
   packOpenAdminStatsButton: document.querySelector("#packOpenAdminStatsButton"),
   packStatsInline: document.querySelector("#packStatsInline"),
+  roomActivePackChip: document.querySelector("#roomActivePackChip"),
+  roomActivePackName: document.querySelector("#roomActivePackName"),
   newLawReviewButton: document.querySelector("#newLawReviewButton"),
   lawReviewList: document.querySelector("#lawReviewList"),
   newGrcReviewButton: document.querySelector("#newGrcReviewButton"),

@@ -139,6 +139,14 @@
       <section class="chat-area" aria-label="채팅">
         <div class="chat-header">
           <input id="roomTitleInput" class="room-title-input" aria-label="대화방 제목" />
+          <button id="roomActivePackChip" class="room-active-pack-chip" type="button" aria-label="현재 지식팩 변경" title="현재 지식팩 변경" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+              <path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.6"></path>
+            </svg>
+            <span class="room-active-pack-label">현재 지식팩</span>
+            <span class="room-active-pack-name" id="roomActivePackName"></span>
+          </button>
           <button id="selectionModeToggle" class="icon-button selection-mode-toggle" type="button" aria-pressed="false" aria-label="여러 메시지 선택" title="메시지 선택 모드">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="4" y="4" width="16" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
