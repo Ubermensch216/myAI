@@ -25,6 +25,9 @@ import {
   renderActiveNotebookUi, openNotebookSelector, closeNotebookSelector,
   findNotebookSummary, isAdminDialogOpen, bindAdminEvents
 } from "./modules/notebook.js";
+import {
+  renderKnowledgePackPage, bindKnowledgePackEvents
+} from "./modules/knowledgePack.js";
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
 import { renderCustomPromptPicker } from "./modules/customPrompts.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
@@ -379,6 +382,7 @@ function renderPrimaryNav() {
   if (elements.chatArea) elements.chatArea.hidden = view !== "chat";
   if (elements.lawArea) elements.lawArea.hidden = view !== "law";
   if (elements.grcArea) elements.grcArea.hidden = view !== "grc";
+  if (elements.knowledgeArea) elements.knowledgeArea.hidden = view !== "knowledge";
 }
 
 function updatePrimaryNavTooltip(item) {
@@ -408,11 +412,14 @@ function applyActiveView(view) {
       window.MyAIFrontend.mountGrcWorkbench();
     }
   }
+  if (next === "knowledge") {
+    renderKnowledgePackPage();
+  }
   window.dispatchEvent(new CustomEvent("myai:viewchange", { detail: { view: next } }));
 }
 
 function normalizeView(view) {
-  return view === "calendar" || view === "law" || view === "grc" ? view : "chat";
+  return view === "calendar" || view === "law" || view === "grc" || view === "knowledge" ? view : "chat";
 }
 
 function sortRoomsForRender(rooms) {
@@ -480,9 +487,9 @@ function renderRooms() {
 
     const notebookIndicator = document.createElement("span");
     notebookIndicator.className = "room-status-indicator room-notebook-indicator";
-    notebookIndicator.title = "프로젝트 있음";
+    notebookIndicator.title = "지식팩 있음";
     notebookIndicator.setAttribute("role", "img");
-    notebookIndicator.setAttribute("aria-label", "프로젝트 있음");
+    notebookIndicator.setAttribute("aria-label", "지식팩 있음");
     if (room.selectedNotebookId) {
       notebookIndicator.innerHTML = ROOM_FILE_SVG.notebook;
       indicators.append(notebookIndicator);
@@ -751,7 +758,7 @@ function renderMaterialList({ room, documents, attachments, generatedSources, no
   if (hasNotebook) {
     elements.materialList.append(buildMaterialTreeGroup({
       key: "notebook",
-      title: "프로젝트",
+      title: "지식팩",
       count: 1,
       collapsed: groups.notebook,
       children: [buildNotebookMaterialItem(notebook)]
@@ -823,14 +830,14 @@ function buildNotebookMaterialItem(notebook) {
   const item = document.createElement("button");
   item.type = "button";
   item.className = "material-tree-item material-tree-item-action";
-  item.title = "프로젝트 변경";
+  item.title = "지식팩 변경";
   item.addEventListener("click", () => openNotebookSelector());
   const icon = document.createElement("span");
   icon.className = "material-tree-icon";
   icon.innerHTML = ROOM_FILE_SVG.notebook;
   const name = document.createElement("span");
   name.className = "material-tree-name";
-  name.textContent = notebook?.name || "프로젝트";
+  name.textContent = notebook?.name || "지식팩";
   item.append(icon, name);
   return item;
 }
@@ -1114,6 +1121,11 @@ function handleGlobalShortcut(key) {
     if (!state.busy) {
       if (state.activeView === "calendar") openEventDialogForCreate(state.calendar.cursorISO);
       else if (state.activeView === "law") createNewLawReview();
+      else if (state.activeView === "knowledge") {
+        // 지식팩 뷰에서 shift+N: 대화 뷰로 전환 후 새 대화 생성
+        applyActiveView("chat");
+        createNewRoom();
+      }
       else createNewRoom();
     }
     return true;
@@ -1193,6 +1205,7 @@ function bindEvents() {
   bindLayoutEvents();
   bindStudioEvents();
   bindLawWorkbenchEvents();
+  bindKnowledgePackEvents();
   initDocTool();
 
   // File input / attach menu

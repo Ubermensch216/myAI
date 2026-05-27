@@ -363,7 +363,7 @@ function buildUserPrompt({ template, answer, metadata }) {
 function describeCitationHint(metadata) {
   if (!metadata || typeof metadata !== "object") return "참고: 답변에 있는 인용 마커는 변경하지 말고 그대로 보존하세요.";
   const families = [];
-  if (metadata.notebook) families.push("[N#] 프로젝트");
+  if (metadata.notebook) families.push("[N#] 지식팩");
   if (metadata.law || metadata.compliance) families.push("[L#] 법령, [P#] 판례, [I#] 해석례, [R#] 행정규칙, [O#] 자치법규");
   if (metadata.webSearch || metadata.web) families.push("[W#] 웹");
   if (!families.length) return "참고: 답변에 있는 인용 마커는 변경하지 말고 그대로 보존하세요.";

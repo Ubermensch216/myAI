@@ -1042,7 +1042,7 @@ async function createSourceGuideOutput() {
   if (!room) throw new Error("활성 대화방이 없습니다.");
   const documents = Array.isArray(room.documents) ? room.documents.filter((doc) => doc?.kind === "document") : [];
   if (!documents.length && !room.selectedNotebookId) {
-    throw new Error("자료 브리핑을 만들 첨부 자료나 선택된 프로젝트가 없습니다.");
+    throw new Error("자료 브리핑을 만들 첨부 자료나 선택된 지식팩이 없습니다.");
   }
 
   setStatus("자료 브리핑 정리 중", false, true);
@@ -1301,7 +1301,7 @@ async function addOutputAsRoomSource(output) {
 async function requestOutputPromotion(output) {
   const room = getActiveRoom();
   if (!room?.selectedNotebookId) {
-    throw new Error("승인 요청 대상 프로젝트를 먼저 선택하세요.");
+    throw new Error("승인 요청 대상 지식팩을 먼저 선택하세요.");
   }
   const response = await fetch("/api/source-workflow/promotions", {
     method: "POST",

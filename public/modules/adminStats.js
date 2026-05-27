@@ -96,7 +96,7 @@ function renderFeatureUsage(summary) {
   const fu = summary.featureUsage || {};
   const total = summary.totalQueries || 1;
   const features = [
-    { key: "rag", label: "RAG (프로젝트 검색)" },
+    { key: "rag", label: "RAG (지식팩 검색)" },
     { key: "law", label: "Law (법령 검색)" },
     { key: "compliance", label: "Compliance (검토)" },
     { key: "kg", label: "KG (지식 그래프)" },
@@ -190,7 +190,7 @@ function renderNotebookList(notebooks) {
   }
   const table = document.createElement("table");
   table.className = "stats-table";
-  table.innerHTML = `<thead><tr><th>#</th><th>프로젝트 ID</th><th>쿼리</th><th>세션</th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>#</th><th>지식팩 ID</th><th>쿼리</th><th>세션</th></tr></thead>`;
   const tbody = document.createElement("tbody");
   notebooks.slice(0, 10).forEach((nb, i) => {
     const tr = document.createElement("tr");

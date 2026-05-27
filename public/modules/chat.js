@@ -113,8 +113,8 @@ export function renderDeepAnalysisToggle() {
     elements.deepAnalysisToggle.title = state.busy && state.deepAnalysisEnabled
       ? "정밀 분석 진행 중"
       : available
-        ? "첨부 파일 또는 프로젝트 전체를 정밀 분석합니다 (시간이 오래 걸림)"
-        : "첨부 파일을 추가하거나 프로젝트을 선택하면 정밀 분석을 사용할 수 있습니다";
+        ? "첨부 파일 또는 지식팩 전체를 정밀 분석합니다 (시간이 오래 걸림)"
+        : "첨부 파일을 추가하거나 지식팩을 선택하면 정밀 분석을 사용할 수 있습니다";
   }
 }
 
@@ -1362,7 +1362,7 @@ function isLegalCitation(item) {
 function groupCitationsByType(citations, compliance = null) {
   const internalLabel = compliance?.mode === "department_legal_review" ? "내부 자료" : null;
   const groups = [
-    ["프로젝트", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
+    ["지식팩", (item) => !isLegalCitation(item) && ((!item.sourceType && !/^W/.test(String(item.citationId || ""))) || item.sourceType === "notebook")],
     ["법령", (item) => classifyLawCitation(item) === "statute"],
     ["판례", (item) => classifyLawCitation(item) === "precedent"],
     ["헌재 결정례", (item) => classifyLawCitation(item) === "decision"],
@@ -2076,7 +2076,7 @@ function mergeServerConfirmation(sources, notebookMeta) {
     next.naverSearch = null;
   }
   if (meta?.notebook && !next.notebook) {
-    next.notebook = { id: meta.notebook.id || "", name: meta.notebook.name || "이름 없는 프로젝트" };
+    next.notebook = { id: meta.notebook.id || "", name: meta.notebook.name || "이름 없는 지식팩" };
   }
   return next;
 }
@@ -2137,7 +2137,7 @@ function renderSourceBadges(host, sources, { variant }) {
     (Array.isArray(sources.images) ? sources.images.length : 0);
   sources = {
     ...sources,
-    notebook: sources.notebook ? { ...sources.notebook, name: "프로젝트" } : null,
+    notebook: sources.notebook ? { ...sources.notebook, name: "지식팩" } : null,
     documents: attachmentCount ? [{ id: "attachments", displayName: "첨부 파일" }] : [],
     images: []
   };
@@ -2146,7 +2146,7 @@ function renderSourceBadges(host, sources, { variant }) {
     row.append(buildSourceBadge({
       kind: "notebook",
       svgKey: "notebook",
-      text: sources.notebook.name || "프로젝트",
+      text: sources.notebook.name || "지식팩",
       title: sources.notebook.name || undefined,
       onClick: () => { openNotebookSelector(); }
     }));
@@ -2246,7 +2246,7 @@ function buildInputSources(room, { lawProcessing, naverSearch, lawOnly = false }
     .map((f) => ({ id: f.id, displayName: formatDisplayFileName(f) }));
   return composeInputSources({
     notebook: notebookSummary
-      ? { id: notebookSummary.id, name: notebookSummary.name || "이름 없는 프로젝트" }
+      ? { id: notebookSummary.id, name: notebookSummary.name || "이름 없는 지식팩" }
       : null,
     documents,
     images,

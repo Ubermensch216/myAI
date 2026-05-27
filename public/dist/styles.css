@@ -4588,11 +4588,339 @@ body.panel-resizing .panel-resizer::after {
 
 .app-shell[data-view="chat"] .calendar-area,
 .app-shell[data-view="chat"] .law-area,
+.app-shell[data-view="chat"] .knowledge-area,
 .app-shell[data-view="law"] .chat-area,
 .app-shell[data-view="law"] .calendar-area,
+.app-shell[data-view="law"] .knowledge-area,
 .app-shell[data-view="calendar"] .chat-area,
-.app-shell[data-view="calendar"] .law-area {
+.app-shell[data-view="calendar"] .law-area,
+.app-shell[data-view="calendar"] .knowledge-area,
+.app-shell[data-view="knowledge"] .chat-area,
+.app-shell[data-view="knowledge"] .calendar-area,
+.app-shell[data-view="knowledge"] .law-area,
+.app-shell[data-view="knowledge"] .grc-area {
   display: none;
+}
+
+/* ===== 지식팩 (Knowledge Pack) 페이지 ===== */
+.knowledge-area {
+  grid-column: 3;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 32px 32px;
+  overflow-y: auto;
+  background: var(--bg, #fff);
+}
+
+.pack-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.pack-page-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pack-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text, #111827);
+}
+
+.pack-page-subtitle {
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  margin: 0;
+}
+
+.pack-page-access {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  padding: 6px 12px;
+  background: var(--surface-2, #f3f4f6);
+  border-radius: 999px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.pack-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.pack-search-input {
+  flex: 1;
+  max-width: 360px;
+}
+
+.pack-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.pack-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.pack-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  border-color: var(--accent, #2563eb);
+}
+
+.pack-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pack-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text, #111827);
+  line-height: 1.3;
+  word-break: keep-all;
+}
+
+.pack-card-description {
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  margin: 0;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pack-card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted, #9ca3af);
+  flex-wrap: wrap;
+}
+
+.pack-card-meta-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pack-card-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.pack-card-start {
+  flex: 1;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.pack-empty-state {
+  margin-top: 32px;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted, #6b7280);
+  font-size: 14px;
+  border: 1px dashed var(--border, #e5e7eb);
+  border-radius: 12px;
+}
+
+/* ===== 지식팩 상세 화면 ===== */
+.pack-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px;
+}
+
+.pack-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pack-detail-back {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.pack-detail-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pack-detail-name {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text, #111827);
+  word-break: keep-all;
+}
+
+.pack-detail-description {
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.pack-detail-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--surface-2, #f9fafb);
+  border-radius: 8px;
+}
+
+.pack-detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pack-detail-start {
+  font-size: 14px;
+  padding: 10px 18px;
+}
+
+.pack-detail-loading,
+.pack-detail-error {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted, #6b7280);
+  font-size: 13px;
+  border: 1px dashed var(--border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.pack-detail-error {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.pack-detail-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pack-detail-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--text, #111827);
+}
+
+.pack-detail-docs-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted, #9ca3af);
+  font-size: 13px;
+  border: 1px dashed var(--border, #e5e7eb);
+  border-radius: 8px;
+  margin: 0;
+}
+
+.pack-doc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pack-doc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+
+.pack-doc-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text, #111827);
+  word-break: break-all;
+}
+
+.pack-doc-meta {
+  font-size: 11px;
+  color: var(--muted, #9ca3af);
+}
+
+.pack-doc-summary {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+
+.pack-card-detail {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.pack-card {
+  cursor: pointer;
+}
+
+/* 사이드바 영역 (지식팩 뷰) */
+.pack-sidebar-intro {
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  margin-bottom: 8px;
+}
+
+.pack-sidebar-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin-bottom: 4px;
+}
+
+.pack-sidebar-hint {
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.pack-sidebar-access {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
 }
 
 .law-review-list-empty {

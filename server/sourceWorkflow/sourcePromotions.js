@@ -13,9 +13,9 @@ const MAX_PROMOTION_TEXT_CHARS = Number(process.env.SOURCE_PROMOTION_MAX_CHARS |
 
 export async function createSourcePromotionRequest(input = {}) {
   const notebookId = sanitizeId(input.notebookId);
-  if (!notebookId) throw new Error("승인 요청 대상 프로젝트가 필요합니다.");
+  if (!notebookId) throw new Error("승인 요청 대상 지식팩이 필요합니다.");
   const notebook = await getNotebook(notebookId);
-  if (!notebook) throw new Error("프로젝트를 찾을 수 없습니다.");
+  if (!notebook) throw new Error("지식팩을 찾을 수 없습니다.");
 
   const title = sanitizeInline(input.title, 160) || "AI 생성 자료";
   const markdown = normalizeMarkdown(input.markdown || input.text || "");
@@ -197,7 +197,7 @@ function renderPromotionNotebookText(record) {
   const meta = [
     `# ${record.title}`,
     "",
-    "> 이 문서는 AI 생성 산출물을 관리자가 검토 후 부서 프로젝트에 편입한 자료입니다.",
+    "> 이 문서는 AI 생성 산출물을 관리자가 검토 후 부서 지식팩에 편입한 자료입니다.",
     `> 승인 요청 시각: ${record.requestedAt || "-"}`,
     record.approvedAt ? `> 승인 시각: ${record.approvedAt}` : "",
     record.approvedBy ? `> 승인자: ${record.approvedBy}` : "",

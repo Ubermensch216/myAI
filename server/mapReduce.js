@@ -67,7 +67,7 @@ export async function streamMapReduceAnalysis({
   }
   const list = Array.isArray(chunks) ? chunks.filter((c) => c && typeof c.text === "string" && c.text.trim()) : [];
   if (!list.length) {
-    throw new Error("Map-Reduce 분석을 수행할 컨텍스트가 없습니다. 먼저 프로젝트나 첨부 파일을 추가하세요.");
+    throw new Error("Map-Reduce 분석을 수행할 컨텍스트가 없습니다. 먼저 지식팩이나 첨부 파일을 추가하세요.");
   }
 
   const truncated = list.length > MAX_CHUNKS;

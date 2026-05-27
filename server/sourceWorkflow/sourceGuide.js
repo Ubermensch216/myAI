@@ -67,7 +67,7 @@ export async function collectSourceGuideInputs({ documents = [], notebookId = ""
   let notebook = null;
   if (notebookId) {
     notebook = await getNotebook(notebookId);
-    if (!notebook) throw new Error("프로젝트를 찾을 수 없습니다.");
+    if (!notebook) throw new Error("지식팩을 찾을 수 없습니다.");
     const chunks = await loadAllNotebookChunks(notebookId);
     const chunkText = sampleChunks(chunks);
     const docSummaries = (notebook.documents || [])
@@ -82,7 +82,7 @@ export async function collectSourceGuideInputs({ documents = [], notebookId = ""
     if (text.trim()) {
       items.push({
         type: "department_notebook",
-        title: notebook.name || "부서 프로젝트",
+        title: notebook.name || "부서 지식팩",
         summary: notebook.description || "",
         topics: [],
         text

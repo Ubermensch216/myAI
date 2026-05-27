@@ -507,6 +507,14 @@ export const elements = {
   studioMindmapDetails: document.querySelector("#studioMindmapDetails"),
   lawArea: document.querySelector(".law-area"),
   grcArea: document.querySelector("#grcWorkbenchContainer"),
+  knowledgeArea: document.querySelector("#knowledgePackArea"),
+  packAccessSummary: document.querySelector("#packAccessSummary"),
+  packSidebarAccess: document.querySelector("#packSidebarAccess"),
+  packSearchInput: document.querySelector("#packSearchInput"),
+  packRefreshButton: document.querySelector("#packRefreshButton"),
+  packCardGrid: document.querySelector("#packCardGrid"),
+  packEmptyState: document.querySelector("#packEmptyState"),
+  packDetailPanel: document.querySelector("#packDetailPanel"),
   newLawReviewButton: document.querySelector("#newLawReviewButton"),
   lawReviewList: document.querySelector("#lawReviewList"),
   newGrcReviewButton: document.querySelector("#newGrcReviewButton"),
@@ -934,4 +942,21 @@ export function createRoom() {
     createdAt: now,
     updatedAt: now
   };
+}
+
+/**
+ * 지식팩을 근거로 새 대화방을 만든다. selectedNotebookId가 자동 연결되고
+ * 자료 패널의 지식팩 그룹이 펼쳐진 상태로 시작한다. 호출 측에서 state.rooms에
+ * unshift하고 activeRoomId/activeView를 갱신한 뒤 scheduleSave/renderAll을
+ * 트리거해야 한다.
+ */
+export function createRoomFromKnowledgePack(pack) {
+  const room = createRoom();
+  if (pack && typeof pack === "object") {
+    room.selectedNotebookId = pack.id || null;
+    if (pack.name) room.title = pack.name;
+  }
+  room.materialsExpanded = true;
+  room.materialGroups.notebook = false; // 펼쳐진 상태(collapsed=false)
+  return room;
 }

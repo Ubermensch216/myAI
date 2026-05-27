@@ -419,7 +419,7 @@ app.post("/api/chat", async (request, response) => {
   if (notebookId && await isAccessControlConfigured()) {
     const notebook = await getNotebook(notebookId);
     if (!notebook) {
-      response.status(404).json({ error: "프로젝트를 찾을 수 없습니다." });
+      response.status(404).json({ error: "지식팩을 찾을 수 없습니다." });
       return;
     }
     const access = await requireNotebookAccess(request, response, notebook);
@@ -846,7 +846,7 @@ app.get("/api/notebooks/:id", async (request, response) => {
   try {
     const notebook = await getNotebook(request.params.id);
     if (!notebook) {
-      response.status(404).json({ error: "프로젝트를 찾을 수 없습니다." });
+      response.status(404).json({ error: "지식팩을 찾을 수 없습니다." });
       return;
     }
     const includeAccess = isAdminRequest(request);
@@ -879,7 +879,7 @@ app.patch("/api/notebooks/:id", requireAdmin, async (request, response) => {
       description: request.body?.description
     });
     if (!updated) {
-      response.status(404).json({ error: "프로젝트를 찾을 수 없습니다." });
+      response.status(404).json({ error: "지식팩을 찾을 수 없습니다." });
       return;
     }
     response.json({ notebook: updated });
@@ -892,7 +892,7 @@ app.patch("/api/notebooks/:id/access", requireAdmin, async (request, response) =
   try {
     const updated = await updateNotebookAccess(request.params.id, normalizeNotebookAccessPolicy(request.body?.access || request.body || null));
     if (!updated) {
-      response.status(404).json({ error: "프로젝트를 찾을 수 없습니다." });
+      response.status(404).json({ error: "지식팩을 찾을 수 없습니다." });
       return;
     }
     response.json({ notebook: updated });
@@ -952,7 +952,7 @@ app.post("/api/source-workflow/source-guide", async (request, response) => {
     if (notebookId) {
       const notebook = await getNotebook(notebookId);
       if (!notebook) {
-        response.status(404).json({ ok: false, error: "프로젝트를 찾을 수 없습니다." });
+        response.status(404).json({ ok: false, error: "지식팩을 찾을 수 없습니다." });
         return;
       }
       if (!isAdminRequest(request) && await isAccessControlConfigured()) {
@@ -978,7 +978,7 @@ app.post("/api/source-workflow/promotions", async (request, response) => {
     const notebookId = String(request.body?.notebookId || "").trim();
     const notebook = notebookId ? await getNotebook(notebookId) : null;
     if (!notebook) {
-      response.status(404).json({ ok: false, error: "프로젝트를 찾을 수 없습니다." });
+      response.status(404).json({ ok: false, error: "지식팩을 찾을 수 없습니다." });
       return;
     }
     if (!isAdminRequest(request) && await isAccessControlConfigured()) {

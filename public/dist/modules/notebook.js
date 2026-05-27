@@ -40,7 +40,7 @@ export async function loadNotebooks() {
     renderActiveNotebookUi();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   } catch (error) {
-    console.warn("프로젝트 목록을 불러오지 못했습니다:", error.message);
+    console.warn("지식팩 목록을 불러오지 못했습니다:", error.message);
   }
 }
 
@@ -118,6 +118,11 @@ function currentAccessLabel() {
   if (!user) return "권한 없음";
   if (user.super) return "현재 권한: Super";
   return `현재 권한: ${user.groupName || user.groupId} / Level ${user.level}`;
+}
+
+// knowledgePack.js에서 공유하기 위한 접근 라벨 헬퍼.
+export function getCurrentAccessLabel() {
+  return currentAccessLabel();
 }
 
 function renderAccessPanel() {
@@ -258,7 +263,7 @@ function renderNotebookSelectorList() {
   if (state.notebooks.length === 0) {
     const empty = document.createElement("div");
     empty.className = "notebook-list-empty";
-    empty.textContent = "등록된 프로젝트이 없습니다.";
+    empty.textContent = "등록된 지식팩이 없습니다.";
     elements.notebookList.append(empty);
     return;
   }
@@ -486,7 +491,7 @@ function hideAdminNewNotebookForm() {
 export async function adminCreateNotebook() {
   const name = (elements.adminNewNotebookName?.value ?? "").trim();
   const description = (elements.adminNewNotebookDescription?.value ?? "").trim();
-  if (!name) { alert("프로젝트 이름을 입력하세요."); return; }
+  if (!name) { alert("지식팩 이름을 입력하세요."); return; }
   try {
     const response = await fetch("/api/notebooks", {
       method: "POST",
@@ -495,7 +500,7 @@ export async function adminCreateNotebook() {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || "프로젝트 생성 실패");
+      throw new Error(error.error || "지식팩 생성 실패");
     }
     const result = await response.json().catch(() => ({}));
     adminUiState.selectedId = result.notebook?.id || null;
@@ -504,14 +509,14 @@ export async function adminCreateNotebook() {
     await refreshAdminNotebooks();
     await loadNotebooks();
   } catch (error) {
-    alert(`프로젝트 생성 실패: ${error.message}`);
+    alert(`지식팩 생성 실패: ${error.message}`);
   }
 }
 
 export async function adminDeleteNotebook(notebookId, notebookName) {
   const confirmed = await showConfirmDialog({
-    title: "프로젝트 삭제",
-    body: `프로젝트 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`,
+    title: "지식팩 삭제",
+    body: `지식팩 "${notebookName}"을(를) 삭제할까요? 등록된 모든 문서가 사라집니다.`,
     okText: "삭제",
     danger: true
   });
@@ -721,7 +726,7 @@ export async function refreshAdminNotebooks() {
   elements.adminNotebookList.innerHTML = "<div class='admin-list-empty'>불러오는 중...</div>";
   try {
     const listResponse = await fetch("/api/notebooks", { headers: adminAuthHeader() });
-    if (!listResponse.ok) throw new Error("프로젝트 목록 요청 실패");
+    if (!listResponse.ok) throw new Error("지식팩 목록 요청 실패");
     const listResult = await listResponse.json();
     const summaries = Array.isArray(listResult.notebooks) ? listResult.notebooks : [];
     const detailed = await Promise.all(
@@ -755,7 +760,7 @@ function renderAdminList() {
   if (!adminUiState.notebooks.length) {
     const empty = document.createElement("div");
     empty.className = "admin-list-empty";
-    empty.textContent = "등록된 프로젝트가 없습니다.";
+    empty.textContent = "등록된 지식팩이 없습니다.";
     elements.adminNotebookList.append(empty);
     return;
   }
@@ -772,7 +777,7 @@ function buildAdminListItem(notebook) {
   content.className = "admin-list-item-content";
   const name = document.createElement("span");
   name.className = "admin-list-item-name";
-  name.textContent = notebook.name || "이름 없는 프로젝트";
+  name.textContent = notebook.name || "이름 없는 지식팩";
   content.append(name);
   if (notebook.description) {
     const description = document.createElement("span");
@@ -1249,7 +1254,7 @@ function buildGroupDeleteButton(group) {
   deleteButton.addEventListener("click", () => runAdminAccessTask(async () => {
     const confirmed = await showConfirmDialog({
       title: "접근 그룹 삭제",
-      body: `"${group.name || group.id}" 그룹을 삭제할까요? 프로젝트 정책에서 같은 그룹 ID도 제거해야 합니다.`,
+      body: `"${group.name || group.id}" 그룹을 삭제할까요? 지식팩 정책에서 같은 그룹 ID도 제거해야 합니다.`,
       okText: "삭제",
       danger: true
     });
@@ -1281,7 +1286,7 @@ function buildAccessLevelDetailRow(group, level) {
   if (level === 1) {
     const warning = document.createElement("span");
     warning.className = "admin-access-level-warning";
-    warning.textContent = "그룹 내 모든 프로젝트 접근";
+    warning.textContent = "그룹 내 모든 지식팩 접근";
     label.append(warning);
   }
 
@@ -1326,7 +1331,7 @@ function buildSuperAccessPanel(superState) {
 
   const warning = document.createElement("div");
   warning.className = "admin-access-super-warning";
-  warning.innerHTML = "<strong>Super 권한 주의</strong><span>Super 비밀번호는 그룹과 등급을 우회해 모든 프로젝트에 접근할 수 있습니다. 운영자 비상 접근이나 점검 용도로만 제한해서 사용하세요.</span>";
+  warning.innerHTML = "<strong>Super 권한 주의</strong><span>Super 비밀번호는 그룹과 등급을 우회해 모든 지식팩에 접근할 수 있습니다. 운영자 비상 접근이나 점검 용도로만 제한해서 사용하세요.</span>";
 
   const card = document.createElement("div");
   card.className = "admin-access-super-settings";

@@ -136,7 +136,7 @@ async function syncWithActiveRoom({ force = false } = {}) {
     if (elements.kgSearchInput) elements.kgSearchInput.value = "";
     kgState.searchTerm = "";
     renderStats(null);
-    clearCanvas("대화방에서 프로젝트을 선택하면 지식 그래프가 표시됩니다.");
+    clearCanvas("대화방에서 지식팩을 선택하면 지식 그래프가 표시됩니다.");
     clearSelection();
     return;
   }
@@ -150,7 +150,7 @@ function renderActiveNotebookLabel() {
   const id = kgState.activeNotebookId;
   if (!id) {
     label.dataset.state = "empty";
-    label.textContent = "대화방에서 프로젝트을 선택하세요.";
+    label.textContent = "대화방에서 지식팩을 선택하세요.";
     label.title = "";
     return;
   }
@@ -222,7 +222,7 @@ async function refreshSubgraph() {
     renderGraph(data);
   } catch (error) {
     if (/no_graph/.test(error.message)) {
-      clearCanvas("이 프로젝트에는 지식 그래프가 없습니다.");
+      clearCanvas("이 지식팩에는 지식 그래프가 없습니다.");
     } else {
       reportError(error);
       clearCanvas("그래프를 불러오지 못했습니다.");
@@ -266,7 +266,7 @@ function renderStats(data) {
   const bar = elements.kgStatsBar;
   if (!bar) return;
   if (!data) {
-    bar.innerHTML = `<span class="kg-chip">프로젝트를 선택하세요.</span>`;
+    bar.innerHTML = `<span class="kg-chip">지식팩을 선택하세요.</span>`;
     return;
   }
   if (data.noGraph) {
