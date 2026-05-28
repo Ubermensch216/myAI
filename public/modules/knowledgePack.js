@@ -4,6 +4,9 @@
  * 사용자가 권한에 따라 접근 가능한 지식팩 목록을 보여주고,
  * "이 지식팩으로 새 대화 시작" 흐름의 진입점이 된다.
  *
+ * 관리자용 메뉴(지식팩 관리/권한 관리/사용 통계)는 이 화면에서 제외되어
+ * 설정 → 관리자 콘솔에서만 노출된다. 권한 인증 UI는 좌측 보조 패널에 위치한다.
+ *
  * 내부 데이터 모델은 기존 notebook 그대로 사용한다 — notebookId,
  * /api/notebooks API, selectedNotebookId 필드를 모두 재사용한다.
  * 본 모듈은 사용자 노출 레이어만 담당한다.
@@ -12,28 +15,13 @@
 import { state, elements, accessAuthHeaders, createRoomFromKnowledgePack } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { loadNotebooks, getCurrentAccessLabel, openNotebookSelector } from "./notebook.js";
-import { openSettingsAdminPanel } from "./settings.js";
 
 let packSearchQuery = "";
 let packEventsBound = false;
-let packDetailMode = false;         // 상세 화면 표시 여부
-let packDetailId = null;            // 현재 상세로 열린 지식팩 id
-let packDetailLoadSeq = 0;          // 동시 클릭/취소 처리용 시퀀스
-let packActiveTab = "list";         // 현재 활성 탭: list|manage|access|stats
-let packStatsLoadSeq = 0;
+let packDetailMode = false;
+let packDetailId = null;
+let packDetailLoadSeq = 0;
 
-function adminAuthHeader() {
-  return state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {};
-}
-
-function isAdminAuthenticated() {
-  return Boolean(state.admin?.authenticated && state.admin?.token);
-}
-
-/**
- * 사용량 이벤트를 서버에 보고한다. 백그라운드 best-effort — 실패해도 UI에 영향을 주지 않는다.
- * 같은 페이지 진입에서 중복 보고를 피하기 위해 호출 측에서 가드한다.
- */
 function reportUsageEvent(eventType, notebookId) {
   try {
     fetch("/api/usage/event", {
@@ -73,22 +61,45 @@ function filterPacks(packs, query) {
   });
 }
 
+const PACK_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>`;
+const CHEVRON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
+const CHAT_PLUS_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path><path d="M12 8v7M8.5 11.5h7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path></svg>`;
+
 function buildPackCard(pack) {
   const card = document.createElement("article");
   card.className = "pack-card";
   card.setAttribute("data-pack-id", pack.id);
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", `${pack.name || "지식팩"} 상세 보기`);
 
-  const header = document.createElement("header");
-  header.className = "pack-card-header";
+  // 우상단 hover 시 나타나는 셰브론 — 카드 클릭으로 상세가 열림을 암시.
+  const arrow = document.createElement("span");
+  arrow.className = "pack-card-arrow";
+  arrow.setAttribute("aria-hidden", "true");
+  arrow.innerHTML = CHEVRON_SVG;
+
+  const top = document.createElement("div");
+  top.className = "pack-card-top";
+
+  const icon = document.createElement("span");
+  icon.className = "pack-card-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = PACK_ICON_SVG;
+
+  const headings = document.createElement("div");
+  headings.className = "pack-card-headings";
 
   const name = document.createElement("h3");
   name.className = "pack-card-name";
   name.textContent = pack.name || "이름 없는 지식팩";
-  header.append(name);
 
   const desc = document.createElement("p");
   desc.className = "pack-card-description";
   desc.textContent = pack.description || "설명이 없습니다.";
+
+  headings.append(name, desc);
+  top.append(icon, headings);
 
   const meta = document.createElement("div");
   meta.className = "pack-card-meta";
@@ -105,63 +116,82 @@ function buildPackCard(pack) {
     meta.append(updatedSpan);
   }
 
-  const actions = document.createElement("div");
-  actions.className = "pack-card-actions";
+  const footer = document.createElement("div");
+  footer.className = "pack-card-footer";
 
   const startButton = document.createElement("button");
   startButton.type = "button";
-  startButton.className = "send-button pack-card-start";
-  startButton.textContent = "이 지식팩으로 새 대화 시작";
+  startButton.className = "pack-card-start";
+  startButton.innerHTML = `${CHAT_PLUS_SVG}<span>새 대화 시작</span>`;
   startButton.addEventListener("click", (event) => {
     event.stopPropagation();
     startRoomWithKnowledgePack(pack.id);
   });
 
-  const detailButton = document.createElement("button");
-  detailButton.type = "button";
-  detailButton.className = "ghost-button pack-card-detail";
-  detailButton.textContent = "문서 목록 보기";
-  detailButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    openKnowledgePackDetail(pack.id);
+  footer.append(startButton);
+
+  card.append(arrow, top, meta, footer);
+
+  const open = () => openKnowledgePackDetail(pack.id);
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
   });
-
-  actions.append(startButton, detailButton);
-
-  // 카드 본체 클릭 시도 상세 진입.
-  card.append(header, desc, meta, actions);
-  card.addEventListener("click", () => openKnowledgePackDetail(pack.id));
   return card;
 }
 
+/**
+ * 좌측 사이드바의 권한 인증 카드를 렌더링한다.
+ * 현재 권한 라벨 + (필요 시) 권한 인증/변경 버튼을 노출한다.
+ */
 export function renderAccessSummary() {
+  const container = elements.packSidebarAccess;
+  if (!container) return;
+
+  container.innerHTML = "";
+
   const label = getCurrentAccessLabel();
-  if (elements.packAccessSummary) {
-    elements.packAccessSummary.innerHTML = "";
-    
-    const span = document.createElement("span");
-    span.className = "pack-access-label";
-    span.textContent = label;
-    elements.packAccessSummary.append(span);
-    
-    if (state.access.configured) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ghost-button pack-access-btn";
-      btn.style.marginLeft = "10px";
-      btn.style.padding = "2px 8px";
-      btn.style.fontSize = "12px";
-      btn.style.height = "26px";
-      btn.style.minHeight = "auto";
-      btn.textContent = state.access.authenticated ? "권한 변경" : "권한 인증";
-      btn.addEventListener("click", () => {
-        openNotebookSelector();
-      });
-      elements.packAccessSummary.append(btn);
-    }
-  }
-  if (elements.packSidebarAccess) {
-    elements.packSidebarAccess.textContent = label;
+  const statusLine = document.createElement("div");
+  statusLine.className = "pack-access-card-status";
+
+  const dot = document.createElement("span");
+  dot.className = "pack-access-card-dot";
+  if (state.access.authenticated) dot.classList.add("on");
+  else if (state.access.configured) dot.classList.add("warn");
+  else dot.classList.add("off");
+  statusLine.append(dot);
+
+  const labelText = document.createElement("span");
+  labelText.className = "pack-access-card-label";
+  labelText.textContent = label;
+  statusLine.append(labelText);
+
+  container.append(statusLine);
+
+  if (state.access.configured) {
+    const hint = document.createElement("p");
+    hint.className = "pack-access-card-hint";
+    hint.textContent = state.access.authenticated
+      ? "다른 등급/그룹으로 변경하려면 아래 버튼을 누르세요."
+      : "지식팩을 사용하려면 등급을 선택하고 로그인하세요.";
+    container.append(hint);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = state.access.authenticated ? "ghost-button pack-access-card-btn" : "send-button pack-access-card-btn";
+    btn.textContent = state.access.authenticated ? "권한 변경" : "권한 인증";
+    btn.addEventListener("click", () => {
+      openNotebookSelector();
+    });
+    container.append(btn);
+  } else {
+    const hint = document.createElement("p");
+    hint.className = "pack-access-card-hint";
+    hint.textContent = "권한 인증이 비활성화되어 모든 지식팩에 접근할 수 있습니다.";
+    container.append(hint);
   }
 }
 
@@ -171,7 +201,6 @@ function applyListMode() {
     elements.packDetailPanel.hidden = true;
     elements.packDetailPanel.innerHTML = "";
   }
-  // 빈 상태 표시는 renderKnowledgePackCards가 결정.
 }
 
 function applyDetailMode() {
@@ -182,7 +211,7 @@ function applyDetailMode() {
 
 export function renderKnowledgePackCards() {
   if (!elements.packCardGrid) return;
-  if (packDetailMode) return; // 상세 화면 모드에서는 카드 렌더링 스킵.
+  if (packDetailMode) return;
 
   const packs = Array.isArray(state.notebooks) ? state.notebooks.slice() : [];
   const filtered = filterPacks(packs, packSearchQuery);
@@ -193,11 +222,11 @@ export function renderKnowledgePackCards() {
     if (elements.packEmptyState) {
       elements.packEmptyState.hidden = false;
       elements.packEmptyState.innerHTML = "";
-      
+
       const p = document.createElement("p");
       p.className = "pack-empty-text";
       p.textContent = packs.length === 0
-        ? "이용 가능한 지식팩이 없습니다. 권한을 확인하거나 관리자에게 문의하세요."
+        ? "이용 가능한 지식팩이 없습니다. 좌측 권한 패널에서 인증하거나 관리자에게 문의하세요."
         : "검색 조건에 맞는 지식팩이 없습니다.";
       elements.packEmptyState.append(p);
 
@@ -225,29 +254,22 @@ export function renderKnowledgePackCards() {
 
 export async function renderKnowledgePackPage() {
   renderAccessSummary();
-  applyTabState();
-  // 페이지 조회 이벤트 (30초 스로틀 — 같은 세션의 짧은 재진입은 1건으로 계산).
   const now = Date.now();
   if (now - lastPageViewReportedAt > PAGE_VIEW_THROTTLE_MS) {
     lastPageViewReportedAt = now;
     reportUsageEvent("pack_page_view", null);
   }
-  if (packActiveTab === "list") {
-    if (packDetailMode && packDetailId) {
-      renderDetailPanel(packDetailId);
-    } else {
-      applyListMode();
-      renderKnowledgePackCards();
-    }
-  } else if (packActiveTab === "stats" && isAdminAuthenticated()) {
-    renderInlineStats();
+  if (packDetailMode && packDetailId) {
+    renderDetailPanel(packDetailId);
+  } else {
+    applyListMode();
+    renderKnowledgePackCards();
   }
-  // 최신 목록 동기화 — 비동기, 백그라운드.
   try {
     await loadNotebooks();
-    if (packActiveTab === "list" && !packDetailMode) renderKnowledgePackCards();
+    if (!packDetailMode) renderKnowledgePackCards();
   } catch {
-    /* loadNotebooks 자체가 내부에서 경고만 — 추가 처리 없음 */
+    /* loadNotebooks 내부에서 경고 — 추가 처리 없음 */
   }
 }
 
@@ -410,7 +432,7 @@ async function renderDetailPanel(packId) {
     const response = await fetch(`/api/notebooks/${encodeURIComponent(packId)}`, {
       headers: accessAuthHeaders()
     });
-    if (seq !== packDetailLoadSeq) return; // 다른 요청에 의해 취소됨
+    if (seq !== packDetailLoadSeq) return;
     if (response.status === 401 || response.status === 403) {
       renderDetailError(packId, "이 지식팩을 볼 권한이 없습니다.");
       return;
@@ -446,19 +468,14 @@ export function openKnowledgePackDetail(packId) {
 export function closeKnowledgePackDetail() {
   packDetailMode = false;
   packDetailId = null;
-  packDetailLoadSeq += 1; // 진행 중 요청 무효화
+  packDetailLoadSeq += 1;
   applyListMode();
   renderKnowledgePackCards();
 }
 
-/**
- * 카드의 "이 지식팩으로 새 대화 시작" 핸들러.
- * 새 room을 생성하고 selectedNotebookId를 자동 연결, 대화 뷰로 전환한다.
- */
 export function startRoomWithKnowledgePack(packId) {
   const pack = (state.notebooks || []).find((nb) => nb.id === packId);
   if (!pack) {
-    // 목록이 stale일 수 있으므로 한 번 더 새로고침 후 안내.
     loadNotebooks().finally(() => {
       const retry = (state.notebooks || []).find((nb) => nb.id === packId);
       if (retry) startRoomWithKnowledgePack(packId);
@@ -466,7 +483,6 @@ export function startRoomWithKnowledgePack(packId) {
     return;
   }
 
-  // 상세 화면이 열려 있더라도 새 대화로 전환하므로 상세 상태 정리.
   packDetailMode = false;
   packDetailId = null;
 
@@ -475,7 +491,6 @@ export function startRoomWithKnowledgePack(packId) {
   state.activeRoomId = room.id;
   state.activeView = "chat";
 
-  // 핵심 전환 이벤트: 지식팩 → 새 대화 시작.
   reportUsageEvent("pack_room_started", pack.id);
 
   scheduleSave();
@@ -485,117 +500,6 @@ export function startRoomWithKnowledgePack(packId) {
   window.dispatchEvent(new CustomEvent("myai:roomchange", { detail: { roomId: room.id } }));
 }
 
-/* ===== 탭 (목록 / 관리 / 권한 / 통계) ===== */
-
-function applyTabState() {
-  const tabs = elements.packTabs || [];
-  for (const tab of tabs) {
-    const key = tab.dataset.packTab;
-    const isActive = key === packActiveTab;
-    tab.classList.toggle("active", isActive);
-    tab.setAttribute("aria-selected", isActive ? "true" : "false");
-    // 관리자 전용 탭: 인증 여부에 따라 잠금 표시.
-    if (tab.dataset.adminOnly === "true") {
-      tab.classList.toggle("locked", !isAdminAuthenticated());
-    }
-  }
-  const panels = elements.packTabPanels || [];
-  for (const panel of panels) {
-    panel.hidden = panel.dataset.packTabPanel !== packActiveTab;
-  }
-  if (elements.packManageAuthHint) {
-    elements.packManageAuthHint.hidden = isAdminAuthenticated();
-  }
-}
-
-export function switchKnowledgePackTab(tabKey) {
-  const allowed = new Set(["list", "manage", "access", "stats"]);
-  packActiveTab = allowed.has(tabKey) ? tabKey : "list";
-  applyTabState();
-  if (packActiveTab === "list") {
-    if (packDetailMode && packDetailId) renderDetailPanel(packDetailId);
-    else { applyListMode(); renderKnowledgePackCards(); }
-  } else if (packActiveTab === "stats" && isAdminAuthenticated()) {
-    renderInlineStats();
-  }
-}
-
-function buildKpiCard(label, value, hint) {
-  const card = document.createElement("div");
-  card.className = "pack-kpi-card";
-  card.innerHTML = `<div class="pack-kpi-label">${escapeHtml(label)}</div><div class="pack-kpi-value">${escapeHtml(String(value))}</div>${hint ? `<div class="pack-kpi-hint">${escapeHtml(hint)}</div>` : ""}`;
-  return card;
-}
-
-async function renderInlineStats() {
-  const container = elements.packStatsInline;
-  if (!container) return;
-  container.innerHTML = "<div class='pack-stats-loading'>통계를 불러오는 중...</div>";
-  const seq = ++packStatsLoadSeq;
-  try {
-    // 두 API를 병렬로 호출 — 지식팩 KPI + 지식팩별 사용량.
-    const [kpiRes, byNbRes] = await Promise.all([
-      fetch("/api/admin/stats/knowledge-packs?range=30d", { headers: adminAuthHeader() }),
-      fetch("/api/admin/stats/notebooks?range=30d", { headers: adminAuthHeader() })
-    ]);
-    if (seq !== packStatsLoadSeq) return;
-    if (!kpiRes.ok) throw new Error(`KPI HTTP ${kpiRes.status}`);
-    if (!byNbRes.ok) throw new Error(`per-pack HTTP ${byNbRes.status}`);
-    const kpiResult = await kpiRes.json().catch(() => ({}));
-    const byNbResult = await byNbRes.json().catch(() => ({}));
-    if (seq !== packStatsLoadSeq) return;
-
-    const kpi = kpiResult?.kpi || {};
-    const rows = Array.isArray(byNbResult?.notebooks) ? byNbResult.notebooks : [];
-
-    container.innerHTML = "";
-
-    // KPI 카드 4종 (페이지 조회·새 대화·전환율·접근 거부).
-    const kpiHeading = document.createElement("h4");
-    kpiHeading.className = "pack-stats-heading";
-    kpiHeading.textContent = "지식팩 핵심 지표 (최근 30일)";
-    container.append(kpiHeading);
-    const cards = document.createElement("div");
-    cards.className = "pack-kpi-grid";
-    cards.append(
-      buildKpiCard("페이지 조회", kpi.pageViews || 0, "지식팩 메뉴 진입 수"),
-      buildKpiCard("새 대화 시작", kpi.roomsStarted || 0, "지식팩 기반 신규 대화"),
-      buildKpiCard("전환율", `${Math.round(((kpi.conversionRate || 0) * 1000)) / 10}%`, "조회 → 새 대화"),
-      buildKpiCard("접근 거부", kpi.accessDenied || 0, "권한 부족 발생")
-    );
-    container.append(cards);
-
-    // 지식팩별 사용량 표 (Top 10).
-    if (rows.length) {
-      const heading = document.createElement("h4");
-      heading.className = "pack-stats-heading pack-stats-heading-secondary";
-      heading.textContent = "지식팩별 사용량 (최근 30일, Top 10)";
-      container.append(heading);
-      const top = rows.slice(0, 10);
-      const table = document.createElement("table");
-      table.className = "pack-stats-table";
-      table.innerHTML = "<thead><tr><th>#</th><th>지식팩</th><th>쿼리</th><th>세션</th></tr></thead>";
-      const tbody = document.createElement("tbody");
-      top.forEach((row, idx) => {
-        const tr = document.createElement("tr");
-        const nb = (state.notebooks || []).find((n) => n.id === row.notebookId);
-        const name = nb?.name || row.notebookId;
-        tr.innerHTML = `<td>${idx + 1}</td><td>${escapeHtml(name)}</td><td>${row.queryCount || 0}</td><td>${row.uniqueSessions || 0}</td>`;
-        tbody.append(tr);
-      });
-      table.append(tbody);
-      container.append(table);
-    }
-  } catch (error) {
-    if (seq !== packStatsLoadSeq) return;
-    container.innerHTML = `<div class='pack-stats-error'>통계 로드 실패: ${escapeHtml(error.message)}</div>`;
-  }
-}
-
-function escapeHtml(str) {
-  return String(str ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[ch]));
-}
-
 export function bindKnowledgePackEvents() {
   if (packEventsBound) return;
   packEventsBound = true;
@@ -603,10 +507,7 @@ export function bindKnowledgePackEvents() {
   if (elements.packSearchInput) {
     elements.packSearchInput.addEventListener("input", (event) => {
       packSearchQuery = event.target.value || "";
-      // 검색 시 자연스럽게 목록 탭/화면으로 복귀.
-      if (packActiveTab !== "list") {
-        switchKnowledgePackTab("list");
-      } else if (packDetailMode) closeKnowledgePackDetail();
+      if (packDetailMode) closeKnowledgePackDetail();
       else renderKnowledgePackCards();
     });
   }
@@ -624,58 +525,23 @@ export function bindKnowledgePackEvents() {
     });
   }
 
-  // 탭 클릭
-  for (const tab of elements.packTabs || []) {
-    tab.addEventListener("click", () => {
-      const key = tab.dataset.packTab;
-      if (key === "list") {
-        switchKnowledgePackTab("list");
-        return;
-      }
-      // 관리자 탭은 클릭 시 settings admin 콘솔로 진입.
-      switchKnowledgePackTab(key);
-      const panelMap = { manage: "notebooks", access: "access", stats: "stats" };
-      const adminPanel = panelMap[key];
-      if (adminPanel) openSettingsAdminPanel(adminPanel);
-    });
-  }
-
-  if (elements.packOpenAdminNotebooksButton) {
-    elements.packOpenAdminNotebooksButton.addEventListener("click", () => openSettingsAdminPanel("notebooks"));
-  }
-  if (elements.packOpenAdminAccessButton) {
-    elements.packOpenAdminAccessButton.addEventListener("click", () => openSettingsAdminPanel("access"));
-  }
-  if (elements.packOpenAdminStatsButton) {
-    elements.packOpenAdminStatsButton.addEventListener("click", () => openSettingsAdminPanel("stats"));
-  }
-
-  // 접근 상태가 바뀌면 권한 라벨도 갱신.
   window.addEventListener("myai:viewchange", (event) => {
     if (event?.detail?.view === "knowledge") {
       renderAccessSummary();
-      applyTabState();
     }
   });
 
-  // 지식팩 목록이 로드/업데이트되면 화면 갱신.
   window.addEventListener("myai:notebooksloaded", () => {
     if (state.activeView === "knowledge") {
       renderAccessSummary();
-      if (packActiveTab === "list" && !packDetailMode) {
-        renderKnowledgePackCards();
-      }
+      if (!packDetailMode) renderKnowledgePackCards();
     }
   });
 
-  // ESC로 상세 닫기.
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && packDetailMode && state.activeView === "knowledge") {
       event.preventDefault();
       closeKnowledgePackDetail();
     }
   });
-
-  // 초기 탭 상태 적용.
-  applyTabState();
 }

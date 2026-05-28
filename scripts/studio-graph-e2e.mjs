@@ -33,7 +33,8 @@ try {
   await run("notebook without graph shows empty guidance", () => testNoGraphGuidance(fixture, port));
   await run("restricted graph is blocked without access token", () => testRestrictedGraphBlocked(fixture, port));
   await run("search renders around graph and node details/source refs", () => testSearchAroundAndDetails(fixture, port));
-  await run("admin session exposes graph rebuild button", () => testAdminRebuildButton(fixture, port));
+  await run("user session exposes graph rebuild button", () => testUserRebuildButton(fixture, port));
+  await run("user graph panel auto-builds missing graph", () => testUserAutoBuildsMissingGraph(fixture, port));
 } finally {
   if (browser) await browser.close().catch(() => {});
   if (server) await stopServer(server).catch(() => {});
@@ -221,11 +222,8 @@ async function testSearchAroundAndDetails(fixture, port) {
   }
 }
 
-async function testAdminRebuildButton(fixture, port) {
-  const page = await newAppPage(port, {
-    accessToken: fixture.accessToken,
-    adminToken: ADMIN_TOKEN
-  });
+async function testUserRebuildButton(fixture, port) {
+  const page = await newAppPage(port, { accessToken: fixture.accessToken });
   try {
     await selectNotebook(page, fixture.graphNotebookId);
     await openGraphPanel(page);
@@ -233,6 +231,36 @@ async function testAdminRebuildButton(fixture, port) {
   } finally {
     await page.context().close();
   }
+}
+
+async function testUserAutoBuildsMissingGraph(fixture, port) {
+  const notebook = await createNoGraphNotebookForAutoBuild();
+  const page = await newAppPage(port, { accessToken: fixture.accessToken });
+  try {
+    await selectNotebook(page, notebook.id);
+    await openGraphPanel(page);
+    await page.waitForFunction(async ({ notebookId, accessToken }) => {
+      const response = await fetch(`/api/studio/graph/${encodeURIComponent(notebookId)}/rebuild/status`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!response.ok) return false;
+      const payload = await response.json().catch(() => ({}));
+      return Boolean(payload.job && ["running", "done"].includes(payload.job.status));
+    }, { notebookId: notebook.id, accessToken: fixture.accessToken }, { timeout: 10000 });
+  } finally {
+    await page.context().close();
+  }
+}
+
+async function createNoGraphNotebookForAutoBuild() {
+  const notebooks = await import("../server/notebooks.js");
+  const notebook = await notebooks.createNotebook({
+    name: `Studio Auto Build E2E ${Date.now()}`,
+    description: "temporary no-graph notebook for Studio graph auto-build e2e"
+  });
+  createdNotebookIds.push(notebook.id);
+  await notebooks.updateNotebookAccess(notebook.id, { groups: [ACCESS_GROUP_ID], minLevel: 1 });
+  return notebook;
 }
 
 async function newAppPage(port, { accessToken = "", adminToken = "" } = {}) {

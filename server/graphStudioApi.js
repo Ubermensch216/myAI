@@ -13,6 +13,7 @@ import {
 } from "./rag/graph/store.js";
 import { describeOntology } from "./rag/graph/ontology.js";
 import { notebookHasGraph } from "./rag/graph/expander.js";
+import { startRebuild, getRebuildJob, snapshotJob } from "./rag/graph/builder.js";
 import { listNotebooks, getNotebook } from "./notebooks.js";
 import {
   canAccessNotebook,
@@ -41,7 +42,7 @@ graphStudioRouter.get("/notebooks", async (req, res) => {
   }
 });
 
-async function ensureNotebookAndAccess(req, res) {
+async function ensureNotebookAndAccess(req, res, { requireGraph = true } = {}) {
   const { notebookId } = req.params;
   if (!notebookId) {
     res.status(400).json({ error: "notebookId required" });
@@ -56,12 +57,34 @@ async function ensureNotebookAndAccess(req, res) {
     const access = await requireNotebookAccess(req, res, notebook);
     if (!access) return null;
   }
-  if (!notebookHasGraph(notebookId)) {
+  if (requireGraph && !notebookHasGraph(notebookId)) {
     res.status(404).json({ error: "no_graph", notebookId });
     return null;
   }
   return notebookId;
 }
+
+graphStudioRouter.post("/:notebookId/rebuild", async (req, res) => {
+  const notebookId = await ensureNotebookAndAccess(req, res, { requireGraph: false });
+  if (!notebookId) return;
+  try {
+    const result = await startRebuild(notebookId, { concurrency: 1 });
+    if (!result.ok) {
+      res.status(409).json({ error: "already_running", job: result.job });
+      return;
+    }
+    res.status(202).json({ ok: true, job: result.job });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+graphStudioRouter.get("/:notebookId/rebuild/status", async (req, res) => {
+  const notebookId = await ensureNotebookAndAccess(req, res, { requireGraph: false });
+  if (!notebookId) return;
+  const job = getRebuildJob(notebookId);
+  res.json({ notebookId, job: snapshotJob(job) });
+});
 
 graphStudioRouter.get("/:notebookId/stats", async (req, res) => {
   const notebookId = await ensureNotebookAndAccess(req, res);
