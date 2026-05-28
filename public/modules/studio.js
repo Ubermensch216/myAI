@@ -93,6 +93,7 @@ function syncLawHistoryInput(field) {
 function setActiveTool(tool) {
   if (tool !== "mindmap" && tool !== "graph" && tool !== "document" && tool !== "doctool") return;
   if (tool === "graph" && state.activeView !== "knowledge") return;
+  if (tool === "document" && state.activeView === "knowledge") return;
   _activeTool = tool;
   if (elements.studioContent) elements.studioContent.dataset.activeTool = tool;
   elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
@@ -122,9 +123,15 @@ export function renderStudio() {
   const isKnowledgeView = state.activeView === "knowledge";
   if (elements.studioGraphButton) elements.studioGraphButton.style.display = isKnowledgeView ? "" : "none";
   if (elements.studioGraphRailButton) elements.studioGraphRailButton.style.display = isKnowledgeView ? "" : "none";
+  if (elements.studioDocumentButton) elements.studioDocumentButton.style.display = isKnowledgeView ? "none" : "";
+  if (elements.studioDocumentRailButton) elements.studioDocumentRailButton.style.display = isKnowledgeView ? "none" : "";
 
   if (!isKnowledgeView && _activeTool === "graph") {
     setActiveTool("document");
+    return;
+  }
+  if (isKnowledgeView && _activeTool === "document") {
+    setActiveTool("graph");
     return;
   }
 
