@@ -69,7 +69,7 @@ export async function showStudioGraphPanel() {
   await syncWithActiveRoom({ force: true });
   if (kgState.cy) kgState.cy.resize();
   updateRebuildVisibility();
-  pollRebuildStatus().catch(() => {});
+  pollRebuildStatus({ initial: true }).catch(() => {});
 }
 
 export function hideStudioGraphPanel() {
@@ -152,7 +152,7 @@ async function syncWithActiveRoom({ force = false } = {}) {
     return;
   }
   await refreshAll();
-  if (changed) pollRebuildStatus().catch(() => {});
+  if (changed) pollRebuildStatus({ initial: true }).catch(() => {});
 }
 
 function renderActiveNotebookLabel() {
@@ -751,7 +751,7 @@ function stopRebuildPolling() {
   }
 }
 
-async function pollRebuildStatus() {
+async function pollRebuildStatus({ initial = false } = {}) {
   if (!kgState.activeNotebookId) { stopRebuildPolling(); return; }
   let data;
   try {
@@ -761,6 +761,17 @@ async function pollRebuildStatus() {
   }
   const job = data?.job;
   if (!job) {
+    stopRebuildPolling();
+    kgState.rebuilding = false;
+    setRebuildStatus("");
+    updateRebuildVisibility();
+    return;
+  }
+  // On a passive check (opening the panel or selecting a pack) only an
+  // actively running job should drive the UI. A historical done/failed job —
+  // e.g. a rebuild interrupted by a prior server restart — is stale telemetry,
+  // not something the user triggered, so don't surface it as an error here.
+  if (initial && job.status !== "running") {
     stopRebuildPolling();
     kgState.rebuilding = false;
     setRebuildStatus("");
