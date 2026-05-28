@@ -1,4 +1,14 @@
-import { elements, ensureRoomStudio, getActiveRoom, getActiveStudio, state } from "./state.js";
+import {
+  elements,
+  ensureRoomStudio,
+  ensureLawReviewStudio,
+  ensureGrcReviewStudio,
+  getActiveRoom,
+  getActiveStudio,
+  getActiveLawReview,
+  getActiveGrcReview,
+  state
+} from "./state.js";
 import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
 import { estimateDocumentBytes, estimateJsonBytes, formatBytes, getActiveDocuments } from "./chat.js";
 import { bindStudioGraphEvents, showStudioGraphPanel, hideStudioGraphPanel } from "./graphStudio.js";
@@ -121,17 +131,28 @@ export function renderStudio() {
   if (!elements.studioPanel) return;
 
   const isKnowledgeView = state.activeView === "knowledge";
+  const isCalendarView = state.activeView === "calendar";
+  // 일정(캘린더) 메뉴에서는 문서작업·마인드맵 도구가, 지식팩 메뉴에서는
+  // 문서작업·마인드맵 도구가 불필요하므로 감춘다(지식팩은 지식그래프만 제공).
+  const showDocument = !isKnowledgeView && !isCalendarView;
+  const showMindmap = !isKnowledgeView && !isCalendarView;
   if (elements.studioGraphButton) elements.studioGraphButton.style.display = isKnowledgeView ? "" : "none";
   if (elements.studioGraphRailButton) elements.studioGraphRailButton.style.display = isKnowledgeView ? "" : "none";
-  if (elements.studioDocumentButton) elements.studioDocumentButton.style.display = isKnowledgeView ? "none" : "";
-  if (elements.studioDocumentRailButton) elements.studioDocumentRailButton.style.display = isKnowledgeView ? "none" : "";
+  if (elements.studioDocumentButton) elements.studioDocumentButton.style.display = showDocument ? "" : "none";
+  if (elements.studioDocumentRailButton) elements.studioDocumentRailButton.style.display = showDocument ? "" : "none";
+  if (elements.studioMindmapButton) elements.studioMindmapButton.style.display = showMindmap ? "" : "none";
+  if (elements.studioMindmapRailButton) elements.studioMindmapRailButton.style.display = showMindmap ? "" : "none";
 
   if (!isKnowledgeView && _activeTool === "graph") {
     setActiveTool("document");
     return;
   }
-  if (isKnowledgeView && _activeTool === "document") {
+  if (isKnowledgeView && (_activeTool === "document" || _activeTool === "mindmap")) {
     setActiveTool("graph");
+    return;
+  }
+  if (isCalendarView && (_activeTool === "document" || _activeTool === "mindmap")) {
+    setActiveTool("doctool");
     return;
   }
 
@@ -157,7 +178,6 @@ export function renderStudio() {
     return;
   }
   const studio = getActiveStudio();
-  const room = (state.activeView === "law" || state.activeView === "grc") ? null : getActiveRoom();
   const documents = getMindmapDocuments();
   const signature = buildDocumentSignature(documents);
   const cache = studio?.mindmap;
@@ -197,11 +217,19 @@ export function renderStudio() {
 }
 
 async function generateMindmap() {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
-  if (!room || !studio) return;
+  const ctx = getMindmapContext();
+  if (!ctx) {
+    renderEmpty(getNoMindmapContextMessage());
+    renderDetails(null);
+    return;
+  }
+  const { context, studio } = ctx;
 
-  if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  // 첨부 자료의 본문은 채팅방 자료만 지연 로딩 대상이다. 법령/내부검토 자료는
+  // 업로드 시점에 본문을 보유하므로 하이드레이션이 필요 없다.
+  if (state.activeView !== "law" && state.activeView !== "grc") {
+    if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  }
   const documents = getMindmapDocuments();
   const signature = buildDocumentSignature(documents);
   if (!documents.length) { renderStudio(); return; }
@@ -232,7 +260,7 @@ async function generateMindmap() {
       selectedNodeId: payload.mindmap?.nodes?.[0]?.id || "",
       generatedAt: new Date().toISOString()
     };
-    room.updatedAt = new Date().toISOString();
+    context.updatedAt = new Date().toISOString();
     scheduleSave();
     renderStudio();
   } catch (error) {
@@ -246,8 +274,61 @@ async function generateMindmap() {
   }
 }
 
+// 현재 활성 메뉴(채팅방·법령검토·내부검토)에 해당하는 컨텍스트와 스튜디오를
+// 함께 돌려준다. 마인드맵 결과는 이 컨텍스트의 스튜디오에 저장된다.
+function getMindmapContext() {
+  if (state.activeView === "law") {
+    const review = getActiveLawReview();
+    return review ? { context: review, studio: ensureLawReviewStudio(review) } : null;
+  }
+  if (state.activeView === "grc") {
+    const review = getActiveGrcReview();
+    return review ? { context: review, studio: ensureGrcReviewStudio(review) } : null;
+  }
+  const room = getActiveRoom();
+  return room ? { context: room, studio: ensureRoomStudio(room) } : null;
+}
+
+function getNoMindmapContextMessage() {
+  if (state.activeView === "law") return "법령검토 항목을 선택하면 마인드맵을 만들 수 있습니다.";
+  if (state.activeView === "grc") return "내부검토 항목을 선택하면 마인드맵을 만들 수 있습니다.";
+  return "대화방을 선택하면 마인드맵을 만들 수 있습니다.";
+}
+
+// 활성 메뉴별 첨부 자료를 문서 형태로 모은다. 내부검토는 정책/검토 대상
+// 텍스트를 보유하므로 의사 문서로 변환한다.
+function getMindmapSourceDocuments() {
+  if (state.activeView === "law") return getActiveLawReview()?.documents || [];
+  if (state.activeView === "grc") return buildGrcMindmapDocuments(getActiveGrcReview());
+  return getActiveDocuments();
+}
+
+function buildGrcMindmapDocuments(review) {
+  if (!review) return [];
+  const docs = [];
+  if (review.policyText?.trim()) {
+    docs.push({
+      kind: "document",
+      id: "grc-policy",
+      fileName: review.policyDocName || "정책 문서",
+      fileType: "text",
+      text: review.policyText
+    });
+  }
+  if (review.targetText?.trim()) {
+    docs.push({
+      kind: "document",
+      id: "grc-target",
+      fileName: review.targetDocName || "검토 대상 문서",
+      fileType: "text",
+      text: review.targetText
+    });
+  }
+  return docs;
+}
+
 function getMindmapDocuments() {
-  return getActiveDocuments().filter((doc) => {
+  return getMindmapSourceDocuments().filter((doc) => {
     if (doc.kind !== "document") return false;
     return Boolean(doc.text || doc.pages?.some((p) => p.text) || doc.sheets?.some((s) => s.text));
   });
@@ -992,8 +1073,7 @@ function ensureFullscreenButton() {
 // ── Node selection & details ──────────────────────────────────────
 
 function selectMindmapNode(nodeId) {
-  const room = getActiveRoom();
-  const studio = ensureRoomStudio(room);
+  const studio = getActiveStudio();
   if (!studio?.mindmap?.data || !_map) return;
   _map.selectedId = nodeId;
   studio.mindmap.selectedNodeId = nodeId;
