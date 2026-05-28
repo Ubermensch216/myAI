@@ -285,9 +285,10 @@ function renderStats(data) {
     return;
   }
   if (data.noGraph) {
+    // "그래프 없음" 안내는 캔버스 영역에서 이미 보여주므로 통계 바에서는 중복 표시하지 않는다.
     bar.innerHTML = kgState.rebuilding
       ? `<span class="kg-stats-note">지식그래프를 생성하는 중입니다…</span>`
-      : `<span class="kg-stats-note kg-stats-note-error">지식그래프가 빌드되지 않았습니다</span>`;
+      : "";
     return;
   }
   const parts = [];
