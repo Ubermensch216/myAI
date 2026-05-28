@@ -65,6 +65,7 @@ function filterPacks(packs, query) {
 const PACK_ICON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path><path d="M5 17a3 3 0 0 1 3-3h11" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>`;
 const CHEVRON_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
 const CHAT_PLUS_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path><path d="M12 8v7M8.5 11.5h7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path></svg>`;
+const DOC_ICON_SVG = `<svg class="pack-card-doc-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
 
 function buildPackCard(pack) {
   const card = document.createElement("article");
@@ -102,23 +103,13 @@ function buildPackCard(pack) {
   headings.append(name, desc);
   top.append(icon, headings);
 
-  const meta = document.createElement("div");
-  meta.className = "pack-card-meta";
-  const docCount = Number(pack.documentCount || 0);
-  const docSpan = document.createElement("span");
-  docSpan.className = "pack-card-meta-item";
-  docSpan.textContent = `문서 ${docCount}개`;
-  meta.append(docSpan);
-  const updatedAt = formatRelativeDate(pack.updatedAt);
-  if (updatedAt) {
-    const updatedSpan = document.createElement("span");
-    updatedSpan.className = "pack-card-meta-item";
-    updatedSpan.textContent = `업데이트 ${updatedAt}`;
-    meta.append(updatedSpan);
-  }
-
   const footer = document.createElement("div");
   footer.className = "pack-card-footer";
+
+  const docCount = Number(pack.documentCount || 0);
+  const docSpan = document.createElement("span");
+  docSpan.className = "pack-card-doc-count";
+  docSpan.innerHTML = `${DOC_ICON_SVG}<span>${docCount}</span>`;
 
   const startButton = document.createElement("button");
   startButton.type = "button";
@@ -129,9 +120,9 @@ function buildPackCard(pack) {
     startRoomWithKnowledgePack(pack.id);
   });
 
-  footer.append(startButton);
+  footer.append(docSpan, startButton);
 
-  card.append(arrow, top, meta, footer);
+  card.append(arrow, top, footer);
 
   const open = () => openKnowledgePackDetail(pack.id);
   card.addEventListener("click", open);
@@ -213,6 +204,16 @@ export function renderAccessSummary() {
   }
 }
 
+export function renderPackSummary() {
+  const summaryEl = document.getElementById("packSummary");
+  if (!summaryEl) return;
+
+  const count = Array.isArray(state.notebooks) ? state.notebooks.length : 0;
+  const FOLDER_ICON_SVG = `<svg class="pack-summary-icon" viewBox="0 0 24 24" aria-hidden="true" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px; display: inline-block; color: var(--accent);"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
+
+  summaryEl.innerHTML = `${FOLDER_ICON_SVG}<span style="font-size: 13.5px; font-weight: 500; color: var(--ink); vertical-align: middle;">열람 가능한 지식팩 <strong style="color: var(--accent); font-weight: 600;">${count}</strong>건</span>`;
+}
+
 function applyListMode() {
   if (elements.packCardGrid) {
     elements.packCardGrid.hidden = false;
@@ -286,6 +287,7 @@ export function renderKnowledgePackCards() {
 
 export async function renderKnowledgePackPage() {
   renderAccessSummary();
+  renderPackSummary();
   const now = Date.now();
   if (now - lastPageViewReportedAt > PAGE_VIEW_THROTTLE_MS) {
     lastPageViewReportedAt = now;
@@ -299,6 +301,7 @@ export async function renderKnowledgePackPage() {
   }
   try {
     await loadNotebooks();
+    renderPackSummary();
     if (!packDetailMode) renderKnowledgePackCards();
   } catch {
     /* loadNotebooks 내부에서 경고 — 추가 처리 없음 */
@@ -314,7 +317,7 @@ function buildDetailHeader(pack, { onBack }) {
   const backButton = document.createElement("button");
   backButton.type = "button";
   backButton.className = "ghost-button pack-detail-back";
-  backButton.textContent = "← 목록";
+  backButton.textContent = "< 목록";
   backButton.addEventListener("click", onBack);
 
   const titles = document.createElement("div");
@@ -599,6 +602,7 @@ export function bindKnowledgePackEvents() {
   window.addEventListener("myai:notebooksloaded", () => {
     if (state.activeView === "knowledge") {
       renderAccessSummary();
+      renderPackSummary();
       if (!packDetailMode) renderKnowledgePackCards();
     }
   });
