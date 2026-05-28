@@ -69,9 +69,16 @@
   <div class="workflow-grid">
     <section class="workflow-step">
       <header class="step-header">
-        <h3><span class="step-prefix">1.</span> 검토 기준</h3>
+        <h3>
+          <svg class="step-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <path d="M9 12l2 2 4-4"></path>
+          </svg>
+          검토 기준
+        </h3>
       </header>
-      <p class="step-desc">내부 규정 파일 또는 부서 프로젝트를 기준으로 사용합니다.</p>
+      <p class="step-desc">내부 규정 파일 또는 지식팩</p>
 
       <div class="policy-zone" class:dragover={isDragOverPolicy && $grcStore.policyMode === 'upload'}>
         <div class="policy-tabs" role="tablist" aria-label="검토 기준 선택 방식">
@@ -91,7 +98,7 @@
             class:active={$grcStore.policyMode === 'notebook'}
             aria-selected={$grcStore.policyMode === 'notebook'}
             on:click={() => setPolicyMode('notebook')}>
-            프로젝트 지정
+            지식팩 선택
           </button>
         </div>
 
@@ -135,9 +142,9 @@
             <select
               class="text-input select-input"
               value={$grcStore.selectedNotebookId}
-              aria-label="부서 프로젝트 선택"
+              aria-label="지식팩 선택"
               on:change={onNotebookChange}>
-              <option value="">부서 프로젝트 선택</option>
+              <option value="">지식팩 선택</option>
               {#each $grcStore.notebooks as nb}
                 <option value={nb.id}>{nb.name}</option>
               {/each}
@@ -149,9 +156,18 @@
 
     <section class="workflow-step">
       <header class="step-header">
-        <h3><span class="step-prefix">2.</span> 검토 대상 문서</h3>
+        <h3>
+          <svg class="step-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          검토 대상 문서
+        </h3>
       </header>
-      <p class="step-desc">계약서, 업무위탁계약서, 계획서 등 검토할 문서를 올립니다.</p>
+      <p class="step-desc">계약서, 업무위탁계약서, 계획서 등 검토문서</p>
 
       <div
         class="upload-zone target"
@@ -271,12 +287,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .step-prefix {
-    color: var(--muted);
-    font-weight: 700;
-    margin-right: 2px;
+  .step-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--accent-dark);
+    flex: 0 0 auto;
   }
 
   .step-desc {

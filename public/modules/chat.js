@@ -1404,7 +1404,7 @@ export function createMessageActions(article, role, createdAt = "") {
     const rightActions = document.createElement("div");
     rightActions.className = "message-actions-right";
     rightActions.append(createSendToStudioButton(article));
-    rightActions.append(createSaveAsSourceButton(article));
+    // rightActions.append(createSaveAsSourceButton(article)); // Removed to delete "자료 추가" button
     actions.append(rightActions);
   } else {
     actions.append(createCopyButton(article, role));
