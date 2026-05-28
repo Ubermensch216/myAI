@@ -266,10 +266,17 @@ app.post("/api/export", async (request, response) => {
 });
 
 app.post("/api/studio/mindmap", async (request, response) => {
-  const documents = Array.isArray(request.body.documents) ? request.body.documents : [];
   const model = request.body.model || DEFAULT_MODEL;
+  const notebookId = typeof request.body.notebookId === "string" ? request.body.notebookId.trim() : "";
   const studioAbort = createRequestAbortController(request, response);
   try {
+    let documents;
+    if (notebookId) {
+      documents = await buildNotebookMindmapDocuments(notebookId, request, response);
+      if (documents === null) return; // 접근 거부/미존재 — 응답은 헬퍼에서 이미 전송됨
+    } else {
+      documents = Array.isArray(request.body.documents) ? request.body.documents : [];
+    }
     const mindmap = await generateMindmap({
       documents,
       model,
@@ -285,6 +292,54 @@ app.post("/api/studio/mindmap", async (request, response) => {
     studioAbort.cleanup();
   }
 });
+
+// 지식팩(노트북) 청크를 문서별로 묶어 마인드맵 입력 문서로 변환한다.
+// 접근 제어가 켜져 있으면 권한을 확인하고, 거부 시 response를 전송한 뒤 null을 돌려준다.
+const NOTEBOOK_MINDMAP_DOC_TEXT_CAP = 24000;
+async function buildNotebookMindmapDocuments(notebookId, request, response) {
+  const notebook = await getNotebook(notebookId);
+  if (!notebook) {
+    response.status(404).json({ error: "지식팩을 찾을 수 없습니다." });
+    return null;
+  }
+  if (!isAdminRequest(request) && await isAccessControlConfigured()) {
+    const access = await requireNotebookAccess(request, response, notebook);
+    if (!access) return null;
+  }
+  const meta = new Map(
+    (Array.isArray(notebook.documents) ? notebook.documents : [])
+      .map((doc) => [doc.id, doc])
+  );
+  const chunks = await loadAllNotebookChunks(notebookId);
+  const byDocument = new Map();
+  for (const chunk of chunks) {
+    const text = typeof chunk?.text === "string" ? chunk.text.trim() : "";
+    if (!text) continue;
+    const docId = chunk.documentId || "doc";
+    if (!byDocument.has(docId)) {
+      const docMeta = meta.get(docId);
+      byDocument.set(docId, {
+        kind: "document",
+        id: docId,
+        fileName: chunk.documentName || docMeta?.name || "문서",
+        fileType: chunk.documentType || docMeta?.type || "",
+        summary: docMeta?.summary || "",
+        topics: Array.isArray(docMeta?.topics) ? docMeta.topics : [],
+        parts: []
+      });
+    }
+    byDocument.get(docId).parts.push(text);
+  }
+  return Array.from(byDocument.values()).map((doc) => ({
+    kind: "document",
+    id: doc.id,
+    fileName: doc.fileName,
+    fileType: doc.fileType,
+    summary: doc.summary,
+    topics: doc.topics,
+    text: doc.parts.join("\n\n").slice(0, NOTEBOOK_MINDMAP_DOC_TEXT_CAP)
+  }));
+}
 
 app.get("/api/documents/:id", (request, response) => {
   const document = getDocument(request.params.id, { ownerKey: extractDocumentOwnerKey(request) });

@@ -7,6 +7,7 @@ import {
   getActiveStudio,
   getActiveLawReview,
   getActiveGrcReview,
+  accessAuthHeaders,
   state
 } from "./state.js";
 import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
@@ -132,10 +133,10 @@ export function renderStudio() {
 
   const isKnowledgeView = state.activeView === "knowledge";
   const isCalendarView = state.activeView === "calendar";
-  // 일정(캘린더) 메뉴에서는 문서작업·마인드맵 도구가, 지식팩 메뉴에서는
-  // 문서작업·마인드맵 도구가 불필요하므로 감춘다(지식팩은 지식그래프만 제공).
+  // 일정(캘린더) 메뉴에서는 문서작업·마인드맵 도구가 불필요하므로 감춘다.
+  // 지식팩 메뉴에서는 문서작업만 감추고, 지식그래프와 마인드맵을 함께 제공한다.
   const showDocument = !isKnowledgeView && !isCalendarView;
-  const showMindmap = !isKnowledgeView && !isCalendarView;
+  const showMindmap = !isCalendarView;
   if (elements.studioGraphButton) elements.studioGraphButton.style.display = isKnowledgeView ? "" : "none";
   if (elements.studioGraphRailButton) elements.studioGraphRailButton.style.display = isKnowledgeView ? "" : "none";
   if (elements.studioDocumentButton) elements.studioDocumentButton.style.display = showDocument ? "" : "none";
@@ -147,7 +148,8 @@ export function renderStudio() {
     setActiveTool("document");
     return;
   }
-  if (isKnowledgeView && (_activeTool === "document" || _activeTool === "mindmap")) {
+  // 지식팩에서는 문서작업이 없으므로 지식그래프를 기본 도구로 둔다(마인드맵은 허용).
+  if (isKnowledgeView && _activeTool === "document") {
     setActiveTool("graph");
     return;
   }
@@ -167,33 +169,32 @@ export function renderStudio() {
   if (_activeTool === "doctool") {
     return;
   }
-  if (state.activeView === "calendar" || state.activeView === "knowledge") {
+  if (state.activeView === "calendar") {
     clearSvg();
     _map = null;
-    const msg = state.activeView === "calendar"
-      ? "일정 메뉴에서는 아직 마인드맵이 생성되지 않았습니다."
-      : "지식팩 메뉴에서는 마인드맵이 지원되지 않습니다.";
-    renderEmpty(msg);
+    renderEmpty("일정 메뉴에서는 아직 마인드맵이 생성되지 않았습니다.");
     renderDetails(null);
     return;
   }
-  const studio = getActiveStudio();
-  const documents = getMindmapDocuments();
-  const signature = buildDocumentSignature(documents);
-  const cache = studio?.mindmap;
-  const hasCurrentMap = cache?.data && cache.signature === signature;
-  const hasStaleMap = cache?.data && cache.signature !== signature;
+
+  const studio = getActiveMindmapStore();
 
   if (!studio) {
     clearSvg();
     _map = null;
-    const msg = state.activeView === "law" ? "법령검토 항목을 선택하면 스튜디오를 사용할 수 있습니다."
-      : state.activeView === "grc" ? "내부검토 항목을 선택하면 스튜디오를 사용할 수 있습니다."
-      : "대화방을 선택하면 스튜디오를 사용할 수 있습니다.";
-    renderEmpty(msg);
+    renderEmpty(getNoMindmapContextMessage());
     renderDetails(null);
     return;
   }
+
+  // 지식팩은 선택된 팩 단위로 마인드맵을 생성하므로 팩 ID를 시그니처로 쓴다.
+  const documents = isKnowledgeView ? [] : getMindmapDocuments();
+  const signature = isKnowledgeView
+    ? `pack:${state.activeKnowledgePackId || ""}`
+    : buildDocumentSignature(documents);
+  const cache = studio?.mindmap;
+  const hasCurrentMap = cache?.data && cache.signature === signature;
+  const hasStaleMap = cache?.data && cache.signature !== signature;
 
   if (hasCurrentMap) {
     renderMindmap(cache.data, cache.selectedNodeId);
@@ -201,14 +202,18 @@ export function renderStudio() {
   }
 
   if (hasStaleMap) {
-    renderEmpty(documents.length
-      ? "첨부 자료가 변경되었습니다. 마인드맵 버튼을 눌러 다시 생성하세요."
-      : "첨부 자료가 없어져 이전 마인드맵을 표시하지 않습니다.");
+    renderEmpty(isKnowledgeView
+      ? "다른 지식팩이 선택되었습니다. 마인드맵 버튼을 눌러 다시 생성하세요."
+      : documents.length
+        ? "첨부 자료가 변경되었습니다. 마인드맵 버튼을 눌러 다시 생성하세요."
+        : "첨부 자료가 없어져 이전 마인드맵을 표시하지 않습니다.");
     renderDetails(null);
     return;
   }
 
-  if (!documents.length) {
+  if (isKnowledgeView) {
+    renderEmpty("마인드맵 버튼을 누르면 이 지식팩의 문서로 마인드맵을 생성합니다.");
+  } else if (!documents.length) {
     renderEmpty("문서를 업로드하면 마인드맵을 생성할 수 있습니다.");
   } else {
     renderEmpty("마인드맵 버튼을 눌러 시작하세요.");
@@ -223,21 +228,29 @@ async function generateMindmap() {
     renderDetails(null);
     return;
   }
-  const { context, studio } = ctx;
+  const { context, studio, notebookId } = ctx;
+  const model = elements.modelInput?.value?.trim() || "gemma4:e2b";
 
-  // 첨부 자료의 본문은 채팅방 자료만 지연 로딩 대상이다. 법령/내부검토 자료는
-  // 업로드 시점에 본문을 보유하므로 하이드레이션이 필요 없다.
-  if (state.activeView !== "law" && state.activeView !== "grc") {
-    if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+  let requestPayload;
+  let signature;
+  if (notebookId) {
+    // 지식팩: 서버가 노트북 청크로 입력 문서를 구성하므로 notebookId만 전달한다.
+    signature = `pack:${notebookId}`;
+    requestPayload = { model, notebookId };
+  } else {
+    // 첨부 자료 본문은 채팅방 자료만 지연 로딩 대상이다. 법령/내부검토 자료는
+    // 업로드 시점에 본문을 보유하므로 하이드레이션이 필요 없다.
+    if (state.activeView !== "law" && state.activeView !== "grc") {
+      if (await hydrateStoredDocuments()) window.dispatchEvent(new CustomEvent("myai:renderrooms"));
+    }
+    const documents = getMindmapDocuments();
+    signature = buildDocumentSignature(documents);
+    if (!documents.length) { renderStudio(); return; }
+    requestPayload = { model, documents: buildMindmapRequestDocuments(documents) };
+    validateMindmapPayloadSize(requestPayload);
   }
-  const documents = getMindmapDocuments();
-  const signature = buildDocumentSignature(documents);
-  if (!documents.length) { renderStudio(); return; }
 
   try {
-    const requestDocuments = buildMindmapRequestDocuments(documents);
-    const requestPayload = { model: elements.modelInput?.value?.trim() || "gemma4:e2b", documents: requestDocuments };
-    validateMindmapPayloadSize(requestPayload);
     _mindmapAbortController = new AbortController();
     setMindmapBusy(true);
     clearSvg();
@@ -247,7 +260,7 @@ async function generateMindmap() {
     elements.studioMindmapCanvas?.classList.add("is-loading");
     const response = await fetch("/api/studio/mindmap", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(notebookId ? accessAuthHeaders() : {}) },
       signal: _mindmapAbortController.signal,
       body: JSON.stringify(requestPayload)
     });
@@ -260,8 +273,10 @@ async function generateMindmap() {
       selectedNodeId: payload.mindmap?.nodes?.[0]?.id || "",
       generatedAt: new Date().toISOString()
     };
-    context.updatedAt = new Date().toISOString();
-    scheduleSave();
+    if (context) {
+      context.updatedAt = new Date().toISOString();
+      scheduleSave();
+    }
     renderStudio();
   } catch (error) {
     renderEmpty(error?.name === "AbortError"
@@ -274,8 +289,24 @@ async function generateMindmap() {
   }
 }
 
-// 현재 활성 메뉴(채팅방·법령검토·내부검토)에 해당하는 컨텍스트와 스튜디오를
-// 함께 돌려준다. 마인드맵 결과는 이 컨텍스트의 스튜디오에 저장된다.
+// 선택된 지식팩별 마인드맵 결과 캐시(세션 한정). 지식팩 문서는 서버에 있고
+// 클라이언트 상태로 영속되지 않으므로, 팩 ID를 키로 메모리에만 보관한다.
+const _packMindmaps = new Map();
+
+// 마인드맵 결과를 읽고 쓸 저장소를 활성 메뉴 기준으로 반환한다.
+// 채팅/법령/내부검토는 해당 스튜디오 객체를, 지식팩은 팩별 캐시 객체를 쓴다.
+function getActiveMindmapStore() {
+  if (state.activeView === "knowledge") {
+    const packId = state.activeKnowledgePackId;
+    if (!packId) return null;
+    if (!_packMindmaps.has(packId)) _packMindmaps.set(packId, {});
+    return _packMindmaps.get(packId);
+  }
+  return getActiveStudio();
+}
+
+// 현재 활성 메뉴에 해당하는 컨텍스트와 저장소를 함께 돌려준다.
+// 지식팩은 영속 컨텍스트가 없으므로 context는 null이고 notebookId를 제공한다.
 function getMindmapContext() {
   if (state.activeView === "law") {
     const review = getActiveLawReview();
@@ -285,6 +316,10 @@ function getMindmapContext() {
     const review = getActiveGrcReview();
     return review ? { context: review, studio: ensureGrcReviewStudio(review) } : null;
   }
+  if (state.activeView === "knowledge") {
+    const store = getActiveMindmapStore();
+    return store ? { context: null, studio: store, notebookId: state.activeKnowledgePackId } : null;
+  }
   const room = getActiveRoom();
   return room ? { context: room, studio: ensureRoomStudio(room) } : null;
 }
@@ -292,6 +327,7 @@ function getMindmapContext() {
 function getNoMindmapContextMessage() {
   if (state.activeView === "law") return "법령검토 항목을 선택하면 마인드맵을 만들 수 있습니다.";
   if (state.activeView === "grc") return "내부검토 항목을 선택하면 마인드맵을 만들 수 있습니다.";
+  if (state.activeView === "knowledge") return "지식팩 카드를 선택하면 해당 지식팩 문서로 마인드맵을 만들 수 있습니다.";
   return "대화방을 선택하면 마인드맵을 만들 수 있습니다.";
 }
 
@@ -1073,11 +1109,11 @@ function ensureFullscreenButton() {
 // ── Node selection & details ──────────────────────────────────────
 
 function selectMindmapNode(nodeId) {
-  const studio = getActiveStudio();
+  const studio = getActiveMindmapStore();
   if (!studio?.mindmap?.data || !_map) return;
   _map.selectedId = nodeId;
   studio.mindmap.selectedNodeId = nodeId;
-  scheduleSave();
+  if (state.activeView !== "knowledge") scheduleSave();
   drawMap();
   renderDetails(_map.mindmap.nodes.find((n) => n.id === nodeId) || _map.mindmap.nodes[0]);
 }
