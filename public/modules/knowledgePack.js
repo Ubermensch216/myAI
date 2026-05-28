@@ -184,7 +184,7 @@ export function renderAccessSummary() {
     btn.className = state.access.authenticated ? "ghost-button pack-access-card-btn" : "send-button pack-access-card-btn";
     btn.textContent = state.access.authenticated ? "권한 변경" : "권한 인증";
     btn.addEventListener("click", () => {
-      openNotebookSelector();
+      openNotebookSelector({ hideList: true });
     });
     container.append(btn);
   } else {
@@ -196,17 +196,31 @@ export function renderAccessSummary() {
 }
 
 function applyListMode() {
-  if (elements.packCardGrid) elements.packCardGrid.hidden = false;
+  if (elements.packCardGrid) {
+    elements.packCardGrid.hidden = false;
+    elements.packCardGrid.classList.remove("fade-in-up");
+    void elements.packCardGrid.offsetWidth; // trigger reflow
+    elements.packCardGrid.classList.add("fade-in-up");
+  }
   if (elements.packDetailPanel) {
     elements.packDetailPanel.hidden = true;
     elements.packDetailPanel.innerHTML = "";
+    elements.packDetailPanel.classList.remove("fade-in-up");
   }
 }
 
 function applyDetailMode() {
-  if (elements.packCardGrid) elements.packCardGrid.hidden = true;
+  if (elements.packCardGrid) {
+    elements.packCardGrid.hidden = true;
+    elements.packCardGrid.classList.remove("fade-in-up");
+  }
   if (elements.packEmptyState) elements.packEmptyState.hidden = true;
-  if (elements.packDetailPanel) elements.packDetailPanel.hidden = false;
+  if (elements.packDetailPanel) {
+    elements.packDetailPanel.hidden = false;
+    elements.packDetailPanel.classList.remove("fade-in-up");
+    void elements.packDetailPanel.offsetWidth; // trigger reflow
+    elements.packDetailPanel.classList.add("fade-in-up");
+  }
 }
 
 export function renderKnowledgePackCards() {
@@ -237,7 +251,7 @@ export function renderKnowledgePackCards() {
         btn.style.marginTop = "12px";
         btn.textContent = "권한 인증하기";
         btn.addEventListener("click", () => {
-          openNotebookSelector();
+          openNotebookSelector({ hideList: true });
         });
         elements.packEmptyState.append(btn);
       }
@@ -336,6 +350,23 @@ function buildDetailActions(packId) {
   return wrap;
 }
 
+function getFileIconSvg(type) {
+  const t = String(type || "").toLowerCase();
+  if (t === "pdf") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6M9 12h6"/></svg>`;
+  }
+  if (t === "xlsx" || t === "xls" || t === "csv") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8v4H8z"/></svg>`;
+  }
+  if (t === "docx" || t === "doc") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 14h6M9 17h4"/></svg>`;
+  }
+  if (t === "hwpx" || t === "hwp") {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="12" cy="14" r="2"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+}
+
 function buildDocumentList(documents) {
   const section = document.createElement("section");
   section.className = "pack-detail-docs";
@@ -359,9 +390,23 @@ function buildDocumentList(documents) {
     const item = document.createElement("li");
     item.className = "pack-doc-item";
 
+    const docType = String(doc.type || "").toLowerCase();
+    const validFmts = ["pdf", "docx", "xlsx", "csv", "hwpx"];
+    const fmtClass = validFmts.includes(docType) ? docType : "other";
+
+    const iconContainer = document.createElement("span");
+    iconContainer.className = `pack-doc-icon-container fmt-${fmtClass}`;
+    iconContainer.innerHTML = getFileIconSvg(docType);
+    iconContainer.setAttribute("aria-hidden", "true");
+    item.append(iconContainer);
+
+    const details = document.createElement("div");
+    details.className = "pack-doc-details";
+
     const name = document.createElement("span");
     name.className = "pack-doc-name";
     name.textContent = doc.name || "이름 없는 문서";
+    details.append(name);
 
     const meta = document.createElement("span");
     meta.className = "pack-doc-meta";
@@ -372,14 +417,16 @@ function buildDocumentList(documents) {
       formatRelativeDate(doc.addedAt)
     ].filter(Boolean);
     meta.textContent = parts.join(" · ");
+    details.append(meta);
 
-    item.append(name, meta);
     if (doc.summary) {
       const summary = document.createElement("p");
       summary.className = "pack-doc-summary";
       summary.textContent = doc.summary;
-      item.append(summary);
+      details.append(summary);
     }
+
+    item.append(details);
     list.append(item);
   }
   section.append(list);

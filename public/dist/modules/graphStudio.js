@@ -1,7 +1,6 @@
-import { elements, accessAuthHeaders, state } from "./state.js";
+import { elements, accessAuthHeaders } from "./state.js";
 import { getActiveNotebookId, findNotebookSummary } from "./notebook.js";
 import { escapeHtml } from "./html.js";
-import { fetchAdminJson } from "./adminApi.js";
 
 const REBUILD_POLL_MS = 3000;
 
@@ -34,6 +33,7 @@ const kgState = {
   limit: 80,
   cy: null,
   loading: false,
+  graphMissing: false,
   selectedNodeId: null,
   selectedEdgeId: null,
   initialized: false,
@@ -53,10 +53,6 @@ async function api(pathname, init = {}) {
   }
   if (response.status === 204) return null;
   return response.json();
-}
-
-async function adminGraphApi(pathname, init = {}) {
-  return fetchAdminJson(`/api/admin/graph${pathname}`, init);
 }
 
 function colorFor(type) {
@@ -130,6 +126,7 @@ async function syncWithActiveRoom({ force = false } = {}) {
     stopRebuildPolling();
     setRebuildStatus("");
     kgState.rebuilding = false;
+    kgState.graphMissing = false;
   }
   updateRebuildVisibility();
   if (!roomNotebookId) {
@@ -189,6 +186,7 @@ function populateTypeFilter() {
 
 async function refreshAll() {
   if (!kgState.activeNotebookId) return;
+  kgState.graphMissing = false;
   await Promise.all([refreshStats(), refreshSubgraph()]);
 }
 
@@ -200,6 +198,7 @@ async function refreshStats() {
     renderStats(data);
   } catch (error) {
     if (/no_graph/.test(error.message)) {
+      kgState.graphMissing = true;
       renderStats({ noGraph: true });
     } else {
       reportError(error);
@@ -222,7 +221,9 @@ async function refreshSubgraph() {
     renderGraph(data);
   } catch (error) {
     if (/no_graph/.test(error.message)) {
-      clearCanvas("이 지식팩에는 지식 그래프가 없습니다.");
+      kgState.graphMissing = true;
+      updateRebuildVisibility();
+      showGraphMissingState();
     } else {
       reportError(error);
       clearCanvas("그래프를 불러오지 못했습니다.");
@@ -266,11 +267,13 @@ function renderStats(data) {
   const bar = elements.kgStatsBar;
   if (!bar) return;
   if (!data) {
-    bar.innerHTML = `<span class="kg-chip">지식팩을 선택하세요.</span>`;
+    bar.innerHTML = `<span class="kg-stats-note">지식팩을 선택하세요.</span>`;
     return;
   }
   if (data.noGraph) {
-    bar.innerHTML = `<span class="kg-chip" style="border-color:#dc2626;color:#dc2626;">지식 그래프가 빌드되지 않았습니다</span>`;
+    bar.innerHTML = kgState.rebuilding
+      ? `<span class="kg-stats-note">지식그래프를 생성하는 중입니다…</span>`
+      : `<span class="kg-stats-note kg-stats-note-error">지식그래프가 빌드되지 않았습니다</span>`;
     return;
   }
   const parts = [];
@@ -299,6 +302,42 @@ function setEmpty(text) {
 function clearCanvas(message) {
   if (kgState.cy) kgState.cy.elements().remove();
   setEmpty(message || "");
+  renderLegend();
+}
+
+/**
+ * 지식그래프가 아직 없는 지식팩에 대해, 빈 캔버스에 안내 문구와
+ * 명시적인 "지식그래프 만들기" 버튼을 표시한다. 자동 생성을 제거했으므로
+ * 이 버튼이 그래프 생성의 주 진입점이다.
+ */
+function showGraphMissingState() {
+  const el = elements.kgCanvasEmpty;
+  if (!el) return;
+  if (kgState.cy) kgState.cy.elements().remove();
+  el.hidden = false;
+  el.innerHTML = "";
+
+  const wrap = document.createElement("div");
+  wrap.className = "kg-empty-create";
+
+  const title = document.createElement("p");
+  title.className = "kg-empty-title";
+  title.textContent = "이 지식팩에는 아직 지식그래프가 없습니다.";
+
+  const sub = document.createElement("p");
+  sub.className = "kg-empty-sub";
+  sub.textContent = "문서에서 개체와 관계를 추출해 그래프를 생성합니다. 시간이 다소 걸릴 수 있습니다.";
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "kgCreateGraphButton";
+  btn.className = "send-button kg-create-graph-btn";
+  btn.textContent = "지식그래프 만들기";
+  btn.disabled = !!kgState.rebuilding;
+  btn.addEventListener("click", () => startRebuild().catch(reportError));
+
+  wrap.append(title, sub, btn);
+  el.append(wrap);
   renderLegend();
 }
 
@@ -639,12 +678,23 @@ function reportError(error) {
 
 function updateRebuildVisibility() {
   const btn = elements.kgRebuildButton;
-  if (!btn) return;
-  const isAdmin = Boolean(state.admin?.authenticated && state.admin?.token);
-  const hasNotebook = Boolean(kgState.activeNotebookId);
-  btn.hidden = !(isAdmin && hasNotebook);
-  btn.disabled = !!kgState.rebuilding;
-  btn.textContent = kgState.rebuilding ? "리빌드 중..." : "리빌드";
+  if (btn) {
+    const hasNotebook = Boolean(kgState.activeNotebookId);
+    btn.hidden = !hasNotebook;
+    btn.disabled = !!kgState.rebuilding;
+    btn.setAttribute("aria-busy", kgState.rebuilding ? "true" : "false");
+    btn.classList.toggle("is-busy", !!kgState.rebuilding);
+    const title = kgState.graphMissing ? "지식그래프 생성" : "지식그래프 리빌드";
+    btn.title = kgState.rebuilding ? "리빌드 진행 중" : title;
+    btn.setAttribute("aria-label", btn.title);
+  }
+
+  // 빈 캔버스의 "지식그래프 만들기" 버튼도 진행 상태에 맞춰 갱신.
+  const createBtn = document.getElementById("kgCreateGraphButton");
+  if (createBtn) {
+    createBtn.disabled = !!kgState.rebuilding;
+    createBtn.textContent = kgState.rebuilding ? "만드는 중..." : "지식그래프 만들기";
+  }
 }
 
 function setRebuildStatus(text, mode = "info") {
@@ -677,10 +727,9 @@ function stopRebuildPolling() {
 
 async function pollRebuildStatus() {
   if (!kgState.activeNotebookId) { stopRebuildPolling(); return; }
-  if (!state.admin?.token) { stopRebuildPolling(); return; }
   let data;
   try {
-    data = await adminGraphApi(`/${encodeURIComponent(kgState.activeNotebookId)}/rebuild/status`);
+    data = await api(`/${encodeURIComponent(kgState.activeNotebookId)}/rebuild/status`);
   } catch {
     return;
   }
@@ -697,6 +746,7 @@ async function pollRebuildStatus() {
     const pct = job.total > 0 ? Math.floor((job.processed / job.total) * 100) : 0;
     const totalText = job.total > 0 ? `${job.processed}/${job.total} (${pct}%)` : `${job.processed}`;
     setRebuildStatus(`리빌드 중 · ${totalText}`, "running");
+    if (kgState.graphMissing) renderStats({ noGraph: true });
     startRebuildPolling();
     updateRebuildVisibility();
     return;
@@ -721,22 +771,21 @@ async function pollRebuildStatus() {
   updateRebuildVisibility();
 }
 
-async function startRebuild() {
+async function startRebuild({ confirm = true } = {}) {
   if (!kgState.activeNotebookId) return;
-  if (!state.admin?.token) {
-    setRebuildStatus("관리자 인증이 필요합니다.", "error");
-    return;
-  }
   if (kgState.rebuilding) return;
-  const ok = window.confirm(
-    "지식 그래프를 다시 만듭니다.\n기존 그래프는 모두 지워지고 처음부터 추출합니다.\n시간이 오래 걸릴 수 있습니다. 계속할까요?"
-  );
-  if (!ok) return;
+  if (confirm) {
+    const ok = window.confirm(
+      "지식 그래프를 다시 만듭니다.\n기존 그래프는 모두 지워지고 처음부터 추출합니다.\n시간이 오래 걸릴 수 있습니다. 계속할까요?"
+    );
+    if (!ok) return;
+  }
   try {
     setRebuildStatus("시작 중...", "running");
     kgState.rebuilding = true;
     updateRebuildVisibility();
-    await adminGraphApi(`/${encodeURIComponent(kgState.activeNotebookId)}/rebuild`, {
+    if (kgState.graphMissing) renderStats({ noGraph: true });
+    await api(`/${encodeURIComponent(kgState.activeNotebookId)}/rebuild`, {
       method: "POST",
       body: JSON.stringify({})
     });

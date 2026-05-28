@@ -233,19 +233,33 @@ export function renderActiveNotebookUi() {
   // Active notebook state is rendered in the composer material panel.
 }
 
-export async function openNotebookSelector() {
+export async function openNotebookSelector(options) {
   if (!elements.notebookSelectorDialog) return;
   // Close attach menu via custom event
   window.dispatchEvent(new CustomEvent("myai:closeattachmenu"));
   await refreshAccessStatus();
   await loadAccessOptions();
   await loadNotebooks();
+
+  const titleEl = elements.notebookSelectorDialog.querySelector(".notebook-selector-title");
+  if (options?.hideList) {
+    if (elements.notebookList) elements.notebookList.hidden = true;
+    if (titleEl) titleEl.textContent = "지식팩 권한 인증";
+  } else {
+    if (elements.notebookList) elements.notebookList.hidden = false;
+    if (titleEl) titleEl.textContent = "지식팩";
+  }
+
   renderNotebookSelectorList();
   if (!elements.notebookSelectorDialog.open) elements.notebookSelectorDialog.showModal();
 }
 
 export function closeNotebookSelector() {
   if (elements.notebookSelectorDialog?.open) elements.notebookSelectorDialog.close();
+  // Restore elements state
+  if (elements.notebookList) elements.notebookList.hidden = false;
+  const titleEl = elements.notebookSelectorDialog?.querySelector(".notebook-selector-title");
+  if (titleEl) titleEl.textContent = "지식팩";
 }
 
 function renderNotebookSelectorList() {

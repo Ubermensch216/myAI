@@ -31,7 +31,7 @@ function findFunctionBody(source, name) {
 }
 
 const navTargets = findAll(/class="primary-nav-item[^"]*"[^>]*data-view-target="([^"]+)"/g, html);
-assert.deepEqual(navTargets, ["chat", "law", "grc", "calendar"], "primary nav order is chat, law, grc, calendar");
+assert.deepEqual(navTargets, ["chat", "knowledge", "law", "grc", "calendar"], "primary nav order is chat, knowledge, law, grc, calendar");
 
 assert.match(html, /data-view-content="law"/, "law review sidebar content exists");
 assert.match(html, /id="newLawReviewButton"/, "new law review button exists");

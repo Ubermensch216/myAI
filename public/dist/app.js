@@ -904,23 +904,6 @@ function toggleMaterialPanel() {
 function renderHeader() {
   const room = getActiveRoom();
   elements.roomTitleInput.value = room?.title || "";
-  renderRoomActivePackChip(room);
-}
-
-function renderRoomActivePackChip(room) {
-  const chip = elements.roomActivePackChip;
-  if (!chip) return;
-  const notebookId = room?.selectedNotebookId || "";
-  if (!notebookId) {
-    chip.hidden = true;
-    return;
-  }
-  const summary = findNotebookSummary(notebookId);
-  const name = summary?.name || "지식팩";
-  if (elements.roomActivePackName) elements.roomActivePackName.textContent = name;
-  chip.title = `현재 지식팩: ${name} (클릭하여 변경)`;
-  chip.setAttribute("aria-label", `현재 지식팩: ${name}, 클릭하여 변경`);
-  chip.hidden = false;
 }
 
 function renderMessages() {
@@ -1274,12 +1257,6 @@ function bindEvents() {
       event.stopPropagation();
       openNotebookSelector();
       closeAttachMenu();
-    });
-  }
-  if (elements.roomActivePackChip) {
-    elements.roomActivePackChip.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openNotebookSelector();
     });
   }
   if (elements.attachCustomPromptButton) {
