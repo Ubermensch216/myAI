@@ -33,8 +33,9 @@ try {
   await run("notebook without graph shows empty guidance", () => testNoGraphGuidance(fixture, port));
   await run("restricted graph is blocked without access token", () => testRestrictedGraphBlocked(fixture, port));
   await run("search renders around graph and node details/source refs", () => testSearchAroundAndDetails(fixture, port));
-  await run("user session exposes graph rebuild button", () => testUserRebuildButton(fixture, port));
-  await run("user graph panel auto-builds missing graph", () => testUserAutoBuildsMissingGraph(fixture, port));
+  await run("user session hides graph rebuild button", () => testUserRebuildButton(fixture, port));
+  await run("admin session exposes graph rebuild button", () => testAdminRebuildButton(fixture, port));
+  await run("admin graph panel auto-builds missing graph", () => testAdminAutoBuildsMissingGraph(fixture, port));
 } finally {
   if (browser) await browser.close().catch(() => {});
   if (server) await stopServer(server).catch(() => {});
@@ -227,26 +228,48 @@ async function testUserRebuildButton(fixture, port) {
   try {
     await selectNotebook(page, fixture.graphNotebookId);
     await openGraphPanel(page);
-    await page.locator("#kgRebuildButton").waitFor({ state: "visible", timeout: 10000 });
+    // Normal user: rebuild button must be hidden
+    await page.waitForTimeout(500);
+    const hidden = await page.locator("#kgRebuildButton").evaluate((el) => el.hidden);
+    assert.ok(hidden, "rebuild button should be hidden for normal user");
   } finally {
     await page.context().close();
   }
 }
 
-async function testUserAutoBuildsMissingGraph(fixture, port) {
+async function testAdminRebuildButton(fixture, port) {
+  const page = await newAppPage(port, { accessToken: fixture.accessToken, adminToken: ADMIN_TOKEN });
+  try {
+    await selectNotebook(page, fixture.graphNotebookId);
+    await openGraphPanel(page);
+    await page.locator("#kgRebuildButton").waitFor({ state: "visible", timeout: 10000 });
+    const hidden = await page.locator("#kgRebuildButton").evaluate((el) => el.hidden);
+    assert.ok(!hidden, "rebuild button should be visible for admin");
+  } finally {
+    await page.context().close();
+  }
+}
+
+async function testAdminAutoBuildsMissingGraph(fixture, port) {
   const notebook = await createNoGraphNotebookForAutoBuild();
-  const page = await newAppPage(port, { accessToken: fixture.accessToken });
+  const page = await newAppPage(port, { accessToken: fixture.accessToken, adminToken: ADMIN_TOKEN });
   try {
     await selectNotebook(page, notebook.id);
     await openGraphPanel(page);
-    await page.waitForFunction(async ({ notebookId, accessToken }) => {
+    // Admin sees "지식그래프 만들기" button, click it to trigger build
+    const createBtn = page.locator("#kgCreateGraphButton");
+    await createBtn.waitFor({ state: "visible", timeout: 10000 });
+    // Register dialog handler before click – window.confirm is synchronous
+    page.once("dialog", (dialog) => dialog.accept());
+    await createBtn.click();
+    await page.waitForFunction(async ({ notebookId, adminToken }) => {
       const response = await fetch(`/api/studio/graph/${encodeURIComponent(notebookId)}/rebuild/status`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: { Authorization: `Bearer ${adminToken}` }
       });
       if (!response.ok) return false;
       const payload = await response.json().catch(() => ({}));
       return Boolean(payload.job && ["running", "done"].includes(payload.job.status));
-    }, { notebookId: notebook.id, accessToken: fixture.accessToken }, { timeout: 10000 });
+    }, { notebookId: notebook.id, adminToken: ADMIN_TOKEN }, { timeout: 15000 });
   } finally {
     await page.context().close();
   }
@@ -272,6 +295,8 @@ async function newAppPage(port, { accessToken = "", adminToken = "" } = {}) {
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator('[data-view-target="knowledge"]').waitFor({ state: "visible" });
+  await page.locator('[data-view-target="knowledge"]').click();
   await page.locator("#studioGraphButton").waitFor({ state: "visible" });
   await page.evaluate(async ({ accessToken, adminToken }) => {
     const mod = await import("/modules/state.js");
@@ -298,6 +323,7 @@ async function selectNotebook(page, notebookId) {
       mod.state.activeRoomId = room.id;
     }
     room.selectedNotebookId = id;
+    mod.state.activeKnowledgePackId = id;
     room.updatedAt = new Date().toISOString();
     window.dispatchEvent(new CustomEvent("myai:renderrooms"));
   }, notebookId);

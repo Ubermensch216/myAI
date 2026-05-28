@@ -146,9 +146,7 @@ async function syncWithActiveRoom({ force = false } = {}) {
     if (elements.kgSearchInput) elements.kgSearchInput.value = "";
     kgState.searchTerm = "";
     renderStats(null);
-    const msg = state.activeView === "knowledge"
-      ? "지식팩을 선택하면 지식 그래프가 표시됩니다."
-      : "대화방에서 지식팩을 선택하면 지식 그래프가 표시됩니다.";
+    const msg = "지식팩을 선택하면 지식 그래프가 표시됩니다.";
     clearCanvas(msg);
     clearSelection();
     return;
@@ -163,9 +161,7 @@ function renderActiveNotebookLabel() {
   const id = kgState.activeNotebookId;
   if (!id) {
     label.dataset.state = "empty";
-    label.textContent = state.activeView === "knowledge"
-      ? "지식팩을 선택하세요."
-      : "대화방에서 지식팩을 선택하세요.";
+    label.textContent = "지식팩을 선택하세요.";
     label.title = "";
     return;
   }
