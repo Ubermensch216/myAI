@@ -1,49 +1,37 @@
 # myAI Design Guide
 
-This guide captures the current UI conventions for the plain HTML/CSS/JS
-frontend. Keep new screens consistent with `public/index.html`,
-`public/styles.css`, and the module patterns under `public/modules/`.
+myAI is a dense operational tool, not a marketing site. Keep new UI consistent with `public/index.html`, `public/styles.css`, and the module style under `public/modules/`.
 
-## Design Tokens
+## Tokens
 
-Use CSS variables from `:root` in `public/styles.css`. Do not hard-code theme
-colors in new components unless the value is a one-off semantic color such as
-an error state.
-
-Core tokens:
+Use CSS variables from `:root`.
 
 | Token | Purpose |
 |---|---|
 | `--bg` | app background |
-| `--surface` | primary panels, dialogs, cards |
-| `--surface-2` | input/tool areas and subtle selected backgrounds |
-| `--surface-3` | canvas and nested workspace backgrounds |
-| `--ink` | primary text |
-| `--muted` | secondary text and low-emphasis icons |
-| `--line` | borders and dividers |
-| `--accent` | primary brand/action color |
+| `--surface` | panels, dialogs, cards |
+| `--surface-2` | inputs/toolbars/subtle selected backgrounds |
+| `--surface-3` | canvases and nested workspaces |
+| `--ink` / `--text` | primary text |
+| `--muted` | secondary text/icons |
+| `--line` | borders/dividers |
+| `--accent` | primary action/brand |
 | `--accent-dark` | stronger accent text/border |
 | `--accent-aux` | secondary accent |
 | `--danger` | destructive actions |
-| `--shadow` | elevated dialogs and popovers |
+| `--shadow` | elevated dialogs/popovers |
 
-For transparent theme-aware colors, prefer:
-
-```css
-color-mix(in srgb, var(--accent) 12%, transparent)
-color-mix(in srgb, var(--accent) 16%, var(--surface))
-```
+Prefer `color-mix()` with theme tokens for translucent states.
 
 ## Typography
 
-The global font stack is:
+Global font stack:
 
 ```css
 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif
 ```
 
-Use compact type for work surfaces. Avoid hero-scale headings inside sidebars,
-tool panels, cards, dialogs, and admin tables.
+Use compact type for work surfaces.
 
 | Use | Size | Weight |
 |---|---:|---:|
@@ -54,314 +42,100 @@ tool panels, cards, dialogs, and admin tables.
 | Badges/metadata | `10-11px` | `700-800` |
 | Buttons | `12-13px` | `700` |
 
+Do not use hero-scale headings inside sidebars, admin tables, cards, dialogs, or tool panels.
+
 ## Layout
 
-The app shell uses a five-column grid:
+The app shell uses:
 
 ```text
-sidebar | resizer | chat-area | resizer | studio-panel
-  340px     8px     minmax(0,1fr)  8px     360px
+sidebar | resizer | main area | resizer | studio panel
 ```
 
-`--left-panel-width` and `--right-panel-width` are adjusted by
-`public/modules/layout.js`. Keep new layout code compatible with the existing
-left resize and right resize/collapse behavior.
+`public/modules/layout.js` controls left resize and right resize/collapse. Use `[hidden]` for visibility; the stylesheet maps it to `display: none !important`.
 
-Use `[hidden]` for visibility. The stylesheet forces `[hidden]` to
-`display: none !important`, so JS should set `element.hidden = true/false`
-instead of adding ad hoc hidden classes.
+## Buttons And Inputs
 
-## Common Components
+- Primary actions: `.send-button`.
+- Neutral actions: `.ghost-button`.
+- Icon-only controls: `.icon-button` with `aria-label` and usually `title`.
+- Destructive actions: danger styling and `showConfirmDialog`.
+- Text inputs/selects/textareas: `.text-input` unless a component already has a specific class.
 
-### Buttons
+## Dialogs And Panels
 
-| Type | Class | Use |
-|---|---|---|
-| Primary | `.send-button` | submit/run/export primary actions |
-| Secondary | `.ghost-button` | cancel, refresh, neutral commands |
-| Icon | `.icon-button` | icon-only controls |
-| Danger | `.admin-danger-button` modifier | destructive actions |
+Settings/Admin Console use the existing `.settings-dialog` and `.admin-dialog` structures. Keep admin views dense, sortable/table-friendly where useful, and optimized for repeated operations.
 
-Icon-only buttons must have `aria-label` and should also have `title` when the
-meaning is not obvious.
+Avoid decorative nested cards. Use cards for repeated items, modals, and genuinely framed tools.
 
-### Inputs
+## Main Views
 
-Use `.text-input` for inputs, selects, and textareas unless a component already
-has a more specific established class.
+Current primary views:
 
-```css
-height: 38px;
-border: 1px solid var(--line);
-border-radius: 6px;
-padding: 0 10px;
-background: var(--surface);
-color: var(--ink);
-```
+- Chat
+- Calendar
+- Law Workbench
+- GRC Workbench
 
-For textarea variants, set `height: auto` and vertical padding explicitly.
+Law Workbench state is separate from chat rooms. Review requests use only the Law Workbench prompt, conditions, official evidence, and documents explicitly attached inside Law Workbench.
 
-### Panels And Dialogs
-
-Use `.panel` for sidebar sections and simple repeated cards:
-
-```css
-border: 1px solid var(--line);
-border-radius: 8px;
-background: var(--surface);
-padding: 14px;
-```
-
-Settings/Admin Console use the existing `.settings-dialog` and
-`.admin-dialog` structure. Keep admin views dense, table-friendly, and
-optimized for repeated operations.
-
-## Main Legal Review View
-
-`법령검토` is a primary app view beside Chat and Calendar. Keep its central
-workbench in the main grid column and keep its saved review list in the left
-sidebar, separate from chat rooms.
-
-The review result tab must make the LLM review state explicit. When official
-evidence has been collected but the LLM review fails, show the actual failure
-message in the result card and status line instead of a generic empty state.
-The underlying request scope is also separate from chat: do not imply that
-active chat attachments are included. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent; active chat-room attachments are not automatically included.
-
-### Law Workbench Search Bar
-
-The search bar (`.law-hero-search`) follows the order:
-
-```
-[🔍 icon] [검토 유형 ▾] [텍스트 입력창] [📎 clip] [검토 button] [↺ reset]
-```
-
-**검토 유형 dropdown** (`.law-hero-type-select`) is embedded directly in the
-search bar as a zen-style selector: no border, transparent background, accent
-text color, custom SVG caret, hover/focus subtle background. The dropdown
-doubles as a prompt guide so users can set the review intent without typing it
-out.
-
-| value | 검토 유형 |
-|---|---|
-| `general` | 일반 법령 검토 (default) |
-| `internal_rule` | 내부 규정/지침 검토 |
-| `ordinance` | 조례 상위법 검토 |
-| `administrative_disposition` | 행정처분 근거 검토 |
-| `civil_reply` | 민원 회신 근거 검토 |
-| `privacy` | 개인정보 적법성 검토 |
-
-`outputType` is **not shown to users**. It is derived automatically from
-`reviewType` via `REVIEW_TYPE_TO_OUTPUT` in `public/modules/lawWorkbench.js`
-and sent only to the server. The mapping is 1-to-1 for four types; `general`
-and `privacy` both map to `law_review_opinion`.
-
-**Status line** (`#lawWorkbenchStatus`) sits immediately below the search bar.
-It is empty-hidden via CSS (`:empty { display: none }`). Messages with mode
-`idle` auto-clear after 3 seconds; `error` and `running` messages persist until
-the next state change.
-
-**Clip button** (`#lawWorkbenchAttachButton`) is placed between the text input
-and the 검토 button (right side of bar). The file input (`#lawWorkbenchUploadInput`)
-is hidden and sits beside it.
-
-### Example Chips
-
-Three chips appear below the attachments row (`.law-hero-examples`):
-
-```html
-<span class="law-hero-examples-label">예시</span>
-<button data-law-example="<full prompt>" title="<full prompt>">짧은 라벨</button>
-```
-
-Chip labels are shortened for single-line display; the full prompt lives in
-`data-law-example` (used on click) and `title` (shown on hover). All three
-chips must fit on one line at the standard panel width (~396 px).
-
-### Advanced Conditions Panel (`상세 조건`)
-
-`<details id="lawWorkbenchAdvanced">` starts **collapsed** by default on every
-new review. The auto-open logic (`syncAdvancedOpen`) has been removed; the
-panel only auto-opens when `fillAndRun()` populates 법령명/조문 from an AI
-candidate.
-
-Fields inside the panel:
-
-| Field | Element | Notes |
-|---|---|---|
-| 법령명 | `#lawWorkbenchLawName` | always visible |
-| 조문 | `#lawWorkbenchArticle` | always visible |
-| 자치법규 지역 | `#lawWorkbenchRegionField` (label wrapping `#lawWorkbenchRegion`) | **hidden by default**; shown only when `reviewType === "ordinance"`. Cleared automatically when hidden. |
-| 검토 관점·제외 범위 | `#lawWorkbenchConditionText` (textarea) | formerly labelled "상세 조건"; renamed to avoid collision with the parent `<details>` summary |
-
-The `<details>` summary hint reads "법령 · 조문 · 자치법규 · 검토 관점".
-
-### Term Mapping
-
-`GET /api/law/terms` is still called during typing (`fetchTermsPreview`) and
-the result is stored in `state.terms`. The chips that used to display the
-mapping (`.law-workbench-terms`) have been **removed from the DOM**; the
-feature operates silently in the background. `renderTerms()` is a safe no-op
-because its target element no longer exists.
-
-### Result Rendering
-
-All result sections (`appendResultSection`, `appendResultList`) pass text
-through `stripInlineMarkdown()` before setting `textContent`. This removes
-`**bold**`, `*italic*`, `# headings`, `- list markers`, `` `code` ``,
-`~~strikethrough~~`, and `[link](url)` syntax that the LLM occasionally emits
-in structured result fields.
-
-### Workflow Step Bar
-
-`.law-workflow-step` text color is always `var(--text)` regardless of state.
-The dot (`.law-workflow-step-dot`) uses explicit accent/danger colors:
-
-| State | Text | Dot |
-|---|---|---|
-| default | `var(--muted)` | hollow, `var(--muted)` border |
-| `is-done` | `var(--text)` | filled `var(--accent-dark)` |
-| `is-active` | `var(--text)` bold | hollow + accent glow ring |
-| `is-error` | `var(--text)` | filled `var(--danger)` |
+GRC Workbench is a Svelte component mounted by `public/app.js` from the Vite-built bundle in `public/dist/`.
 
 ## Studio Tools
 
-The Studio panel is a tool workspace, not a marketing area. New tools should
-follow this structure:
-
-```html
-<button id="studioExampleButton"
-        class="studio-tool-card"
-        type="button"
-        data-tool="example"
-        aria-label="Example tool">
-  ...
-</button>
-
-<div id="studioExamplePanel"
-     class="studio-tool-panel studio-example-panel"
-     data-tool-panel="example"
-     hidden>
-  ...
-</div>
-```
-
-Add matching rail buttons for collapsed mode:
-
-```html
-<button id="studioExampleRailButton"
-        class="studio-rail-button"
-        type="button"
-        title="Example"
-        aria-label="Example">
-  ...
-</button>
-```
-
-Required JS touch points:
-
-- `public/modules/state.js`: add DOM refs for button, rail button, and panel.
-- `public/modules/studio.js`: add the tool key to `setActiveTool()`, toggle
-  active button state, show/hide the panel, and bind click events.
-- `public/modules/layout.js`: if a rail button should expand the collapsed
-  Studio panel, bind it to `setStudioCollapsed(false)`.
-
-Current Studio tools:
+Current tool keys:
 
 | Tool key | Panel | Purpose |
 |---|---|---|
-| `document` | `studioDocumentPanel` | answer-to-document drafting and export |
+| `document` | `studioDocumentPanel` | answer-to-document drafting, AI edit, export |
 | `doctool` | `studioDocToolPanel` | client-side PDF/XLSX/TXT merge/split |
 | `mindmap` | `studioMindmapPanel` | uploaded-document mind maps |
 | `graph` | `studioGraphPanel` | department notebook knowledge graphs |
 
-## Studio Panel Layout
+New Studio tools need:
 
-Use these defaults for new Studio panels:
+- button in `public/index.html`
+- rail button for collapsed Studio mode when appropriate
+- DOM refs in `public/modules/state.js`
+- activation handling in `public/modules/studio.js`
+- optional collapsed-panel behavior in `public/modules/layout.js`
 
-```css
-.studio-example-panel {
-  gap: 10px;
-  padding: 10px 12px 12px;
-}
-```
+## Tool-Specific Rules
 
-Internal boxes should use:
+- Document Studio: keep `documentStudioMarkdown.js` as the conversion boundary. If answer-to-document conversion fails, show original answer as plain text, not parsed Markdown.
+- File Tools: PDF/XLSX/TXT merge/split stays client-side.
+- Mind Map: uploaded room documents only; no Naver Search or department RAG.
+- Knowledge Graph: use Cytoscape and normal notebook read access; show enabled graph content to normal users.
+- Law Explorer/Workbench: show actual LLM review errors when official evidence exists but review generation fails.
 
-```css
-border: 1px solid var(--line);
-border-radius: 10px;
-background: var(--surface);
-```
+## Inline Citations
 
-Canvases and graph-like areas may use `var(--surface-3)`. Toolbar/input bands
-may use `var(--surface-2)`.
+Precision Analysis citations render as inline clickable markers such as `[1.2]` or `[1.2, 1.3]`.
 
-Do not nest decorative cards inside other cards. Tool panels should be direct,
-compact, and functional.
+Implementation:
 
-## Current Tool Notes
+- `renderTextWithCitations()`, `buildCitationButtons()`, `showCitationPopup()` in `public/answerRenderer.js`
+- `.inline-citation-btn`, `.inline-citation-popup`, `.inline-citation-popup-*` in `public/styles.css`
 
-- **Document Studio** uses the visual editor plus the output library. Keep
-  `documentStudioMarkdown.js` as the conversion boundary for generated
-  Markdown-backed drafts. When answer-to-document conversion fails, show the
-  original answer in the visual editor as plain text, not parsed Markdown.
-- **Law Explorer** has impact-map and article-history modes. Article-history
-  actions require law name, article, and selected effective date(s); disabled
-  actions should be visually distinct.
-- **File Tools** are client-side only. PDF/XLSX/TXT merge/split operations
-  should not upload content to the server.
-- **Mind Map** renders an SVG tree with zoom, pan, collapse, fullscreen, and a
-  node-detail panel.
-- **Knowledge Graph** renders Cytoscape in a canvas/detail split and honors
-  normal notebook read access.
+Markers should stay baseline-aligned and subtle until hover/focus. Popups show document name, location, and excerpt; close on close button, Escape, or outside click.
 
-## Inline Citation Popups
+## Interaction Rules
 
-Precision Analysis (Map-Reduce) 답변에서 LLM이 출력한 출처 마커(`[1.2]`, `[1.2, 1.3]` 등)는 클릭 가능한 인라인 버튼으로 렌더링된다.
-
-- 마커 형식: 번호만 표시, 대괄호 없음, 마침표 뒤 배치 (예: `문장입니다. ¹·²`)
-- 스타일: 일반 텍스트 색상(`color: inherit`), `vertical-align: baseline`, 점선 밑줄(`border-bottom: 1px dotted var(--muted)`), `opacity: 0.65`
-- hover 시 `opacity: 1`, 밑줄 진하게
-- 클릭 시 `.inline-citation-popup` 팝업 표시:
-  - 헤더: 문서명 + 위치 정보 (`.inline-citation-popup-header`)
-  - 바디: 청크 본문 발췌 (`.inline-citation-popup-body`)
-  - 닫기: ×버튼, ESC, 외부 클릭
-  - 화면 경계 자동 위치 보정
-- 함수: `renderTextWithCitations()`, `buildCitationButtons()`, `showCitationPopup()` in `public/answerRenderer.js`
-- CSS: `.inline-citation-btn`, `.inline-citation-popup`, `.inline-citation-popup-*` in `public/styles.css`
-
-## Interactions
-
-- Hover transitions should be short (`0.12s-0.15s`) and limited to background,
-  border, color, or shadow.
-- Use `:focus-visible` for keyboard focus. Do not remove focus indicators.
-- Selected/active states should use accent color mixes, not one-off colors.
-- Destructive actions should use `--danger` and require `showConfirmDialog`
-  from `public/modules/state.js`.
-- Dynamic status text should use `aria-live="polite"` where users need feedback.
+- Keep hover transitions short and limited to background, border, color, or shadow.
+- Use `:focus-visible`; do not remove keyboard focus indicators.
+- Use accent token mixes for selected/active states.
+- Use `--danger` for destructive actions.
+- Dynamic status text should use `aria-live="polite"` when users need feedback.
 
 ## Responsive Rules
 
-When a panel becomes narrow (usually below `900px`), switch two-column tool
-bodies to a single column:
-
-```css
-@media (max-width: 900px) {
-  .studio-example-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-```
-
-Text must not overflow buttons, cards, badges, or toolbars. Prefer wrapping and
-stable dimensions over viewport-scaled font sizes.
+When panels become narrow, switch two-column tool bodies to one column. Text must not overflow buttons, cards, badges, or toolbars. Prefer wrapping and stable dimensions over viewport-scaled font sizes.
 
 ## Accessibility Checklist
 
-- Every icon-only button has `aria-label`.
+- Icon-only buttons have `aria-label`.
 - Interactive custom elements are keyboard reachable.
-- Dynamic result/status areas use `aria-live="polite"` when appropriate.
-- SVG icons inside labeled buttons use `aria-hidden="true"`.
+- Dynamic status/result areas use `aria-live` where appropriate.
+- SVG icons in labeled buttons are `aria-hidden="true"`.
 - Dialog close buttons are obvious and keyboard accessible.
-- Destructive actions route through the shared confirmation dialog.
+- Destructive actions use the shared confirmation dialog.

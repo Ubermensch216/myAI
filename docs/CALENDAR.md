@@ -1,6 +1,6 @@
 # Calendar
 
-The calendar is local-first. Events live in encrypted browser IndexedDB, and the browser owns all mutations.
+The calendar is local-first. Events live in encrypted browser IndexedDB and all mutations are performed by browser code.
 
 ## State
 
@@ -38,18 +38,14 @@ Event shape:
 
 ## Intent Agent
 
-Flow:
-
 ```text
 calendar-like prompt
--> public/modules/calendar.js#hasCalendarKeyword() (refined regex pre-filtering)
+-> public/modules/calendar.js keyword prefilter
 -> POST /api/agent/intent
--> server/calendarAgent.js#classifyIntent()
--> browser orchestration in public/modules/chat.js
+-> server/calendarAgent.js classifyIntent()
+-> public/modules/chat.js orchestration
 -> local mutation in state.calendar.events
 ```
-
-To minimize false positives, the client uses a hardened `CALENDAR_KEYWORD_PATTERN` that excludes common conversational words like "오늘" or "보여줘" unless accompanied by clear action intent.
 
 Valid intents:
 
@@ -60,37 +56,32 @@ Valid intents:
 - `calendar.delete`
 - `calendar.update`
 
-The orchestration logic in `public/modules/chat.js` includes an `isExplicitChat` check: if the LLM classifies a message as `chat` without fallback reasons, the app suppresses "vague calendar request" warnings even if calendar keywords were detected. This ensures natural conversation about dates/times doesn't over-trigger the calendar agent's defensive prompts.
+The client includes an explicit-chat guard so ordinary conversation about dates does not over-trigger calendar warnings.
 
 ## Confirmation Flow
 
-`calendar.propose` stores a pending create action in the active room. Confirmation messages such as "응, 추가해줘" can become `calendar.create` using that pending payload. Rejection clears the pending action.
+`calendar.propose` stores a pending create action in the active room. Confirmation text can become `calendar.create` using that pending payload. Rejection clears the pending action.
 
 Delete, update, conflict, repeated-event, and ICS import flows use an in-app review dialog before mutation.
 
 ## UI Behavior
 
-- Primary nav switches between chat and calendar.
+- Primary nav switches between chat, calendar, law, and GRC views.
 - Calendar supports month, week, and day views.
-- Clicking a day opens the create dialog at 09:00-10:00.
-- Clicking an event opens the edit dialog.
+- Clicking a day opens create at 09:00-10:00.
+- Clicking an event opens edit.
 - Sidebar shows upcoming events within 7 days.
-- `Shift+N` is scoped by active view:
-  - chat view: new chat
-  - calendar view: new event
+- `Shift+N` is scoped by active view: chat creates a room, calendar creates an event.
 - Korean holidays render in calendar cells and agenda columns.
-- Reminders run in the open browser tab.
-- Calendar is fixed to Asia/Seoul. ICS export writes `TZID=Asia/Seoul`, and `/api/agent/intent` always interprets dates in Asia/Seoul.
-- Event edit supports simple recurrence: daily, weekly, monthly, and yearly, with an optional end date.
-- ICS import/export is accessed through the gear-icon settings menu in the calendar header, placed to the right of the month/week/day view toggle. Each menu item shows a short Korean description of what the action does.
-- ICS export writes local events as `VEVENT` entries, including `RRULE` when present.
-- ICS import reads common `VEVENT` fields (`SUMMARY`, `DTSTART`, `DTEND`, `LOCATION`, `DESCRIPTION`, `RRULE`) and asks for review before saving.
+- Reminders run only while the browser tab is open.
+- Calendar uses Asia/Seoul. ICS export writes `TZID=Asia/Seoul`, and `/api/agent/intent` interprets dates in Asia/Seoul.
+- Simple recurrence supports daily, weekly, monthly, yearly, and optional end date.
+- ICS import/export is file-based through the calendar header settings menu.
 
 ## Constraints
 
-- No Google Calendar, Outlook, or ICS sync.
-- ICS support is file import/export only; it is not account sync.
+- No Google Calendar or Outlook sync.
+- No server-side calendar account model.
+- ICS support is import/export only.
 - Recurring event editing applies to the stored series as a whole.
-- No multi-calendar account model.
-- Reminder checks only run while the browser tab is open.
-
+- Clearing browser storage deletes local calendar events.

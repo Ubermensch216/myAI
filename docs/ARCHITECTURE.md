@@ -1,498 +1,274 @@
 # Architecture
 
-myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server and local Ollama. The browser owns private per-user state, while the server owns shared notebook storage and model orchestration.
+myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server and local Ollama. The browser owns private per-user state. The server owns shared department notebooks, model orchestration, operational indexes, and admin workflows.
 
 ## Deployment Topology
 
-myAI has a two-tier deployment model:
-
 ```text
-[Personal PC - each user]                [Department Workstation - shared]
-  Browser                                   Node.js/Express :3000
-  |- AES-GCM IndexedDB                      |- Ollama :11434
-  |  |- rooms + messages                    |  (GPU: DGX Spark / RTX 5090-class)
-  |  |- personal room uploads               |- Qdrant :6333 (optional)
-  |  |- calendar events                     |- data/notebooks/
-  |  `- app settings                        |  |- nb_<id>/manifest.json
-  `- fetch() -> http://<dept-host>:3000/api/ |  `- nb_<id>/docs/<docId>.json
-                                             |- data/indexes/ (SQLite FTS5, optional)
-                                             `- uploads/ (temp only, cleaned after parse)
+[Personal PC - browser]                 [Department workstation]
+  IndexedDB AES-GCM                       Node.js/Express :3000
+  |- rooms + messages                      |- Ollama :11434
+  |- personal room uploads                 |- Qdrant :6333 optional
+  |- generated room sources                |- data/notebooks/
+  |- Studio drafts/outputs                 |- data/indexes/
+  |- calendar events                       |- data/logs/
+  `- settings                              `- uploads/ temp parse only
+       |
+       ` fetch() -> http(s)://<host>:3000/api
 ```
 
-**Department workstation** hosts the Node.js server and Ollama. It stores all department notebooks under `data/notebooks/`. GPU-class hardware enables large embedding models (e.g. `bge-m3`), fast inference, and concurrent Map-Reduce analysis shared by all connected users.
+Personal uploads are parsed on the server as temporary files, returned to the browser, and persisted only in encrypted IndexedDB. Department notebooks are shared server-side state under `data/notebooks/`.
 
-**Personal PC (browser-only private state)** - each user's browser holds their private state in encrypted IndexedDB. Personal room uploads are parsed server-side (temp file only), the full content is returned in the API response, and the browser persists it in IndexedDB. The server retains no copy after the response. Calendar events, settings, and chat history never leave the browser.
+## Data Ownership
 
-### What Lives Where
-
-| Data | Location | Rationale |
+| Data | Location | Notes |
 |---|---|---|
-| Department notebook chunks + embeddings | Server filesystem (`data/notebooks/`) | Shared, GPU-embedded, admin-managed |
-| Personal room uploads (documents, images) | Browser IndexedDB (AES-GCM) | Private per-user; server is parse-only |
-| Room-generated sources from assistant answers | Browser IndexedDB (AES-GCM) | Personal working artifacts; server converts but does not persist |
-| Studio outputs and source guides | Browser IndexedDB (AES-GCM), inside `room.studio.outputs` | Room-level work products that can be reopened, added as generated sources, or submitted for admin promotion review |
-| Law Workbench reviews | Browser IndexedDB (AES-GCM), inside `state.lawReviews` | Saved legal-review working state, conditions, official evidence snapshot, LLM draft result, and failure message |
-| Source promotion requests | Server filesystem (`data/source-promotions/promotions.json`) | Admin-reviewed queue before any AI-generated output enters a department notebook |
-| Chat and message history | Browser IndexedDB | Per-user private |
-| Calendar events | Browser IndexedDB | Per-user private, no server sync |
-| App settings | Browser IndexedDB | Per-user private |
-| Ollama models | Department workstation | GPU for performance |
+| Chat rooms/messages | Browser IndexedDB | encrypted by local AES-GCM key |
+| Personal uploads | Browser IndexedDB | server temp file deleted after parse |
+| Generated room sources | Browser IndexedDB | marked generated/needs verification |
+| Studio drafts/outputs/source guides | Browser IndexedDB | can be reused or submitted for promotion |
+| Calendar events/settings | Browser IndexedDB | local-only |
+| Law Workbench review state | Browser IndexedDB | includes official evidence snapshot and review result/error |
+| Department notebooks | `data/notebooks/` | admin-managed source of truth |
+| Qdrant vector index | Qdrant storage | rebuildable from notebooks |
+| SQLite FTS index | `data/indexes/department-rag.sqlite` | rebuildable from notebooks |
+| Notebook graph index | `data/notebooks/<id>/graph.sqlite` | optional per-notebook index |
+| Usage logs | `data/logs/usage-YYYY-MM-DD.jsonl` | metadata only |
+| Retrieval/law logs | `data/logs/` | metadata only |
+| Source promotion queue | `data/source-promotions/promotions.json` | reviewed before notebook ingest |
 
-### Personal Document RAG vs. Notebook RAG
-
-Both paths use the same BM25 + cosine + RRF hybrid retrieval, but differ in where data lives:
-
-| | Personal Doc RAG | Notebook RAG |
-|---|---|---|
-| Data store | Browser IndexedDB, sent in `/api/chat` request body | Server filesystem (`data/notebooks/`) |
-| Ingest embedding | Server-side via Ollama at upload time | Server-side via Ollama at admin ingest |
-| Query embedding | Server-side per request | Server-side per request |
-| Persistence | Browser (AES-GCM encrypted) | Server JSON (ADMIN_TOKEN-protected writes) |
-| Access control | Per-browser encryption key | `ADMIN_TOKEN` for management writes; optional group/level or Super token for reads |
-
-### Implications for Future Work
-
-- **Network**: Set `HOST=0.0.0.0` (default) on the department workstation. Add a reverse proxy + TLS for any non-LAN deployment.
-- **Multi-user isolation**: Personal data is isolated by each browser's AES-GCM key, not by a server-side session. There is no per-user account model on the server.
-- **Shared Ollama**: `EMBED_MODEL` and `OLLAMA_MODEL` on the department workstation apply to all users. Users cannot point to a different Ollama instance.
-- **Notebook cache is shared**: `NOTEBOOK_CHUNK_CACHE_MAX` is a single in-process LRU shared across all concurrent browser sessions on that server.
-- **Upload temp files**: Removed from `uploads/` after the parse response. No permanent personal data is stored server-side.
-
-## Main Flows
-
-### Chat
+## Chat Flow
 
 ```text
-user prompt
--> public/modules/chat.js sends POST /api/chat (abortable; composer stop button)
--> server/promptRouter.js classifies the request into one chat route:
+public/modules/chat.js
+-> POST /api/chat
+-> server/promptRouter.js resolves one route:
    strict_law_search | map_reduce | compliance_review | law |
    notebook_rag | web_search | normal_chat
--> server/ollama.js builds system prompt, document/image context, optional notebook context, optional Naver Search context, and optional Korea Law Engine context per the resolved route flags
--> Ollama streams chunks
--> browser renders answer incrementally
--> browser saves encrypted state in IndexedDB
--> /api/followups generates autonomous, context-aware suggestions
+-> server/ollama.js builds prompts and evidence context
+-> Ollama streams text
+-> browser renders incrementally and persists state
+-> /api/followups generates suggestions unless no-evidence state suppresses them
 ```
 
-The router never invokes a model. It applies these rules in order: `lawSearchMode` forces `strict_law_search` (no notebook/documents/web context); `mode === "map_reduce"` outside law-search forces `map_reduce`; `department_legal_review` intent forces `compliance_review` and sets `requiresInternalMaterial` when no notebook or upload is attached; other legal intents pick `law`; otherwise a selected notebook picks `notebook_rag`; an explicit web-search prompt with no notebook/documents picks `web_search`; everything else stays in `normal_chat`. Compliance review also produces a `notebookQueryOverride` so retrieval focuses on the review type's suggested terms.
+Important route rules:
 
-Follow-up suggestions are generated by a separate LLM call that analyzes the conversation's nouns and logic to propose conceptually deep questions, avoiding generic templates.
-When the assistant returns a no-evidence answer, the frontend suppresses source
-panels and follow-up suggestions for that answer.
+- `lawSearchMode: true` forces `strict_law_search`, excluding uploads, notebooks, and web search.
+- `mode: "map_reduce"` forces Precision Analysis unless law-search mode is active.
+- Department legal-review intent chooses compliance review and can derive a notebook query override.
+- Selected notebook chooses department RAG when no stricter route has already matched.
+- Explicit web search runs only in normal chat with no active files and no notebook.
 
-### Answer Export
+## Evidence Sources
+
+| Source | Trigger | Citation family |
+|---|---|---|
+| Uploaded room documents | files in `/api/chat` body | attachment/internal metadata |
+| Generated room sources | generated documents in room materials | attachment/internal metadata with generated trust flags |
+| Department notebook RAG | `notebookId` | `[N]` |
+| Naver Search | explicit normal-chat search prompt | `[W]` |
+| Korean Law Engine | explicit legal prompts or law mode | `[L]` |
+| Decisions | law research/decision prompts | `[D]` |
+| Map-Reduce | `mode: "map_reduce"` | inline chunk markers such as `[1.2]` |
+
+No-evidence answers suppress source panels and follow-up suggestions.
+
+## Answer Export And Generated Sources
+
+Answer export:
 
 ```text
-assistant answer action menu
--> user selects MD, XLSX, PDF, HWPX, or DOCX
--> public/modules/chat.js sends POST /api/export
--> server/exportFiles.js converts the rendered answer text
--> browser receives a Blob and starts the download
+assistant answer action
+-> POST /api/export
+-> server/exportFiles.js
+-> browser downloads MD/XLSX/PDF/HWPX/DOCX
 ```
 
-Word export uses `.docx`; legacy binary `.doc` is intentionally not generated.
-
-### Answer As Room Source
+Answer-as-source:
 
 ```text
-assistant message "자료로 추가" action
--> public/modules/sourceWorkflow.js opens title/format dialog
+assistant answer action
 -> POST /api/source-workflow/from-answer
--> server/sourceWorkflow/generatedSourceApi.js validates the request
--> server/exportFiles.js creates md/pdf/docx/hwpx output
--> server/sourceWorkflow/generatedSourceModel.js returns document-like metadata
--> browser pushes generatedSource into room.documents
--> browser persists room state in encrypted IndexedDB
--> later /api/chat requests include the generated source text as document context
+-> generatedSource payload
+-> room.documents
+-> encrypted IndexedDB
 ```
 
-Generated sources are marked with `origin: "assistant_answer"`,
-`trustLevel: "generated"`, `sourceTrust: 0.5`, and the labels `AI 생성` /
-`검증 필요`. They appear in the material panel under `AI 생성 자료`. When
-`server/ollama.js` sees generated sources in the document context, it injects
-an instruction to treat them as secondary references and prefixes their chunks
-with `[AI 생성 참고자료]`. Original uploads, department notebooks, and official
-law evidence remain preferred evidence sources.
+Generated sources use `origin: "assistant_answer"`, `trustLevel: "generated"`, `sourceTrust: 0.5`, and labels equivalent to AI-generated / needs verification. `server/ollama.js` treats them as secondary references.
 
-### Source Guides And Studio Outputs
+## Studio Workflows
+
+Studio Document:
 
 ```text
-uploaded room documents and/or selected department notebook
--> POST /api/source-workflow/source-guide
--> server/sourceWorkflow/sourceGuide.js samples source text and asks Ollama for a guide
--> browser stores the result under room.studio.outputs
--> user can reopen it as a Studio draft, add it as a room source, or request notebook promotion
-```
-
-Studio outputs are room-level work products stored in encrypted IndexedDB under
-`room.studio.outputs`. Current output types include Studio documents and source
-guides. Adding an output as a room source reuses
-`/api/source-workflow/from-answer`, so the inserted material remains labeled
-`AI 생성` / `검증 필요` and is treated as secondary context.
-
-### Department Notebook Promotion
-
-```text
-Studio output "승인 요청"
--> POST /api/source-workflow/promotions
--> data/source-promotions/promotions.json stores pending request
--> Admin Console "승인 요청" panel
--> PATCH /api/admin/source-promotions/:id { status: "approved" }
--> server/sourceWorkflow/sourcePromotions.js ingests reviewed markdown
--> addNotebookDocument() writes target notebook document and updates indexes
-```
-
-### Law Workbench Review
-
-```text
-user prompt + review conditions
--> public/modules/lawWorkbench.js sends POST /api/law/workbench
--> server/law/lawWorkbench.js gathers official statutes, decisions, ordinances,
-   law-structure links, revision history, and optional impact metadata
--> browser stores the official evidence snapshot in state.lawReviews
--> public/modules/lawWorkbench.js sends POST /api/law/workbench/review
-   with query, conditions, workbench payload, and Law Workbench dedicated documents
--> server/law/lawWorkbenchReview.js builds a JSON-only review prompt and calls Ollama
--> browser stores reviewResult or reviewError in the same law-review object
--> optional POST /api/law/workbench/report creates a Studio Document draft
-```
-
-The review request does not read active chat-room attachments. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent; active chat-room attachments are not automatically included. Diagnostics are logged as `[law-workbench-review]` without prompt text or document body and include prompt size, estimated tokens, evidence counts, elapsed time, and Ollama token counters.
-
-Promotion is never automatic. A generated output enters a department notebook
-only after an admin approves it. The promoted document includes provenance such
-as source room/output/message IDs, generation time, review status, and reviewer
-metadata. Rejected requests stay in the promotion store for operational context.
-
-### GRC Compliance Review
-
-```text
-primary nav "사내 규정 검토" (data-view-target="grc")
--> public/app.js applyActiveView("grc") shows #grcWorkbenchContainer
--> window.MyAIFrontend.mountGrcWorkbench() mounts the Svelte component
--> user uploads target document (e.g. contract) and either uploads policy
-   text or picks a department notebook as the policy source
--> POST /api/compliance/grc/review { targetText, policyText | notebookId, model }
--> server/compliance/grcReview.js calls Ollama with format:"json", temp 0.1
-   (inputs are truncated to 30,000 chars each)
--> Svelte UI renders the dashboard (overallRisk, per-rule results,
-   missingInformation) and the markdown draftOpinion
--> "Studio 저장" dispatches window event myai:grc:save-output
--> public/app.js calls documentStudio.openWithPreparedDraft() with the
-   draftOpinion markdown so the Studio Document editor opens pre-filled
-```
-
-GRC review is a self-contained internal-policy audit. It does not fetch
-Korean Law Engine evidence and is independent from the Law Workbench review
-flow. The Svelte component lives in `src/components/GrcWorkbench.svelte`
-and is bundled into `public/dist/bundle.js` by Vite (see Frontend Build
-section).
-
-### Studio Document Editor
-
-```text
-assistant answer action menu "스튜디오로 보내기"
--> public/modules/chat.js captures answer markdown and citation metadata
--> switches to Studio document tab
--> user selects a template
+assistant answer or Studio output
+-> public/modules/documentStudio.js
 -> POST /api/studio/document/from-answer
--> server/studioDocument/answerToDocument.js asks Ollama to structure the answer into JSON blocks
--> browser renders the visual editor (paragraphs, tables, checklists)
--> user edits draft
--> browser saves draft to room state (IndexedDB)
--> user selects export (HWPX, DOCX, PDF, MD)
+-> visual editor / plain-text fallback
 -> POST /api/studio/document/export
--> browser receives a Blob and starts the download
 ```
 
-This feature converts AI answers into structured, template-driven public-sector
-document drafts while preserving source citations. Completed drafts are also
-stored as Studio outputs so they can be reused as room sources or submitted for
-admin-reviewed notebook promotion. If the model cannot structure the answer or
-the conversion request fails, the original answer is opened in the visual editor
-as plain text rather than being interpreted as Markdown.
-
-### Studio Mind Map
+Source guide:
 
 ```text
-right Studio panel — 마인드맵 card button
--> public/modules/studio.js sends POST /api/studio/mindmap
--> server/mindmap.js hierarchy pipeline:
-     evenly samples full document via chunkDocumentSections (not just the first N chunks)
-     asks Ollama for a parent-based hierarchy with root, branch, and leaf nodes
-     normalizes { parentId } relationships into { nodes, edges, groups }
-     falls back to a deterministic heading/bullet/topic tree if Ollama fails
--> browser renders a left-to-right expanded SVG tree
-   (expand/collapse per node, mouse-wheel zoom, click-drag pan, fullscreen toggle)
--> selected node shows detail and source-reference panel
+active uploads and/or selected notebook
+-> POST /api/source-workflow/source-guide
+-> room.studio.outputs
 ```
 
-The left sidebar is resizable only. The right Studio panel is resizable and can
-collapse to an icon rail. Mind maps use uploaded room documents only; they do
-not invoke Naver Search or department notebook RAG.
-
-Mind-map generation uses even interval sampling across all chunks so content
-from the middle and end of a document contributes to the hierarchy, not just the
-leading sections. Large maps may auto-collapse deep levels, but normal maps open
-expanded and fitted to the canvas.
-
-### File Tools
+Promotion:
 
 ```text
-right Studio panel — 파일도구 card button
--> user selects "병합" (Merge) or "분할" (Split) tab
--> user drags/adds PDF, XLSX, or TXT files
--> 병합 (Merge):
-     combines multiple files of the same type into one
-     (PDF uses pdf-lib, XLSX uses sheetjs)
--> 분할 (Split):
-     splits a single file into multiple parts by page range or chunk size
--> browser generates a Blob and starts the download
+Studio output promotion request
+-> POST /api/source-workflow/promotions
+-> Admin Console promotion review
+-> PATCH /api/admin/source-promotions/:id
+-> approved markdown ingested into target notebook
 ```
 
-This tool is entirely client-side to ensure maximum privacy for sensitive documents. No file content is sent to the server for merging or splitting operations.
-
-### Naver Search
+Mind map:
 
 ```text
-explicit search prompt in normal chat
--> server/naverSearch.js detects search intent and cleans the query
--> Naver Search Open API (news/webkr by default)
--> normalized web context injected into server/ollama.js system prompt
--> web citations returned in X-Notebook-Meta as [W1], [W2], ...
--> browser renders source links in the citation panel
+active uploaded documents
+-> POST /api/studio/mindmap
+-> server/mindmap.js samples chunks and builds hierarchy
+-> public/modules/studio.js renders SVG tree
 ```
 
-Naver Search is not used when uploaded files are present or when a department
-notebook is selected. Those flows must stay grounded in file context or
-department RAG evidence. When uploaded documents are detected client-side and
-the prompt matches a search intent pattern, `public/modules/chat.js` blocks
-the request before it reaches the server and shows a descriptive message to
-the user.
-
-### Upload
+Notebook graph:
 
 ```text
-POST /api/upload
--> multer writes a temp file under uploads/
--> server/parsers.js parses the file
--> server/documentAnalysis.js optionally generates summary/topics
--> server/documentStore.js stores a runtime copy
--> full payload returns to the browser for encrypted persistence
+selected notebook with graph.sqlite
+-> /api/studio/graph/*
+-> graphStudioApi checks normal notebook read access
+-> Cytoscape renders enabled nodes/edges
 ```
 
-The server memory document store is a convenience cache only. The durable source for room attachments is the browser IndexedDB state.
+Admin graph moderation and rebuilds use `/api/admin/graph/*` with `ADMIN_TOKEN`. The Studio graph router also has admin-only rebuild compatibility endpoints under `/api/studio/graph/:notebookId/rebuild`.
 
-### Notebook RAG
+## Law And Compliance
+
+Law Workbench:
 
 ```text
-chat prompt + room.selectedNotebookId
--> POST /api/chat { notebookId }
--> if Department Notebook Access Control is active:
-   -> validate Authorization: Bearer <access token>
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> lazy JSON fallback -> log.
-   -> query expansion (queryExpansion.js)
-   -> embed query variants (embeddings.js, validated dim)
-   -> Qdrant dense search   (when DEPARTMENT_VECTOR_BACKEND=qdrant)
-   -> SQLite FTS5 search with notebook scope token (when DEPARTMENT_LEXICAL_BACKEND=sqlite)
-   -> RRF fusion
-   -> cross-encoder rerank  (when RAG_RERANK_ENABLED=true)
-   -> greedyFit budget trim
-   -> lazy fallback: load all notebook chunks only if external indexes fail/no-hit
-      -> in-memory BM25 + cosine + RRF
--> cited chunks become [N] citations
--> server/ollama.js injects notebook context and grounding rules
--> X-Notebook-Meta returns citation metadata
--> browser renders citation markers and panel
+public/modules/lawWorkbench.js
+-> POST /api/law/workbench
+-> official statutes/decisions/ordinances/links/history/impact metadata
+-> POST /api/law/workbench/review
+-> LLM review result or explicit error
+-> optional POST /api/law/workbench/report to Studio Document
 ```
 
-### Department Knowledge Graph
+The review endpoint receives only `query`, `conditions`, the supplied `workbench` payload, and `documents` explicitly attached in the Law Workbench UI. It does not discover active chat-room attachments.
 
-Department notebook graphs are a separate server-side index from the
-uploaded-document Studio mind map. The graph index is scoped to a notebook,
-uses the ontology in `server/rag/graph/ontology.js`, and is opened through
-`server/rag/graph/store.js`.
+GRC Workbench:
 
 ```text
-selected department notebook
--> public/modules/graphStudio.js requests /api/studio/graph/*
--> graphStudioApi.js checks normal notebook read access
--> graph store returns ontology, stats, nodes, edges, neighbors, and source refs
--> browser renders the graph with Cytoscape in the Studio panel
+primary view "grc"
+-> window.MyAIFrontend.mountGrcWorkbench()
+-> POST /api/compliance/grc/review
+-> optional POST /api/compliance/grc/report/pdf
+-> save-to-Studio via myai:grc:save-output
 ```
 
-Admin graph inspection, moderation, and rebuild jobs use `/api/admin/graph/*` with
-`ADMIN_TOKEN`. Admins can list/search nodes, inspect source references, and
-toggle or clear manual node/edge enablement overrides. They can also start a
-safe rebuild for one notebook, poll the latest job snapshot, and inspect
-persisted rebuild history. Normal Studio graph reads honor group/level or Super
-notebook access tokens and expose only enabled nodes and edges.
+The Svelte bundle is built from `src/main.ts` and `src/components/GrcWorkbench.svelte` into `public/dist/`.
 
-Department notebook access control is inactive until an admin configures at
-least one enabled group level password or an enabled Super password. Normal
-users authenticate from the department-notebook selector. Admins manage groups,
-level passwords, Super access, and per-notebook policies from Settings ->
-Admin Console -> Access Management / Department Notebook Management. Access
-Management has separate Group Management and Super Access tabs: the group tab
-uses a left group list and right selected-group detail pane for Level 1-3
-passwords, while the Super tab keeps emergency read access isolated. Existing
-Super password changes require the current Super password plus matching new
-password confirmation.
-
-### Precision Analysis
+## Department RAG
 
 ```text
-composer material panel "정밀 분석" toggle
+notebookId
+-> notebook access check when configured
+-> expandQuery()
+-> embedTexts()
+-> Qdrant dense search if enabled
+-> SQLite FTS5 lexical search if enabled
+-> optional graph expansion if KG_EXPANSION_ENABLED=1
+-> RRF fusion
+-> optional external rerank
+-> greedyFit()
+-> lazy JSON fallback when indexed paths fail or return no candidates
+-> citations returned through X-Notebook-Meta
+```
+
+`ADMIN_TOKEN` is a management credential only. Notebook reads use group/level or Super access tokens when Department Notebook Access Control is active.
+
+## Precision Analysis
+
+```text
+composer material panel toggle
 -> POST /api/chat { mode: "map_reduce" }
--> server/ollama.js loads all notebook chunks or active room document chunks
--> server/mapReduce.js runs map calls with bounded parallelism
-   -> each batch produces citation metadata (citationId "1.1"/"1.2", documentName, excerpt, locator/page)
--> reduce answer streams to the browser
--> citation metadata array sent via X-Notebook-Meta header
--> browser (public/answerRenderer.js) renders inline citation buttons
-   -> [1.2] / [청크 1.2] markers parsed into clickable .inline-citation-btn elements
-   -> clicking a marker shows .inline-citation-popup (document name, location, excerpt)
+-> load all selected notebook chunks or active room document chunks
+-> map batches through server/mapReduce.js
+-> final reduce stream
+-> inline citation popup metadata
 ```
 
-The toggle is visible inside the composer material panel and is enabled only
-when the active room has uploaded documents or a selected department notebook.
-The room list intentionally shows only compact attachment/notebook state icons;
-the composer material panel owns the detailed tree view for department notebook,
-uploaded attachment, and AI-generated source entries. Assistant-answer generated
-sources are room-level personal artifacts unless an admin explicitly approves a
-Studio-output promotion request.
+The composer material panel owns detailed material inspection. The room list shows compact state icons only.
 
-### Visualization
-
-```text
-chart/graph prompt + CSV/XLSX table data
--> public/modules/chat.js routes to POST /api/visualize
--> LLM proposes analysis + visualizationPlan JSON
--> server validates exact columns and chart requirements
--> server computes final chart data from real rows
--> browser renders SVG/table/KPI/infographic
-```
-
-### Calendar
+## Calendar
 
 ```text
 calendar-like prompt
--> public/app.js keyword prefilter
+-> public/modules/calendar.js keyword prefilter
 -> POST /api/agent/intent
--> server/calendarAgent.js returns intent/payload
+-> server/calendarAgent.js returns structured intent
 -> browser mutates local state.calendar.events
 ```
 
-The LLM does not directly mutate calendar data.
+The LLM never directly mutates calendar data.
 
-## Responsibilities
+## Visualization
 
-- `server/index.js` - Express setup, static serving, upload route, chat/visualize/followup/calendar/notebook endpoints.
-- `server/exportFiles.js` - answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
-- `server/sourceWorkflow/generatedSourceApi.js` - assistant-answer-to-room-source API.
-- `server/sourceWorkflow/generatedSourceModel.js` - generated source validation, metadata, trust labels, and inline binary cap.
-- `server/sourceWorkflow/sourceGuide.js` - source guide generation from room documents and selected department notebooks.
-- `server/sourceWorkflow/sourcePromotions.js` - admin-reviewed promotion queue and approved output ingestion into department notebooks.
-- `server/studioDocument/studioDocumentApi.js` - endpoints for templates, from-answer conversion, and document export.
-- `server/studioDocument/documentModel.js` - validates and normalizes document models and blocks.
-- `server/studioDocument/answerToDocument.js` - converts answer markdown into template-structured JSON using Ollama.
-- `server/studioDocument/documentRenderer.js` - converts document models to markdown-like canonical text.
-- `server/studioDocument/documentExport.js` - exports structured documents to HWPX/DOCX/PDF/MD.
-- `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
-- `server/graphStudioApi.js` - Studio knowledge-graph endpoints for notebooks the current reader can access.
-- `server/graphAdminApi.js` - Admin knowledge-graph inspection, source-reference, enable/disable override, and rebuild endpoints.
-- `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, and retrieval-log summaries.
-- `server/stats/statsLogger.js` - privacy-safe usage telemetry writer (chat/session events) under `data/logs/usage-YYYY-MM-DD.jsonl`.
-- `server/stats/statsLogReader.js` - aggregates KPI summary, per-group, per-notebook, and recent-session views from usage logs.
-- `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
-- `server/promptRouter.js` - chat-route classifier that resolves each `/api/chat` request into a single route (`strict_law_search`/`map_reduce`/`compliance_review`/`law`/`notebook_rag`/`web_search`/`normal_chat`) plus derived chat flags and a compliance notebook-query override. No model calls.
-- `server/ollama.js` - model calls, streaming chat, prompt assembly per resolved chat route, document context, notebook context, Map-Reduce dispatch, visualization LLM calls.
-- `server/naverSearch.js` - Naver Search API query detection, result normalization, and web citation context.
-- `server/law/` - Korean Law Engine API surface, law.go.kr and decision API clients/cache, citation verification, research tools, annexes, law-structure links, Constitutional Court and administrative-appeal decisions, impact maps, time-travel/diff/history helpers, and Law Workbench review/report generation.
-- `server/compliance/` - department legal-review intent classification, review-type catalog, and compliance prompt construction.
-- `server/parsers.js` - upload parsing for PDF, DOCX, XLSX, CSV, PPTX, HWPX, and images. The HWPX path uses an order-preserving XML parser that walks the section tree to keep paragraph boundaries (`<p>` -> blank-line separated blocks) and convert HWPX tables (`<tbl>/<tr>/<tc>`) to GitHub-flavored Markdown tables before normalization, so tabular policy and contract documents stay aligned with downstream chunking/RAG.
-- `server/documents.js` - document serializers and `pageSections()`.
-- `server/chunking.js` - shared document section chunking policy for personal uploads and notebook ingest. The default flat mode returns `chunks[]`. Passing `{ hierarchical: true }` returns `{ parentChunks, chunks }`: paragraph-block aware parent chunks (with block-level overlap and table-aware splitting) plus smaller child chunks that carry `parentIndex` back-references. Child window/overlap default to `CHILD_CHUNK_WINDOW_CHARS` (256) / `CHILD_CHUNK_OVERLAP_CHARS` (64) and are overridable per call.
-- `server/compliance/grcReview.js` - GRC internal-policy audit. Calls Ollama with `format:"json"` at low temperature and returns the structured review (`summary`, `overallRisk`, `results[]`, `missingInformation`, `draftOpinion`). Inputs are bounded to 30,000 characters.
-- `server/documentAnalysis.js` - summary/topic extraction for uploaded and notebook documents.
-- `server/notebooks.js` - notebook manifests, document ingest, chunk storage, cache, all-chunk loading.
-- `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> lazy JSON fallback -> log.
-- `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
-- `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry, including `fallbackLoadedAllChunks`.
-- `server/rag/retrievalLogReader.js` - aggregates retrieval telemetry for the RAG Evaluation panel.
-- `server/rag/evalRunner.js` - golden-set Recall@K / MRR@K evaluation runner.
-- `server/rag/evalStore.js` - golden-set and persisted evaluation-run storage.
-- `server/rag/graph/store.js` - notebook graph SQLite store, schema, node/edge lookup, and manual overrides.
-- `server/rag/graph/ontology.js` - graph entity and relation type definitions.
-- `server/rag/graph/extractor.js` - LLM JSON extraction and validation for graph candidates.
-- `server/rag/graph/builder.js` - in-process notebook graph rebuild jobs and progress snapshots.
-- `server/rag/graph/expander.js` - query-time graph seed and neighborhood expansion helpers.
-- `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
-- `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25/CJK bigram search with per-notebook scope tokens.
-- `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
-- `server/reranker.js` - cross-encoder reranking via `/api/rerank`; off by default. Ollama lacks this endpoint, so enabling it requires an external reranker server (e.g., HF TEI). Graceful fallback to RRF order on error/timeout.
-- `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.
-- `server/retrieval.js` - tokenization, BM25, CJK bigrams, cosine similarity, RRF fusion, greedy fitting.
-- `server/embeddings.js` - Ollama `/api/embed`.
-- `server/queryExpansion.js` - retrieval-friendly query variants.
-- `server/mapReduce.js` - map/reduce orchestration.
-- `server/calendarAgent.js` - JSON calendar intent classification and deterministic payload cleanup.
-- `server/holidays.js` - Korean public-holiday API and fallback.
-- `server/visualization.js` - plan normalization, validation, execution, fallback chart specs.
-- `server/auth.js` - admin token middleware.
-- `server/accessControl.js` - department notebook read-access groups, level passwords, Super password, access-token signing/verification, and notebook policy checks.
-- `public/app.js` - orchestrator: init, routing (chat / calendar / law / grc), room management, drag-drop, global key bindings. On `grc` activation it calls `window.MyAIFrontend.mountGrcWorkbench()` to bring up the Svelte panel; it also listens for `myai:grc:save-output` and forwards the markdown to `documentStudio.openWithPreparedDraft()`.
-- `src/main.ts` / `src/components/GrcWorkbench.svelte` - Svelte + TypeScript GRC Workbench panel. Built by Vite (`vite.config.js`) as an IIFE library bundle into `public/dist/bundle.js`, with the companion stylesheet at `public/dist/style.css`. The bundle exposes `window.MyAIFrontend.{mountGrcWorkbench, unmountGrcWorkbench}` for `public/app.js` to call on tab switch. Run `npm run dev:frontend` (Vite dev) and `npm run build:frontend` (production bundle).
-- `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color/avatar/banner rendering.
-- `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utility functions. No project-level imports.
-- `public/modules/persistence.js` - IndexedDB setup, WebCrypto AES-GCM key management, encrypted read/write, app state serialization.
-- `public/modules/layout.js` - three-pane panel sizing, left resize, right resize/collapse behavior.
-- `public/modules/studio.js` - Studio panel controls, mind-map generation requests (POST /api/studio/mindmap), left-to-right collapsible SVG tree rendering with zoom/pan/fullscreen, node detail panel.
-- `public/modules/documentStudio.js` - Studio Document Editor tab rendering, visual draft editing, plain-text fallback, source guide creation, output library actions, and export handling.
-- `public/modules/documentStudioMarkdown.js` - Markdown to visual-block conversion and serialization for generated Studio documents.
-- `public/modules/documentTemplates.js` - built-in and personal Studio document template state.
-- `public/modules/graphStudio.js` - Studio knowledge-graph viewer for the selected department notebook, using Cytoscape.
-- `public/modules/calendar.js` - date helpers, event CRUD, rendering, reminders, and chat-triggered calendar intent helpers.
-- `public/modules/chat.js` - streaming chat, message rendering, file upload, calendar message handlers, query-aware document trimming.
-- `public/modules/messageDelete.js` - single-message deletion, selection mode, and bulk delete orchestration.
-- `public/modules/customPrompts.js` - reusable custom prompt presets, composer picker, and Settings subtab rendering.
-- `public/modules/notebook.js` - notebook selector UI, group/level access login, Admin Console panels, notebook CRUD, source promotion review, file upload progress, access policy UI, admin event binding.
-- `public/modules/docTool.js` - Studio File Tool: client-side PDF/XLSX/TXT merging and splitting, drag-and-drop file queue, and reset handling.
-- `public/modules/ragEval.js` - Admin Console RAG Evaluation panel, golden-set editing, run control, and retrieval-log summaries.
-- `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI cards, per-group/per-notebook activity, recent sessions).
-- `public/modules/adminApi.js` - small Admin Console fetch helpers.
-- `public/modules/evidenceSummary.js` - classification and formatting of citations (official law, precedents, decisions, attachments, web, internal).
-- `public/modules/html.js` - DOM escaping/sanitizing helpers.
-- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research, dedicated review-document scope, LLM review result/error rendering, report draft creation, and impact mapping.
-- `public/modules/sourceWorkflow.js` - assistant answer -> room source dialog and client orchestration.
-- `public/answerRenderer.js` - markdown-lite answer rendering.
-- `public/visualizationRenderer.js` - chart/spec rendering.
+```text
+CSV/XLSX prompt + table data
+-> POST /api/visualize
+-> LLM proposes a plan
+-> server validates columns and computes data
+-> browser renders SVG/table/KPI/infographic
+```
+
+## Module Responsibilities
+
+- `server/index.js` - Express setup, primary routes, static serving, upload handling, rate-limit mounts.
+- `server/ollama.js` - streaming chat, prompt assembly, model calls, RAG and Map-Reduce dispatch.
+- `server/promptRouter.js` - deterministic chat route classifier; no model calls.
+- `server/parsers.js` - file parsers and document chunk prep.
+- `server/chunking.js` - flat and hierarchical chunking policy.
+- `server/notebooks.js` - notebook manifests, documents, access policies, index writes, chunk cache.
+- `server/rag/departmentRag.js` - department retrieval orchestration.
+- `server/rag/graph/*` - notebook graph ontology, extraction, store, expansion, rebuild jobs.
+- `server/indexes/*` - Qdrant and SQLite adapters.
+- `server/sourceWorkflow/*` - generated sources, source guides, promotion review.
+- `server/studioDocument/*` - document templates, answer-to-document, AI edit, export.
+- `server/law/*` - Korean Law Engine and Law Workbench.
+- `server/compliance/*` - department legal review and GRC review.
+- `server/stats/*` - usage telemetry and Admin Stats.
+- `public/app.js` - frontend routing/orchestration and Svelte GRC mount.
+- `public/modules/chat.js` - chat, upload, streaming, source badges.
+- `public/modules/notebook.js` - notebook UI, access login, admin panels, promotion review.
+- `public/modules/documentStudio.js` - Studio document workflows.
+- `public/modules/lawWorkbench.js` - Law Workbench UI and dedicated document scope.
+- `public/modules/graphStudio.js` - Cytoscape notebook graph viewer.
+- `public/modules/calendar.js` - local calendar UI and operations.
 
 ## Persistence
 
-Browser:
+Browser DB:
 
 ```text
 DB name: ollama-chatter-secure
-Object store: records, record id: app-state
-Object store: keys, record id: local-aes-gcm-key
+stores: records, keys
+record: app-state
+key: local-aes-gcm-key
 ```
 
-Stored browser state includes rooms, messages, settings, active room files,
-pinned room metadata (`pinnedAt`), per-room Studio mind-map caches, Studio document drafts and outputs, selected
-notebook IDs, active view, panel layout settings, and calendar events. It is
-encrypted with WebCrypto AES-GCM.
-
-Server:
+Server durable state:
 
 ```text
 data/notebooks/<notebookId>/manifest.json
 data/notebooks/<notebookId>/docs/<documentId>.json
+data/notebooks/<notebookId>/graph.sqlite
 data/source-promotions/promotions.json
+data/logs/*.jsonl
+data/indexes/department-rag.sqlite
 ```
-
-Notebook data is shared server-side state. Management writes are protected by
-`ADMIN_TOKEN`; reads are public until Department Notebook Access Control is
-configured, then require a group/level or Super access token.

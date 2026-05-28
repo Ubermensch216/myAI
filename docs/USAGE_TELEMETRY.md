@@ -1,67 +1,29 @@
-# Usage Telemetry and Admin Statistics
+# Usage Telemetry And Admin Statistics
 
-This document describes the current usage telemetry implementation behind the Admin Console **통계** dashboard.
+Usage telemetry backs the Admin Console statistics dashboard. It is designed for internal deployments without per-user server accounts and records metadata only.
 
-The telemetry layer is designed for public-sector / internal-network deployments where myAI does not have individual user accounts. It records group/session-level operational metadata only and intentionally avoids raw prompt, document, IP, and personal-user tracking.
+## Purpose
 
-## Scope
-
-The statistics dashboard measures system adoption and operational health across:
-
-- group / level sessions
-- chat and department notebook usage
-- Korean Law Engine usage
-- compliance-review usage
-- Studio document usage
-- feature adoption ratios
-- latency and error trends
-- recent sessions
-
-It is not a personal user analytics system.
-
-## Identity Role
-
-The Admin Statistics dashboard acts as a **Knowledge Operations Dashboard**.
-
-It helps answer:
+The dashboard helps answer:
 
 - Which groups are using myAI?
-- Which notebooks are actually queried?
-- Is Law grounding being used?
-- Is Compliance Review being used?
-- Are answers being converted into Studio documents?
-- Are response latencies or errors increasing?
-- Are users re-querying within the same session, suggesting possible answer-quality or RAG-quality issues?
+- Which notebooks are queried?
+- Are law, compliance, Studio, graph, and RAG features being used?
+- Are latencies or errors increasing?
+- Are sessions producing repeated queries that may indicate retrieval or answer-quality issues?
 
-## Authentication Model
-
-myAI currently uses group/level notebook-read access rather than per-user server accounts.
-
-Telemetry therefore records:
-
-```text
-groupId
-level
-sessionId
-```
-
-It does not identify a person.
-
-`sessionId` is derived from available request/session material in a privacy-safe way. Raw access tokens are not stored.
+It is not a personal user analytics system.
 
 ## Code Structure
 
 ```text
-server/stats/
-  statsLogger.js       writes privacy-safe JSONL usage events
-  statsLogReader.js    reads recent JSONL files and aggregates dashboard data
-  statsApi.js          exposes Admin Console statistics endpoints
-
-public/modules/
-  adminStats.js        renders the Admin Console statistics dashboard
+server/stats/statsLogger.js     writes privacy-safe JSONL events
+server/stats/statsLogReader.js  aggregates recent JSONL files
+server/stats/statsApi.js        exposes Admin Stats endpoints
+public/modules/adminStats.js    renders the Admin Console dashboard
 ```
 
-The router is mounted from `server/index.js` under:
+Router mount:
 
 ```text
 /api/admin/stats/*
@@ -71,34 +33,26 @@ Admin access requires `Authorization: Bearer <ADMIN_TOKEN>`.
 
 ## Storage
 
-Raw telemetry is append-only JSONL:
-
 ```text
 data/logs/usage-YYYY-MM-DD.jsonl
 ```
 
-Current implementation reads recent JSONL files directly when Admin Stats APIs are requested. This is adequate for MVP and small internal deployments.
+The current reader scans recent JSONL files directly. High-volume deployments should add a daily summary cache.
 
-Future large deployments should add a daily summary cache, for example:
+Telemetry can be disabled with:
 
-```text
-data/indexes/stats-summary.sqlite
+```env
+USAGE_LOG_ENABLED=false
 ```
 
-or:
+## Event Shape
 
-```text
-data/stats/daily-summary.json
-```
-
-## Event Schema
-
-Typical usage event shape:
+Typical event:
 
 ```js
 {
-  ts: 1715488234123,
-  date: "2026-05-12",
+  ts: 1770000000000,
+  date: "2026-05-28",
   sessionId: "sess_abc123",
   groupId: "planning",
   level: "L2",
@@ -113,150 +67,82 @@ Typical usage event shape:
     calendar: false,
     documentStudio: false
   },
-  model: "gemma4:e4b",
+  model: "gemma4:e2b",
   latencyMs: 1240,
   success: true,
   errorType: ""
 }
 ```
 
-The exact event payload may vary by endpoint, but it must remain metadata-only.
+Exact fields can vary by event type, but events must remain metadata-only.
 
 ## Privacy Rules
 
-Telemetry must not store:
+Do not store:
 
-```text
-raw user prompts
-raw assistant answers
-uploaded document text
-notebook chunk text
-IP addresses exposed in Admin UI
-raw access tokens
-law.go.kr API keys, decision API keys, Constitutional Court or administrative-appeal service keys, or upstream OC/query-secret values
-personal names as user identifiers
-```
+- raw prompts
+- assistant answers
+- uploaded document text
+- notebook chunk text
+- IP addresses in the Admin UI
+- raw access tokens
+- API keys or upstream query secrets
+- personal names as user identifiers
 
-Telemetry may store:
+Allowed:
 
-```text
-groupId
-level
-privacy-safe sessionId
-eventType
-endpoint
-notebookId
-feature flags
-model name
-latencyMs
-success/error marker
-```
+- group id and level
+- privacy-safe session id
+- event type and endpoint
+- notebook id
+- feature flags
+- model name
+- latency
+- success/error marker
 
-## Current Event Coverage
+## Current Coverage
 
-Confirmed from `server/index.js`:
+Confirmed server-side event types include:
 
-- `chat_query` is logged after `/api/chat` completes.
-- `login` is logged on `/api/access/login` success.
-- `logout` is logged on `/api/access/logout`.
+- `chat_query`
+- `login`
+- `logout`
 
-Additional feature-level events should be checked and expanded as needed:
-
-- `law_query`
-- `compliance_run`
-- `studio_open`
-- `studio_export`
-- `kg_render`
-- `calendar_query`
-- `notebook_access`
-
-The dashboard can still show Law/Compliance usage from chat metadata when those features run inside `/api/chat`, but direct endpoint-specific event coverage is useful for more precise adoption metrics.
-
-## Aggregated Metrics
-
-`server/stats/statsLogReader.js` currently computes:
-
-```text
-totalSessions
-totalQueries
-activeGroups
-avgLatencyMs
-lawUsageRatio
-complianceUsageRatio
-studioConversionRate
-errorRate
-reQueryRate
-featureUsage
-per-group activity
-per-notebook activity
-recent sessions
-```
-
-### Strategic KPIs
-
-These metrics are especially important for myAI's product identity:
-
-```text
-Law Usage Ratio
-Compliance Usage Ratio
-Studio Conversion Rate
-Notebook RAG Usage Ratio
-Re-query Rate
-```
-
-They show whether myAI is being used merely as a chatbot or as a law-grounded, document-producing, measurable knowledge operations system.
+Stats aggregation can infer feature usage from chat metadata for RAG, law, compliance, and related features. Additional explicit events can be added for Studio export, graph render, direct law route usage, and calendar use without changing the privacy model.
 
 ## Admin API
-
-All endpoints require `ADMIN_TOKEN`.
 
 ```text
 GET /api/admin/stats/summary?range=7d
 GET /api/admin/stats/groups?range=7d
 GET /api/admin/stats/notebooks?range=7d
+GET /api/admin/stats/knowledge-packs?range=7d
 GET /api/admin/stats/sessions?range=7d&page=1&pageSize=50
 ```
 
-`range` uses `<N>d` format and is clamped to 1–365 days.
+`range` accepts `<N>d` and is clamped by the server. `pageSize` is clamped server-side.
 
-Session page size is clamped to 1–200.
+## Aggregates
 
-## Admin UI
+`server/stats/statsLogReader.js` computes KPI and table data such as:
 
-The Admin Console has a **통계** tab that renders:
-
-- KPI cards
-- strategic KPI bars
+- total sessions
+- total queries
+- active groups
+- average latency
+- law usage
+- compliance usage
+- Studio conversion/export signals when logged
+- error rate
 - feature usage distribution
-- group activity chart
-- top notebooks table
-- recent session list
-- range selector
-- refresh action
-
-The implementation uses lightweight DOM/SVG rendering and does not require an external charting library.
+- per-group activity
+- per-notebook activity
+- recent sessions
+- knowledge-pack activity endpoint data
 
 ## Operational Notes
 
-- The stats layer must be non-critical. Logging or aggregation failure must not block chat, law, RAG, or Studio features.
-- JSONL files can grow over time. Add retention cleanup before long-term production use.
-- For high-volume deployments, add a daily summary cache rather than scanning many JSONL files on each request.
-- Do not reinterpret group-level telemetry as individual-user analytics.
-
-## Recommended Next Improvements
-
-1. Add `STATS_RETENTION_DAYS` and cleanup old JSONL files.
-2. Add daily summary caching for faster long-range queries.
-3. Add explicit `studio_export` logging inside Studio document export flow.
-4. Add direct `law_query` logging for `/api/law/*` routes.
-5. Add `kg_render` logging for Studio graph view activity.
-6. Add an Admin help tooltip explaining that statistics are group/session-level, not user-level.
-
-## Current Positioning
-
-Usage telemetry makes myAI measurable.
-
-```text
-myAI is not just an AI assistant.
-It is a group-based, law-grounded, document-producing, measurable knowledge operations system.
-```
+- Logging failures must not block chat, law, RAG, or Studio flows.
+- JSONL files can grow; add retention cleanup for long-running deployments.
+- For high-volume installations, add daily summary caching instead of scanning many files per request.
+- Do not reinterpret group/session telemetry as individual-user analytics.

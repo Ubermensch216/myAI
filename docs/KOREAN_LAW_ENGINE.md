@@ -1,184 +1,213 @@
 # Korean Law Engine
 
-This is the single living document for the native Korean Law Engine in myAI.
-It replaces the former PRD document and keeps only the decisions, contracts,
-current status, and remaining work that future agents need.
-
-The engine adds an official Korea Law Engine grounding layer to myAI. It uses
-law.go.kr plus decision-source APIs for Constitutional Court and
-administrative-appeal records. It is native server code under `server/law/`,
-not an external MCP server.
-
-## Goals
-
-- Retrieve and verify Korean statute references from official law.go.kr APIs.
-- Retrieve decision evidence from Constitutional Court and administrative
-  appeal sources when prompts ask for decision records.
-- Keep official law evidence separate from department notebook, uploaded file,
-  and Naver Search evidence.
-- Prevent legal hallucinations: if an article cannot be verified, myAI must not
-  invent the text or infer statute existence from web evidence.
-- Allow explicit legal checks to combine with uploaded documents or department
-  notebooks while keeping citation groups separate.
-
-Citation families:
-
-```text
-notebook citations -> [N1], [N2]
-law citations      -> [L1], [L2]
-decision citations -> [D1], [D2]
-web citations      -> [W1], [W2]
-```
-
-## Current Status
-
-Implemented pieces:
-
-- `server/law/` module structure with config, router, API client, cache,
-  logging, intent detection, article normalization, and tool handlers.
-- `GET /api/law/status`
-- `GET /api/law/tools`
-- `POST /api/law/execute`
-- `POST /api/law/search`
-- `POST /api/law/ai-search`
-- `POST /api/law/research`
-- `POST /api/law/action-plan`
-- `POST /api/law/workbench` (builds a comprehensive legal workbench context including research, citations, impact maps, and report-ready metadata)
-- `POST /api/law/workbench/review` (runs the LLM review-draft step from official Workbench evidence plus Law Workbench dedicated documents explicitly attached to the review)
-- `POST /api/law/workbench/report` (generates a structured legal report draft from a workbench result and optional LLM review result)
-- `GET /api/law/terms` (Searches official Korean law term KB / Knowledge Base for normalized definitions and law/article hints)
-- `POST /api/law/article`
-- `POST /api/law/verify-citations`
-- `POST /api/law/precedents/search`
-- `POST /api/law/precedents/detail`
-- `POST /api/law/interpretations/search`
-- `POST /api/law/interpretations/detail`
-- `POST /api/law/admin-rules/search`
-- `POST /api/law/admin-rules/detail`
-- `POST /api/law/ordinances/search`
-- `POST /api/law/ordinances/detail`
-- `POST /api/law/annexes/search`
-- `POST /api/law/annexes/detail`
-- `POST /api/law/three-tier`
-- `POST /api/law/delegated-laws`
-- `POST /api/law/linked-ordinances`
-- `POST /api/law/linked-ordinance-articles`
-- `POST /api/law/linked-laws-from-ordinance`
-- `POST /api/law/decisions/search`
-- `POST /api/law/decisions/detail`
-- `POST /api/law/impact-map`
-- `POST /api/law/time-travel`
-- `POST /api/law/article/at`
-- `POST /api/law/article/diff`
-- `POST /api/law/history`
-- `legal_research` chat mode that combines statute, precedent, interpretation,
-  admin-rule, ordinance, annex, law-structure, and decision results based on
-  intent flags
-- Forced composer law-search mode (`lawSearchMode: true`) that uses Korea Law
-  Engine only and excludes uploaded documents, department notebooks, and Naver
-  Search from the answer path
-- Chat integration through `server/ollama.js` and `lawContextBuilder.js`
-- `X-Notebook-Meta.law` response metadata
-- Frontend law citation grouping (법령/판례/해석례/행정규칙/자치법규/웹/프로젝트),
-  per-source-type badge colors, verification warning, and disclaimer rendering
-- Frontend legal-prompt processing indicator that shows Korean Law Engine use
-- Law source panel detail with official-law badge, law/article label, effective
-  date, official link, and an expandable article excerpt with deep-link to
-  law.go.kr when the official text is truncated
-- Studio Law Explorer MVP that calls the impact-map endpoint and renders
-  official-article, subject, obligation, condition, risk, and material-signal
-  groups
-- Law Workbench UI overhaul: 검토 유형 dropdown embedded in search bar
-  (zen-style, no border/background), `outputType` derived automatically server-
-  side via `REVIEW_TYPE_TO_OUTPUT` and never shown to the user, 자치법규 지역
-  field conditionally shown only for `reviewType === "ordinance"`, 상세 조건
-  panel collapsed by default, status line auto-clears after 3 s for idle
-  messages, term-mapping chips removed from DOM while `fetchTermsPreview`
-  continues silently, `stripInlineMarkdown()` applied to all result fields
-- Studio Law Explorer "조문 이력" sub-tab that calls `/api/law/history`,
-  `/api/law/article/at`, and `/api/law/article/diff`. Users pick 1 or 2
-  시행일 entries from the revision list to either view the snapshot text or
-  render a structural diff (added/removed/modified/unchanged hunks with
-  bigram-similarity badges) — no model inference is involved on the client.
-- `action_plan` chat mode (Phase 5) — intent detection requires a statute
-  citation or `LEGAL_KEYWORDS` + article reference, so generic "계획 짜줘"
-  prompts cannot trigger it. The mode injects a structured 5-step response
-  template (핵심 의무 / 단계별 조치 / 증빙·기록 / 후속 점검 / 한계와 권고)
-  and forces a `mandatory` disclaimer that includes the non-legal-advice
-  framing.
-- Knowledge graph integration — `Statute` and `Article` entity types plus
-  `REFERS_TO_ARTICLE` relation in `server/rag/graph/ontology.js` (hidden from
-  the LLM extractor so only the deterministic harvester creates them). The
-  builder runs `extractLawCitations` on every chunk and upserts
-  Statute/Article nodes + PART_OF + REFERS_TO_ARTICLE cross-edges. The
-  expander surfaces matched Article-node refs as `articleRefs`; chat
-  orchestration (`server/ollama.js`) re-fetches each article via
-  `LawApiClient` at answer time and either becomes the primary law context
-  (no explicit legal intent) or merges as additional `[L]` citations via
-  `mergeLawContexts`. KG-derived citations carry `kgDerived: true` and
-  surface in `X-Notebook-Meta.law.kgArticlesMerged`.
-- `department_legal_review` mode delegates to `server/compliance/`
-  (`classifyComplianceIntent`, `buildCompliancePromptBlock`,
-  `buildComplianceSearchQuery`) when the prompt matches compliance triggers
-  (법령 적합성, 컴플라이언스, 위반 가능성, 상위 법령 충돌, …). Intent carries
-  `reviewType`, `outputStyle`, `focusLawNames`, `requiresInternalMaterial`;
-  the compliance branch in `buildLawContext` (see `buildComplianceLawContext`)
-  fetches the explicit article when present, otherwise searches the focus
-  laws, and for `outputStyle: "detailed_report"` additionally pulls
-  precedent / 해석례 / admin-rule / ordinance evidence. Review-type behavior is
-  implemented in `server/compliance/complianceTypes.js`.
-- Per-record meta fields rendered for each citation kind (사건번호/선고법원/
-  선고일자 for precedents, 회신기관/회신일자 for interpretations, 발령기관/
-  종류/시행일 for admin rules, 지자체/종류/시행일 for ordinances)
-- SQLite law cache at `data/cache/law-cache.sqlite`
-- API key masking tests, private-response-field stripping tests, and cache
-  normalization tests
-- Smoke coverage for `/api/law/status`; optional live law.go.kr smoke coverage
-
-All roadmap phases (Phase 1 baseline, Phase 2 research, Phase 3 impact map,
-Phase 4 time-travel, Phase 5 action_plan, Knowledge Graph track) have shipped.
-The native API also exposes an MCP-compatible compatibility surface:
-`/api/law/tools` for discovery and `/api/law/execute` for names such as
-`search_all`, `search_annexes`, `get_annexes`, `get_three_tier`,
-`get_delegated_laws`, linked-ordinance tools, `search_decisions`,
-`get_decision_text`, `time_travel`, `action_plan`, `chain_full_research`, and
-`chain_amendment_track`. These call myAI native handlers; myAI still does not
-run an external MCP server in-process.
+The Korean Law Engine is myAI's official-source legal grounding layer. It is separate from Naver Search and from department notebook RAG. It uses law.go.kr and configured decision APIs through server-side routes under `/api/law/*`.
 
 ## Configuration
 
-`LAW_OC` is the canonical law.go.kr Open API key. `KOREAN_LAW_API_KEY` is
-accepted by code only as a compatibility alias for migration. New docs and
-examples should use only `LAW_OC`.
+Important settings:
 
 ```env
 LAW_API_ENABLED=true
-LAW_OC=
-LAW_USER_AGENT=Mozilla/5.0 (compatible; myAI Korean Law Engine)
+LAW_OC=<law.go.kr-api-key>
+KOREAN_LAW_API_KEY=<optional LAW_OC alias>
 LAW_TIMEOUT_MS=8000
 LAW_MAX_RESULTS=8
 LAW_CONTEXT_BUDGET=10000
-
 LAW_CACHE_ENABLED=true
+LAW_CACHE_PATH=data/cache/law-cache.sqlite
 LAW_CACHE_TTL_MS=86400000
 LAW_CACHE_MAX_ENTRIES=1000
-
 LAW_AUTO_DETECT=false
 LAW_VERIFY_CITATIONS=true
 LAW_IMPACT_MAP_ENABLED=true
 LAW_HISTORY_TARGET=eflaw
 LAW_DECISIONS_ENABLED=true
-DECISIONS_API_KEY=
-HUNZAE_API_KEY=
-HUNZAE_API_URL=
+DECISIONS_API_KEY=<optional shared decision key>
+HUNZAE_API_KEY=<constitutional-court key>
+HAENGJIM_API_KEY=<administrative-appeal key>
 HAENGJIM_API_PROVIDER=lawgo
-HAENGJIM_API_URL=
+```
 
-LAW_WORKBENCH_REVIEW_TIMEOUT_MS=600000
-LAW_WORKBENCH_REVIEW_NUM_CTX=8192
+Direct Law Workbench review settings:
+
+```env
+LAW_WORKBENCH_REVIEW_TIMEOUT_MS=300000
+LAW_WORKBENCH_REVIEW_NUM_CTX=0
 LAW_WORKBENCH_REVIEW_MAX_PROMPT_CHARS=90000
 LAW_WORKBENCH_REVIEW_DOCUMENT_CHARS=16000
+```
 
+## Chat Routing
+
+`server/promptRouter.js` selects law routes before normal notebook or web search when prompts are explicitly legal.
+
+Important modes:
+
+- `strict_law_search`: composer law-search mode, `lawSearchMode: true`; excludes uploaded documents, notebooks, and Naver Search.
+- `law`: explicit legal prompt using official law evidence.
+- `compliance_review`: department legal-review prompt combining internal material with official legal evidence.
+- `normal_chat` / `notebook_rag` / `web_search`: non-law routes.
+
+Law citations use `[L]`. Decision citations use `[D]`. Notebook and web citations remain `[N]` and `[W]`.
+
+## API Surface
+
+Mounted routes:
+
+```text
+GET  /api/law/status
+GET  /api/law/tools
+GET  /api/law/terms
+POST /api/law/execute
+POST /api/law/workbench
+POST /api/law/workbench/review
+POST /api/law/workbench/report
+POST /api/law/search
+POST /api/law/ai-search
+POST /api/law/research
+POST /api/law/action-plan
+POST /api/law/article
+POST /api/law/article/at
+POST /api/law/article/diff
+POST /api/law/history
+POST /api/law/time-travel
+POST /api/law/verify-citations
+POST /api/law/precedents/search
+POST /api/law/precedents/detail
+POST /api/law/interpretations/search
+POST /api/law/interpretations/detail
+POST /api/law/admin-rules/search
+POST /api/law/admin-rules/detail
+POST /api/law/ordinances/search
+POST /api/law/ordinances/detail
+POST /api/law/annexes/search
+POST /api/law/annexes/detail
+POST /api/law/impact-map
+POST /api/law/three-tier
+POST /api/law/delegated-laws
+POST /api/law/linked-ordinances
+POST /api/law/linked-ordinance-articles
+POST /api/law/linked-laws-from-ordinance
+POST /api/law/decisions/search
+POST /api/law/decisions/detail
+```
+
+`/api/law/execute` is a compatibility surface over native myAI handlers for common Korean-law tool names. It is not an external MCP server.
+
+## Source Families
+
+| Family | Routes / modules | Citation |
+|---|---|---|
+| Statute search/articles | `search`, `ai-search`, `article` | `[L]` |
+| Citation verification | `verify-citations` | `[L]` + verification result |
+| Precedents | `precedents/*` | `[L]` law-precedent metadata |
+| Interpretations | `interpretations/*` | `[L]` |
+| Admin rules | `admin-rules/*` | `[L]` |
+| Ordinances | `ordinances/*`, linked ordinance routes | `[L]` |
+| Annexes/forms/tables | `annexes/*` | `[L]` |
+| Law structure | `three-tier`, `delegated-laws`, linked law routes | `[L]` |
+| Constitutional Court decisions | `decisions/*` | `[D]` |
+| Administrative appeals | `decisions/*` | `[D]` |
+| Impact map | `impact-map` | `[L]` plus graph nodes/edges |
+| Time-travel/history/diff | `article/at`, `article/diff`, `history`, `time-travel` | `[L]` |
+
+## Law Workbench
+
+Workbench evidence collection:
+
+```text
+public/modules/lawWorkbench.js
+-> POST /api/law/workbench
+-> server/law/lawWorkbench.js
+-> statutes, decisions, ordinances, linked laws, history, impact metadata
+-> browser stores official evidence snapshot in state.lawReviews
+```
+
+Review draft:
+
+```text
+POST /api/law/workbench/review
+body: { query, conditions, workbench, documents, model }
+-> server/law/lawWorkbenchReview.js
+-> JSON-only review prompt
+-> Ollama
+-> reviewResult or structured error
+```
+
+Scope rule: Law Workbench review never auto-includes active chat-room attachments. Only documents explicitly attached in the Law Workbench upload UI are sent in `documents`.
+
+Report:
+
+```text
+POST /api/law/workbench/report
+-> structured markdown report
+-> frontend can open it in Studio Document
+```
+
+Diagnostics are logged as `[law-workbench-review]` without prompt text or document body. Logs include prompt size, estimated tokens, document/evidence counts, elapsed time, and Ollama token counters when available.
+
+## Department Legal Review
+
+Department legal-review chat flows are different from the Law Workbench. They are routed through `/api/chat` and `server/compliance/*`.
+
+Behavior:
+
+- Requires internal material when the selected review type needs it.
+- Internal material can come from uploaded documents or selected department notebook evidence.
+- Official law evidence can include statutes, precedents, interpretations, admin rules, and ordinances.
+- Compliance metadata is returned through `X-Notebook-Meta.compliance`.
+- The assistant should clearly separate internal evidence from official law evidence.
+
+## GRC Workbench
+
+GRC review is an internal-policy audit, not a Korean Law Engine legal research flow.
+
+Routes:
+
+```text
+POST /api/compliance/grc/review
+POST /api/compliance/grc/report/pdf
+```
+
+GRC accepts target text and either policy text or a selected department notebook as the policy source. It uses Ollama JSON output with bounded input sizes and can save its draft opinion into Studio Document.
+
+## Decision APIs
+
+Decision routes use `server/law/decisionsApiClient.js`.
+
+Configuration:
+
+- `LAW_DECISIONS_ENABLED=false` disables decision routes.
+- `HUNZAE_API_KEY` or `DECISIONS_API_KEY` configures Constitutional Court access.
+- `HAENGJIM_API_KEY` or `DECISIONS_API_KEY` configures administrative appeal access where needed.
+- `HAENGJIM_API_PROVIDER=lawgo` uses law.go.kr fallback behavior unless `HAENGJIM_API_URL` selects a hub API.
+
+Some Constitutional Court list records may be list-only if the configured source does not provide full Korean text.
+
+## Law Term KB
+
+`GET /api/law/terms` searches the local legal-term knowledge base. The Law Workbench can use it silently for query expansion and prompt assistance; the UI no longer needs to render term chips.
+
+## Time Travel
+
+Supported date-aware operations:
+
+- `POST /api/law/article/at`: article at a requested effective date.
+- `POST /api/law/article/diff`: article diff between dates.
+- `POST /api/law/history`: revision history.
+- `POST /api/law/time-travel`: MCP-style wrapper that chooses article/full-law comparison.
+
+Dates accept common `YYYY-MM-DD`, `YYYYMMDD`, `YYYY/MM/DD`, or `YYYY.MM.DD` forms where supported by the tool.
+
+## Error Handling
+
+`server/law/lawErrors.js` normalizes law errors. If official lookup fails, chat metadata carries an error marker and the assistant must not invent statute text. No-evidence answers should suppress source panels and follow-up suggestions.
+
+## Rate Limits
+
+Law routes use dedicated fixed-window buckets:
+
+```env
 RATE_LIMIT_LAW_SEARCH_PER_MINUTE=15
 RATE_LIMIT_LAW_ARTICLE_PER_MINUTE=20
 RATE_LIMIT_LAW_VERIFY_PER_MINUTE=20
@@ -187,914 +216,14 @@ RATE_LIMIT_LAW_IMPACT_PER_MINUTE=4
 RATE_LIMIT_LAW_TIME_TRAVEL_PER_MINUTE=4
 ```
 
-Decision-source configuration:
+## Tests
 
-- Constitutional Court search/detail uses `HUNZAE_API_KEY`; when it is unset,
-  the client falls back to `DECISIONS_API_KEY`. `HUNZAE_API_URL` can override
-  the upstream base URL for local deployments.
-- Administrative appeals default to law.go.kr `target=decc` when `LAW_OC` is
-  configured. Set `HAENGJIM_API_PROVIDER=hub` or `HAENGJIM_API_URL` to use the
-  documented 행정심판허브시스템 재결례 API first.
-- The documented hub API is IP-registration based, not service-key based. The
-  request uses `page`, `row`, `init=Y`, `reqDate`, and optional filters such as
-  `cmitId`, `incdntNm`, `adjdcStartDe`, and `adjdcEndDe`. If the hub transport
-  fails and `LAW_OC` is available, the client falls back to law.go.kr.
-
-Security rules:
-
-- The API key is server-side only.
-- Never send `LAW_OC`, `KOREAN_LAW_API_KEY`, `DECISIONS_API_KEY`,
-  `HUNZAE_API_KEY`, administrative-appeal service keys, upstream `OC=` query
-  values, full upstream URLs, or server cache paths to browser JavaScript,
-  response metadata, retrieval logs, or error bodies.
-- Public `/api/law/*` responses must strip internal `raw` upstream payloads
-  before sending or returning cached results.
-- All formatted errors and logs must pass through masking.
-
-## Server Modules
-
-Current modules:
-
-```text
-server/law/lawApi.js
-server/law/lawApiClient.js
-server/law/lawApiParser.js
-server/law/lawArticleRef.js
-server/law/lawCache.js
-server/law/lawCitationFormatter.js
-server/law/lawConfig.js
-server/law/lawContextBuilder.js
-server/law/decisionsApiClient.js
-server/law/decisionsApiParser.js
-server/law/lawDiff.js
-server/law/lawErrors.js
-server/law/lawIntent.js
-server/law/lawLogger.js
-server/law/tools/adminRules.js
-server/law/tools/annexes.js
-server/law/tools/articleAt.js
-server/law/tools/articleDetail.js
-server/law/tools/articleDiff.js
-server/law/tools/decisions.js
-server/law/tools/interpretations.js
-server/law/tools/impactMap.js
-server/law/tools/lawHistory.js
-server/law/tools/lawStructure.js
-server/law/tools/lawText.js
-server/law/tools/ordinances.js
-server/law/tools/precedents.js
-server/law/tools/searchLaw.js
-server/law/tools/timeTravel.js
-server/law/tools/toolRegistry.js
-server/law/tools/verifyCitations.js
-```
-
-`lawApiParser.js` owns law.go.kr JSON normalization (search results, article
-payloads, precedent/interpretation/admin-rule/ordinance/annex/law-structure
-payloads, CDATA/HTML stripping, upstream error detection). `decisionsApiParser.js`
-normalizes Constitutional Court and administrative-appeal records, including
-the documented 행정심판허브시스템 XML shape. They are exercised by
-`scripts/law-parser-test.mjs` against fixtures in `scripts/fixtures/law/` that
-cover several statute families, branched articles, paragraphs, items, CDATA
-wrappers, HTML-encoded revision markers, and the precedent / 해석례 /
-admin-rule / ordinance non-statute source families.
-
-Do not add MCP protocol dependencies. Tool handlers should remain plain async
-functions that can be called from Express routes and chat orchestration.
-
-## API Endpoints
-
-### `GET /api/law/status`
-
-Returns engine configuration and public cache/usage status. With `LAW_OC` unset
-or `LAW_API_ENABLED=false`, it returns structured `503` with `ok: false`.
-
-The response must not expose the API key, upstream URLs, `OC=` values, or server
-filesystem paths.
-
-### `GET /api/law/tools`
-
-Lists the MCP-compatible Korean Law Engine tool names exposed by myAI. Query
-parameters `q`/`query` and `category` filter the list.
-
-### `GET /api/law/terms`
-
-Searches the rule-based law term KB (`server/law/lawTermKb.js`). Maps natural
-language terms (e.g., "전세금 못 받음") to canonical legal terms
-("임대차보증금 반환") and law/article hints ("주택임대차보호법 제3조의3").
-Used for query expansion and intent narrowing.
-
-### `POST /api/law/execute`
-
-Request:
-
-```json
-{ "toolName": "search_all", "params": { "query": "전세금 못 받았어" } }
-```
-
-Executes the native myAI equivalent of common `korean-law-mcp` tool names,
-including `search_law`, `search_ai_law`, `search_all`, `get_law_text`,
-`verify_citations`, `search_annexes`, `get_annexes`, `get_three_tier`,
-`get_delegated_laws`, linked-ordinance tools, `search_decisions`,
-`get_decision_text`, `impact_map`, `time_travel`, `action_plan`,
-`chain_full_research`, and `chain_amendment_track`. It is a compatibility
-surface over native handlers, not an external MCP server.
-
-### `POST /api/law/workbench`
-
-Request:
-
-```json
-{
-  "query": "전세금 못 받았어",
-  "lawName": "주택임대차보호법",
-  "article": "제3조",
-  "region": "서울특별시",
-  "materialText": "...",
-  "includeInternalImpact": true
-}
-```
-
-Builds a comprehensive legal workbench context in a single call. It aggregates
-topic research, article text, history, structure links, annexes, ordinances,
-decisions, and (optionally) an internal impact map. Returns a `law_workbench`
-response object used for review dashboards and report generation.
-
-### `POST /api/law/workbench/review`
-
-Request:
-
-```json
-{
-  "query": "개인정보 수집·이용 동의서 양식에서 필수 동의와 선택 동의를 구분하지 않은 경우 개인정보보호법상 문제가 있는지 검토",
-  "conditions": {
-    "reviewType": "privacy",
-    "outputType": "law_review_opinion",
-    "detail": "상세조건: 개인정보 적법성 검토"
-  },
-  "workbench": { "type": "law_workbench" },
-  "documents": []
-}
-```
-
-Runs the LLM review-draft step. The prompt is built from the user's request,
-review conditions, the official evidence gathered by `/api/law/workbench`, and
-only documents explicitly attached to the Law Workbench review state. It must
-not auto-include active chat-room attachments. Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the Law Workbench review state are sent. Server diagnostics log `documentCount` based on these explicitly attached files.
-
-Response:
-
-```json
-{
-  "ok": true,
-  "reviewResult": {
-    "summary": "string",
-    "issues": ["string"],
-    "facts": ["string"],
-    "legalGrounds": ["string"],
-    "analysis": ["string"],
-    "risks": ["string"],
-    "recommendations": ["string"],
-    "missingEvidence": ["string"],
-    "draftOpinion": "string",
-    "disclaimer": "string"
-  }
-}
-```
-
-The server logs `[law-workbench-review]` request/response/error/timeout events
-without prompt text or document body. Logs include `promptChars`,
-`estimatedTokens`, `documentCount`, official-evidence counts, `elapsedMs`, and
-Ollama `prompt_eval_count` / `eval_count` values when available.
-
-### `POST /api/law/workbench/report`
-
-Request:
-
-```json
-{
-  "workbench": { /* workbench response object */ },
-  "reviewResult": { /* optional reviewResult from /workbench/review */ },
-  "templateId": "law_review_opinion"
-}
-```
-
-Generates a structured legal report draft (Markdown blocks) from a workbench
-result and optional LLM review result. Template IDs are selected from
-`DEFAULT_REPORT_TEMPLATE` in `server/law/lawWorkbench.js`.
-
-### `POST /api/law/search`
-
-Request:
-
-```json
-{ "query": "civil code", "display": 10 }
-```
-
-Searches official law names and returns normalized candidates.
-
-### `POST /api/law/article`
-
-Request:
-
-```json
-{ "lawName": "civil code", "article": "article 750" }
-```
-
-Normalizes the article reference, resolves the law, fetches official article
-text, and returns `[L]` citation metadata plus article text.
-
-### `POST /api/law/verify-citations`
-
-Request:
-
-```json
-{ "text": "Verify civil code article 750 and civil code article 9999." }
-```
-
-Extracts statute/article citations and verifies whether each official article
-can be retrieved.
-
-### `POST /api/law/precedents/search`
-
-Request:
-
-```json
-{ "query": "불법행위 손해배상", "display": 5, "court": "", "caseType": "" }
-```
-
-Searches official 판례 (precedents) by keyword. Returns case number, court,
-선고일자, 사건종류명, and a `precId` that can be passed to the detail
-endpoint. Uses the `law_research` rate-limit bucket.
-
-### `POST /api/law/precedents/detail`
-
-Request:
-
-```json
-{ "precId": "230001" }
-```
-
-Returns the canonical precedent record: 판시사항, 판결요지, 이유, plus a
-`law_precedent` citation. Either `precId` or `caseNumber` may be supplied;
-when only `caseNumber` is given the search step is performed first.
-
-### `POST /api/law/interpretations/search`
-
-Request:
-
-```json
-{ "query": "개인정보 보호법 제15조", "display": 5, "agency": "" }
-```
-
-Searches official 법령해석례 (legal interpretations) issued by 법령해석
-기관. Returns 안건명, 회신기관, 회신일자, and an `expcId`.
-
-### `POST /api/law/interpretations/detail`
-
-Request:
-
-```json
-{ "expcId": "EXPC-2023-0099" }
-```
-
-Returns the interpretation record split into 질의요지, 회답, 이유 sections,
-combined into the `text` field with `[질의요지]/[회답]/[이유]` markers, plus a
-`law_interpretation` citation. Either `expcId` or `query` may be supplied;
-`query` resolves to the top hit through the search endpoint.
-
-### `POST /api/law/admin-rules/search`
-
-Request:
-
-```json
-{ "query": "개인정보 안전성 확보조치", "display": 5, "agency": "" }
-```
-
-Searches official 행정규칙 (고시/예규/훈령/지침) by keyword. Returns title,
-발령기관, 종류, 발령일자, 시행일자, and an `admrulId` that can be passed to
-the detail endpoint. Uses the `law_research` rate-limit bucket.
-
-### `POST /api/law/admin-rules/detail`
-
-Request:
-
-```json
-{ "admrulId": "ADM-2024-0001" }
-```
-
-Returns the canonical admin-rule record plus a `law_admin_rule` citation. Either
-`admrulId` or `query` may be supplied; `query` resolves to the top hit through
-the search endpoint.
-
-### `POST /api/law/ordinances/search`
-
-Request:
-
-```json
-{ "query": "서울특별시 주차장 조례", "display": 5, "region": "서울특별시" }
-```
-
-Searches official 자치법규 (조례/규칙) by keyword. Returns title, 지자체, 종류,
-공포일자, 시행일자, and an `ordinId` that can be passed to the detail endpoint.
-Uses the `law_research` rate-limit bucket.
-
-### `POST /api/law/ordinances/detail`
-
-Request:
-
-```json
-{ "ordinId": "ORD-SEOUL-12345" }
-```
-
-Returns the canonical ordinance record plus a `law_ordinance` citation. Either
-`ordinId` or `query` may be supplied; `query` resolves to the top hit through
-the search endpoint.
-
-### `POST /api/law/annexes/search`
-
-Request:
-
-```json
-{ "lawName": "개인정보 보호법", "query": "서식", "display": 5 }
-```
-
-Searches official annex, table, and form records for a statute.
-
-### `POST /api/law/annexes/detail`
-
-Request:
-
-```json
-{ "lawName": "개인정보 보호법", "annexNo": "별표 3" }
-```
-
-Returns official annex/table/form text plus citation metadata. `lawName` and
-`query` may be supplied when `annexId` is unknown. New callers should use
-`get_annex_detail` and pass `annexId`, `annexNo`, `annexTitle`, `formNo`, or
-`annexType` when a specific annex/form is intended. Ambiguous selector matches
-return `ANNEX_AMBIGUOUS` with candidates; `get_annexes` remains a compatibility
-alias.
-
-### Law-Structure Links
-
-Implemented endpoints:
-
-```text
-POST /api/law/three-tier
-POST /api/law/delegated-laws
-POST /api/law/linked-ordinances
-POST /api/law/linked-ordinance-articles
-POST /api/law/linked-laws-from-ordinance
-```
-
-These endpoints expose statute/enforcement-decree/enforcement-rule structure,
-delegated-law links, and national-law/local-ordinance relationships when the
-official upstream records contain the linkage.
-
-### `POST /api/law/decisions/search`
-
-Request:
-
-```json
-{ "query": "개인정보 침해", "category": "constitutional", "display": 5 }
-```
-
-Searches decision records. Prompts that mention 헌법재판소/헌재 route to
-Constitutional Court decisions; prompts that mention 행정심판/재결례 route to
-administrative-appeal decisions. Decision citations use `[D*]`.
-
-Administrative appeals default to law.go.kr `target=decc`. When
-`HAENGJIM_API_PROVIDER=hub` or `HAENGJIM_API_URL` is configured, the client
-uses the documented 행정심판허브시스템 재결례 API first and falls back to
-law.go.kr on transport/API failure when `LAW_OC` is available.
-
-Decision results expose `detailAvailable`, `detailKind`, and optional
-`detailNotice`. Korean Constitutional Court list records
-(`decision_hunzae_kor`) are list-only in this integration; detail lookup returns
-`HUNZAE_KOR_FULL_TEXT_UNSUPPORTED` instead of falling through to English detail.
-When `domain=all`, a missing Constitutional Court API configuration is reported
-under `domains.hunzae` / chat `decisionDomains` while administrative-appeal
-search can still succeed.
-
-### `POST /api/law/decisions/detail`
-
-Request:
-
-```json
-{ "decisionId": "2020헌마123", "category": "constitutional" }
-```
-
-Returns decision text plus `decision_constitutional` or `decision_haengjim`
-citation metadata. `query` may be supplied when the caller does not already
-have an ID.
-
-Pass `sourceType` or `subType` with the selected search result. Supported detail
-families are `decision_hunzae_eng`, `decision_hunzae_outline`, and
-`decision_haengjim`; `decision_hunzae_kor` is marked `detailAvailable: false`.
-
-### `POST /api/law/impact-map`
-
-Request:
-
-```json
-{ "lawName": "개인정보 보호법", "article": "제15조", "subject": "회원가입 양식", "materialText": "optional local material excerpt" }
-```
-
-Fetches the official statute article, then returns a deterministic structural
-impact map. It does not ask the model to infer legal duties. The response
-contains one official law citation plus graph-like `nodes`, `edges`, `groups`,
-and `warnings` under `impactMap`.
-
-### `POST /api/law/article/at`
-
-Request:
-
-```json
-{ "lawName": "민법", "article": "제750조", "effectiveDate": "2012-03-04" }
-```
-
-Returns the official article body as it stood on the requested 시행일자
-(historical snapshot). Internally switches the upstream call to
-`target=eflawjosub` and passes `efYd=YYYYMMDD`. Accepts `YYYY-MM-DD`,
-`YYYYMMDD`, `YYYY/MM/DD`, or `YYYY.MM.DD`; invalid dates return 400. Snapshots
-are immutable, so cache TTL is 30 days. Uses the `law_time_travel` rate-limit
-bucket. Response includes `effectiveDate` (the date requested) and
-`snapshotEffectiveDate` (the actual snapshot date law.go.kr returned).
-
-### `POST /api/law/article/diff`
-
-Request:
-
-```json
-{ "lawName": "개인정보 보호법", "article": "제15조", "fromDate": "2012-03-04", "toDate": "2023-09-15" }
-```
-
-Fetches the article at both effective dates via `getArticleAt`, then runs a
-deterministic LCS-based line diff in `server/law/lawDiff.js`. Adjacent
-removed+added line pairs with bigram-Jaccard similarity ≥ 0.5 are collapsed
-into a single `modified` hunk so the UI can show side-by-side rewrites instead
-of separate red/green lines.
-
-Response:
-
-```js
-{
-  ok: true,
-  query: { lawName, article, fromDate, toDate },
-  from: { citation, text, effectiveDate, snapshotEffectiveDate, cacheHit },
-  to:   { citation, text, effectiveDate, snapshotEffectiveDate, cacheHit },
-  diff: {
-    fromLineCount, toLineCount, identical,
-    hunks: [
-      { type: "unchanged", text },
-      { type: "added", text },
-      { type: "removed", text },
-      { type: "modified", oldText, newText, similarity }
-    ],
-    stats: { added, removed, modified, unchanged }
-  }
-}
-```
-
-`fromDate` and `toDate` must both validate and must differ. Uses
-`law_time_travel` rate-limit bucket. No model inference is involved; the diff
-is purely structural so two calls with the same inputs always produce the same
-hunks.
-
-### `POST /api/law/history`
-
-Request:
-
-```json
-{ "lawName": "민법" }
-```
-
-Lists 시행일별 개정 이력 for a given law (`lawName`, `lawId`, or `mst` accepted).
-Defaults to upstream `target=eflaw` (시행일자별 검색 — overridable via
-`LAW_HISTORY_TARGET`). For `eflaw` the client uses
-`?target=eflaw&query=<lawName>&display=100&type=JSON` and post-filters
-revisions whose `법령명한글` exactly matches the requested lawName (so
-sibling laws like "건축법 시행령" are excluded when the request was for
-"건축법"). Returns a `revisions` array sorted newest-first; each entry
-carries `{ effectiveDate, promulgationDate, mst, promulgationNumber,
-revisionType, title }` so callers can pick two dates to feed into
-`/api/law/article/diff`. Cached for 7 days (cache key includes the target,
-so changing `LAW_HISTORY_TARGET` does not serve stale rows). Uses the
-`law_time_travel` rate-limit bucket.
-
-## Chat Behavior
-
-Activation is explicit by default. `LAW_AUTO_DETECT=false` means ordinary chat
-is not diverted into legal lookup.
-
-Legal lookup runs when:
-
-- The prompt explicitly asks to find law text or verify legal citations.
-- The composer sends `lawSearchMode: true` from "법령 검색". In this forced
-  mode, uploaded documents, department notebooks, and Naver Search are excluded
-  and the answer must be grounded only in Korea Law Engine evidence.
-- The prompt contains a recognizable law-name plus article pattern.
-- The prompt asks for official precedent, legal interpretation, admin-rule, or
-  ordinance research with a research verb such as find/search/show/explain.
-- The prompt asks for Constitutional Court decisions or administrative-appeal
-  decisions. Decision-only prompts stay in the decision path and must not be
-  answered from unrelated statute article snippets.
-- The prompt explicitly asks whether an uploaded document or selected department
-  notebook material complies with a law.
-- The prompt asks for an `action_plan` (단계별 대응/조치 절차/이행 계획/
-  컴플라이언스 체크리스트 등) AND carries statute grounding — citation or a
-  recognized law name + article. Bare "계획 짜줘" requests cannot trigger this
-  mode.
-- The prompt is a common citizen legal problem phrased in natural language
-  (for example "전세금 못 받았어" or "임금 체불 신고하고 싶어"). In that case
-  `action_plan` first runs topic research and only injects the 5-step template
-  when official source candidates are found.
-- The selected department notebook's knowledge graph surfaces matched `Article`
-  nodes via `expandQueryWithGraph` → `articleRefs`. Even without an explicit
-  legal prompt, the chat orchestration re-fetches those articles via
-  `LawApiClient` and merges them as additional `[L]` citations. KG enrichment
-  is additive and silently degrades on per-article fetch failures.
-
-Naver Search remains ordinary web search. If a prompt has both legal and news
-intent, the law engine is authoritative for statute existence and original
-article text. Naver results may be included as separate `[W]` web evidence, but
-must not be used to assert statute existence when law.go.kr lookup fails.
-
-When intent is `department_legal_review`, `server/ollama.js` enforces two
-guard rails before fetching law context: (1) if neither a department notebook
-nor an uploaded document is attached, the chat short-circuits with
-`compliance.error: "NO_INTERNAL_MATERIAL"` and a fixed unavailability message;
-(2) if law.go.kr is not configured, the chat short-circuits with
-`compliance.error: "LAW_NOT_CONFIGURED"`. The notebook RAG query is also
-overridden with `buildComplianceSearchQuery(...)` so retrieval focuses on the
-review type's suggested terms.
-
-When law context exists, `server/ollama.js` injects a separate official-law
-context block and model instructions. The block emitted by
-`formatLawContext` looks like:
-
-```text
-[공식 법령 근거]
-Use only this section for statute/article existence and original article
-text. Cite legal claims with [L1], [L2], etc. Do not invent law names,
-article numbers, paragraphs, items, precedents, or interpretations.
-
-[L1] 민법 제750조 …
-```
-
-`action_plan` prompts append the `[행동 계획 응답 템플릿]` block (5-step
-structured response template + non-legal-advice phrase). KG-derived articles
-append `[지식그래프 연계 법령 근거]` (re-fetched via `LawApiClient` at answer
-time). The base system prompt also instructs the model to keep `[L]`, `[N]`,
-and `[W]` citations separate.
-
-## Response Metadata
-
-Chat responses expose law metadata through `X-Notebook-Meta`:
-
-```js
-law: {
-  ok: true,
-  query: "...",
-  mode: "law_article" | "law_search" | "law_topic_search"
-       | "verify_citations" | "legal_research" | "department_legal_review"
-       | "action_plan" | "kg_articles",
-  citations: [
-    {
-      citationId: "L1",
-      sourceType: "law",
-      lawName: "...",
-      article: "...",
-      canonical: "...",
-      title: "...",
-      locator: "...",
-      effectiveDate: "...",
-      url: "...",
-      excerpt: "...",
-      excerptTruncated: false,
-      excerptLength: 240,
-      kgDerived: false       // true when surfaced by notebook KG enrichment
-    }
-  ],
-  verification: {
-    checked: true,
-    failCount: 0,
-    results: []
-  },
-  disclaimer: "short" | "mandatory" | null,
-  error: "",
-  errorMessage: "",
-  kgArticlesMerged: 0        // # KG-discovered articles merged into [L] citations
-}
-```
-
-Phase 2 research citations may also use:
-
-```js
-{ citationId: "P1", sourceType: "law_precedent", recordType: "precedent", title, caseNumber, court, date, caseType, locator, url }
-{ citationId: "I1", sourceType: "law_interpretation", recordType: "interpretation", title, agency, date, locator, url }
-{ citationId: "R1", sourceType: "law_admin_rule", recordType: "admin_rule", title, agency, kind, issueDate, effectiveDate, locator, url }
-{ citationId: "O1", sourceType: "law_ordinance", recordType: "ordinance", title, region, kind, promulgationDate, effectiveDate, locator, url }
-{ citationId: "D1", sourceType: "decision_constitutional" | "decision_haengjim", recordType: "decision", title, caseNumber, institution, date, locator, url }
-```
-
-The browser stores and renders this metadata, but it must never receive API keys
-or upstream request URLs.
-
-For `department_legal_review` intent, the response also includes a parallel
-`compliance` envelope under `X-Notebook-Meta`:
-
-```js
-compliance: {
-  ok: true,
-  mode: "department_legal_review",
-  reviewType: "general" | "regulation_audit" | ...,
-  outputStyle: "summary" | "detailed_report",
-  title: "...",
-  disclaimer: "short",
-  evidenceFamilies: ["notebook", "uploaded_document", "law", "precedent",
-                     "interpretation", "admin_rule", "ordinance"],
-  error: "" | "NO_INTERNAL_MATERIAL" | "LAW_NOT_CONFIGURED"
-}
-```
-
-See `server/compliance/complianceTypes.js` for the current review-type catalog
-and `server/compliance/compliancePrompt.js` for the evidence-citation contract.
-
-## Article References
-
-`server/law/lawArticleRef.js` owns canonical article-reference normalization.
-It is shared by intent detection, cache keys, verification results, and the
-notebook knowledge graph harvester (which uses `extractLawCitations` to
-deterministically create `Statute` and `Article` nodes in `graph.sqlite`).
-
-Canonical citation IDs use slash-separated parts:
-
-```text
-lawName/article/paragraph/item/subitem
-```
-
-Examples in current tests use the mojibake-compatible strings already present
-in the codebase. When editing parser behavior, preserve these tests and add
-proper Korean Unicode fixtures where possible.
-
-Required behaviors:
-
-- Numeric article variants collapse to the same canonical article.
-- Branched article variants preserve the branch number.
-- Paragraph, item, subitem, and circled paragraph numbers are parsed.
-- Cache keys use canonical article references so equivalent inputs hit the same
-  row.
-
-## Verification
-
-If a citation cannot be verified, myAI must not invent the article text. Chat
-metadata carries verification failures, and the frontend renders a visible
-warning in the source panel.
-
-Internal failure markers:
-
-```text
-NOT_FOUND
-HALLUCINATION_DETECTED
-LAW_API_ERROR
-LAW_DISABLED
-LAW_NOT_CONFIGURED
-```
-
-## Disclaimer Policy
-
-Disclaimers are metadata-driven, not generated by the model.
-
-| Mode | Disclaimer |
-|---|---|
-| `law_article` | none |
-| `law_search` | none |
-| `verify_citations` | none |
-| `legal_research` | short |
-| `department_legal_review` | short |
-| `action_plan` | mandatory |
-| `kg_articles` | short |
-
-Simple article lookups carry no disclaimer. `short` is used for interpretation,
-compliance-style, and KG-derived answers. `mandatory` is used for `action_plan`,
-which embeds the non-legal-advice phrase
-("본 답변은 일반 정보이며 법률 자문이 아닙니다") inside the response template
-itself rather than just in metadata.
-
-## Privacy And Logging
-
-Law API calls send only normalized fields such as law name, article reference,
-decision query/category, public filters, and display count. They do not send
-the full user prompt.
-
-Law retrieval logs are privacy-safe JSONL records under `data/logs/`:
-
-```json
-{ "tool": "article_detail", "normalizedQuery": { "lawName": "...", "article": "..." }, "latencyMs": 123, "resultCount": 1, "cacheHit": false, "errorMarker": "" }
-```
-
-Logs and errors mask `LAW_OC`, `KOREAN_LAW_API_KEY`, `DECISIONS_API_KEY`,
-`HUNZAE_API_KEY`, administrative-appeal service keys, and any `OC=` URL
-parameter.
-
-## Testing
-
-Fast tests:
+Relevant commands:
 
 ```powershell
 npm.cmd run test:law
-npm.cmd run test:smoke
+npm.cmd run test:law-review-view
+npm.cmd run test:grc
+npm.cmd run test:grc-pdf
+npm.cmd test
 ```
-
-`test:law` runs four suites:
-
-- `scripts/law-unit-test.mjs` — intent, normalization, masking, cache,
-  action_plan template, disclaimer policy, decision routing, administrative
-  appeal query narrowing, documented hub request parameters, provider
-  selection, and law.go.kr fallback behavior.
-- `scripts/law-parser-test.mjs` — law.go.kr JSON parsing across fixture
-  statutes plus precedent, interpretation, admin-rule, ordinance, annex,
-  law-structure, and decision fixtures
-  (`scripts/fixtures/law/`). Run only this with `npm run test:law:parser`.
-- `scripts/law-intent-eval.mjs` — true-positive / false-positive evaluation
-  for legal intent detection. Covers cases like "라면 끓이는 방법 알려줘",
-  "Git 사용법 1조 5호", "야구 규칙 30조" (must NOT trigger) and "민법 제750조",
-  "헌법 제10조", "도로교통법 제44조", research prompts for 판례/해석례/조례,
-  and action_plan TPs/FPs (must trigger / must not trigger). Run only this
-  with `npm run test:law:intent`.
-- `scripts/kg-law-test.mjs` — ontology guards (Statute/Article hidden from
-  LLM), `harvestLegalCitationsInChunk` (creates Statute+Article+PART_OF,
-  dedupes across chunks, ignores non-legal text), expander article-ref
-  surfacing, and `buildLawContextFromArticleRefs` + `mergeLawContexts`
-  (mock client; verifies KG-derived `[L]` citations and dedupe-by-canonical
-  merge). Run only this with `npm run test:law:kg`.
-
-`test:smoke` checks `/api/law/status` whether or not `LAW_OC` is configured and
-asserts the response does not expose the server cache path or API key.
-
-Live law.go.kr endpoint checks are opt-in:
-
-```powershell
-$env:MYAI_SMOKE_LAW_LIVE="1"
-npm.cmd run test:smoke
-```
-
-When the flag is set and `/api/law/status` reports `ok: true`, the smoke test
-exercises `/api/law/search`, `/api/law/article`, and `/api/law/verify-citations`
-across several statute families (민법, 형법, 도로교통법, 개인정보 보호법) so a
-single run validates parser robustness against multiple real responses. It also
-runs `POST /api/chat` with two grounded legal prompts and asserts that
-`X-Notebook-Meta.law` carries the expected mode, citation list (with `excerpt`
-field), and verification fail-count. The chat live test covers `law_article`
-("민법 제750조 본문을 알려줘") and `verify_citations` ("조문 검증해줘:
-민법 제750조, 민법 제9999조") modes.
-
-## Acceptance Criteria
-
-The statute-grounding baseline is acceptable when:
-
-- A server with `LAW_OC` configured can search a Korean law by name.
-- myAI can retrieve a specific statute article.
-- myAI can retrieve Constitutional Court and administrative-appeal decision
-  results for decision-specific prompts when the relevant upstream is
-  configured.
-- Explicit legal chat prompts produce answers grounded in retrieved law text.
-- Answers include law/decision citation metadata and the frontend displays
-  `[L1]` or `[D1]`.
-- Citation verification detects valid and invalid citations.
-- Missing articles are reported without invented article text.
-- Department notebook evidence and law evidence remain separate.
-- API keys and upstream `OC=` values never appear in frontend responses, logs, or
-  errors.
-- Tests pass with live law tests skipped unless explicitly enabled.
-- Setup, configuration, and operational limitations are documented here.
-
-## Roadmap
-
-Phase 1 (complete) — baseline statute grounding:
-
-- ✅ `/api/law/status`, `/api/law/search`, `/api/law/article`,
-  `/api/law/verify-citations`
-- ✅ Canonical article-reference normalization (`server/law/lawArticleRef.js`)
-- ✅ Intent detection (`server/law/lawIntent.js`) for `law_article`,
-  `law_search`, `verify_citations`, `department_legal_review`
-- ✅ SQLite cache (`data/cache/law-cache.sqlite`)
-- ✅ API key + URL masking; private response field stripping
-- ✅ Frontend law citation rendering (`[L1]`) separate from `[N]` and `[W]`
-
-Phase 2 (complete):
-
-- ✅ Precedent search/text tools (`/api/law/precedents/search`, `/api/law/precedents/detail`)
-- ✅ Interpretation search/text tools (`/api/law/interpretations/search`, `/api/law/interpretations/detail`)
-- ✅ Admin rule tools (`/api/law/admin-rules/search`, `/api/law/admin-rules/detail`)
-- ✅ Ordinance tools (`/api/law/ordinances/search`, `/api/law/ordinances/detail`)
-- ✅ `legal_research` chat mode wiring intent flags (wantPrecedents/Interpretations/AdminRules/Ordinances) into a combined context
-- ✅ Richer law source-panel details (expandable article excerpt + deep-link)
-- ✅ Frontend rendering for precedent/interpretation/admin/ordinance citations
-  with per-source-type badges and meta fields
-
-Phase 3 (complete):
-
-- ✅ Impact map tool
-- ✅ `/api/law/impact-map`
-- ✅ Studio Law Explorer MVP
-
-Phase 4 (complete):
-
-- ✅ Historical article retrieval (`/api/law/article/at`, `target=eflawjosub` +
-  `efYd`)
-- ✅ Article diff (`/api/law/article/diff`, `server/law/lawDiff.js` LCS +
-  bigram modified-pair detection)
-- ✅ Law revision history list (`/api/law/history`, default `target=eflaw` —
-  see Limitations for the live-validation history of this target)
-- ✅ `law_time_travel` rate-limit bucket wired through all three endpoints
-- ✅ Studio Law Explorer "조문 이력" sub-tab (revision list + snapshot +
-  diff viewer)
-
-Phase 5 (complete):
-
-- ✅ `action_plan` intent detection (`server/law/lawIntent.js`,
-  `ACTION_PLAN_PATTERN`) — gated on statute citation or law-name + article
-  reference so generic "계획 짜줘" prompts cannot trigger it
-- ✅ `action_plan` chat orchestration in `server/law/lawContextBuilder.js`
-  (article fetch + structured-step template injection)
-- ✅ Structured 5-step response template (`ACTION_PLAN_TEMPLATE`):
-  핵심 의무 / 단계별 조치 / 증빙·기록 / 후속 점검 / 한계와 권고
-- ✅ Mandatory disclaimer policy (`disclaimerForLawMode("action_plan")`
-  → `"mandatory"`) with the non-legal-advice phrase
-  ("본 답변은 일반 정보이며 법률 자문이 아닙니다") embedded in the template
-- ✅ Tests:
-  - `law-intent-eval.mjs` — TPs ("개인정보 보호법 제15조 위반 시 단계별 대응",
-    "근로기준법 제53조 이행 계획", "민법 제750조 손해배상 조치 절차",
-    "도로교통법 제44조 ... 컴플라이언스 체크리스트") and FPs (프로젝트 단계별
-    실행 계획, 주말 여행 대응 방안, 다이어트 단계별 실행 계획)
-  - `law-unit-test.mjs` — `testActionPlanIntent`, `testDisclaimerPolicy`,
-    `testActionPlanContext` (mocks `getLawArticle` and asserts the rendered
-    system block carries `[공식 법령 근거]`, `[행동 계획 응답 템플릿]`, and
-    "법률 자문이 아닙니다")
-
-Knowledge graph track (complete):
-
-- ✅ `Statute` and `Article` entity types and `REFERS_TO_ARTICLE` relation
-  added to `server/rag/graph/ontology.js`. They are hidden from the LLM
-  extractor (`LLM_EXTRACTED_ENTITY_TYPES` / `LLM_EXTRACTED_RELATION_TYPES`)
-  so the model cannot hallucinate fake statutes — only the deterministic
-  harvester creates them.
-- ✅ `harvestLegalCitationsInChunk` in `server/rag/graph/builder.js` runs
-  `extractLawCitations` on every chunk. For each citation it upserts
-  `Statute` (label = lawName), `Article` (label = "lawName 제N조", aliases
-  include canonical "lawName/제N조"), and a PART_OF edge plus source refs.
-  After LLM relation processing, Concept/Rule/Procedure/Department/Role/
-  Document entities in the same chunk get `REFERS_TO_ARTICLE` cross-edges
-  to the harvested articles (capped at 12 per chunk) so subject-matter
-  queries can surface relevant articles via 1-hop expansion.
-- ✅ Reuses `data/notebooks/<notebookId>/graph.sqlite` with high-confidence
-  (0.95) Statute/Article nodes and 0.98 PART_OF / REFERS_TO_ARTICLE edges.
-- ✅ `extractArticleRefsFromNeighborhood` in `server/rag/graph/expander.js`
-  re-parses Article-node labels to canonical refs. `expandQueryWithGraph`
-  surfaces them in `articleRefs`; `searchNotebook` returns the same field.
-- ✅ Answer-time enrichment: `server/ollama.js` calls
-  `buildLawContextFromArticleRefs` on the surfaced refs (re-fetching official
-  article text via `LawApiClient`). Either becomes the primary law context
-  (no explicit legal intent) or merges with the existing context via
-  `mergeLawContexts` (deduplicates by canonical, renumbers `[L*]` ids).
-  Failed article fetches degrade silently — KG enrichment is additive and
-  never blocks the answer.
-
-## Limitations
-
-The engine covers every roadmap phase: Phase 1 statute search / article
-retrieval / citation verification, Phase 2 official-source research
-(precedents, legal interpretations, admin rules, ordinances, annexes,
-law-structure links, Constitutional Court decisions, and administrative-appeal
-decisions), Phase 3
-impact maps, Phase 4 time-travel / diff (backend + Studio Law Explorer
-"조문 이력" UI), Phase 5 `action_plan` mode with mandatory non-legal-advice
-disclaimer, and Knowledge Graph integration (deterministic
-`Statute`/`Article` harvest from notebook chunks with answer-time
-`LawApiClient` enrichment of KG-discovered articles).
-
-Known operational caveats:
-
-- `LAW_HISTORY_TARGET` defaults to `eflaw` (시행일자별 검색), the live
-  law.go.kr endpoint that returns every effective-date version of a law.
-  An earlier guess of `lsHstInq` shipped briefly but the upstream silently
-  returned empty 200 responses for that target, producing
-  "Law API returned invalid JSON" errors at the client. The current code
-  uses `?target=eflaw&query=<lawName>&display=100` and post-filters the
-  result list by exact `법령명한글` match. The cache key includes the
-  target so flipping `LAW_HISTORY_TARGET` does not serve stale rows from
-  the legacy attempt. If law.go.kr renames or deprecates `eflaw`, override
-  via env. The parser accepts the common 시행일자/공포일자/제개정구분
-  field shapes shared by `law`, `eflaw`, and any future history target.
-- The KG harvester is rule-based (`extractLawCitations`). Chunks that contain
-  law references but no recognizable law-name suffix won't produce Statute or
-  Article nodes. Update `lawArticleRef.js` patterns if new statute families
-  need coverage.
-- Administrative-appeal hub mode depends on upstream IP registration and
-  availability. If hub mode is configured but unavailable, the client falls
-  back to law.go.kr `target=decc` only when `LAW_OC` is configured.
-- KG-derived article fetches are capped (default 4 per query) and per-article
-  failures are silently dropped so KG enrichment never blocks the answer.

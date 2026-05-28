@@ -1,13 +1,13 @@
 # Agent Handoff
 
-myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace with uploaded-document mind maps, a local AI calendar agent, department-notebook RAG (Qdrant + SQLite FTS5 with JSON fallback), Korean law/compliance workflows, answer-as-room-source workflows, whole-document Map-Reduce analysis, room pin toggle, encrypted browser persistence, usage telemetry, and personalized UI settings.
+myAI is a local Ollama-based AI secretary web app. It supports chat, document/image analysis, CSV/XLSX visualizations, a right-side Studio workspace, local calendar commands, department-notebook RAG, Korean law/compliance workflows, answer-as-room-source workflows, whole-document Map-Reduce analysis, room pinning, encrypted browser persistence, usage telemetry, and personalized UI settings.
 
 This file is intentionally short. Keep long explanations in `docs/`.
 
 ## Quick Start
 
 ```powershell
-cd c:\Dev\myAI
+cd D:\Dev\myAI
 npm.cmd start
 ```
 
@@ -25,275 +25,145 @@ curl.exe -s http://127.0.0.1:3000/api/status
 npm.cmd test
 npm.cmd run test:prompt-router
 npm.cmd run test:source-workflow
+npm.cmd run test:studio-document
 npm.cmd run test:xlsx
 npm.cmd run test:live
 ```
 
 ## Current Local Model Notes
 
-- `.env` currently uses `OLLAMA_MODEL=gemma4:e2b`.
-- `.env` should use `EMBED_MODEL=bge-m3`.
-- On 2026-05-05, direct Ollama checks showed:
-  - `bge-m3:latest` is installed.
-  - `gemma4:e2b` is installed.
-  - `gemma4:e2b` is installed and is the current local `.env` model for chat and Law Workbench review testing.
-  - `gemma4:e4b` may be used on hosts with enough memory for stronger review output.
-  - `POST /api/embed` with `bge-m3` returns 1024-dimensional vectors.
+- Recommended local `.env`: `OLLAMA_MODEL=gemma4:e2b`, `EMBED_MODEL=bge-m3`, `EMBED_DIM=1024`.
+- On 2026-05-05, direct Ollama checks showed `bge-m3:latest` and `gemma4:e2b` installed.
+- `POST /api/embed` with `bge-m3` returns 1024-dimensional vectors.
+- `gemma4:e4b` may be used on hosts with enough memory for stronger review output.
 - `/api/status` requires the app server to be running on port 3000.
-- Code fallback model in `server/ollama.js`: `gemma3n:e2b`.
-- `.env.example` defaults to `OLLAMA_MODEL=gemma3n:e2b` and `EMBED_MODEL=bge-m3`.
 
-## Important Files
+## Important Server Files
 
-Server:
-
-- `server/index.js` - Express routes, uploads, static frontend, API dispatch.
+- `server/index.js` - Express routes, uploads, static frontend, API dispatch, rate-limit mounts.
+- `server/env.js` - project-root `.env` loader.
+- `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
+- `server/promptRouter.js` - classifies `/api/chat` into `strict_law_search`, `map_reduce`, `compliance_review`, `law`, `notebook_rag`, `web_search`, or `normal_chat`.
 - `server/exportFiles.js` - assistant answer export generators for MD, XLSX, PDF, HWPX, and DOCX.
-- `server/sourceWorkflow/generatedSourceApi.js` - converts assistant answers into generated room-source payloads.
-- `server/sourceWorkflow/generatedSourceModel.js` - generated source validation, trust metadata, labels, and inline binary cap.
+- `server/sourceWorkflow/` - answer-as-source, source guide, generated-source metadata, and Studio-output promotion review.
+- `server/studioDocument/` - Studio Document templates, answer-to-document conversion, AI edit, validation, and export.
 - `server/mindmap.js` - Studio mind-map graph generation from current-room uploaded documents.
 - `server/graphStudioApi.js` - Studio knowledge-graph endpoints for accessible department notebooks.
-- `server/graphAdminApi.js` - Admin knowledge-graph inspection, node/edge override, and rebuild endpoints.
-- `server/promptRouter.js` - chat-route classifier; resolves each request into one of `strict_law_search` / `map_reduce` / `compliance_review` / `law` / `notebook_rag` / `web_search` / `normal_chat` with derived flags and a compliance notebook query override.
-- `server/ollama.js` - Ollama chat streaming, prompt construction, context building, RAG and Map-Reduce dispatch.
-- `server/naverSearch.js` - Naver Search API integration for explicit search prompts.
+- `server/graphAdminApi.js` - Admin graph inspection, node/edge override, and rebuild endpoints.
 - `server/notebooks.js` - department-notebook storage, access policy metadata, dual-write to Qdrant/SQLite, ingest, chunk cache.
 - `server/accessControl.js` - group/level and Super read-access passwords, signed access tokens, notebook policy checks.
-- `server/rag/ragConfig.js` - RAG profile constants; resolves `DEPARTMENT_VECTOR_BACKEND` / `DEPARTMENT_LEXICAL_BACKEND`.
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> log.
-- `server/rag/embeddingValidator.js` - validates embedding dimension and integrity before ingest/query.
-- `server/rag/retrievalLogger.js` - privacy-safe JSONL retrieval telemetry.
-- `server/rag/retrievalLogReader.js` - retrieval telemetry summaries for RAG Evaluation.
-- `server/rag/evalRunner.js` - golden-set Recall/MRR evaluation runner.
-- `server/rag/evalStore.js` - golden-set and persisted run storage.
+- `server/rag/departmentRag.js` - expand -> embed -> Qdrant/SQLite -> graph expansion -> RRF -> rerank -> greedyFit -> JSON fallback -> log.
 - `server/rag/graph/` - notebook knowledge-graph ontology, extraction, store, rebuild jobs, and query expansion.
 - `server/indexes/qdrantVectorIndex.js` - Qdrant collection lifecycle, upsert/delete/search, health.
 - `server/indexes/sqliteFtsIndex.js` - SQLite FTS5 lexical index for BM25 and CJK bigram search.
-- `server/ingest/notebookIngestJobs.js` - async background ingest job queue with retry and startup recovery.
-- `server/reranker.js` - cross-encoder reranking via `/api/rerank`; off by default. Ollama does not expose `/api/rerank`, so enabling it requires an external reranker server (e.g., HF Text Embeddings Inference). Hybrid RRF results are used directly when disabled; the Admin "RAG Status" badge tooltip explains this.
-- `server/modelQueue.js` - in-process concurrency queues for embedding, analysis, rerank, map-reduce.
+- `server/ingest/notebookIngestJobs.js` - async ingest job queue with retry and startup recovery.
+- `server/reranker.js` - cross-encoder reranking via `/api/rerank`; off by default because Ollama does not expose that endpoint.
+- `server/modelQueue.js` - in-process queues for embedding, analysis, chat, rerank, and Map-Reduce.
 - `server/retrieval.js` - BM25/CJK bigram, cosine similarity, RRF hybrid retrieval.
 - `server/embeddings.js` - Ollama `/api/embed` helpers.
 - `server/queryExpansion.js` - LLM query expansion for retrieval.
 - `server/documentAnalysis.js` - upload-time summary/topic extraction.
-- `server/mapReduce.js` - whole-document Map-Reduce analysis.
+- `server/mapReduce.js` - whole-document Precision Analysis.
 - `server/calendarAgent.js` - natural-language calendar intent classifier.
 - `server/visualization.js` - visualization plan validation and chart data computation.
-- `server/compliance/` - department legal-review intent, review-type catalog, and prompt construction.
-- `server/law/` - Korean Law Engine routes, law.go.kr and decision API clients, citation verification, research, annexes, law-structure links, Constitutional Court/admin-appeal decisions, impact map, time-travel tools, and Law Workbench review/report APIs.
+- `server/compliance/` - department legal-review intent, review-type catalog, prompt construction, and GRC review.
+- `server/law/` - Korean Law Engine routes, law.go.kr and decision API clients, citation verification, research, annexes, law-structure links, decisions, impact map, time-travel, and Law Workbench review/report APIs.
 - `server/ragEvalApi.js` - Admin RAG Evaluation API, background runs, SSE progress, retrieval-log summaries.
 - `server/parsers.js` - PDF/DOCX/XLSX/CSV/PPTX/HWPX/image parsing and chunking.
 - `server/auth.js` - `ADMIN_TOKEN` middleware.
-- `server/stats/statsLogger.js` - privacy-safe usage telemetry writer (chat/session events).
-- `server/stats/statsLogReader.js` - aggregator for KPI summary, per-group, per-notebook, and recent-session views.
-- `server/stats/statsApi.js` - Admin Console statistics endpoints (`/api/admin/stats/summary|groups|notebooks|sessions`).
-- `server/studioDocument/studioDocumentApi.js` - Studio Document Editor templates / answer-to-document / export routes.
-- `server/studioDocument/answerToDocument.js` - converts assistant answer markdown into template-structured JSON blocks via Ollama.
-- `server/studioDocument/documentModel.js` - document model validation and normalization.
-- `server/studioDocument/documentExport.js` - HWPX/DOCX/PDF/MD exporter for structured Studio documents.
+- `server/stats/` - privacy-safe usage telemetry writer, reader, and Admin Stats API.
 
-Frontend:
+## Important Frontend Files
 
 - `public/index.html` - app shell and dialogs.
-- `public/app.js` - orchestrator: init, routing, room management, drag-drop, global key bindings.
-- `public/modules/state.js` - global `state` object, `elements` DOM refs, shared utilities (including `showConfirmDialog`). No imports.
-- `public/modules/persistence.js` - IndexedDB, WebCrypto AES-GCM, app state save/load.
-- `public/modules/calendar.js` - calendar rendering, event CRUD, reminders, intent command bar.
-- `public/modules/chat.js` - streaming chat, message rendering, file upload, composer stop-generation button wiring, calendar message handlers, query-aware document trimming, input source badge rendering and persistence.
-- `public/modules/messageDelete.js` - single-message and bulk chat message deletion.
-- `public/modules/customPrompts.js` - personal prompt presets, picker, and Settings subtab.
-- `public/modules/sourceWorkflow.js` - "자료로 추가" dialog, `/api/source-workflow/from-answer` call, and generated-source insertion into room materials.
-- `public/modules/layout.js` - three-pane layout sizing; left resize only; right resize and collapse.
-- `public/modules/notebook.js` - notebook selector UI, access login, Admin Console notebook / RAG-status / access panels, CRUD, admin event binding.
-- `public/modules/studio.js` - Studio panel controls, mind-map API calls, SVG rendering, node details.
-- `public/modules/documentStudio.js` - Studio Document Editor tab: template selection, visual draft editing, plain-text fallback, export.
-- `public/modules/documentStudioMarkdown.js` - Studio document visual-block/markdown conversion for generated drafts.
-- `public/modules/documentTemplates.js` - built-in and personal Studio document templates.
-- `public/modules/docTool.js` - Studio File Tools: client-side PDF/XLSX/TXT merge and split.
-- `public/modules/graphStudio.js` - Studio knowledge-graph viewer for selected department notebooks.
-- `public/modules/ragEval.js` - Admin Console RAG Evaluation UI.
-- `public/modules/adminStats.js` - Admin Console usage statistics panel (KPI / groups / notebooks / sessions).
-- `public/modules/adminApi.js` - small Admin Console fetch helpers.
-- `public/modules/evidenceSummary.js` - classification and formatting of citations (official law, precedents, decisions, attachments, web, internal).
-- `public/modules/html.js` - DOM escaping/sanitizing helpers.
-- `public/modules/lawWorkbench.js` - Law Workbench UI for Korean legal research, dedicated review-document state, LLM review results/errors, and impact mapping.
-- `public/modules/settings.js` - Settings dialog tabs, Personal Settings layout, Admin Console mounting, brand/theme/color-theme/avatar/banner.
-- `public/answerRenderer.js` - markdown-lite answer rendering.
-- `public/visualizationRenderer.js` - SVG/table/KPI/infographic rendering.
-- `public/styles.css` - layout and theme styles.
+- `public/app.js` - orchestrator: init, routing, room management, drag/drop, global key bindings, GRC bundle mounting.
+- `public/modules/state.js` - global `state`, `elements`, shared utilities including `showConfirmDialog`.
+- `public/modules/persistence.js` - IndexedDB and WebCrypto AES-GCM app state save/load.
+- `public/modules/chat.js` - streaming chat, message rendering, upload, stop generation, source badges, query-aware trimming.
+- `public/modules/calendar.js` - calendar rendering, CRUD, recurrence, reminders, ICS import/export.
+- `public/modules/notebook.js` - notebook selector, access login, Admin Console notebook/RAG/access/promotion panels.
+- `public/modules/studio.js` - Studio tool controls and mind-map SVG rendering.
+- `public/modules/documentStudio.js` - Studio Document Editor, source guides, output library, export.
+- `public/modules/docTool.js` - client-side PDF/XLSX/TXT merge and split.
+- `public/modules/graphStudio.js` - Studio knowledge-graph viewer using Cytoscape.
+- `public/modules/lawWorkbench.js` - Law Workbench UI, dedicated review documents, LLM review state, report draft, impact mapping.
+- `public/modules/ragEval.js` - Admin RAG Evaluation UI.
+- `public/modules/adminStats.js` - Admin usage statistics UI.
+- `public/modules/evidenceSummary.js` - citation classification and formatting.
+- `public/answerRenderer.js` - markdown-lite rendering and inline citation popups.
+- `src/components/GrcWorkbench.svelte` - Svelte GRC Workbench built by Vite into `public/dist/`.
 
-Docs:
-
-- `README.md` - user/operator overview.
-- `docs/ARCHITECTURE.md` - system flows and module responsibilities.
-- `docs/DEPARTMENT_RAG_ARCHITECTURE.md` - Qdrant + SQLite FTS5 topology, ingest strategy, operations.
-- `docs/CONTAINER_DEPLOYMENT.md` - Docker Compose deployment, volumes, GPU mode, backup/update.
-- `docs/API.md` - endpoint summary.
-- `docs/RAG.md` - dual-profile RAG (personal vs. department), ingest flows, reranker, Map-Reduce.
-- `docs/CALENDAR.md` - local calendar and intent agent behavior.
-- `docs/SECURITY.md` - trusted-network boundary, reverse proxy/TLS/auth/rate-limit guidance.
-- `docs/DESIGN.md` - project design policies and UI styling rules.
-- `docs/KOREAN_LAW_ENGINE.md` - native Korean law engine, statute/decision verification, annexes, law-structure links, and compliance tools.
-- `docs/USAGE_TELEMETRY.md` - privacy-safe usage telemetry and Admin Statistics behavior.
-
-## Deployment Topology
-
-```text
-[Personal PC - each user]                [Department Workstation - shared]
-  Browser                                   Node.js/Express :3000
-  |- AES-GCM IndexedDB                      |- Ollama :11434 (GPU: DGX Spark / RTX 5090-class)
-  |  |- rooms + messages                    |- Qdrant :6333 (optional)
-  |  |- personal room uploads               |- data/notebooks/
-  |  |- calendar events                     |- data/indexes/ (SQLite FTS5, optional)
-  |  `- app settings                        `- uploads/ (temp only, cleaned after parse)
-  `- fetch() -> http://<dept-host>:3000/api/
-```
-
-- Personal data (uploads, calendar, settings, history) lives only in the user's browser IndexedDB.
-- Department notebooks live on the server filesystem; GPU-class hardware embeds and queries them.
-- Department notebook read restrictions are optional group/level or Super access policies. Admins manage them from Settings -> Admin Console. Access Management has Group Management and Super Access tabs; existing Super password changes require the current Super password plus matching new-password confirmation. Normal users authenticate from the notebook selector when access control is active.
-- Upload temp files are deleted after the parse response; no personal data is retained server-side.
-- There is no per-user server account; isolation is by browser AES-GCM key.
-
-## Core Architecture
+## Core Flows
 
 Chat:
 
 ```text
 public/modules/chat.js -> POST /api/chat
--> server/promptRouter.js classifies the request into one route
-   (strict_law_search | map_reduce | compliance_review | law |
-    notebook_rag | web_search | normal_chat)
--> server/ollama.js builds prompt/context based on the resolved route flags
--> optional server/naverSearch.js web context only when forceWebSearch is set
--> Ollama streams (abortable via composer stop button)
--> browser renders and saves encrypted state in IndexedDB
--> /api/followups generates autonomous context-aware suggestions
+-> server/promptRouter.js chooses one route
+-> server/ollama.js builds prompt/context
+-> optional Naver Search, Korean Law Engine, department RAG, or Map-Reduce
+-> Ollama streams
+-> browser renders and saves encrypted state
 ```
 
-Answer-as-source loop:
+Answer-as-source:
 
 ```text
-assistant message "자료로 추가"
+assistant message action
 -> public/modules/sourceWorkflow.js
 -> POST /api/source-workflow/from-answer
 -> server/sourceWorkflow/* + server/exportFiles.js
--> generatedSource pushed into room.documents
--> encrypted IndexedDB persistence
--> later /api/chat includes it as secondary document context
+-> generatedSource added to room.documents
+-> later /api/chat includes it as secondary context
 ```
-
-Naver Search is skipped when uploaded files are present or a department
-notebook is selected. No-evidence answers should not render source panels or
-follow-up suggestions.
-
-Law Workbench review is intentionally scoped separately from normal chat
-materials. `/api/law/workbench/review` receives only the prompt, selected
-review conditions, the official workbench evidence payload, and Law Workbench
-dedicated documents. Do not auto-include active room attachments; Law Workbench has its own dedicated upload UI. Only documents explicitly attached to the active Law Workbench review are sent.
-
-Input source badges on each assistant message show which sources were active
-(notebook, uploaded files, generated room sources, web search, law engine). Guessed badges are shown
-during streaming and confirmed or removed when the server response arrives.
-Clicking the notebook badge reopens the notebook selector. Badges are persisted
-in `state.rooms[roomId].messages[].sourceBadges` and re-rendered on reload.
 
 Notebook RAG:
 
 ```text
-room.selectedNotebookId
-- `server/rag/departmentRag.js` - department retrieval orchestration: expand -> embed -> Qdrant/SQLite -> RRF -> rerank -> greedyFit -> log.
--> expandQuery() + embedTexts()
--> Qdrant dense search (DEPARTMENT_VECTOR_BACKEND=qdrant)
--> SQLite FTS5 search (DEPARTMENT_LEXICAL_BACKEND=sqlite)
--> RRF fusion -> cross-encoder rerank (RAG_RERANK_ENABLED=true)
--> greedyFit -> fallback: in-memory BM25 + cosine + RRF
--> [N] citations in X-Notebook-Meta
--> browser renders citation markers/panel
+selected notebook
+-> access token check when access control is active
+-> query expansion + embedding
+-> Qdrant + SQLite FTS5 + optional graph expansion
+-> RRF + optional external rerank
+-> greedy context fit + citations in X-Notebook-Meta
 ```
 
-Precision analysis:
+Precision Analysis:
 
 ```text
-composer material panel "정밀 분석" toggle
+composer material panel toggle
 -> POST /api/chat { mode: "map_reduce" }
 -> notebook chunks or active room document chunks
--> server/mapReduce.js map calls + reduce stream
+-> map calls + final reduce stream
+-> inline citation popup metadata
 ```
-
-Calendar:
-
-```text
-calendar-like prompt
--> refined regex pre-filtering (public/modules/calendar.js)
--> /api/agent/intent (server/calendarAgent.js)
--> client orchestration (isExplicitChat check)
--> browser mutates local state.calendar.events
-```
-
-Visualization:
-
-```text
-CSV/XLSX prompt
--> /api/visualize
--> LLM proposes plan
--> server validates and computes chart data
--> browser renders final spec
-```
-
-Studio:
-
-```text
-current room uploaded documents
--> /api/studio/mindmap
--> server/mindmap.js samples extracted text chunks
--> Ollama JSON graph, with deterministic fallback
--> public/modules/studio.js renders SVG mind map and node details
-```
-
-Department notebook knowledge graph:
-
-```text
-selected department notebook with data/notebooks/<id>/graph.sqlite
--> public/modules/graphStudio.js calls /api/studio/graph/*
--> server/graphStudioApi.js checks normal notebook read access
--> server/rag/graph/store.js returns ontology/stats/nodes/edges/source refs
--> Cytoscape graph renders in the Studio panel
-```
-
-Admin graph moderation and rebuilds use `/api/admin/graph/*` with `ADMIN_TOKEN`.
-Optional query-time graph expansion is enabled only with
-`KG_EXPANSION_ENABLED=1`; otherwise normal Qdrant/SQLite/JSON RAG behavior is
-unchanged.
 
 ## Key Caveats
 
-- `npm.cmd test` runs readability/evidence/composer/law-review-view checks, law unit/intent/KG checks, the `promptRouter` chat-route classifier, mind-map validation, and fast app-server smoke checks. `npm.cmd run test:source-workflow` covers answer-as-source API/frontend wiring/trust metadata. `npm.cmd run test:studio-document` covers Studio document conversion/export behavior. `npm.cmd run test:live` covers slower Ollama-backed parser/notebook CRUD, embedding, document analysis, and retrieval metadata flows.
-- Department RAG uses Qdrant + SQLite FTS5 when configured; falls back to JSON/BM25. Fallback is triggered per-request if either backend is unavailable.
-- Notebook chunk cache (`NOTEBOOK_CHUNK_CACHE_MAX`) is a single in-process LRU shared across all sessions. Tune upward on high-core-count servers.
-- `/api/chat` propagates client disconnects into Ollama chat streaming and Map-Reduce map/reduce fetches via `AbortSignal`. Keep any new long-running chat path wired to the request signal.
-- Uploaded room files are durable in encrypted browser IndexedDB, not in server memory. `server/documentStore.js` is runtime-only cache; empty after server restart.
-- `/api/chat` receives active documents in the JSON body. The browser warns on large uploads, shows room/material status, and preflights chat payload size before sending.
-- Generated room sources are durable in encrypted browser IndexedDB with the room. They are marked `trustLevel: "generated"`, `sourceTrust: 0.5`, `AI 생성`, and `검증 필요`; `server/ollama.js` treats them as secondary references.
-- The composer material panel is the single detailed UI for active materials. It shows a collapsible tree where `자료(n개)` contains separate `프로젝트(0/1)`, `첨부(n)`, and `AI 생성 자료(n)` groups, and each group lists only item names below it. The room list should show only compact state icons for attachment/notebook presence, not duplicate file lists.
-- Studio mind maps also use active room uploaded document payloads. They do not use Naver Search or department notebook RAG.
-- Department notebook knowledge graphs are optional server-side notebook indexes. They are distinct from uploaded-document Studio mind maps and live as `data/notebooks/<notebookId>/graph.sqlite`.
-- Security boundary is documented in `docs/SECURITY.md`: `ADMIN_TOKEN` protects Admin Console management actions only; shared deployments should add reverse-proxy TLS, external auth, request size limits, and rate limits.
-- `ADMIN_TOKEN` protects Admin Console management actions only. Do not treat it as a chat-time notebook read token; use group/level or Super passwords for notebook reads when Department Notebook Access Control is active.
-- Calendar data is local-only. There is no Google/Outlook/ICS sync.
-- Destructive actions (room delete, file delete, notebook/document delete) use `showConfirmDialog` from `public/modules/state.js` (in-app modal, falls back to `window.confirm`).
-- Visualization is plan-first and server-validated. XLSX QA covers date serial conversion, cached formula values, merged cells, blanks, mixed-type columns, shared string tables, multi-sheet workbooks, and chart spec regression.
-
-## Editing Rules For Future Agents
-
 - Check `git status --short` before editing.
 - Do not revert user changes unless explicitly asked.
-- Keep changes scoped and preserve existing plain HTML/CSS/JS patterns.
-- Preserve chat abort behavior through `AbortController`.
-- Preserve markdown-lite answer rendering unless intentionally replacing it.
-- Keep `state.settings` backward compatible with old IndexedDB records.
-- Keep generated source document metadata backward compatible in old IndexedDB room records.
-- Use `--accent` / `--accent-dark` theme tokens for new UI styling.
-- If changing visualization, preserve the plan-first contract: LLM chooses intent/columns, server validates/computes, browser renders.
-- If changing calendar, preserve the split: LLM extracts intent/fields, browser deterministic code mutates calendar state.
-- If changing RAG, preserve the fallback chain: Qdrant -> SQLite -> JSON/BM25.
+- Preserve chat abort behavior through `AbortController` and request `AbortSignal`.
+- Preserve browser-owned encrypted persistence and backwards compatibility of `state.settings`, room documents, and generated-source metadata.
+- Law Workbench review must not auto-include active chat-room attachments; it has its own dedicated upload scope.
+- Naver Search is skipped when uploaded files or a department notebook are active.
+- Studio mind maps use active room uploads only.
+- Department notebook knowledge graphs are optional and distinct from uploaded-document mind maps.
+- `ADMIN_TOKEN` protects management routes only; it is not a notebook-read identity for chat.
+- Calendar data is local-only; no Google/Outlook/ICS sync exists beyond file import/export.
+- Destructive UI actions should use `showConfirmDialog`.
+- Visualization must remain plan-first: LLM proposes intent/columns, server validates/computes, browser renders.
+- RAG changes must preserve fallback: Qdrant -> SQLite -> JSON/BM25.
+
+## Documentation Index
+
+- `README.md` - operator overview.
+- `docs/ARCHITECTURE.md` - system flows and module responsibilities.
+- `docs/API.md` - endpoint summary.
+- `docs/RAG.md` - dual-profile RAG and Map-Reduce.
+- `docs/DEPARTMENT_RAG_ARCHITECTURE.md` - Qdrant + SQLite + graph topology.
+- `docs/KOREAN_LAW_ENGINE.md` - law engine and legal workflow behavior.
+- `docs/CALENDAR.md` - local calendar and intent agent behavior.
+- `docs/CONTAINER_DEPLOYMENT.md` - Docker Compose deployment.
+- `docs/SECURITY.md` - trusted-network boundary and reverse proxy guidance.
+- `docs/USAGE_TELEMETRY.md` - usage telemetry and Admin Statistics behavior.
+- `docs/DESIGN.md` - UI styling and component rules.
