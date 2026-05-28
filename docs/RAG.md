@@ -237,7 +237,7 @@ node --env-file=.env scripts/eval-graph-ab.mjs --quick
 Admin graph endpoints (`/api/admin/graph/*`) allow inspecting source
 references and toggling node/edge enablement overrides. Studio graph endpoints
 (`/api/studio/graph/*`) honor normal notebook read access and return only
-enabled graph content.
+enabled graph content (except for the rebuild action which requires `ADMIN_TOKEN`).
 
 ## Reranker
 

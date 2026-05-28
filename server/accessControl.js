@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./env.js";
-import { extractRequestToken } from "./auth.js";
+import { extractRequestToken, isAdminRequest } from "./auth.js";
 import { logUsageEvent } from "./stats/statsLogger.js";
 
 loadLocalEnv();
@@ -322,6 +322,14 @@ export async function loginAccess(input = {}) {
 }
 
 export async function getAccessFromRequest(request) {
+  if (isAdminRequest(request)) {
+    return {
+      super: true,
+      groupId: null,
+      groupName: "Super",
+      level: 3
+    };
+  }
   const token = extractRequestToken(request);
   if (!token) return null;
   return verifyAccessToken(token).catch(() => null);

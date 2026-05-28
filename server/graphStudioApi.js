@@ -21,6 +21,7 @@ import {
   isAccessControlConfigured,
   requireNotebookAccess
 } from "./accessControl.js";
+import { requireAdmin } from "./auth.js";
 
 export const graphStudioRouter = express.Router();
 
@@ -64,7 +65,7 @@ async function ensureNotebookAndAccess(req, res, { requireGraph = true } = {}) {
   return notebookId;
 }
 
-graphStudioRouter.post("/:notebookId/rebuild", async (req, res) => {
+graphStudioRouter.post("/:notebookId/rebuild", requireAdmin, async (req, res) => {
   const notebookId = await ensureNotebookAndAccess(req, res, { requireGraph: false });
   if (!notebookId) return;
   try {

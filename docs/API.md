@@ -1026,7 +1026,7 @@ Returns one enabled node, its neighbors, and source references.
 
 Returns one enabled edge and source references.
 
-Studio graph endpoints use normal notebook read access, not `ADMIN_TOKEN`.
+Studio graph endpoints use normal notebook read access (except for the rebuild action which requires `ADMIN_TOKEN`).
 They return `404` with `error: "no_graph"` when a notebook has no graph index.
 
 ## Visualization
