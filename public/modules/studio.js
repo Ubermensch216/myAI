@@ -92,6 +92,7 @@ function syncLawHistoryInput(field) {
 
 function setActiveTool(tool) {
   if (tool !== "mindmap" && tool !== "graph" && tool !== "document" && tool !== "doctool") return;
+  if (tool === "graph" && state.activeView !== "knowledge") return;
   _activeTool = tool;
   if (elements.studioContent) elements.studioContent.dataset.activeTool = tool;
   elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
@@ -117,6 +118,16 @@ function setActiveTool(tool) {
 
 export function renderStudio() {
   if (!elements.studioPanel) return;
+
+  const isKnowledgeView = state.activeView === "knowledge";
+  if (elements.studioGraphButton) elements.studioGraphButton.style.display = isKnowledgeView ? "" : "none";
+  if (elements.studioGraphRailButton) elements.studioGraphRailButton.style.display = isKnowledgeView ? "" : "none";
+
+  if (!isKnowledgeView && _activeTool === "graph") {
+    setActiveTool("document");
+    return;
+  }
+
   if (_activeTool === "document") {
     renderDocumentStudio();
     return;
@@ -128,10 +139,13 @@ export function renderStudio() {
   if (_activeTool === "doctool") {
     return;
   }
-  if (state.activeView === "calendar") {
+  if (state.activeView === "calendar" || state.activeView === "knowledge") {
     clearSvg();
     _map = null;
-    renderEmpty("일정 메뉴에서는 아직 마인드맵이 생성되지 않았습니다.");
+    const msg = state.activeView === "calendar"
+      ? "일정 메뉴에서는 아직 마인드맵이 생성되지 않았습니다."
+      : "지식팩 메뉴에서는 마인드맵이 지원되지 않습니다.";
+    renderEmpty(msg);
     renderDetails(null);
     return;
   }

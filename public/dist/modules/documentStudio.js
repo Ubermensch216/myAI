@@ -945,11 +945,13 @@ export function renderDocumentStudio() {
       if (textNode) {
         textNode.innerHTML = state.activeView === "law"
           ? `법령검토 완료 후 하단의 <strong class="highlight-term">'보고서 생성'</strong> 버튼을 누르면 검토 보고서를 작성할 수 있어요.`
+          : state.activeView === "knowledge"
+          ? `지식팩 메뉴에서는 문서작업을 지원하지 않습니다.`
           : `채팅 답변 하단의 <strong class="highlight-term">'문서만들기'</strong> 버튼을 누르면 답변을 문서 초안으로 가져올 수 있어요.`;
       }
     }
     if (elements.studioSourceGuideEmptyButton) {
-      elements.studioSourceGuideEmptyButton.hidden = state.activeView === "law";
+      elements.studioSourceGuideEmptyButton.hidden = state.activeView === "law" || state.activeView === "knowledge";
     }
     if (elements.studioDocumentEditor) elements.studioDocumentEditor.hidden = true;
     if (elements.studioDocumentVisual) elements.studioDocumentVisual.innerHTML = "";

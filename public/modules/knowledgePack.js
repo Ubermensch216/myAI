@@ -16,6 +16,7 @@ import { state, elements, accessAuthHeaders, createRoomFromKnowledgePack } from 
 import { scheduleSave } from "./persistence.js";
 import { loadNotebooks, getCurrentAccessLabel, openNotebookSelector } from "./notebook.js";
 import { escapeHtml } from "./html.js";
+import { renderStudio } from "./studio.js";
 
 let packSearchQuery = "";
 let packEventsBound = false;
@@ -530,15 +531,19 @@ export function openKnowledgePackDetail(packId) {
   if (!packId) return;
   packDetailMode = true;
   packDetailId = packId;
+  state.activeKnowledgePackId = packId;
   renderDetailPanel(packId);
+  renderStudio();
 }
 
 export function closeKnowledgePackDetail() {
   packDetailMode = false;
   packDetailId = null;
+  state.activeKnowledgePackId = null;
   packDetailLoadSeq += 1;
   applyListMode();
   renderKnowledgePackCards();
+  renderStudio();
 }
 
 export function startRoomWithKnowledgePack(packId) {
@@ -553,6 +558,7 @@ export function startRoomWithKnowledgePack(packId) {
 
   packDetailMode = false;
   packDetailId = null;
+  state.activeKnowledgePackId = null;
 
   const room = createRoomFromKnowledgePack(pack);
   state.rooms.unshift(room);

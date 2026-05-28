@@ -226,6 +226,9 @@ export function findNotebookSummary(notebookId) {
 }
 
 export function getActiveNotebookId() {
+  if (state.activeView === "knowledge") {
+    return state.activeKnowledgePackId || null;
+  }
   return getActiveRoom()?.selectedNotebookId ?? null;
 }
 

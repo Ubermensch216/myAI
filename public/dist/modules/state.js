@@ -587,7 +587,7 @@ export function getActiveStudio() {
     const review = getActiveGrcReview();
     return review ? ensureGrcReviewStudio(review) : null;
   }
-  if (state.activeView === "calendar") {
+  if (state.activeView === "calendar" || state.activeView === "knowledge") {
     return null;
   }
   const room = getActiveRoom();
