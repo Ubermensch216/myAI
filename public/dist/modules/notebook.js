@@ -356,6 +356,7 @@ export function renderAdminEntry() {
   if (elements.settingsAdminStatus) {
     elements.settingsAdminStatus.dataset.status = status;
   }
+  window.dispatchEvent(new CustomEvent("myai:adminchange"));
 }
 
 export function isAdminDialogOpen() {

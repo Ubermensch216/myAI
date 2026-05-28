@@ -15,6 +15,7 @@
 import { state, elements, accessAuthHeaders, createRoomFromKnowledgePack } from "./state.js";
 import { scheduleSave } from "./persistence.js";
 import { loadNotebooks, getCurrentAccessLabel, openNotebookSelector } from "./notebook.js";
+import { escapeHtml } from "./html.js";
 
 let packSearchQuery = "";
 let packEventsBound = false;
@@ -166,23 +167,40 @@ export function renderAccessSummary() {
 
   const labelText = document.createElement("span");
   labelText.className = "pack-access-card-label";
-  labelText.textContent = label;
+  
+  if (state.access.authenticated && state.access.user) {
+    const user = state.access.user;
+    const GROUP_ICON_SVG = `<svg class="pack-access-icon" viewBox="0 0 24 24" aria-hidden="true" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px; display: inline-block;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`;
+    const LEVEL_ICON_SVG = `<svg class="pack-access-icon" viewBox="0 0 24 24" aria-hidden="true" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-left: 16px; margin-right: 4px; display: inline-block;"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>`;
+    
+    const groupText = user.super ? "Super" : (user.groupName || user.groupId);
+    const levelTextStr = `Level ${user.level}`;
+    
+    labelText.innerHTML = `${GROUP_ICON_SVG}<span>${escapeHtml(groupText)}</span>${LEVEL_ICON_SVG}<span>${levelTextStr}</span>`;
+  } else {
+    labelText.textContent = label;
+  }
+  
   statusLine.append(labelText);
-
   container.append(statusLine);
 
   if (state.access.configured) {
-    const hint = document.createElement("p");
-    hint.className = "pack-access-card-hint";
-    hint.textContent = state.access.authenticated
-      ? "다른 등급/그룹으로 변경하려면 아래 버튼을 누르세요."
-      : "지식팩을 사용하려면 등급을 선택하고 로그인하세요.";
-    container.append(hint);
+    if (!state.access.authenticated) {
+      const hint = document.createElement("p");
+      hint.className = "pack-access-card-hint";
+      hint.textContent = "지식팩을 사용하려면 등급을 선택하고 로그인하세요.";
+      container.append(hint);
+    }
 
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = state.access.authenticated ? "ghost-button pack-access-card-btn" : "send-button pack-access-card-btn";
-    btn.textContent = state.access.authenticated ? "권한 변경" : "권한 인증";
+    if (state.access.authenticated) {
+      const KEY_ICON_SVG = `<svg class="pack-access-btn-icon" viewBox="0 0 24 24" aria-hidden="true" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; display: inline-block; vertical-align: middle;"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>`;
+      btn.innerHTML = `${KEY_ICON_SVG}<span>권한 변경</span>`;
+    } else {
+      btn.textContent = "권한 인증";
+    }
     btn.addEventListener("click", () => {
       openNotebookSelector({ hideList: true });
     });

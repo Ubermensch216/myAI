@@ -1,4 +1,4 @@
-import { elements, accessAuthHeaders } from "./state.js";
+import { elements, accessAuthHeaders, state } from "./state.js";
 import { getActiveNotebookId, findNotebookSummary } from "./notebook.js";
 import { escapeHtml } from "./html.js";
 
@@ -43,7 +43,11 @@ const kgState = {
 };
 
 async function api(pathname, init = {}) {
-  const headers = { ...accessAuthHeaders(), ...(init.headers || {}) };
+  const headers = {
+    ...accessAuthHeaders(),
+    ...(state.admin?.token ? { Authorization: `Bearer ${state.admin.token}` } : {}),
+    ...(init.headers || {})
+  };
   if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   const response = await fetch(`/api/studio/graph${pathname}`, { ...init, headers });
   if (!response.ok) {
@@ -112,6 +116,15 @@ export function bindStudioGraphEvents() {
   window.addEventListener("myai:roomchange", () => {
     if (kgState.panelVisible) {
       syncWithActiveRoom({ force: false }).catch(reportError);
+    }
+  });
+
+  window.addEventListener("myai:adminchange", () => {
+    if (kgState.panelVisible) {
+      updateRebuildVisibility();
+      if (kgState.graphMissing) {
+        showGraphMissingState();
+      }
     }
   });
 }
@@ -324,19 +337,30 @@ function showGraphMissingState() {
   title.className = "kg-empty-title";
   title.textContent = "이 지식팩에는 아직 지식그래프가 없습니다.";
 
-  const sub = document.createElement("p");
-  sub.className = "kg-empty-sub";
-  sub.textContent = "문서에서 개체와 관계를 추출해 그래프를 생성합니다. 시간이 다소 걸릴 수 있습니다.";
+  const isAdmin = Boolean(state.admin?.authenticated && state.admin?.token);
 
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.id = "kgCreateGraphButton";
-  btn.className = "send-button kg-create-graph-btn";
-  btn.textContent = "지식그래프 만들기";
-  btn.disabled = !!kgState.rebuilding;
-  btn.addEventListener("click", () => startRebuild().catch(reportError));
+  if (isAdmin) {
+    const sub = document.createElement("p");
+    sub.className = "kg-empty-sub";
+    sub.textContent = "문서에서 개체와 관계를 추출해 그래프를 생성합니다. 시간이 다소 걸릴 수 있습니다.";
 
-  wrap.append(title, sub, btn);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "kgCreateGraphButton";
+    btn.className = "send-button kg-create-graph-btn";
+    btn.textContent = "지식그래프 만들기";
+    btn.disabled = !!kgState.rebuilding;
+    btn.addEventListener("click", () => startRebuild().catch(reportError));
+
+    wrap.append(title, sub, btn);
+  } else {
+    const sub = document.createElement("p");
+    sub.className = "kg-empty-sub";
+    sub.textContent = "관리자가 지식그래프를 빌드한 후에 조회할 수 있습니다.";
+
+    wrap.append(title, sub);
+  }
+
   el.append(wrap);
   renderLegend();
 }
@@ -680,7 +704,8 @@ function updateRebuildVisibility() {
   const btn = elements.kgRebuildButton;
   if (btn) {
     const hasNotebook = Boolean(kgState.activeNotebookId);
-    btn.hidden = !hasNotebook;
+    const isAdmin = Boolean(state.admin?.authenticated && state.admin?.token);
+    btn.hidden = !hasNotebook || !isAdmin;
     btn.disabled = !!kgState.rebuilding;
     btn.setAttribute("aria-busy", kgState.rebuilding ? "true" : "false");
     btn.classList.toggle("is-busy", !!kgState.rebuilding);

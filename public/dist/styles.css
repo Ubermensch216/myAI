@@ -5215,6 +5215,25 @@ body.panel-resizing .panel-resizer::after {
   color: var(--ink);
   line-height: 1.4;
   word-break: keep-all;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pack-access-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  flex-shrink: 0;
+}
+
+.pack-access-btn-icon {
+  width: 13px;
+  height: 13px;
+  stroke: currentColor;
+  fill: none;
+  flex-shrink: 0;
 }
 
 .pack-access-card-hint {
@@ -5226,7 +5245,10 @@ body.panel-resizing .panel-resizer::after {
 
 .pack-access-card-btn {
   width: 100%;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
   height: 34px;
   font-size: 12.5px;
 }
