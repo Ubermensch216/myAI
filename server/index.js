@@ -25,6 +25,7 @@ import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js";
 import { createExportFile, listExportFormats } from "./exportFiles.js";
 import { generateMindmap } from "./mindmap.js";
+import { generateInfographicSpec } from "./infographic.js";
 import { lawApiRouter } from "./law/lawApi.js";
 import { getLawConfig, getLawRateLimitDefaults } from "./law/lawConfig.js";
 import { runGrcReview } from "./compliance/grcReview.js";
@@ -339,6 +340,56 @@ async function buildNotebookMindmapDocuments(notebookId, request, response) {
     topics: doc.topics,
     text: doc.parts.join("\n\n").slice(0, NOTEBOOK_MINDMAP_DOC_TEXT_CAP)
   }));
+}
+
+app.post("/api/studio/infographic", async (request, response) => {
+  const model = request.body.model || DEFAULT_MODEL;
+  const layout = typeof request.body.layout === "string" ? request.body.layout.trim() : "summary";
+  const prompt = typeof request.body.prompt === "string" ? request.body.prompt.trim() : "";
+  const notebookId = typeof request.body.notebookId === "string" ? request.body.notebookId.trim() : "";
+  const studioAbort = createRequestAbortController(request, response);
+  try {
+    let documents;
+    if (notebookId) {
+      documents = await buildNotebookMindmapDocuments(notebookId, request, response);
+      if (documents === null) return; // 접근 거부/미존재 — 응답은 헬퍼에서 이미 전송됨
+    } else {
+      const reviewDoc = buildReviewSourceDocument(request.body.reviewSource);
+      const uploaded = Array.isArray(request.body.documents) ? request.body.documents : [];
+      documents = reviewDoc ? [reviewDoc, ...uploaded] : uploaded;
+    }
+    const infographic = await generateInfographicSpec({
+      documents,
+      model,
+      layout,
+      prompt,
+      signal: studioAbort.signal
+    });
+    if (studioAbort.signal.aborted || response.destroyed) return;
+    response.json({ infographic });
+  } catch (error) {
+    if (studioAbort.signal.aborted || response.destroyed) return;
+    const status = error.statusCode || (/requires at least one document/i.test(error.message) ? 400 : 500);
+    response.status(status).json({ error: error.message });
+  } finally {
+    studioAbort.cleanup();
+  }
+});
+
+// 법령 Workbench / GRC 검토 결과(이미 생성된 텍스트/마크다운)를 인포그래픽 입력 문서로 래핑한다.
+function buildReviewSourceDocument(reviewSource) {
+  if (!reviewSource || typeof reviewSource !== "object") return null;
+  const text = typeof reviewSource.text === "string" ? reviewSource.text.trim() : "";
+  if (!text) return null;
+  return {
+    kind: "document",
+    id: String(reviewSource.id || "review-source"),
+    fileName: String(reviewSource.title || "검토 결과"),
+    fileType: "review",
+    summary: typeof reviewSource.summary === "string" ? reviewSource.summary : "",
+    topics: Array.isArray(reviewSource.topics) ? reviewSource.topics : [],
+    text
+  };
 }
 
 app.get("/api/documents/:id", (request, response) => {
