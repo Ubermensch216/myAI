@@ -488,6 +488,7 @@ export const elements = {
   studioInfographicLayout: document.querySelector("#studioInfographicLayout"),
   studioInfographicPrompt: document.querySelector("#studioInfographicPrompt"),
   studioInfographicGenerate: document.querySelector("#studioInfographicGenerate"),
+  studioInfographicGenerateAdvanced: document.querySelector("#studioInfographicGenerateAdvanced"),
   studioInfographicExport: document.querySelector("#studioInfographicExport"),
   studioInfographicCanvas: document.querySelector("#studioInfographicCanvas"),
   studioInfographicEmpty: document.querySelector("#studioInfographicEmpty"),

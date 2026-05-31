@@ -2941,6 +2941,13 @@ body.panel-resizing .panel-resizer::after {
   padding: 0;
 }
 
+/* Infographic v2 SVG renderer output */
+.studio-infographic-canvas .infographic-sheet svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .image-gen-active-button {
   order: 2;
   width: 46px;

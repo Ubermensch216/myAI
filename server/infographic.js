@@ -18,7 +18,12 @@ const MAX_ITEMS_PER_BLOCK = clampInt(process.env.INFOGRAPHIC_MAX_ITEMS, 6, 2, 12
 const MAX_CITATIONS = 24;
 
 const LAYOUTS = new Set(["summary", "timeline", "process", "comparison"]);
-const BLOCK_TYPES = new Set(["kpi", "cards", "timeline", "steps", "comparison"]);
+const BLOCK_TYPES = new Set([
+  "kpi", "cards", "timeline", "steps", "comparison",
+  // v2 block types (additive)
+  "hero", "chart_bar", "chart_line", "flow"
+]);
+const VISUAL_ASSET_TYPES = new Set(["generated_background", "generated_icon"]);
 
 const LAYOUT_GUIDANCE = {
   summary: "핵심 KPI 지표 1개 블록(items 3~4개)과 주요 내용 카드 블록(cards, 4~6개)을 만드세요.",
@@ -152,7 +157,21 @@ const INFOGRAPHIC_SCHEMA = {
         properties: {
           type: { type: "string" },
           title: { type: "string" },
+          subtitle: { type: "string" },
+          body: { type: "string" },
+          unit: { type: "string" },
           columns: { type: "array", items: { type: "string" } },
+          data: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                value: { type: "number" },
+                citationIds: { type: "array", items: { type: "string" } }
+              }
+            }
+          },
           items: {
             type: "array",
             items: {
@@ -192,6 +211,19 @@ const INFOGRAPHIC_SCHEMA = {
           documentName: { type: "string" },
           locator: { type: "string" },
           excerpt: { type: "string" }
+        }
+      }
+    },
+    visualAssets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          type: { type: "string" },
+          prompt: { type: "string" },
+          placement: { type: "string" },
+          opacity: { type: "number" }
         }
       }
     }
@@ -307,7 +339,8 @@ function normalizeInfographicSpec(value, documents, layout, fallback) {
   if (!blocks.length) return fallback;
 
   return {
-    version: "1.0",
+    version: "2.0",
+    renderMode: "svg_composite",
     title: cleanText(value?.title, 80) || fallback.title,
     subtitle: cleanText(value?.subtitle, 160),
     layout: LAYOUTS.has(value?.layout) ? value.layout : layout,
@@ -315,8 +348,40 @@ function normalizeInfographicSpec(value, documents, layout, fallback) {
     documentCount: documents.length,
     blocks,
     citations,
+    visualAssets: normalizeVisualAssets(value?.visualAssets),
     warnings
   };
+}
+
+function normalizeVisualAssets(value) {
+  const out = [];
+  for (const asset of Array.isArray(value) ? value : []) {
+    if (out.length >= 8) break;
+    const type = String(asset?.type || "").trim().toLowerCase();
+    if (!VISUAL_ASSET_TYPES.has(type)) continue;
+    const prompt = cleanText(asset?.prompt, 400);
+    if (!prompt) continue;
+    out.push({
+      id: sanitizeAssetPlanId(asset?.id, `asset-${out.length + 1}`),
+      type,
+      prompt,
+      placement: cleanText(asset?.placement, 40) || (type === "generated_background" ? "background" : "block-icon"),
+      opacity: clampOpacity(asset?.opacity, type === "generated_background" ? 0.16 : 1),
+      assetId: null
+    });
+  }
+  return out;
+}
+
+function sanitizeAssetPlanId(value, fallback) {
+  const clean = String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return clean || fallback;
+}
+
+function clampOpacity(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(1, Math.max(0, n));
 }
 
 function normalizeBlock(raw, citationIds, warnings) {
@@ -340,6 +405,45 @@ function normalizeBlock(raw, citationIds, warnings) {
     }
     if (!rows.length) return null;
     return { type, title, columns, rows };
+  }
+
+  if (type === "hero") {
+    const subtitle = cleanText(raw?.subtitle, 160);
+    const body = cleanText(raw?.body, 400);
+    if (!title && !subtitle && !body) return null;
+    return { type, title, subtitle, body };
+  }
+
+  if (type === "chart_bar" || type === "chart_line") {
+    const unit = cleanText(raw?.unit, 16);
+    const source = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw?.items) ? raw.items : []);
+    const data = [];
+    for (const d of source) {
+      if (data.length >= MAX_ITEMS_PER_BLOCK) break;
+      const label = cleanText(d?.label, 40);
+      const value = Number(String(d?.value ?? "").replace(/[^0-9.\-]/g, ""));
+      if (!label || !Number.isFinite(value)) continue;
+      data.push({ label, value, citationIds: filterCitationIds(d?.citationIds, citationIds) });
+    }
+    if (data.length < 2) return null;
+    if (!data.some((d) => d.citationIds.length)) warnings.push("chart_without_citation");
+    return { type, title, unit, data };
+  }
+
+  if (type === "flow") {
+    const items = [];
+    for (const item of Array.isArray(raw?.items) ? raw.items : []) {
+      if (items.length >= MAX_ITEMS_PER_BLOCK) break;
+      const itemTitle = cleanText(item?.title || item?.label, 60);
+      if (!itemTitle) continue;
+      items.push({
+        title: itemTitle,
+        body: cleanText(item?.body, 160),
+        citationIds: filterCitationIds(item?.citationIds, citationIds)
+      });
+    }
+    if (!items.length) return null;
+    return { type, title, items };
   }
 
   const items = [];
@@ -471,7 +575,8 @@ function buildFallbackInfographic(documents, layout) {
   void citationIds;
 
   return {
-    version: "1.0",
+    version: "2.0",
+    renderMode: "svg_composite",
     title: documents.length > 1 ? "업로드 문서 요약 인포그래픽" : cleanText(stripExtension(documents[0].fileName), 80),
     subtitle: "문서 메타데이터 기반 자동 요약",
     layout: LAYOUTS.has(layout) ? layout : "summary",
@@ -479,6 +584,7 @@ function buildFallbackInfographic(documents, layout) {
     documentCount: documents.length,
     blocks,
     citations,
+    visualAssets: [],
     warnings: ["fallback_infographic"]
   };
 }

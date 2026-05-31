@@ -26,6 +26,7 @@ import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js"
 import { createExportFile, listExportFormats } from "./exportFiles.js";
 import { generateMindmap } from "./mindmap.js";
 import { generateInfographicSpec } from "./infographic.js";
+import { generateAssetsForSpec } from "./infographic/assetPlanner.js";
 import { lawApiRouter } from "./law/lawApi.js";
 import { getLawConfig, getLawRateLimitDefaults } from "./law/lawConfig.js";
 import { runGrcReview } from "./compliance/grcReview.js";
@@ -353,6 +354,7 @@ app.post("/api/studio/infographic", async (request, response) => {
   const layout = typeof request.body.layout === "string" ? request.body.layout.trim() : "summary";
   const prompt = typeof request.body.prompt === "string" ? request.body.prompt.trim() : "";
   const notebookId = typeof request.body.notebookId === "string" ? request.body.notebookId.trim() : "";
+  const mode = request.body.mode === "advanced" ? "advanced" : "fast";
   const studioAbort = createRequestAbortController(request, response);
   try {
     let documents;
@@ -372,6 +374,12 @@ app.post("/api/studio/infographic", async (request, response) => {
       signal: studioAbort.signal
     });
     if (studioAbort.signal.aborted || response.destroyed) return;
+    // Advanced mode: generate decorative background/icon assets (best-effort).
+    if (mode === "advanced") {
+      const warnings = Array.isArray(infographic.warnings) ? infographic.warnings : (infographic.warnings = []);
+      await generateAssetsForSpec(infographic, { signal: studioAbort.signal, warnings });
+      if (studioAbort.signal.aborted || response.destroyed) return;
+    }
     response.json({ infographic });
   } catch (error) {
     if (studioAbort.signal.aborted || response.destroyed) return;
