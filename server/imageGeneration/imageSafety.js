@@ -5,6 +5,10 @@ loadLocalEnv();
 const DAILY_LIMIT = clampInt(process.env.IMAGE_DAILY_LIMIT_PER_USER, 50, 1, 100000);
 const MAX_PROMPT_CHARS = 2000;
 
+// Defense-in-depth blocklist (the worker also enforces its own). Refuses
+// obviously disallowed intent: explicit content and official-document forgery.
+const BLOCKED_RE = /\bnsfw\b|\bnude\b|\bnaked\b|\bporn\w*|\bsexual\b|위조|가짜\s*공문|\bforged?\b/i;
+
 // In-memory per-user daily counters: key `${user}:${YYYY-MM-DD}` -> count.
 // Resets naturally as the date key changes; pruned opportunistically.
 const counters = new Map();
@@ -32,6 +36,9 @@ export function validatePrompt(prompt) {
   if (!text) throw new ImageSafetyError("프롬프트를 입력하세요.");
   if (text.length > MAX_PROMPT_CHARS) {
     throw new ImageSafetyError(`프롬프트가 너무 깁니다 (최대 ${MAX_PROMPT_CHARS}자).`);
+  }
+  if (BLOCKED_RE.test(text)) {
+    throw new ImageSafetyError("콘텐츠 정책에 따라 거부된 프롬프트입니다.");
   }
   return text;
 }

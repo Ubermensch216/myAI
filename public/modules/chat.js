@@ -1106,6 +1106,11 @@ function renderGeneratedImages(image) {
 
   const actions = document.createElement("div");
   actions.className = "generated-image-actions";
+  const badge = document.createElement("span");
+  badge.className = "generated-image-badge";
+  badge.textContent = image?.model ? `AI 생성 · ${image.model}` : "AI 생성";
+  badge.title = "이 이미지는 AI가 생성했습니다.";
+  actions.append(badge);
   const regenerate = document.createElement("button");
   regenerate.type = "button";
   regenerate.className = "generated-image-regenerate";

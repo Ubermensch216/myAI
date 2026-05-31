@@ -119,6 +119,37 @@ function renderFeatureUsage(summary) {
   }
 }
 
+// ── Image worker status ──────────────────────────────────────────────────────
+
+async function renderImageStatus() {
+  const el = elements.statsImageStatus;
+  if (!el) return;
+  let data;
+  try {
+    data = await fetchAdminJson("/api/admin/image/status");
+  } catch (err) {
+    el.innerHTML = `<div class="stats-error">이미지 상태 로드 실패: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  const worker = data.worker || {};
+  const cap = data.capabilities || {};
+  const queue = data.queue || {};
+  const online = Boolean(worker.ok);
+  const rows = [
+    { label: "Provider", value: data.provider || "—" },
+    { label: "워커 상태", value: online ? "온라인" : `오프라인${worker.error ? ` (${worker.error})` : ""}` },
+    { label: "티어 / 모델", value: online ? `${worker.tier || "—"} / ${worker.model || "—"}` : "—" },
+    { label: "디바이스", value: worker.device || "—" },
+    { label: "최대 크기 / 배치", value: cap.max_width ? `${cap.max_width}×${cap.max_height} / ${cap.max_batch}` : "—" },
+    { label: "큐(실행/대기)", value: `${queue.running ?? 0} / ${queue.queued ?? 0} (동시 ${queue.concurrency ?? "—"})` },
+    { label: "일일 한도", value: fmtNum(data.dailyLimit) }
+  ];
+  el.innerHTML = `<div class="stats-image-dot ${online ? "is-online" : "is-offline"}"></div>`
+    + `<table class="stats-table"><tbody>`
+    + rows.map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(String(r.value))}</td></tr>`).join("")
+    + `</tbody></table>`;
+}
+
 // ── Group Bar Chart (SVG) ───────────────────────────────────────────────────
 
 function renderGroupChart(groups) {
@@ -307,6 +338,7 @@ async function loadStatsSummary() {
     statsState.sessionsPage = 1;
 
     renderKpiCards(sumData.kpi);
+    renderImageStatus().catch(() => {});
     renderStrategicKpis(sumData.kpi);
     renderFeatureUsage(sumData.kpi);
     renderGroupChart(groupData.groups);

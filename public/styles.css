@@ -3045,6 +3045,43 @@ body.panel-resizing .panel-resizer::after {
 
 .generated-image-actions {
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.generated-image-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* Admin: image worker status card */
+.stats-image-status {
+  position: relative;
+}
+
+.stats-image-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.stats-image-dot.is-online { background: #16a34a; }
+.stats-image-dot.is-offline { background: #e11d48; }
+
+.stats-image-status .stats-table td:first-child {
+  color: var(--muted, #64748b);
+  font-weight: 700;
+  width: 40%;
 }
 
 .generated-image-regenerate {

@@ -1,16 +1,17 @@
 import { loadLocalEnv } from "../env.js";
 import { diffusersProvider } from "./diffusersProvider.js";
+import { comfyImageProvider } from "./comfyImageProvider.js";
 
 loadLocalEnv();
 
 /**
  * Provider abstraction. Feature code (jobs, API, infographic asset planner)
  * calls imageProvider.* and never the worker directly, so the backend can be
- * swapped via IMAGE_PROVIDER (diffusers now; comfyui later).
+ * swapped via IMAGE_PROVIDER (diffusers | comfyui).
  */
 const PROVIDERS = {
-  diffusers: diffusersProvider
-  // comfyui: comfyImageProvider  // future (Phase 5)
+  diffusers: diffusersProvider,
+  comfyui: comfyImageProvider
 };
 
 function resolveProvider() {
