@@ -1009,6 +1009,10 @@ export function appendMessage(role, text, options = {}) {
       const currentText = article.dataset.copyText || text;
       article.dataset.copyText = `${currentText}\n\n${cardText}`;
     }
+    if (options.image) {
+      body.append(renderGeneratedImages(options.image));
+      body.classList.add("has-generated-image");
+    }
   } else {
     body.textContent = text;
   }
@@ -1052,6 +1056,82 @@ export function appendMessage(role, text, options = {}) {
   elements.messages.append(article);
   if (options.autoScroll !== false) scrollToBottom();
   return article;
+}
+
+// Renders generated image(s) attached to an assistant message. The "다시 생성"
+// button dispatches a CustomEvent that imageGen.js listens for (avoids a circular
+// import between chat.js and imageGen.js).
+function renderGeneratedImages(image) {
+  const figure = document.createElement("figure");
+  figure.className = "generated-image";
+
+  const assets = Array.isArray(image?.assets) && image.assets.length
+    ? image.assets
+    : (image?.assetId ? [{ assetId: image.assetId, seed: image.seed ?? null }] : []);
+
+  const gallery = document.createElement("div");
+  gallery.className = "generated-image-gallery";
+  for (const asset of assets) {
+    const url = `/api/image/assets/${encodeURIComponent(asset.assetId)}`;
+    const item = document.createElement("div");
+    item.className = "generated-image-item";
+
+    const img = document.createElement("img");
+    img.src = url;
+    img.loading = "lazy";
+    img.alt = image?.prompt ? `생성 이미지: ${image.prompt}` : "생성 이미지";
+    img.addEventListener("error", () => {
+      item.classList.add("is-expired");
+      img.replaceWith(textDivLocal("generated-image-expired", "이미지가 만료되었습니다 (보관 기간 경과)."));
+    });
+    item.append(img);
+
+    const download = document.createElement("a");
+    download.className = "generated-image-download";
+    download.href = url;
+    download.setAttribute("download", `${asset.assetId}.png`);
+    download.textContent = "다운로드";
+    item.append(download);
+
+    gallery.append(item);
+  }
+  figure.append(gallery);
+
+  if (image?.prompt) {
+    const caption = document.createElement("figcaption");
+    caption.className = "generated-image-caption";
+    caption.textContent = image.prompt;
+    figure.append(caption);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "generated-image-actions";
+  const regenerate = document.createElement("button");
+  regenerate.type = "button";
+  regenerate.className = "generated-image-regenerate";
+  regenerate.textContent = "다시 생성";
+  regenerate.addEventListener("click", () => {
+    window.dispatchEvent(new CustomEvent("myai:image-regenerate", {
+      detail: {
+        prompt: image?.prompt || "",
+        stylePreset: image?.stylePreset || null,
+        width: image?.width || null,
+        height: image?.height || null,
+        batch: assets.length || 1
+      }
+    }));
+  });
+  actions.append(regenerate);
+  figure.append(actions);
+
+  return figure;
+}
+
+function textDivLocal(className, text) {
+  const div = document.createElement("div");
+  div.className = className;
+  div.textContent = text;
+  return div;
 }
 
 export function renderFollowupSuggestions(article, suggestions = [], options = {}) {

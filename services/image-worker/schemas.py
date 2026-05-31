@@ -1,31 +1,52 @@
+"""Pydantic request/response models for the image worker."""
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
-from typing import List, Optional
+
 
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., description="The textual description of the image to generate.")
-    negative_prompt: Optional[str] = Field(None, description="Prompt describing what to exclude from the image.")
-    width: int = Field(1024, ge=128, le=2048, description="Width of the generated image.")
-    height: int = Field(1024, ge=128, le=2048, description="Height of the generated image.")
-    num_images: int = Field(1, ge=1, le=4, description="Number of images to generate (1-4).")
-    seed: Optional[int] = Field(None, description="Random seed. If null, a random one will be chosen.")
-    num_inference_steps: int = Field(4, ge=1, le=100, description="Number of denoising steps.")
-    guidance_scale: float = Field(0.0, ge=0.0, le=20.0, description="Guidance scale (CFG scale).")
+    prompt: str = Field(..., description="User prompt")
+    negative_prompt: str | None = Field(None, description="Extra negative prompt")
+    style_preset: str | None = Field(None, description="Style preset id (see /capabilities)")
+    width: int | None = None
+    height: int | None = None
+    steps: int | None = None
+    guidance: float | None = None
+    seed: int | None = None
+    batch: int | None = Field(1, ge=1, le=8)
 
-class GeneratedImage(BaseModel):
-    data: str = Field(..., description="Base64 encoded PNG image data.")
-    seed: int = Field(..., description="Seed used for this image.")
-    width: int = Field(..., description="Width of the image.")
-    height: int = Field(..., description="Height of the image.")
+
+class GenerateMeta(BaseModel):
+    model: str
+    tier: str
+    device: str
+    width: int
+    height: int
+    steps: int
+    guidance: float
+    seed: int
+    batch: int
+
 
 class GenerateResponse(BaseModel):
-    images: List[GeneratedImage]
-    model: str
-    elapsed_ms: int
+    images: list[str] = Field(..., description="PNG images as base64 (no data URI prefix)")
+    meta: GenerateMeta
+
 
 class HealthResponse(BaseModel):
     status: str
-    model_loaded: bool
-    model_name: Optional[str]
-    gpu_available: bool
-    vram_used_bytes: Optional[int]
-    vram_total_bytes: Optional[int]
+    loaded: bool
+    tier: str
+    model: str
+    device: str
+
+
+class CapabilitiesResponse(BaseModel):
+    tier: str
+    model: str
+    device: str
+    max_width: int
+    max_height: int
+    max_batch: int
+    default_steps: int
+    style_presets: list[dict]

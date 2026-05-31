@@ -114,6 +114,14 @@ export const rerankQueue = new ModelQueue({
   maxQueued: clampInt(process.env.RERANK_QUEUE_MAX_QUEUED, 16, 1, 256)
 });
 
+// Image generation runs on a separate GPU runtime; keep it off the text queues
+// and default to concurrency 1 to protect VRAM.
+export const imageQueue = new ModelQueue({
+  name: "image",
+  concurrency: clampInt(process.env.IMAGE_QUEUE_CONCURRENCY, 1, 1, 4),
+  maxQueued: clampInt(process.env.IMAGE_QUEUE_MAX_QUEUED, 16, 1, 256)
+});
+
 export function isChatQueueEnabled() {
   return String(process.env.CHAT_QUEUE_ENABLED || "false").toLowerCase() === "true";
 }
@@ -127,6 +135,7 @@ export function getModelQueueStats() {
     embedding: embeddingQueue.stats(),
     mapReduce: mapReduceQueue.stats(),
     analysis: analysisQueue.stats(),
-    rerank: rerankQueue.stats()
+    rerank: rerankQueue.stats(),
+    image: imageQueue.stats()
   };
 }

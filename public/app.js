@@ -37,6 +37,7 @@ import { initDocTool } from "./modules/docTool.js";
 import { toggleSelectionMode, exitSelectionMode, requestDeleteMessages, getSelectedIndicesSnapshot, refreshBulkBar } from "./modules/messageDelete.js";
 import { openWithPreparedDraft } from "./modules/documentStudio.js";
 import { isBriefingMessage, renderBriefingMessage } from "./modules/briefing.js";
+import { bindImageGenEvents, isImageModeActive, handleImagePrompt } from "./modules/imageGen.js";
 
 let titleTimer = null;
 let dragDepth = 0;
@@ -930,7 +931,8 @@ function renderMessages() {
       citations: message.citations,
       law: message.law,
       compliance: message.compliance,
-      sources: message.sources
+      sources: message.sources,
+      image: message.image
     });
   }
   restoreInflightForActiveRoom();
@@ -1207,6 +1209,7 @@ function bindEvents() {
   bindLawWorkbenchEvents();
   bindKnowledgePackEvents();
   initDocTool();
+  bindImageGenEvents();
 
   // File input / attach menu
   elements.fileInput.addEventListener("change", async (event) => {
@@ -1410,6 +1413,10 @@ function bindEvents() {
     if (!prompt) return;
     elements.promptInput.value = "";
     elements.promptInput.style.height = "auto";
+    if (isImageModeActive()) {
+      await handleImagePrompt(prompt);
+      return;
+    }
     await sendMessage(prompt);
   });
 }

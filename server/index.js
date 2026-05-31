@@ -53,6 +53,7 @@ import { ragEvalRouter } from "./ragEvalApi.js";
 import { graphAdminRouter } from "./graphAdminApi.js";
 import { graphStudioRouter } from "./graphStudioApi.js";
 import { studioDocumentRouter } from "./studioDocument/studioDocumentApi.js";
+import { imageApiRouter, getImageStatus, getImageAvailability } from "./imageGeneration/imageApi.js";
 import { generatedSourceRouter } from "./sourceWorkflow/generatedSourceApi.js";
 import { buildSourceGuide } from "./sourceWorkflow/sourceGuide.js";
 import {
@@ -182,6 +183,7 @@ app.use("/api/studio/mindmap", createRateLimiter({ name: "studio_mindmap", keyPr
 app.use("/api/studio/document", createRateLimiter({ name: "studio_document", keyPrefix: "studio_document:", ...rateLimitDefaults.chat }));
 app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
 app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
+app.use("/api/image/generate", createRateLimiter({ name: "image_generate", keyPrefix: "image:", ...rateLimitDefaults.chat }));
 app.use(
   ["/api/notebooks", "/api/admin/verify", "/api/admin/access"],
   createRateLimiter({
@@ -195,12 +197,16 @@ app.use(
 app.get("/api/status", async (_request, response) => {
   try {
     const models = await listModels();
-    const ragStatus = await collectRagStatus({ models });
+    const [ragStatus, image] = await Promise.all([
+      collectRagStatus({ models }),
+      getImageAvailability().catch(() => ({ configured: false, available: false }))
+    ]);
     response.json({
       ok: true,
       ollamaUrl: OLLAMA_URL,
       defaultModel: DEFAULT_MODEL,
       models: models.models?.map((model) => model.name) ?? [],
+      image,
       rag: {
         department: {
           backend: ragStatus.backend,
@@ -1078,6 +1084,15 @@ app.post("/api/usage/event", async (request, response) => {
 });
 app.use("/api/studio/graph", graphStudioRouter);
 app.use("/api/studio/document", studioDocumentRouter);
+app.use("/api/image", imageApiRouter);
+
+app.get("/api/admin/image/status", requireAdmin, async (_request, response) => {
+  try {
+    response.json({ ok: true, ...(await getImageStatus()) });
+  } catch (error) {
+    response.status(500).json({ ok: false, error: error.message });
+  }
+});
 
 app.post("/api/source-workflow/source-guide", async (request, response) => {
   try {

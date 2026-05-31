@@ -2941,6 +2941,121 @@ body.panel-resizing .panel-resizer::after {
   padding: 0;
 }
 
+.image-gen-active-button {
+  order: 2;
+  width: 46px;
+  padding: 0;
+}
+
+/* Image generation options panel (chat composer) */
+.image-gen-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.image-gen-panel[hidden] {
+  display: none;
+}
+
+.image-gen-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted, #475569);
+}
+
+.image-gen-field select {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--ink, inherit);
+  font-size: 13px;
+}
+
+/* Generated image message card */
+.generated-image {
+  margin: 8px 0 0;
+}
+
+.generated-image-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.generated-image-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--surface);
+}
+
+.generated-image-item img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+}
+
+.generated-image-expired {
+  font-size: 12px;
+  color: var(--muted, #64748b);
+  padding: 24px 8px;
+  text-align: center;
+}
+
+.generated-image-download {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-dark, #0f766e);
+  text-decoration: none;
+}
+
+.generated-image-download:hover {
+  text-decoration: underline;
+}
+
+.generated-image-caption {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted, #64748b);
+}
+
+.generated-image-actions {
+  margin-top: 8px;
+}
+
+.generated-image-regenerate {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  color: var(--accent-dark, #0f766e);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.generated-image-regenerate:hover {
+  background: color-mix(in srgb, var(--accent) 19%, var(--surface));
+}
+
 .custom-prompt-picker {
   position: absolute;
   left: 0;

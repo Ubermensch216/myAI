@@ -7,6 +7,10 @@ data/indexes/
 data/qdrant/
 data/ingest-jobs/
 data/access/
+data/generated-assets/
+services/image-worker/.venv/
+services/image-worker/__pycache__/
+services/image-worker/**/__pycache__/
 .env
 *.log
 server/log/

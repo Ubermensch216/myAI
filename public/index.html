@@ -205,6 +205,14 @@
                   </svg>
                   <span>프롬프트</span>
                 </button>
+                <button id="imageGenButton" class="attach-menu-button" type="button" aria-label="이미지 생성" title="이미지 생성" aria-pressed="false" hidden>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+                    <circle cx="8.5" cy="9.5" r="1.6" fill="currentColor"></circle>
+                    <path d="M5 18l5-5 4 4 2-2 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                  <span>이미지 생성</span>
+                </button>
               </div>
               <div id="customPromptPicker" class="custom-prompt-picker" hidden role="menu" aria-label="프롬프트 선택"></div>
             </div>
@@ -215,6 +223,13 @@
                 <path d="M3 8l4 8H1l4-8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
                 <path d="M17 8l4 8h-8l4-8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
                 <path d="M8 21h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+              </svg>
+            </button>
+            <button id="imageGenActiveButton" class="composer-mode-chip image-gen-active-button" type="button" aria-pressed="true" aria-label="이미지 생성 모드 끄기" title="이미지 생성 모드 끄기" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
+                <circle cx="8.5" cy="9.5" r="1.6" fill="currentColor"></circle>
+                <path d="M5 18l5-5 4 4 2-2 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
               </svg>
             </button>
             <button id="materialToggleButton" class="material-toggle-button" type="button" aria-expanded="false" aria-label="자료 없음" title="자료 없음" disabled hidden>
@@ -235,6 +250,35 @@
                 <rect x="7" y="7" width="10" height="10" rx="1.8"></rect>
               </svg>
             </button>
+          </div>
+          <div id="imageGenPanel" class="image-gen-panel" hidden>
+            <label class="image-gen-field">
+              <span>스타일</span>
+              <select id="imageGenStyle">
+                <option value="report">공공 보고서</option>
+                <option value="cardnews">카드뉴스</option>
+                <option value="icon">아이콘</option>
+                <option value="photo">사진풍</option>
+                <option value="illustration">일러스트</option>
+              </select>
+            </label>
+            <label class="image-gen-field">
+              <span>비율</span>
+              <select id="imageGenRatio">
+                <option value="1:1">정사각형 1:1</option>
+                <option value="4:3">가로 4:3</option>
+                <option value="16:9">와이드 16:9</option>
+                <option value="3:4">세로 3:4</option>
+              </select>
+            </label>
+            <label class="image-gen-field">
+              <span>장수</span>
+              <select id="imageGenCount">
+                <option value="1">1장</option>
+                <option value="2">2장</option>
+                <option value="4">4장</option>
+              </select>
+            </label>
           </div>
           <div id="materialPanel" class="material-panel" hidden>
             <button id="deepAnalysisToggle" class="deep-analysis-toggle" type="button" aria-pressed="false" aria-label="정밀 분석" title="첨부 파일 또는 지식팩 전체를 정밀 분석합니다 (시간이 오래 걸림)" disabled>
