@@ -780,7 +780,7 @@ export function isExplicitCalendarListRequest(prompt) {
   const text = String(prompt || "").trim();
   if (!text) return false;
   return /(일정|스케줄|캘린더|calendar|schedule)/i.test(text)
-      && /(보고|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
+      && /(보고해|보고\s*해|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
 }
 
 const CALENDAR_INQUIRY_PATTERN = /(가능\s*[?？하한할까]?|괜찮\s*[?？하한할까]?|비어\s*(있|있나|있어|있냐)|여유\s*(있|있나|있어)|할\s*수\s*있|잡을\s*수\s*있|되\s*나요|되\s*냐|되\s*(나|냐)|있어\s*[?？]?|있나\s*[?？]?|있냐\s*[?？]?|확인해\s*(줘|주세요|볼까|줄)|등록\s*(가능|할 수 있|돼|되)|available)/i;

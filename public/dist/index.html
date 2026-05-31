@@ -530,6 +530,14 @@
               <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
             </svg>
           </button>
+          <button id="studioInfographicRailButton" class="studio-rail-button" type="button" title="인포그래픽" aria-label="인포그래픽">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="11" width="3.4" height="9"></rect>
+              <rect x="10.3" y="6" width="3.4" height="14"></rect>
+              <rect x="16.6" y="14" width="3.4" height="6"></rect>
+              <path d="M4 4h16"></path>
+            </svg>
+          </button>
         </div>
 
         <div id="studioContent" class="studio-content" data-active-tool="document">
@@ -571,6 +579,15 @@
                 <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
               </svg>
               <span class="studio-tool-label">파일도구</span>
+            </button>
+            <button id="studioInfographicButton" class="studio-tool-card" type="button" data-tool="infographic" aria-label="인포그래픽 생성">
+              <svg class="studio-tool-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4" y="11" width="3.4" height="9"></rect>
+                <rect x="10.3" y="6" width="3.4" height="14"></rect>
+                <rect x="16.6" y="14" width="3.4" height="6"></rect>
+                <path d="M4 4h16"></path>
+              </svg>
+              <span class="studio-tool-label">인포그래픽</span>
             </button>
           </div>
 
@@ -700,6 +717,24 @@
               <div id="studioMindmapEmpty" class="studio-mindmap-empty"></div>
             </div>
             <div id="studioMindmapDetails" class="studio-mindmap-details"></div>
+          </div>
+
+          <div id="studioInfographicPanel" class="studio-tool-panel studio-infographic-panel" data-tool-panel="infographic" hidden>
+            <div class="infographic-controls">
+              <div id="studioInfographicLayout" class="infographic-layout-chips" role="tablist" aria-label="인포그래픽 레이아웃">
+                <button class="infographic-chip is-active" type="button" data-layout="summary">요약 카드</button>
+                <button class="infographic-chip" type="button" data-layout="timeline">타임라인</button>
+                <button class="infographic-chip" type="button" data-layout="process">절차도</button>
+                <button class="infographic-chip" type="button" data-layout="comparison">비교표</button>
+              </div>
+              <input id="studioInfographicPrompt" class="infographic-prompt" type="text" placeholder="(선택) 인포그래픽 요청을 입력하세요. 예: 민원 처리 절차로 만들어줘" />
+              <div class="infographic-actions">
+                <button id="studioInfographicGenerate" class="primary-button" type="button">생성</button>
+                <button id="studioInfographicExport" class="ghost-button" type="button" disabled>PNG 내보내기</button>
+              </div>
+            </div>
+            <div id="studioInfographicCanvas" class="studio-infographic-canvas" hidden></div>
+            <div id="studioInfographicEmpty" class="studio-infographic-empty"></div>
           </div>
 
           <div id="studioGraphPanel" class="studio-tool-panel studio-graph-panel" data-tool-panel="graph" hidden>

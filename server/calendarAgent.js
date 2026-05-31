@@ -267,7 +267,7 @@ function isExplicitCalendarListRequest(prompt) {
   const text = String(prompt || "").replace(/\s+/g, " ").trim();
   if (!text) return false;
   return /(일정|스케줄|캘린더|calendar|schedule)/i.test(text)
-    && /(보고|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
+    && /(보고해|보고\s*해|보여|알려|조회|검색|목록|list|show|view)/i.test(text);
 }
 
 function extractCalendarListDateRangeUtf8(prompt, currentDate) {

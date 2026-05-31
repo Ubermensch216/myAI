@@ -14,6 +14,12 @@ import { scheduleSave, hydrateStoredDocuments } from "./persistence.js";
 import { estimateDocumentBytes, estimateJsonBytes, formatBytes, getActiveDocuments } from "./chat.js";
 import { bindStudioGraphEvents, showStudioGraphPanel, hideStudioGraphPanel } from "./graphStudio.js";
 import { bindDocumentStudioEvents, registerDocumentStudioActivator, renderDocumentStudio } from "./documentStudio.js";
+import {
+  bindInfographicStudioEvents,
+  renderInfographicStudio,
+  generateInfographic,
+  isInfographicBusy
+} from "./infographicStudio.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -55,6 +61,12 @@ export function bindStudioEvents() {
   elements.studioDocumentRailButton?.addEventListener("click", () => setActiveTool("document"));
   document.getElementById("studioDocToolButton")?.addEventListener("click", () => setActiveTool("doctool"));
   document.getElementById("studioDocToolRailButton")?.addEventListener("click", () => setActiveTool("doctool"));
+  elements.studioInfographicButton?.addEventListener("click", () => {
+    if (isInfographicBusy()) return; // 진행 중 중지는 패널 내 ‘생성 중지’ 버튼이 담당
+    if (_activeTool !== "infographic") setActiveTool("infographic");
+    else generateInfographic();
+  });
+  elements.studioInfographicRailButton?.addEventListener("click", () => setActiveTool("infographic"));
   elements.lawExplorerRunButton?.addEventListener("click", () => {
     if (_lawExplorerAbortController) {
       _lawExplorerAbortController.abort();
@@ -84,6 +96,7 @@ export function bindStudioEvents() {
   }
   bindStudioGraphEvents();
   bindDocumentStudioEvents();
+  bindInfographicStudioEvents();
   registerDocumentStudioActivator(() => setActiveTool("document"));
 }
 
@@ -102,7 +115,7 @@ function syncLawHistoryInput(field) {
 }
 
 function setActiveTool(tool) {
-  if (tool !== "mindmap" && tool !== "graph" && tool !== "document" && tool !== "doctool") return;
+  if (tool !== "mindmap" && tool !== "graph" && tool !== "document" && tool !== "doctool" && tool !== "infographic") return;
   if (tool === "graph" && state.activeView !== "knowledge") return;
   if (tool === "document" && state.activeView === "knowledge") return;
   _activeTool = tool;
@@ -110,11 +123,14 @@ function setActiveTool(tool) {
   elements.studioMindmapButton?.classList.toggle("is-active", tool === "mindmap");
   elements.studioGraphButton?.classList.toggle("is-active", tool === "graph");
   elements.studioDocumentButton?.classList.toggle("is-active", tool === "document");
+  elements.studioInfographicButton?.classList.toggle("is-active", tool === "infographic");
+  elements.studioInfographicRailButton?.classList.toggle("is-active", tool === "infographic");
   document.getElementById("studioDocToolButton")?.classList.toggle("is-active", tool === "doctool");
-  
+
   if (elements.studioMindmapPanel) elements.studioMindmapPanel.hidden = tool !== "mindmap";
   if (elements.studioGraphPanel) elements.studioGraphPanel.hidden = tool !== "graph";
   if (elements.studioDocumentPanel) elements.studioDocumentPanel.hidden = tool !== "document";
+  if (elements.studioInfographicPanel) elements.studioInfographicPanel.hidden = tool !== "infographic";
   const docToolPanel = document.getElementById("studioDocToolPanel");
   if (docToolPanel) docToolPanel.hidden = tool !== "doctool";
 
@@ -124,6 +140,7 @@ function setActiveTool(tool) {
     hideStudioGraphPanel();
     if (tool === "document") renderDocumentStudio();
     else if (tool === "doctool") { /* initialized via app.js, nothing to render */ }
+    else if (tool === "infographic") renderInfographicStudio();
     else renderStudio();
   }
 }
@@ -137,12 +154,15 @@ export function renderStudio() {
   // 지식팩 메뉴에서는 문서작업만 감추고, 지식그래프와 마인드맵을 함께 제공한다.
   const showDocument = !isKnowledgeView && !isCalendarView;
   const showMindmap = !isCalendarView;
+  const showInfographic = !isCalendarView;
   if (elements.studioGraphButton) elements.studioGraphButton.style.display = isKnowledgeView ? "" : "none";
   if (elements.studioGraphRailButton) elements.studioGraphRailButton.style.display = isKnowledgeView ? "" : "none";
   if (elements.studioDocumentButton) elements.studioDocumentButton.style.display = showDocument ? "" : "none";
   if (elements.studioDocumentRailButton) elements.studioDocumentRailButton.style.display = showDocument ? "" : "none";
   if (elements.studioMindmapButton) elements.studioMindmapButton.style.display = showMindmap ? "" : "none";
   if (elements.studioMindmapRailButton) elements.studioMindmapRailButton.style.display = showMindmap ? "" : "none";
+  if (elements.studioInfographicButton) elements.studioInfographicButton.style.display = showInfographic ? "" : "none";
+  if (elements.studioInfographicRailButton) elements.studioInfographicRailButton.style.display = showInfographic ? "" : "none";
 
   if (!isKnowledgeView && _activeTool === "graph") {
     setActiveTool("document");
@@ -153,7 +173,7 @@ export function renderStudio() {
     setActiveTool("graph");
     return;
   }
-  if (isCalendarView && (_activeTool === "document" || _activeTool === "mindmap")) {
+  if (isCalendarView && (_activeTool === "document" || _activeTool === "mindmap" || _activeTool === "infographic")) {
     setActiveTool("doctool");
     return;
   }
@@ -167,6 +187,10 @@ export function renderStudio() {
     return;
   }
   if (_activeTool === "doctool") {
+    return;
+  }
+  if (_activeTool === "infographic") {
+    renderInfographicStudio();
     return;
   }
   if (state.activeView === "calendar") {
@@ -374,6 +398,21 @@ function buildDocumentSignature(documents) {
   return documents
     .map((d) => [d.id || "", d.fileName || "", d.fileType || "", d.textLength || d.text?.length || 0, estimateDocumentBytes(d)].join(":"))
     .join("|");
+}
+
+// 인포그래픽 도구가 마인드맵과 동일한 소스 판정 로직을 재사용할 수 있도록 노출한다.
+// 활성 메뉴(채팅방/법령/내부검토/지식팩)에 맞는 컨텍스트·문서·시그니처를 그대로 제공한다.
+export function getStudioSourceContext() {
+  return getMindmapContext();
+}
+export function getStudioSourceDocuments() {
+  return getMindmapDocuments();
+}
+export function buildStudioRequestDocuments(documents) {
+  return buildMindmapRequestDocuments(documents);
+}
+export function buildStudioDocumentSignature(documents) {
+  return buildDocumentSignature(documents);
 }
 
 function buildMindmapRequestDocuments(documents) {
