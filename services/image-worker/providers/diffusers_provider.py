@@ -53,8 +53,14 @@ class DiffusersProvider:
         from diffusers import AutoPipelineForText2Image
 
         use_cuda = torch.cuda.is_available() and self.config.tier != "cpu"
+        is_flux = "flux" in self.config.model.lower()
         self._device = "cuda" if use_cuda else "cpu"
-        self._dtype = torch.float16 if use_cuda else torch.float32
+        if use_cuda:
+            # FLUX is trained/served in bfloat16; SD/SDXL use float16. Blackwell
+            # (RTX 50 / PRO) has native bf16, so this costs nothing on the ops card.
+            self._dtype = torch.bfloat16 if is_flux else torch.float16
+        else:
+            self._dtype = torch.float32
 
         pipe = AutoPipelineForText2Image.from_pretrained(
             self.config.model,
@@ -64,11 +70,16 @@ class DiffusersProvider:
         )
 
         if use_cuda:
-            # Offload keeps peak VRAM low on constrained GPUs. For larger cards
-            # this is still safe and only marginally slower.
-            try:
-                pipe.enable_model_cpu_offload()
-            except Exception:
+            # Offload protects VRAM on constrained cards but adds per-step
+            # CPU<->GPU transfers. On big ops cards (high/max tier on a 24GB+ GPU)
+            # a full GPU load is markedly faster, so gate it by tier.
+            #   IMAGE_CUDA_OFFLOAD=auto (default) | force | off
+            if _want_cpu_offload(self.config.tier):
+                try:
+                    pipe.enable_model_cpu_offload()
+                except Exception:
+                    pipe = pipe.to("cuda")
+            else:
                 pipe = pipe.to("cuda")
             try:
                 pipe.enable_vae_tiling()
@@ -183,6 +194,19 @@ def _random_seed() -> int:
 
 def _offline_mode_enabled() -> bool:
     return os.getenv("HF_HUB_OFFLINE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _want_cpu_offload(tier: str) -> bool:
+    """Decide CPU offload. IMAGE_CUDA_OFFLOAD: auto (default) | force | off.
+
+    auto: offload on constrained tiers (cpu/low/mid), full-GPU on high/max.
+    """
+    mode = os.getenv("IMAGE_CUDA_OFFLOAD", "auto").strip().lower()
+    if mode == "force":
+        return True
+    if mode == "off":
+        return False
+    return tier in ("cpu", "low", "mid")
 
 
 def _png_b64(image) -> str:

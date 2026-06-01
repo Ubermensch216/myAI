@@ -8,6 +8,8 @@ data/qdrant/
 data/ingest-jobs/
 data/access/
 data/generated-assets/
+data/image-quota.json
+data/image-jobs.json
 services/image-worker/.venv/
 services/image-worker/__pycache__/
 services/image-worker/**/__pycache__/

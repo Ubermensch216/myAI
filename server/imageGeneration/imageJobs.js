@@ -1,4 +1,8 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { imageQueue } from "../modelQueue.js";
 import { createAbortError } from "../abort.js";
 import { generateImages } from "./imageProvider.js";
@@ -7,8 +11,79 @@ import { saveAsset } from "./imageAssets.js";
 const JOB_TTL_MS = 30 * 60 * 1000; // keep finished jobs 30 min for polling
 const MAX_JOBS = 500;
 
-// In-memory job store. Jobs are short-lived; assets persist on disk separately.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..", "..");
+const DATA_DIR = path.join(rootDir, "data");
+const JOBS_FILE = path.join(DATA_DIR, "image-jobs.json");
+
+// Job store. Snapshots persist to disk so a Node restart keeps finished jobs
+// pollable (their assets live on disk). In-flight jobs cannot be resumed — the
+// worker request is gone with the old process — so they load back as errors.
 const jobs = new Map();
+loadJobs();
+
+// Fields that are safe to serialize (the live AbortController is not).
+function serializableJob(job) {
+  return {
+    id: job.id,
+    status: job.status,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    request: job.request,
+    assets: job.assets,
+    meta: job.meta,
+    error: job.error,
+    statusCode: job.statusCode ?? null
+  };
+}
+
+function loadJobs() {
+  try {
+    const arr = JSON.parse(fs.readFileSync(JOBS_FILE, "utf8"));
+    if (!Array.isArray(arr)) return;
+    const now = Date.now();
+    for (const snap of arr) {
+      if (!snap?.id) continue;
+      const finished = snap.status === "done" || snap.status === "error";
+      if (finished && now - (snap.updatedAt || 0) > JOB_TTL_MS) continue;
+      const interrupted = snap.status === "queued" || snap.status === "running";
+      jobs.set(snap.id, {
+        ...snap,
+        status: interrupted ? "error" : snap.status,
+        error: interrupted ? "서버 재시작으로 중단되었습니다." : snap.error,
+        statusCode: interrupted ? 503 : (snap.statusCode ?? null),
+        updatedAt: interrupted ? now : snap.updatedAt,
+        _controller: new AbortController()
+      });
+    }
+  } catch {
+    // Missing or corrupt file → start with an empty job store.
+  }
+}
+
+let saveTimer = null;
+
+/** Debounced atomic persist of the job snapshots. */
+function scheduleJobSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistJobs().catch(() => {});
+  }, 1000);
+  if (typeof saveTimer.unref === "function") saveTimer.unref();
+}
+
+async function persistJobs() {
+  try {
+    await fsp.mkdir(DATA_DIR, { recursive: true });
+    const arr = [...jobs.values()].map(serializableJob);
+    const tmp = `${JOBS_FILE}.tmp`;
+    await fsp.writeFile(tmp, JSON.stringify(arr), "utf8");
+    await fsp.rename(tmp, JOBS_FILE);
+  } catch {
+    // Best-effort; persistence failure must not break generation.
+  }
+}
 
 function newJobId() {
   return `job_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
@@ -47,6 +122,7 @@ export function createImageJob(options) {
     _controller: controller
   };
   jobs.set(id, job);
+  scheduleJobSave();
 
   // Fire-and-forget; failures are captured on the job.
   imageQueue
@@ -54,6 +130,7 @@ export function createImageJob(options) {
       if (controller.signal.aborted) throw controller.signal.reason || createAbortError();
       job.status = "running";
       job.updatedAt = Date.now();
+      scheduleJobSave();
       const result = await generateImages(options, { signal: controller.signal });
       const assets = [];
       for (const b64 of result.images) {
@@ -63,12 +140,14 @@ export function createImageJob(options) {
       job.meta = sanitizeMeta(result.meta);
       job.status = "done";
       job.updatedAt = Date.now();
+      scheduleJobSave();
     }, { signal: controller.signal, label: "image_generate" })
     .catch((error) => {
       job.status = "error";
       job.error = error?.message || "이미지 생성에 실패했습니다.";
       job.statusCode = error?.statusCode || 500;
       job.updatedAt = Date.now();
+      scheduleJobSave();
     });
 
   return id;
@@ -95,6 +174,7 @@ export function cancelJob(jobId) {
     job.status = "error";
     job.error = "취소됨";
     job.updatedAt = Date.now();
+    scheduleJobSave();
     return true;
   }
   return false;
