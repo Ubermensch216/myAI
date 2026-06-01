@@ -182,7 +182,9 @@ async function startJob(prompt, params) {
 }
 
 async function pollJob(jobId) {
-  for (let attempt = 0; attempt < 160; attempt++) {
+  // 270 × 1200ms = 324s > 서버 IMAGE_GEN_TIMEOUT_MS 기본 300s + 큐 대기 마진.
+  // 서버 타임아웃이 먼저 발생하도록(원본 에러 메시지 보존) 클라 상한을 더 길게 둔다.
+  for (let attempt = 0; attempt < 270; attempt++) {
     await sleep(1200);
     const response = await fetch(`/api/image/jobs/${jobId}`);
     if (!response.ok) {
