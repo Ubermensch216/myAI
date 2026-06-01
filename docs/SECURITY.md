@@ -131,6 +131,9 @@ Add your organization SSO, VPN, `forward_auth`, or basic auth before traffic rea
 | `SOURCE_PROMOTION_MAX_CHARS` | `180000` | promotion markdown cap |
 | `STUDIO_DOCUMENT_ANSWER_MAX_CHARS` | `120000` | answer-to-document input |
 | `EXPORT_MAX_CHARS` | `180000` | export/document text cap |
+| `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | `1024` | output image resolution limit |
+| `IMAGE_MAX_BATCH` | `4` | output image batch limit |
+| `IMAGE_DAILY_LIMIT_PER_USER` | `50` | user daily image quota |
 
 Keep reverse-proxy limits equal to or lower than app limits.
 
@@ -145,6 +148,8 @@ RATE_LIMIT_UPLOAD_PER_MINUTE=8
 RATE_LIMIT_LIGHTWEIGHT_PER_MINUTE=30
 RATE_LIMIT_ADMIN_WRITE_PER_MINUTE=10
 ```
+
+*Note: `/api/image/generate` shares the chat rate limit configuration (`RATE_LIMIT_CHAT_PER_MINUTE`).*
 
 When behind a trusted proxy:
 

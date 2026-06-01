@@ -107,6 +107,7 @@ Confirmed server-side event types include:
 - `chat_query`
 - `login`
 - `logout`
+- `image_generate` (logged when requesting image generation)
 
 Stats aggregation can infer feature usage from chat metadata for RAG, law, compliance, and related features. Additional explicit events can be added for Studio export, graph render, direct law route usage, and calendar use without changing the privacy model.
 

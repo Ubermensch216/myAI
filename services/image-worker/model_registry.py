@@ -3,7 +3,7 @@
 The tier decides the default model, resolution, step count, and guidance scale.
 `auto` detects available VRAM and picks the highest tier that fits. `IMAGE_MODEL`
 overrides the tier model entirely. Keep this table in sync with
-docs/IMAGE_GENERATION_PLAN.md.
+docs/IMAGE_GENERATION.md.
 """
 from __future__ import annotations
 

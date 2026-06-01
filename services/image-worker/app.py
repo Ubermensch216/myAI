@@ -3,7 +3,7 @@
 Run:
     uvicorn app:app --host 127.0.0.1 --port 7861
 
-Environment (see docs/IMAGE_GENERATION_PLAN.md):
+Environment (see docs/IMAGE_GENERATION.md):
     IMAGE_MODEL_TIER   auto|cpu|low|mid|high|max   (default low)
     IMAGE_MODEL        override tier model id      (optional)
     IMAGE_MAX_WIDTH / IMAGE_MAX_HEIGHT / IMAGE_MAX_BATCH

@@ -109,6 +109,46 @@ Body:
 
 The LLM proposes a visualization plan. `server/visualization.js` validates exact columns and computes final SVG/table/KPI/infographic data from uploaded rows.
 
+## Image Generation
+
+All `/api/image/*` routes are served by `server/imageGeneration/imageApi.js`.
+
+### `POST /api/image/generate`
+
+Body:
+
+```js
+{
+  prompt,
+  negativePrompt,
+  stylePreset,
+  width,
+  height,
+  steps,
+  guidance,
+  seed,
+  batch
+}
+```
+
+Initiates an asynchronous image generation job. Validates input prompt safety and reserves a daily limit quota. Returns `{ jobId, status: "queued" }`.
+
+### `GET /api/image/jobs/:jobId`
+
+Returns the current status of the generation job, including queue position, percentage complete, and generated asset IDs when complete.
+
+### `POST /api/image/jobs/:jobId/cancel`
+
+Cancels a queued or running image generation job.
+
+### `GET /api/image/assets/:assetId`
+
+Serves the generated PNG image. Responses are cached private for 1 hour.
+
+### `DELETE /api/image/assets/:assetId`
+
+Deletes a generated asset from the server store.
+
 ## Calendar And Holidays
 
 ### `POST /api/agent/intent`

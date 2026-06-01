@@ -5,7 +5,7 @@ It runs separately from the Node server and Ollama so a GPU OOM or a stuck diffu
 job cannot take down chat or the main API. The Node server reaches it only through
 `server/imageGeneration/imageProvider.js`.
 
-See `docs/IMAGE_GENERATION_PLAN.md` for the overall design and hardware tiers.
+See `docs/IMAGE_GENERATION.md` for the overall design and hardware tiers.
 
 ## Install
 

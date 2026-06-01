@@ -140,6 +140,10 @@ Persistent container volumes:
 | `OLLAMA_MODEL` | `gemma4:e2b` | default chat/analysis model |
 | `EMBED_MODEL` | `bge-m3` | Ollama embedding model |
 | `EMBED_DIM` | unset | expected embedding dimension; use `1024` for `bge-m3` |
+| `IMAGE_PROVIDER` | `diffusers` | image provider (`diffusers` | `comfyui`) |
+| `IMAGE_WORKER_URL` | `http://127.0.0.1:7861` | external image worker or ComfyUI system URL |
+| `IMAGE_MODEL_TIER` | `low` | hardware/model configuration tier |
+| `IMAGE_DAILY_LIMIT_PER_USER` | `50` | daily image quota per user |
 | `ADMIN_TOKEN` | unset | Admin Console management bearer token |
 | `ACCESS_TOKEN_SECRET` | generated under `data/access/` | notebook-read access token signing secret |
 | `ACCESS_TOKEN_TTL_SECONDS` | `43200` | group/level or Super notebook-read token lifetime |
@@ -204,6 +208,7 @@ src/
 - [Architecture](docs/ARCHITECTURE.md)
 - [API](docs/API.md)
 - [RAG and Map-Reduce](docs/RAG.md)
+- [Image Generation](docs/IMAGE_GENERATION.md)
 - [Department RAG Architecture](docs/DEPARTMENT_RAG_ARCHITECTURE.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
 - [Calendar](docs/CALENDAR.md)

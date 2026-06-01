@@ -72,6 +72,8 @@ npm.cmd run test:live
 - `server/parsers.js` - PDF/DOCX/XLSX/CSV/PPTX/HWPX/image parsing and chunking.
 - `server/auth.js` - `ADMIN_TOKEN` middleware.
 - `server/stats/` - privacy-safe usage telemetry writer, reader, and Admin Stats API.
+- `server/imageGeneration/` - ComfyUI and Diffusers image providers, jobs queue, and asset storage.
+- `services/image-worker/` - FastAPI image generation worker (running Diffusers locally).
 
 ## Important Frontend Files
 
@@ -160,6 +162,7 @@ composer material panel toggle
 - `docs/ARCHITECTURE.md` - system flows and module responsibilities.
 - `docs/API.md` - endpoint summary.
 - `docs/RAG.md` - dual-profile RAG and Map-Reduce.
+- `docs/IMAGE_GENERATION.md` - image generation architecture and operations.
 - `docs/DEPARTMENT_RAG_ARCHITECTURE.md` - Qdrant + SQLite + graph topology.
 - `docs/KOREAN_LAW_ENGINE.md` - law engine and legal workflow behavior.
 - `docs/CALENDAR.md` - local calendar and intent agent behavior.

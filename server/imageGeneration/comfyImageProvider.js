@@ -19,7 +19,7 @@ const WORKFLOW_TEXT2IMG = process.env.COMFYUI_WORKFLOW_TEXT2IMG || "";
  * Implements the same interface as diffusersProvider. Generation requires a
  * pinned workflow JSON (COMFYUI_WORKFLOW_TEXT2IMG) whose placeholder tokens are
  * substituted per request. Keep workflows version-pinned and custom nodes on an
- * allowlist (see docs/IMAGE_GENERATION_PLAN.md).
+ * allowlist (see docs/IMAGE_GENERATION.md).
  *
  * NOTE: This is interface-complete and config-driven. Validate the workflow
  * graph against your ComfyUI install before enabling IMAGE_PROVIDER=comfyui.

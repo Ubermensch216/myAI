@@ -9,15 +9,15 @@ myAI is a plain HTML/CSS/JavaScript frontend backed by a Node.js/Express server 
   IndexedDB AES-GCM                       Node.js/Express :3000
   |- rooms + messages                      |- Ollama :11434
   |- personal room uploads                 |- Qdrant :6333 optional
-  |- generated room sources                |- data/notebooks/
-  |- Studio drafts/outputs                 |- data/indexes/
-  |- calendar events                       |- data/logs/
-  `- settings                              `- uploads/ temp parse only
-       |
+  |- generated room sources                |- image-worker :7861 optional (or ComfyUI)
+  |- Studio drafts/outputs                 |- data/notebooks/
+  |- calendar events                       |- data/indexes/
+  `- settings                              |- data/generated-assets/ (temp pngs)
+       |                                   `- uploads/ temp parse only
        ` fetch() -> http(s)://<host>:3000/api
 ```
 
-Personal uploads are parsed on the server as temporary files, returned to the browser, and persisted only in encrypted IndexedDB. Department notebooks are shared server-side state under `data/notebooks/`.
+Personal uploads are parsed on the server as temporary files, returned to the browser, and persisted only in encrypted IndexedDB. Department notebooks are shared server-side state under `data/notebooks/`. Generated image assets are stored temporarily on the server under `data/generated-assets/`.
 
 ## Data Ownership
 
@@ -36,6 +36,7 @@ Personal uploads are parsed on the server as temporary files, returned to the br
 | Usage logs | `data/logs/usage-YYYY-MM-DD.jsonl` | metadata only |
 | Retrieval/law logs | `data/logs/` | metadata only |
 | Source promotion queue | `data/source-promotions/promotions.json` | reviewed before notebook ingest |
+| Generated image assets | `data/generated-assets/` | temporary files deleted after retention hours |
 
 ## Chat Flow
 
@@ -243,6 +244,8 @@ CSV/XLSX prompt + table data
 - `server/law/*` - Korean Law Engine and Law Workbench.
 - `server/compliance/*` - department legal review and GRC review.
 - `server/stats/*` - usage telemetry and Admin Stats.
+- `server/imageGeneration/*` - image provider adapters (comfyui, diffusers), safety checks, and queue setup.
+- `services/image-worker/*` - Python FastAPI image generation worker running Diffusers locally.
 - `public/app.js` - frontend routing/orchestration and Svelte GRC mount.
 - `public/modules/chat.js` - chat, upload, streaming, source badges.
 - `public/modules/notebook.js` - notebook UI, access login, admin panels, promotion review.
