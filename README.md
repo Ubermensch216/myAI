@@ -142,7 +142,9 @@ Persistent container volumes:
 | `EMBED_DIM` | unset | expected embedding dimension; use `1024` for `bge-m3` |
 | `IMAGE_PROVIDER` | `diffusers` | image provider (`diffusers` | `comfyui`) |
 | `IMAGE_WORKER_URL` | `http://127.0.0.1:7861` | external image worker or ComfyUI system URL |
-| `IMAGE_MODEL_TIER` | `low` | hardware/model configuration tier |
+| `IMAGE_MODEL_TIER` | `mid` | hardware/model tier; RTX 5060 dev uses `mid`, RTX PRO 5000 ops can use `max` |
+| `IMAGE_MAX_WIDTH` / `IMAGE_MAX_HEIGHT` | `768` | image output limit for the RTX 5060 dev profile |
+| `HF_HOME` | `C:\AI\hf-cache` | Hugging Face cache root for image models |
 | `IMAGE_DAILY_LIMIT_PER_USER` | `50` | daily image quota per user |
 | `ADMIN_TOKEN` | unset | Admin Console management bearer token |
 | `ACCESS_TOKEN_SECRET` | generated under `data/access/` | notebook-read access token signing secret |

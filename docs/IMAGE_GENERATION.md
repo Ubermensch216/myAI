@@ -52,20 +52,63 @@ Canonical environment variables for image generation:
 ```env
 IMAGE_PROVIDER=diffusers          # diffusers | comfyui
 IMAGE_WORKER_URL=http://127.0.0.1:7861
-IMAGE_MODEL_TIER=low              # auto | cpu | low | mid | high | max
+IMAGE_MODEL_TIER=mid              # RTX 5060 dev: mid; RTX PRO 5000 ops: max
 IMAGE_MODEL=                      # empty = tier default; set to override model id
-IMAGE_MAX_WIDTH=1024
-IMAGE_MAX_HEIGHT=1024
-IMAGE_MAX_BATCH=4
+IMAGE_MAX_WIDTH=768
+IMAGE_MAX_HEIGHT=768
+IMAGE_MAX_BATCH=1
 IMAGE_RETENTION_HOURS=24
 IMAGE_QUEUE_CONCURRENCY=1         # concurrency of 1 protects VRAM
-IMAGE_QUEUE_MAX_QUEUED=16
-IMAGE_GEN_TIMEOUT_MS=180000
+IMAGE_QUEUE_MAX_QUEUED=8
+IMAGE_GEN_TIMEOUT_MS=240000
 IMAGE_DAILY_LIMIT_PER_USER=50
 HUGGINGFACE_TOKEN=                # server-side only, for admin model downloads
+HF_HOME=C:\AI\hf-cache
+HF_HUB_OFFLINE=1                  # set only when all models are present locally
+TRANSFORMERS_OFFLINE=1            # set only for closed-network operation
 COMFYUI_URL=http://127.0.0.1:8188
 COMFYUI_WORKFLOW_TEXT2IMG=        # path to pinned comfyui workflow JSON
 ```
+
+## RTX 5060 Dev And RTX PRO 5000 Ops Profiles
+
+Use the checked-in PowerShell launchers so the worker has an explicit hardware
+profile instead of relying on the root `.env` alone:
+
+```powershell
+# RTX 5060 Laptop, 8 GB class VRAM: SDXL-Turbo, 768px, batch 1
+.\scripts\start-image-worker.rtx5060.ps1
+
+# RTX PRO 5000 Blackwell: FLUX tier, 1024px, batch 2
+.\scripts\start-image-worker.rtx5000pro.ps1
+```
+
+For RTX 50/Blackwell GPUs, install PyTorch with CUDA 12.8 wheels:
+
+```powershell
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install -r services\image-worker\requirements.txt
+```
+
+## Closed-Network Model Preparation
+
+On an internet-connected staging PC, pre-download the model folders:
+
+```powershell
+huggingface-cli download stabilityai/sdxl-turbo --local-dir C:\AI\models\sdxl-turbo
+huggingface-cli download black-forest-labs/FLUX.1-schnell --local-dir C:\AI\models\flux-schnell
+```
+
+Move the chosen folder and `C:\AI\hf-cache` to the closed-network host, then run
+with local-only mode:
+
+```powershell
+.\scripts\start-image-worker.rtx5060.ps1 -Offline -ModelPath C:\AI\models\sdxl-turbo -Warmup
+```
+
+In offline mode, the provider passes `local_files_only=True` to Diffusers and
+also sets `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`, so startup fails fast if
+the model artifacts are missing.
 
 ## Telemetry & Safety
 

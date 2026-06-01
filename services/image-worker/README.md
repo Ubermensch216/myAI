@@ -14,7 +14,7 @@ Install a CUDA-matched torch build first, then the rest:
 ```bash
 cd services/image-worker
 python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install torch --index-url https://download.pytorch.org/whl/cu121   # or cpu build
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
 ```
 
@@ -27,6 +27,12 @@ for gated models (e.g. FLUX.1-schnell requires accepting its license on HF first
 # default tier = low (SD-Turbo, 512px, runs on modest GPUs / CPU)
 uvicorn app:app --host 127.0.0.1 --port 7861
 
+# repository launcher for RTX 5060 Laptop dev (SDXL-Turbo, 768px, batch 1)
+..\..\scripts\start-image-worker.rtx5060.ps1
+
+# repository launcher for RTX PRO 5000 Blackwell ops (FLUX tier, 1024px, batch 2)
+..\..\scripts\start-image-worker.rtx5000pro.ps1
+
 # pick a tier or override the model
 IMAGE_MODEL_TIER=auto uvicorn app:app --port 7861
 IMAGE_MODEL=black-forest-labs/FLUX.1-schnell uvicorn app:app --port 7861
@@ -34,6 +40,25 @@ IMAGE_MODEL=black-forest-labs/FLUX.1-schnell uvicorn app:app --port 7861
 # warm the model on startup (otherwise it loads on first /generate)
 IMAGE_WORKER_WARMUP=1 uvicorn app:app --port 7861
 ```
+
+## Closed-network preparation
+
+Download models on an internet-connected staging PC, then copy the folders to
+the on-premise host:
+
+```powershell
+huggingface-cli download stabilityai/sdxl-turbo --local-dir C:\AI\models\sdxl-turbo
+huggingface-cli download black-forest-labs/FLUX.1-schnell --local-dir C:\AI\models\flux-schnell
+```
+
+Run offline with a local model path:
+
+```powershell
+..\..\scripts\start-image-worker.rtx5060.ps1 -Offline -ModelPath C:\AI\models\sdxl-turbo -Warmup
+```
+
+`-Offline` sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. The provider
+then passes `local_files_only=True` to Diffusers.
 
 ## Endpoints
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 import threading
 
 from model_registry import TierConfig
@@ -59,6 +60,7 @@ class DiffusersProvider:
             self.config.model,
             torch_dtype=self._dtype,
             use_safetensors=True,
+            local_files_only=_offline_mode_enabled(),
         )
 
         if use_cuda:
@@ -177,6 +179,10 @@ def _random_seed() -> int:
     import secrets
 
     return secrets.randbelow(2 ** 31)
+
+
+def _offline_mode_enabled() -> bool:
+    return os.getenv("HF_HUB_OFFLINE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _png_b64(image) -> str:
