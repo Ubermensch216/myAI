@@ -4,6 +4,8 @@ myAI provides AI image generation as a separate runtime behind a provider abstra
 
 This document is the authoritative reference for design, **closed-network on-premise** install, configuration, operation, and the API. The intended deployment is an air-gapped (no internet) department GPU workstation.
 
+> 쉬운 말로 정리한 **설치·운영·사용 가이드**는 [IMAGE_GENERATION_GUIDE.md](IMAGE_GENERATION_GUIDE.md)를 참고하세요 (관리자/직원 대상).
+
 ## Architecture
 
 - **Fault Isolation:** GPU Out-of-Memory (OOM) errors or stuck diffusion jobs do not disrupt the Node.js server or Ollama text chat. The worker runs as a separate process.

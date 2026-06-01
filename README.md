@@ -210,7 +210,7 @@ src/
 - [Architecture](docs/ARCHITECTURE.md)
 - [API](docs/API.md)
 - [RAG and Map-Reduce](docs/RAG.md)
-- [Image Generation](docs/IMAGE_GENERATION.md)
+- [Image Generation](docs/IMAGE_GENERATION.md) — [설치·운영·사용 가이드(쉬운 설명)](docs/IMAGE_GENERATION_GUIDE.md)
 - [Department RAG Architecture](docs/DEPARTMENT_RAG_ARCHITECTURE.md)
 - [Korean Law Engine](docs/KOREAN_LAW_ENGINE.md)
 - [Calendar](docs/CALENDAR.md)
