@@ -34,7 +34,9 @@ TIERS: dict[str, TierConfig] = {
 }
 
 # VRAM (GiB) thresholds, checked high -> low.
-_VRAM_THRESHOLDS = [(24, "max"), (16, "high"), (8, "mid"), (4, "low")]
+# mid is 7 (not 8) GiB on purpose: an "8 GB" laptop GPU reports ~7.96 GiB
+# (e.g. RTX 5060 Laptop = 8151 MiB), which would otherwise fall through to low.
+_VRAM_THRESHOLDS = [(24, "max"), (16, "high"), (7, "mid"), (4, "low")]
 
 
 def _detect_vram_tier() -> str:

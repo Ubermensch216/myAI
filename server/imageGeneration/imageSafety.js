@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "../env.js";
 
 loadLocalEnv();
@@ -7,14 +11,62 @@ const MAX_PROMPT_CHARS = 2000;
 
 // Defense-in-depth blocklist (the worker also enforces its own). Refuses
 // obviously disallowed intent: explicit content and official-document forgery.
+// NOTE: coarse by design — tune per deployment policy. See docs/IMAGE_GENERATION.md
+// (Security) for how to extend this for closed-network / public-sector policy.
 const BLOCKED_RE = /\bnsfw\b|\bnude\b|\bnaked\b|\bporn\w*|\bsexual\b|위조|가짜\s*공문|\bforged?\b/i;
 
-// In-memory per-user daily counters: key `${user}:${YYYY-MM-DD}` -> count.
-// Resets naturally as the date key changes; pruned opportunistically.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "..", "..");
+const DATA_DIR = path.join(rootDir, "data");
+const QUOTA_FILE = path.join(DATA_DIR, "image-quota.json");
+
+// Per-user daily counters: key `${group}:${level}:${YYYY-MM-DD}` -> count.
+// Persisted to disk so a Node restart does not reset quotas (which would let
+// users bypass the daily cap). The key bucket is group+level, not an individual
+// user id — see docs/IMAGE_GENERATION.md (Operations & Resilience).
 const counters = new Map();
+loadCounters();
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Load today's counters from disk at startup; stale days are dropped. */
+function loadCounters() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(QUOTA_FILE, "utf8"));
+    const day = today();
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === "number" && value > 0 && key.endsWith(`:${day}`)) {
+        counters.set(key, value);
+      }
+    }
+  } catch {
+    // Missing or corrupt file → start with an empty quota table.
+  }
+}
+
+let saveTimer = null;
+
+/** Debounced atomic persist of the counter table. Quota is soft; best-effort. */
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistCounters().catch(() => {});
+  }, 1000);
+  if (typeof saveTimer.unref === "function") saveTimer.unref();
+}
+
+async function persistCounters() {
+  try {
+    await fsp.mkdir(DATA_DIR, { recursive: true });
+    const tmp = `${QUOTA_FILE}.tmp`;
+    await fsp.writeFile(tmp, JSON.stringify(Object.fromEntries(counters)), "utf8");
+    await fsp.rename(tmp, QUOTA_FILE);
+  } catch {
+    // Best-effort; an unwritable data dir must not break generation.
+  }
 }
 
 function userKey(access) {
@@ -53,6 +105,7 @@ export function reserveDailyQuota(access) {
   }
   counters.set(key, used + 1);
   pruneStaleCounters(day);
+  scheduleSave();
 }
 
 /** Release a reserved slot when a job fails before doing real work. */
@@ -60,6 +113,7 @@ export function releaseDailyQuota(access) {
   const key = `${userKey(access)}:${today()}`;
   const used = counters.get(key) || 0;
   if (used > 0) counters.set(key, used - 1);
+  scheduleSave();
 }
 
 function pruneStaleCounters(currentDay) {

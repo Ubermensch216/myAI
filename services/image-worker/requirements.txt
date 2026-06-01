@@ -1,7 +1,14 @@
 # image-worker dependencies.
-# NOTE: install a CUDA-matched torch build first, e.g.
-#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# NOTE: install a CUDA-matched torch build FIRST, then this file.
+#   RTX 50 / Blackwell (sm_120) — REQUIRES CUDA 12.8 wheels:
+#     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+#   Older NVIDIA (Ampere/Ada, e.g. RTX 30/40): cu121 also works:
+#     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#   CPU-only fallback:
+#     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 # then: pip install -r requirements.txt
+# Closed-network: mirror wheels on a staging PC first — see docs/IMAGE_GENERATION.md
+# (Offline Install) or scripts/stage-image-worker-wheels.ps1.
 fastapi>=0.110
 uvicorn[standard]>=0.27
 pydantic>=2.6
