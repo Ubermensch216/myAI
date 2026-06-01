@@ -4,7 +4,7 @@ import { createLinkedAbortController } from "../abort.js";
 loadLocalEnv();
 
 const WORKER_URL = (process.env.IMAGE_WORKER_URL || "http://127.0.0.1:7861").replace(/\/+$/, "");
-const GEN_TIMEOUT_MS = clampInt(process.env.IMAGE_GEN_TIMEOUT_MS, 180000, 5000, 600000);
+const GEN_TIMEOUT_MS = clampInt(process.env.IMAGE_GEN_TIMEOUT_MS, 300000, 5000, 600000);
 const HEALTH_TIMEOUT_MS = 2500;
 
 /**
