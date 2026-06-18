@@ -1,0 +1,53 @@
+# Optional overlay: adds the Python image-worker (text-to-image) service and
+# wires the app to it. Image generation runs in its own container so a GPU OOM
+# or a stuck diffusion job cannot take down chat or the main API.
+#
+# CPU (builds anywhere):
+#   docker compose -f compose.yml -f deploy/docker-compose.image.yml up -d --build
+#
+# GPU (CUDA torch wheels + device reservation):
+#   TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128 \
+#   docker compose -f compose.yml \
+#     -f deploy/docker-compose.image.yml \
+#     -f deploy/docker-compose.image.gpu.yml up -d --build
+
+services:
+  image-worker:
+    build:
+      context: ./services/image-worker
+      args:
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    image: myai-image-worker:latest
+    container_name: myai-image-worker
+    restart: unless-stopped
+    ports:
+      - "${IMAGE_WORKER_BIND_ADDR:-127.0.0.1}:${IMAGE_WORKER_PORT:-7861}:7861"
+    environment:
+      IMAGE_MODEL_TIER: ${IMAGE_MODEL_TIER:-cpu}
+      IMAGE_MODEL: ${IMAGE_MODEL:-}
+      IMAGE_WORKER_WARMUP: ${IMAGE_WORKER_WARMUP:-0}
+      IMAGE_MAX_WIDTH: ${IMAGE_MAX_WIDTH:-1024}
+      IMAGE_MAX_HEIGHT: ${IMAGE_MAX_HEIGHT:-1024}
+      IMAGE_MAX_BATCH: ${IMAGE_MAX_BATCH:-2}
+      HF_HOME: /models
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
+      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-0}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
+    volumes:
+      - image-models:/models
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7861/health').status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  app:
+    environment:
+      IMAGE_WORKER_URL: ${MYAI_CONTAINER_IMAGE_WORKER_URL:-http://image-worker:7861}
+    depends_on:
+      image-worker:
+        condition: service_started
+
+volumes:
+  image-models:

@@ -408,7 +408,7 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
 
   // Format AI admin rules article search results
   if (aiAdminResult && !aiAdminResult.error && aiAdminResult.results?.length > 0) {
-    const block = formatAiSearchResultsBlock("행정규칙 조문 (AI 검색)", aiAdminResult.results, citations.length);
+    const block = formatAiSearchResultsBlock("행정규칙 조문 (AI 검색)", aiAdminResult.results, citations.length, "admin_rule");
     if (block.text) sections.push(block.text);
     citations.push(...block.citations);
   } else if (aiAdminResult?.error) {
@@ -1099,7 +1099,28 @@ function formatSearchContext(result) {
   return lines.join("\n\n");
 }
 
-function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], startIndex = 0) {
+// Builds a working law.go.kr Korean-address (한글주소) link for an aiSearch result.
+// The article must be in 제N조 form (item.articleCanonical); the raw zero-padded
+// 조문번호 (e.g. "0619") is NOT a valid 한글주소 and triggers law.go.kr's
+// "해당 한글주소명을 찾을 수 없습니다" error. Admin-rule records use the 행정규칙
+// prefix and link at the rule level, since article-level 한글주소 deep links are
+// only reliable for 법령. Falls back to the law-level page when the article form
+// is unavailable (e.g. 별표서식).
+function buildAiSearchUrl(item, fallbackKind = "law") {
+  const lawName = String(item?.lawName || "").trim();
+  if (!lawName) return "";
+  const kind = item?.recordKind || fallbackKind;
+  const encodedName = encodeURIComponent(lawName);
+  if (kind === "admin_rule") {
+    return `https://www.law.go.kr/행정규칙/${encodedName}`;
+  }
+  if (item?.articleCanonical) {
+    return `https://www.law.go.kr/법령/${encodedName}/${encodeURIComponent(item.articleCanonical)}`;
+  }
+  return `https://www.law.go.kr/법령/${encodedName}`;
+}
+
+function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], startIndex = 0, fallbackKind = "law") {
   const list = Array.isArray(items) ? items.slice(0, 5) : [];
   if (!list.length) return { text: "", citations: [] };
   const lines = [
@@ -1110,6 +1131,7 @@ function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], star
   const citations = [];
   list.forEach((item, index) => {
     const citationId = `AI-L${startIndex + index + 1}`;
+    const articleLabel = item.articleCanonical || item.articleNo;
     citations.push({
       citationId,
       sourceType: "law_article",
@@ -1119,9 +1141,9 @@ function formatAiSearchResultsBlock(title = "AI 의미 검색", items = [], star
       articleTitle: item.articleTitle,
       snippet: item.snippet,
       effectiveDate: item.effectiveDate,
-      url: item.lawName && item.articleNo ? `https://www.law.go.kr/법령/${encodeURIComponent(item.lawName)}/${encodeURIComponent(item.articleNo)}` : ""
+      url: buildAiSearchUrl(item, fallbackKind)
     });
-    lines.push(`[${citationId}] ${item.lawName} ${item.articleNo}\n${item.articleTitle || ""}\n${item.snippet}`);
+    lines.push(`[${citationId}] ${item.lawName} ${articleLabel}\n${item.articleTitle || ""}\n${item.snippet}`);
   });
   return { text: lines.join("\n\n"), citations };
 }

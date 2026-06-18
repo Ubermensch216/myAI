@@ -26,10 +26,22 @@ import { runLawWorkbenchReview } from "./lawWorkbenchReview.js";
 import { searchLawTerms } from "./lawTermKb.js";
 import { getDecisionsConfig } from "./lawConfig.js";
 import { createRateLimiter } from "../rateLimit.js";
+import { createRequestAbortController } from "../abort.js";
 
 export const lawApiRouter = express.Router();
 
 const lawRateLimits = getLawRateLimitDefaults();
+
+// Express 4의 `req.signal`은 요청 본문 소비 직후 조기 abort되어 비동기 법령 도구의
+// 취소 신호로 쓸 수 없다(모든 도구가 "This operation was aborted"로 실패). 대신 요청
+// 생명주기 동안만 유효하고 실제 클라이언트 단절에만 abort하는 신호를 주입한다.
+lawApiRouter.use((request, response, next) => {
+  const ac = createRequestAbortController(request, response);
+  request.lifecycleSignal = ac.signal;
+  response.once("close", ac.cleanup);
+  response.once("finish", ac.cleanup);
+  next();
+});
 
 lawApiRouter.get("/status", async (_request, response) => {
   const config = getLawConfig();
@@ -85,7 +97,7 @@ lawApiRouter.post(
       const result = await executeLawTool({
         toolName: request.body?.toolName || request.body?.tool_name || request.body?.name,
         params: request.body?.params || request.body?.arguments || {}
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.status(result?.ok === false ? 400 : 200).json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -110,7 +122,7 @@ lawApiRouter.post(
         region: body.region,
         materialText: body.materialText,
         includeInternalImpact: body.includeInternalImpact
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -151,7 +163,7 @@ lawApiRouter.post(
         workbench: body.workbench,
         documents: body.documents,
         model: body.model
-      }, { signal: request.signal });
+      }, { signal: request.lifecycleSignal });
       response.json({ ok: true, reviewResult });
     } catch (error) {
       sendLawError(response, error);
@@ -168,7 +180,7 @@ lawApiRouter.post(
       const result = await searchLaw({
         query: request.body?.query,
         display: request.body?.display
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -186,7 +198,7 @@ lawApiRouter.post(
         query: request.body?.query,
         searchType: request.body?.searchType,
         display: request.body?.display
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -202,7 +214,7 @@ lawApiRouter.post(
       assertLawAvailable(getLawConfig());
       const result = await buildForcedLawContext(String(request.body?.query || request.body?.prompt || ""), {
         client: createLawApiClient(),
-        signal: request.signal
+        signal: request.lifecycleSignal
       });
       response.json(result);
     } catch (error) {
@@ -221,7 +233,7 @@ lawApiRouter.post(
         query: request.body?.query || request.body?.prompt,
         lawName: request.body?.lawName,
         article: request.body?.article || request.body?.jo
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -243,7 +255,7 @@ lawApiRouter.post(
         paragraph: request.body?.paragraph,
         item: request.body?.item,
         subitem: request.body?.subitem
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: true,
         citation: result.citation,
@@ -268,7 +280,7 @@ lawApiRouter.post(
         article: request.body?.article || request.body?.jo,
         fromDate: request.body?.fromDate,
         toDate: request.body?.toDate
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -291,7 +303,7 @@ lawApiRouter.post(
         item: request.body?.item,
         subitem: request.body?.subitem,
         effectiveDate: request.body?.effectiveDate
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: true,
         citation: result.citation,
@@ -316,7 +328,7 @@ lawApiRouter.post(
         lawName: request.body?.lawName,
         lawId: request.body?.lawId,
         mst: request.body?.mst
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: result.ok,
         lawName: result.lawName,
@@ -342,7 +354,7 @@ lawApiRouter.post(
         article: request.body?.article,
         fromDate: request.body?.fromDate,
         toDate: request.body?.toDate
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -358,7 +370,7 @@ lawApiRouter.post(
       assertLawAvailable(getLawConfig());
       const result = await verifyLawCitations({ text: request.body?.text }, {
         client: createLawApiClient(),
-        signal: request.signal
+        signal: request.lifecycleSignal
       });
       response.json(result);
     } catch (error) {
@@ -378,7 +390,7 @@ lawApiRouter.post(
         display: request.body?.display,
         court: request.body?.court,
         caseType: request.body?.caseType
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -395,7 +407,7 @@ lawApiRouter.post(
       const result = await getPrecedentDetail({
         precId: request.body?.precId,
         caseNumber: request.body?.caseNumber
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: true,
         citation: result.citation,
@@ -418,7 +430,7 @@ lawApiRouter.post(
         query: request.body?.query,
         display: request.body?.display,
         agency: request.body?.agency
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -435,7 +447,7 @@ lawApiRouter.post(
       const result = await getInterpretationDetail({
         expcId: request.body?.expcId,
         query: request.body?.query
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: true,
         citation: result.citation,
@@ -458,7 +470,7 @@ lawApiRouter.post(
         query: request.body?.query,
         display: request.body?.display,
         agency: request.body?.agency
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -475,7 +487,7 @@ lawApiRouter.post(
       const result = await getAdminRuleDetail({
         admrulId: request.body?.admrulId,
         query: request.body?.query
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: true,
         citation: result.citation,
@@ -498,7 +510,7 @@ lawApiRouter.post(
         query: request.body?.query,
         display: request.body?.display,
         region: request.body?.region
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -515,7 +527,7 @@ lawApiRouter.post(
       const result = await getOrdinanceDetail({
         ordinId: request.body?.ordinId,
         query: request.body?.query
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json({
         ok: true,
         citation: result.citation,
@@ -545,7 +557,7 @@ lawApiRouter.post(
         formNo: request.body?.formNo,
         annexType: request.body?.annexType,
         display: request.body?.display
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -569,7 +581,7 @@ lawApiRouter.post(
         annexTitle: request.body?.annexTitle,
         formNo: request.body?.formNo,
         annexType: request.body?.annexType
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -597,7 +609,7 @@ lawApiRouter.post(
         article: request.body?.article,
         subject: request.body?.subject,
         materialText: request.body?.materialText
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -613,7 +625,7 @@ lawApiRouter.post(
       assertLawAvailable(getLawConfig());
       const result = await getThreeTier({
         lawName: request.body?.lawName
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -631,7 +643,7 @@ lawApiRouter.post(
         lawName: request.body?.lawName,
         mst: request.body?.mst,
         lawId: request.body?.lawId
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -649,7 +661,7 @@ lawApiRouter.post(
         lawName: request.body?.lawName,
         region: request.body?.region,
         display: request.body?.display
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -667,7 +679,7 @@ lawApiRouter.post(
         ordinId: request.body?.ordinId,
         lawName: request.body?.lawName,
         query: request.body?.query
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -684,7 +696,7 @@ lawApiRouter.post(
       const result = await getLinkedLawsFromOrdinance({
         ordinId: request.body?.ordinId,
         query: request.body?.query
-      }, { client: createLawApiClient(), signal: request.signal });
+      }, { client: createLawApiClient(), signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -707,7 +719,7 @@ lawApiRouter.post(
         page: request.body?.page,
         display: request.body?.display,
         reqDate: request.body?.reqDate
-      }, { signal: request.signal });
+      }, { signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);
@@ -729,7 +741,7 @@ lawApiRouter.post(
         domain: request.body?.domain,
         sourceType: request.body?.sourceType,
         subType: request.body?.subType
-      }, { signal: request.signal });
+      }, { signal: request.lifecycleSignal });
       response.json(result);
     } catch (error) {
       sendLawError(response, error);

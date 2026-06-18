@@ -16,9 +16,21 @@ const TEXT_KEY_PATTERN = /^(조문내용|조문내용문|항내용|호내용|목
 
 // aiSearch (law.go.kr target=aiSearch) returns article-level results with semantic snippets
 const AI_ARTICLE_NUMBER_KEYS = ["조문번호", "articleNumber", "articleNo"];
+const AI_ARTICLE_BRANCH_KEYS = ["조문가지번호", "조문가지", "조가지번호", "articleBranch"];
 const AI_ARTICLE_TITLE_KEYS = ["조문제목", "articleTitle", "title"];
 const AI_ARTICLE_CONTENT_KEYS = ["조문내용", "content", "snippet", "text"];
 const AI_LAW_NAME_KEYS = ["법령명한글", "법령명", "행정규칙명", "lawName"];
+
+// Formats a raw aiSearch article number (often zero-padded, e.g. "0619") plus an
+// optional branch number ("조문가지번호") into law.go.kr's Korean-address form
+// ("제619조", "제619조의2"). Returns "" when the number is not a valid article so
+// callers can fall back to a law-level link instead of a broken 한글주소.
+export function formatArticleHangul(articleNo, branchNo = "") {
+  const article = Number(String(articleNo ?? "").replace(/\D+/g, ""));
+  if (!Number.isInteger(article) || article < 1 || article > 9999) return "";
+  const branch = Number(String(branchNo ?? "").replace(/\D+/g, "")) || 0;
+  return `제${article}조${branch > 0 ? `의${branch}` : ""}`;
+}
 
 export function findUpstreamError(payload) {
   if (!payload || typeof payload !== "object") return "";
@@ -77,16 +89,24 @@ export function normalizeAiSearchResults(payload) {
   for (const item of candidates) {
     const lawName = stripHtml(readFirst(item, AI_LAW_NAME_KEYS));
     const articleNo = stripHtml(readFirst(item, AI_ARTICLE_NUMBER_KEYS));
+    const branchNo = stripHtml(readFirst(item, AI_ARTICLE_BRANCH_KEYS));
     const title = stripHtml(readFirst(item, AI_ARTICLE_TITLE_KEYS));
     const content = stripHtml(readFirst(item, AI_ARTICLE_CONTENT_KEYS) || "");
     // Truncate snippet to 200 chars
     const snippet = content.slice(0, 200);
+    const blockKind = String(item?._blockKind || "");
+    const isAdminRule = /행정규칙/.test(blockKind) || Boolean(readFirst(item, ["행정규칙명", "행정규칙ID"]));
+    const isAnnex = /별표서식/.test(blockKind);
     const key = `${lawName}|${articleNo}|${title}`;
     if (seen.has(key)) continue;
     seen.add(key);
     results.push({
       lawName,
       articleNo,
+      // Korean-address article form for building a working law.go.kr link.
+      // Empty for 별표서식 records, which have no 제N조 address.
+      articleCanonical: isAnnex ? "" : formatArticleHangul(articleNo, branchNo),
+      recordKind: isAdminRule ? "admin_rule" : "law",
       articleTitle: title,
       snippet,
       effectiveDate: normalizeDate(readFirst(item, EFFECTIVE_DATE_KEYS)),

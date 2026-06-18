@@ -15,7 +15,7 @@ import { parseUpload } from "./parsers.js";
 import { analyzeDocument } from "./documentAnalysis.js";
 import { classifyIntent } from "./calendarAgent.js";
 import { getKoreanHolidays } from "./holidays.js";
-import { createAbortError } from "./abort.js";
+import { createAbortError, createRequestAbortController } from "./abort.js";
 import { getQdrantHealth } from "./indexes/qdrantVectorIndex.js";
 import { getSqliteFtsHealth } from "./indexes/sqliteFtsIndex.js";
 import { getModelQueueStats } from "./modelQueue.js";
@@ -443,29 +443,6 @@ app.delete("/api/documents/:id", (request, response) => {
   const removed = removeDocument(request.params.id, { ownerKey: extractDocumentOwnerKey(request) });
   response.json({ removed });
 });
-
-function createRequestAbortController(request, response) {
-  const controller = new AbortController();
-  const abort = (message) => {
-    if (!controller.signal.aborted) controller.abort(createAbortError(message));
-  };
-
-  const handleRequestAborted = () => abort("Client aborted the chat request.");
-  const handleResponseClosed = () => {
-    if (!response.writableEnded) abort("Client disconnected before the chat response completed.");
-  };
-
-  request.on("aborted", handleRequestAborted);
-  response.on("close", handleResponseClosed);
-
-  return {
-    signal: controller.signal,
-    cleanup() {
-      request.off("aborted", handleRequestAborted);
-      response.off("close", handleResponseClosed);
-    }
-  };
-}
 
 app.post("/api/compliance/grc/review", async (request, response) => {
   const { targetText, policyText, notebookId } = request.body || {};
@@ -1103,6 +1080,7 @@ app.get("/api/admin/image/status", requireAdmin, async (_request, response) => {
 });
 
 app.post("/api/source-workflow/source-guide", async (request, response) => {
+  const guideAbort = createRequestAbortController(request, response);
   try {
     const notebookId = String(request.body?.notebookId || "").trim();
     if (notebookId) {
@@ -1121,11 +1099,13 @@ app.post("/api/source-workflow/source-guide", async (request, response) => {
       documents: request.body?.documents,
       notebookId,
       model: request.body?.model || DEFAULT_MODEL,
-      signal: request.signal
+      signal: guideAbort.signal
     });
     response.json({ ok: true, guide });
   } catch (error) {
     response.status(400).json({ ok: false, error: error.message });
+  } finally {
+    guideAbort.cleanup();
   }
 });
 

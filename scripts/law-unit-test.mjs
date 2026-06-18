@@ -1956,6 +1956,8 @@ function testParseAiSearchXmlWithAttributes() {
   assert.equal(results.length, 1, "should extract attributed 법령조문 entry");
   assert.equal(results[0].lawName, "산업안전보건기준에 관한 규칙");
   assert.equal(results[0].articleNo, "0619");
+  assert.equal(results[0].articleCanonical, "제619조", "zero-padded 조문번호 must format into a valid 한글주소 article (제619조)");
+  assert.equal(results[0].recordKind, "law", "법령조문 block must be tagged as a statute record");
   assert.equal(results[0].articleTitle, "밀폐공간 작업 프로그램의 수립ㆍ시행");
   assert.ok(results[0].snippet.includes("밀폐공간"), "snippet should preserve law.go.kr CDATA content");
 }

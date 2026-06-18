@@ -1,0 +1,14 @@
+# GPU overlay for the image-worker. Use together with docker-compose.image.yml
+# and build with a CUDA torch wheel index (TORCH_INDEX_URL). Requires the NVIDIA
+# Container Toolkit on the host.
+services:
+  image-worker:
+    environment:
+      IMAGE_MODEL_TIER: ${IMAGE_MODEL_TIER:-mid}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
