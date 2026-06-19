@@ -48,6 +48,10 @@ const {
   buildLawTopicSearchQuery,
   inferLawArticleRefsForTopic
 } = await import("../server/law/lawTopicHints.js");
+const {
+  buildPrecedentSearchPlan,
+  buildDecisionSearchQueries: sharedBuildDecisionSearchQueries
+} = await import("../server/law/lawDecisionQuery.js");
 
 let failureCount = 0;
 
@@ -94,6 +98,8 @@ await run("law workbench prioritizes explicit case numbers in decision search", 
 await run("law workbench extracts content keywords from natural-language queries", testLawWorkbenchNaturalQueryKeywords);
 await run("law workbench searches precedent full text for legal-issue queries", testLawWorkbenchPrecedentUsesFullTextSearch);
 await run("chat num_ctx grows with prompt size so large law context fits", testResolveNumCtxScalesWithPrompt);
+await run("precedent search plan uses full-text scope for legal-issue queries", testPrecedentSearchPlan);
+await run("topic and workbench share one decision-query builder", testDecisionQueryBuilderShared);
 await run("law workbench searches related article candidates with explicit law input", testLawWorkbenchExplicitLawStillSearchesAiCandidates);
 await run("law workbench isolates partial upstream failures", testLawWorkbenchPartialFailure);
 await run("law workbench report renders fixed review sequence", testLawWorkbenchReport);
@@ -1461,6 +1467,26 @@ async function testLawWorkbenchCaseNumberQuery() {
   assert.deepEqual(extractCaseNumbers("대법원 2015 도 19296 판결"), ["2015도19296"]);
   const queries = buildDecisionSearchQueries(query);
   assert.equal(queries[0], "2015도19296", "explicit case number must be the first decision search query");
+}
+
+function testPrecedentSearchPlan() {
+  // 자연어 법리 질의 → 핵심 키워드 본문 검색(scope=2). 사건명만으로는 못 찾으므로 필수.
+  const issuePlan = buildPrecedentSearchPlan("공문서(전자공문서 포함)는 결재권자가 서명 등의 방법으로 결재함으로써 성립하는지 여부");
+  assert.equal(issuePlan.scope, 2, "legal-issue query must use full-text precedent search");
+  assert.ok(issuePlan.primary.includes("공문서") && issuePlan.primary.includes("결재권자"), `primary query must carry core keywords (got "${issuePlan.primary}")`);
+  assert.ok(!issuePlan.primary.includes("("), "primary query must be punctuation-free keywords");
+  // 사건번호가 명시되면 사건명 검색(scope=1)으로 정확 매칭.
+  const casePlan = buildPrecedentSearchPlan("대법원 2015도19296 판결");
+  assert.equal(casePlan.scope, 1, "explicit case-number query must use case-name search scope");
+  assert.equal(casePlan.primary, "2015도19296");
+}
+
+async function testDecisionQueryBuilderShared() {
+  // 정보탐색(lawContextBuilder)과 법령검토(lawWorkbench)는 동일한 검색어 빌더를 공유해야 한다.
+  const { buildDecisionSearchQueries } = await import("../server/law/lawWorkbench.js");
+  const fromWorkbench = buildDecisionSearchQueries("공문서 결재권자 서명 성립 여부");
+  const fromShared = sharedBuildDecisionSearchQueries("공문서 결재권자 서명 성립 여부");
+  assert.deepEqual(fromWorkbench, fromShared, "workbench must re-export the shared decision-query builder");
 }
 
 function testResolveNumCtxScalesWithPrompt() {

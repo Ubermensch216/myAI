@@ -13,6 +13,7 @@ import { searchDecisions } from "./tools/decisions.js";
 import { createDecisionsApiClient } from "./decisionsApiClient.js";
 import { getLawConfig } from "./lawConfig.js";
 import { buildLawTopicSearchQuery, inferLawArticleRefsForTopic } from "./lawTopicHints.js";
+import { buildPrecedentSearchPlan } from "./lawDecisionQuery.js";
 import { buildCompliancePromptBlock } from "../compliance/compliancePrompt.js";
 import { buildComplianceSearchQuery, getReviewType } from "../compliance/complianceTypes.js";
 
@@ -330,6 +331,14 @@ export async function buildLawContext(prompt, { hasNotebook = false, hasDocument
   }
 }
 
+// 자연어 법리 질의는 사건명이 아니라 판례 본문(판시사항·판결요지)과 매칭되므로,
+// 핵심 키워드를 뽑아 본문 검색(search=2)으로 조회한다. 사건번호가 명시된 경우는
+// 사건명 검색(search=1)을 쓴다. (워크벤치 법령검토와 동일한 전략)
+function searchPrecedentsForTopic(naturalQuery, { display, signal, client }) {
+  const plan = buildPrecedentSearchPlan(naturalQuery);
+  return searchPrecedents({ query: plan.primary, display, search: plan.scope }, { signal, client });
+}
+
 async function buildTopicSearchContext(prompt, intent, { signal, startedAt, client }) {
   const extracted = intent.extracted || {};
   const query = extracted.query || prompt;
@@ -362,7 +371,7 @@ async function buildTopicSearchContext(prompt, intent, { signal, startedAt, clie
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
-    searchPrecedents({ query: searchQuery, display: 3 }, { signal, client })
+    searchPrecedentsForTopic(query, { display: 3, signal, client })
       .catch((error) => ({ error: toLawError(error) }))
   );
   tasks.push(
@@ -643,7 +652,7 @@ async function buildResearchContext(prompt, intent, { signal, startedAt, client 
     ? searchLaw({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantPrecedents
-    ? searchPrecedents({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
+    ? searchPrecedentsForTopic(baseQuery, { display: 5, signal, client }).catch((error) => ({ error: toLawError(error) }))
     : Promise.resolve(null));
   tasks.push(wantInterpretations
     ? searchInterpretations({ query: searchQuery, display: 5 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
@@ -829,7 +838,7 @@ async function buildComplianceLawContext(prompt, intent, { signal, startedAt, cl
   if (outputStyle === "detailed_report") {
     const researchQuery = lawNames.length ? `${lawNames.join(" ")} ${type.queryHints.join(" ")}` : searchQuery;
     const [precResult, expcResult, admResult, ordResult] = await Promise.all([
-      searchPrecedents({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) })),
+      searchPrecedentsForTopic(researchQuery, { display: 3, signal, client }).catch((error) => ({ error: toLawError(error) })),
       searchInterpretations({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) })),
       searchAdminRules({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) })),
       searchOrdinances({ query: researchQuery, display: 3 }, { signal, client }).catch((error) => ({ error: toLawError(error) }))
