@@ -23,7 +23,7 @@ const { LawApiClient, stripLawPrivateFields } = await import("../server/law/lawA
 const { DecisionsApiClient } = await import("../server/law/decisionsApiClient.js");
 const { normalizeLawCitationForMeta, disclaimerForLawMode } = await import("../server/law/lawCitationFormatter.js");
 const { buildLawContext, buildForcedLawContext, ACTION_PLAN_TEMPLATE } = await import("../server/law/lawContextBuilder.js");
-const { resolveChatModeFlags } = await import("../server/ollama.js");
+const { resolveChatModeFlags, resolveNumCtx } = await import("../server/ollama.js");
 const { buildImpactMap, createDeterministicImpactMap } = await import("../server/law/tools/impactMap.js");
 const { getArticleAt } = await import("../server/law/tools/articleAt.js");
 const { getArticleDiff } = await import("../server/law/tools/articleDiff.js");
@@ -90,6 +90,10 @@ await run("haengjim hub API falls back to law.go.kr on transport failure", testH
 await run("legal research 조사 prompt searches laws and precedents", testResearchSurveyPrompt);
 await run("law workbench aggregates official law evidence groups", testLawWorkbenchAggregation);
 await run("law workbench supports natural-language-only queries", testLawWorkbenchNaturalQueryOnly);
+await run("law workbench prioritizes explicit case numbers in decision search", testLawWorkbenchCaseNumberQuery);
+await run("law workbench extracts content keywords from natural-language queries", testLawWorkbenchNaturalQueryKeywords);
+await run("law workbench searches precedent full text for legal-issue queries", testLawWorkbenchPrecedentUsesFullTextSearch);
+await run("chat num_ctx grows with prompt size so large law context fits", testResolveNumCtxScalesWithPrompt);
 await run("law workbench searches related article candidates with explicit law input", testLawWorkbenchExplicitLawStillSearchesAiCandidates);
 await run("law workbench isolates partial upstream failures", testLawWorkbenchPartialFailure);
 await run("law workbench report renders fixed review sequence", testLawWorkbenchReport);
@@ -1448,6 +1452,71 @@ async function testLawWorkbenchNaturalQueryOnly() {
   assert.equal(annexCalled, true);
   assert.equal(result.decisions.precedents.items.length, 1);
   assert.ok(result.termMatches.some((item) => item.canonicalTerms.includes("임대차보증금 반환")));
+}
+
+async function testLawWorkbenchCaseNumberQuery() {
+  const { buildDecisionSearchQueries, extractCaseNumbers } = await import("../server/law/lawWorkbench.js");
+  const query = "공문서(전자공문서 포함)는 결재권자가 서명 등의 방법으로 결재함으로써 성립하는지 여부 (판례 정보) 대법원 2015도19296 판결";
+  assert.deepEqual(extractCaseNumbers(query), ["2015도19296"]);
+  assert.deepEqual(extractCaseNumbers("대법원 2015 도 19296 판결"), ["2015도19296"]);
+  const queries = buildDecisionSearchQueries(query);
+  assert.equal(queries[0], "2015도19296", "explicit case number must be the first decision search query");
+}
+
+function testResolveNumCtxScalesWithPrompt() {
+  // 짧은 일반 대화는 기본(작은) 창을 유지해 메모리/속도를 아낀다.
+  const small = resolveNumCtx([{ role: "system", content: "짧은 시스템" }, { role: "user", content: "안녕" }]);
+  assert.equal(small, 4096, `small prompt should keep base window (got ${small})`);
+  // 대형 법령 컨텍스트(≈24k자)는 기본 창을 넘으므로 창을 키워 잘림을 방지한다.
+  const large = resolveNumCtx([{ role: "system", content: "가".repeat(24000) }, { role: "user", content: "질의" }]);
+  assert.ok(large >= 16384, `large law context must grow the context window (got ${large})`);
+  assert.ok(large <= 32768, `context window must stay bounded (got ${large})`);
+}
+
+async function testLawWorkbenchNaturalQueryKeywords() {
+  const { buildDecisionSearchQueries, extractContentKeywords } = await import("../server/law/lawWorkbench.js");
+  // 사용자가 실제로 입력한 자연어 질의 (사건번호 없음). 법리를 서술한 문장이다.
+  const query = "공문서(전자공문서 포함)는 결재권자가 서명 등의 방법으로 결재함으로써 성립하는지 여부";
+  const keywords = extractContentKeywords(query);
+  // 조사/괄호/필러가 제거되고 핵심 명사 어간만 남아야 한다.
+  for (const expected of ["공문서", "전자공문서", "결재권자", "서명", "결재", "성립"]) {
+    assert.ok(keywords.includes(expected), `keyword "${expected}" must be extracted (got ${keywords.join(",")})`);
+  }
+  assert.ok(!keywords.includes("포함"), "filler noun 포함 must be dropped");
+  assert.ok(!keywords.includes("여부"), "filler noun 여부 must be dropped");
+  const queries = buildDecisionSearchQueries(query);
+  // 첫 후보는 핵심 키워드 본문 AND 검색이어야 한다 (사건명만으로는 매칭 불가).
+  assert.ok(queries[0].includes("공문서") && queries[0].includes("결재권자"), `first query must combine core keywords (got "${queries[0]}")`);
+  assert.ok(!queries[0].includes("("), "keyword query must not contain raw punctuation");
+}
+
+async function testLawWorkbenchPrecedentUsesFullTextSearch() {
+  const { buildLawWorkbench } = await import("../server/law/lawWorkbench.js");
+  const precedentCalls = [];
+  await buildLawWorkbench({
+    query: "공문서(전자공문서 포함)는 결재권자가 서명 등의 방법으로 결재함으로써 성립하는지 여부"
+  }, {
+    client: {
+      async getLawArticle() { return { ok: false }; },
+      async searchAnnexes() { return { ok: true, results: [] }; },
+      async getLawHistory() { return { ok: true, revisions: [] }; },
+      async getThreeTier() { return { ok: true, tiers: [] }; },
+      async getDelegatedLaws() { return { ok: true, links: [] }; },
+      async searchOrdinances() { return { ok: true, results: [] }; },
+      async searchPrecedents(input) {
+        precedentCalls.push(input);
+        return { ok: false, results: [] };
+      },
+      async searchInterpretations() { return { ok: true, results: [] }; },
+      async searchAdminRules() { return { ok: true, results: [] }; }
+    }
+  });
+  assert.ok(precedentCalls.length > 0, "precedent search must run");
+  // 키워드(비-사건번호) 후보는 본문 검색(search=2)으로 조회되어야 한다.
+  assert.ok(
+    precedentCalls.every((call) => call.search === 2),
+    `keyword precedent searches must use full-text scope (search=2); got ${JSON.stringify(precedentCalls.map((c) => c.search))}`
+  );
 }
 
 async function testLawWorkbenchExplicitLawStillSearchesAiCandidates() {

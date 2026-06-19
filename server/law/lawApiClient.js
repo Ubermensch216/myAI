@@ -345,17 +345,20 @@ export class LawApiClient {
     return { ...response, cacheHit: false };
   }
 
-  async searchPrecedents({ query, display, court, caseType } = {}, { signal } = {}) {
+  async searchPrecedents({ query, display, court, caseType, search } = {}, { signal } = {}) {
     assertLawAvailable(this.config);
     const normalizedQuery = String(query || "").trim();
     if (!normalizedQuery) {
       throw new LawError("Precedent search query is required.", { marker: LAW_ERROR_MARKERS.NOT_FOUND, statusCode: 400 });
     }
+    // law.go.kr 검색범위: 1=판례명/사건명, 2=본문(판시사항·판결요지 등). 기본값은 1.
+    const searchScope = search === 1 || search === 2 ? search : 0;
     const normalizedInput = {
       query: normalizedQuery,
       display: clampInt(display, this.config.maxResults, 1, 100),
       court: court || "",
-      caseType: caseType || ""
+      caseType: caseType || "",
+      search: searchScope
     };
     const cacheKey = buildLawCacheKey("search_precedent", normalizedInput);
     const cached = await getCachedLawResponse(cacheKey, { ttlMs: LAW_SEARCH_TTL_MS });
@@ -367,6 +370,7 @@ export class LawApiClient {
       query: normalizedQuery,
       display: normalizedInput.display
     };
+    if (searchScope) params.search = searchScope;
     if (court) params.curt = court;
     if (caseType) params.caseClass = caseType;
 

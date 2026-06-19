@@ -29,6 +29,10 @@ loadLocalEnv();
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL || "gemma4:e2b";
 const MAX_CONTEXT_CHARS = Number(process.env.MAX_CONTEXT_CHARS || 24000);
+// 0 = auto (프롬프트 길이에 맞춰 동적으로 산정). 환경변수로 강제 지정 가능.
+const OLLAMA_NUM_CTX = clampNumCtx(process.env.OLLAMA_NUM_CTX, 0);
+// 출력 토큰 여유분. 대형 법령 컨텍스트에서도 답변이 생성될 공간을 확보한다.
+const NUM_CTX_OUTPUT_HEADROOM = 2048;
 const LAW_SEARCH_MODE_NO_EVIDENCE_MESSAGE =
   "법령검색 모드에서 관련 법령 정보를 찾을 수 없습니다. Korea Law Engine(law.go.kr)에서 해당 질의에 맞는 법령·판례·해석례·행정규칙 근거가 확인되지 않았습니다. 근거 없이 답변할 수 없으므로, 구체적인 법령명·조문 번호·사건번호·지침명을 포함하여 다시 질의해 주세요.";
 const LAW_SEARCH_MODE_HUNZAE_CONFIG_ERROR_MESSAGE =
@@ -332,7 +336,34 @@ async function runChatStreamWithOptionalQueue({ model, ollamaMessages, onChunk, 
   return chatQueue.run(task, { signal, label: "chat_stream" });
 }
 
+function clampNumCtx(raw, fallback) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(131072, Math.max(2048, Math.trunc(value)));
+}
+
+// 한국어/법령 혼합 텍스트 기준의 보수적 토큰 추정 (약 2자 = 1토큰).
+function estimatePromptTokens(ollamaMessages) {
+  let chars = 0;
+  for (const message of ollamaMessages || []) {
+    chars += String(message?.content ?? "").length;
+  }
+  return Math.ceil(chars / 2);
+}
+
+// 프롬프트가 기본 컨텍스트 창을 넘으면 잘려서 빈 응답이 나오므로, 프롬프트 크기에
+// 맞춰 num_ctx를 키운다. 짧은 일반 대화는 작은 창을 유지해 메모리/속도를 아낀다.
+export function resolveNumCtx(ollamaMessages) {
+  if (OLLAMA_NUM_CTX) return OLLAMA_NUM_CTX;
+  const needed = estimatePromptTokens(ollamaMessages) + NUM_CTX_OUTPUT_HEADROOM;
+  for (const window of [4096, 8192, 16384, 32768]) {
+    if (needed <= window) return window;
+  }
+  return 32768;
+}
+
 async function streamOllamaChatResponse({ model, ollamaMessages, onChunk, signal }) {
+  const numCtx = resolveNumCtx(ollamaMessages);
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     signal,
@@ -343,7 +374,8 @@ async function streamOllamaChatResponse({ model, ollamaMessages, onChunk, signal
       messages: ollamaMessages,
       options: {
         temperature: 0.3,
-        top_p: 0.9
+        top_p: 0.9,
+        num_ctx: numCtx
       }
     })
   });
@@ -355,6 +387,7 @@ async function streamOllamaChatResponse({ model, ollamaMessages, onChunk, signal
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let sawContent = false;
 
   for await (const rawChunk of response.body) {
     throwIfAborted(signal);
@@ -365,10 +398,28 @@ async function streamOllamaChatResponse({ model, ollamaMessages, onChunk, signal
     for (const line of lines) {
       if (!line.trim()) continue;
       const event = JSON.parse(line);
+      // Ollama는 스트림 중 오류를 message 대신 error 필드로 흘려보낸다. 무시하면
+      // 본문이 비어 사용자에게 원인 없는 빈 응답으로 보이므로 표면화한다.
+      if (event.error) {
+        throw new Error(`Ollama 응답 오류: ${event.error}`);
+      }
       const content = event.message?.content ?? "";
-      if (content) onChunk(content);
-      if (event.done) return;
+      if (content) {
+        sawContent = true;
+        onChunk(content);
+      }
+      if (event.done) {
+        if (!sawContent) {
+          console.warn(`[chat-stream] empty completion: model=${model} promptTokens≈${estimatePromptTokens(ollamaMessages)} num_ctx=${numCtx} done_reason=${event.done_reason || "unknown"}`);
+          throw new Error("모델이 빈 응답을 반환했습니다. 컨텍스트가 모델 한도를 초과했을 수 있습니다. 질의를 좁히거나 OLLAMA_NUM_CTX를 늘려 다시 시도하세요.");
+        }
+        return;
+      }
     }
+  }
+
+  if (!sawContent) {
+    throw new Error("모델 응답 스트림이 본문 없이 종료되었습니다. Ollama 서버 상태와 모델을 확인하세요.");
   }
 }
 
