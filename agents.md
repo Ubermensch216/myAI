@@ -87,6 +87,7 @@ npm.cmd run test:live
 - `public/modules/studio.js` - Studio tool controls and mind-map SVG rendering.
 - `public/modules/documentStudio.js` - Studio Document Editor, source guides, output library, export.
 - `public/modules/docTool.js` - client-side PDF/XLSX/TXT merge and split.
+- `public/modules/safeDoc/` - 문서보안 view: client-only personal-information detection and de-identification. `index.js` (public API), `controller.js` (event binders), `detect/` (rules engine), `parsers/` (txt/csv/pdf/xlsx/docx/hwpx), `vendor/` (adapters for pdfjs/pdf-lib/fflate/fontkit), `policies.js` (persistence bridge). Plain ESM, no build step.
 - `public/modules/graphStudio.js` - Studio knowledge-graph viewer using Cytoscape.
 - `public/modules/lawWorkbench.js` - Law Workbench UI, dedicated review documents, LLM review state, report draft, impact mapping.
 - `public/modules/ragEval.js` - Admin RAG Evaluation UI.
@@ -153,6 +154,7 @@ composer material panel toggle
 - `ADMIN_TOKEN` protects management routes only; it is not a notebook-read identity for chat.
 - Calendar data is local-only; no Google/Outlook/ICS sync exists beyond file import/export.
 - Destructive UI actions should use `showConfirmDialog`.
+- 문서보안 (`public/modules/safeDoc/`) must stay client-only: never add `fetch`/`XMLHttpRequest`/`localStorage` there. `npm run test:safedoc` fails the build if you do. The `WorkSession` holding document text and the mapping table must never be assigned to `state` — that is what keeps it out of encrypted persistence. See `docs/SECURITY.md`.
 - Visualization must remain plan-first: LLM proposes intent/columns, server validates/computes, browser renders.
 - RAG changes must preserve fallback: Qdrant -> SQLite -> JSON/BM25.
 

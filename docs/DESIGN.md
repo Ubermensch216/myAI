@@ -73,13 +73,21 @@ Avoid decorative nested cards. Use cards for repeated items, modals, and genuine
 Current primary views:
 
 - Chat
+- Knowledge Pack
 - Calendar
 - Law Workbench
 - GRC Workbench
+- Document Security (문서보안)
 
 Law Workbench state is separate from chat rooms. Review requests use only the Law Workbench prompt, conditions, official evidence, and documents explicitly attached inside Law Workbench.
 
 GRC Workbench is a Svelte component mounted by `public/app.js` from the Vite-built bundle in `public/dist/`.
+
+Document Security (`#safeDocArea`, `public/modules/safeDoc/`) is plain ESM with no build step. All of its
+CSS lives at the end of `public/styles.css`, scoped under `#safeDocArea` with an `sd-` class prefix and
+`sdc` id prefix, so it cannot leak into — or be leaked into by — the 13k-line global sheet. It uses only
+theme tokens, so light and dark both work. Its three work tabs and the four-step progress indicator live
+in the sidebar panel (`data-view-content="safedoc"`), keeping the main area for the document itself.
 
 ## Studio Tools
 

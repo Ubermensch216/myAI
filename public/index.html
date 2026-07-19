@@ -73,6 +73,15 @@
             </svg>
             <span>일정</span>
           </button>
+          <button class="primary-nav-item" type="button" data-view-target="safedoc" data-nav-label="문서보안" data-shortcut-key="S" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <rect x="8.5" y="12" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+              <path d="M10.5 12v-1.5a1.5 1.5 0 0 1 3 0V12" fill="none" stroke="currentColor" stroke-width="1.6"></path>
+            </svg>
+            <span>문서보안</span>
+          </button>
         </nav>
 
         <div class="sidebar-content" data-view-content="chat">
@@ -122,6 +131,27 @@
         <div class="sidebar-content" data-view-content="grc" hidden>
           <button id="newGrcReviewButton" class="new-room-button" type="button">새 내부검토</button>
           <div id="grcReviewList" class="room-list grc-review-list sidebar-list"></div>
+        </div>
+
+        <div class="sidebar-content" data-view-content="safedoc" hidden>
+          <button id="sdcNewDocButton" class="new-room-button" type="button">새 문서 처리</button>
+
+          <nav class="sd-side-tabs" aria-label="문서보안 작업">
+            <button class="sd-side-tab active" type="button" data-sd-tab="deidentify" aria-pressed="true">비식별 처리</button>
+            <button class="sd-side-tab" type="button" data-sd-tab="restore" aria-pressed="false">원본 복원</button>
+            <button class="sd-side-tab" type="button" data-sd-tab="settings" aria-pressed="false">탐지 설정</button>
+          </nav>
+
+          <ol id="sdcStepIndicator" class="sd-steps" aria-label="처리 단계">
+            <li class="sd-step current" data-sd-step="main"><span class="sd-step-no">1</span>문서 선택</li>
+            <li class="sd-step" data-sd-step="analyze"><span class="sd-step-no">2</span>분석</li>
+            <li class="sd-step" data-sd-step="review"><span class="sd-step-no">3</span>검토</li>
+            <li class="sd-step" data-sd-step="result"><span class="sd-step-no">4</span>결과</li>
+          </ol>
+
+          <div id="sdcSideFileInfo" class="sd-side-file" hidden></div>
+
+          <p class="sd-side-note">모든 처리는 이 PC의 브라우저 안에서만 수행되며 문서와 개인정보는 외부로 전송되지 않습니다.</p>
         </div>
 
         <div class="sidebar-footer">
@@ -486,6 +516,152 @@
       </section>
 
       <section id="grcWorkbenchContainer" class="grc-area" aria-label="내부검토" hidden>
+      </section>
+
+      <!-- 문서보안 — 문서 속 개인정보 탐지·비식별 (safeDoc 이식) -->
+      <section id="safeDocArea" class="safedoc-area" aria-label="문서보안" hidden>
+
+        <!-- ===== 비식별 처리 ===== -->
+        <div id="sdcTabDeidentify" class="sd-tab-panel">
+
+          <!-- 1단계: 문서 선택 -->
+          <div id="sdcScreenMain" class="sd-screen">
+            <div id="sdcDropZone" class="sd-drop-zone" tabindex="0" role="button" aria-label="문서 선택 또는 끌어놓기">
+              <p class="sd-drop-main">문서를 이곳에 끌어놓거나 클릭하여 선택하십시오</p>
+              <p class="sd-drop-sub">지원 형식: TXT, CSV, XLSX, DOCX, HWPX, 텍스트 PDF · 최대 20MB</p>
+              <input type="file" id="sdcFileInput" accept=".txt,.csv,.xlsx,.docx,.hwpx,.pdf" hidden />
+            </div>
+            <div class="sd-notice">
+              <h4>안내사항</h4>
+              <ul>
+                <li>모든 처리는 이 PC의 브라우저 안에서만 수행되며, <strong>문서와 개인정보는 외부로 전송되지 않습니다.</strong></li>
+                <li>비식별 결과 파일에는 원문이 남지 않습니다. 복원이 필요한 경우 <strong>대응표 파일을 반드시 함께 보관</strong>하십시오.</li>
+                <li>대응표 파일에는 개인정보 원문이 포함되므로 안전한 위치에 보관해야 합니다.</li>
+                <li>업로드한 원본 파일은 변경되지 않습니다. 원본은 별도로 안전하게 보관하십시오.</li>
+                <li>지원 제외: 구형 HWP, 암호·DRM 문서, 스캔 이미지 PDF, 실행파일·압축파일</li>
+                <li>PDF 결과는 페이지를 이미지로 재생성하므로 검색·복사와 대응표를 이용한 파일 복원을 지원하지 않습니다.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 2단계: 분석 -->
+          <div id="sdcScreenAnalyze" class="sd-screen" hidden>
+            <div class="sd-panel">
+              <h4>문서 분석 중</h4>
+              <div id="sdcAnalyzeFileInfo" class="sd-file-info"></div>
+              <div class="sd-progress"><div id="sdcAnalyzeProgress" class="sd-progress-fill"></div></div>
+              <p id="sdcAnalyzeStatus" class="sd-status">파일을 읽는 중...</p>
+              <button id="sdcCancelAnalyze" class="ghost-button" type="button">분석 취소</button>
+            </div>
+          </div>
+
+          <!-- 3단계: 검토 -->
+          <div id="sdcScreenReview" class="sd-screen" hidden>
+            <div class="sd-toolbar">
+              <div class="sd-toolbar-group">
+                <input type="text" id="sdcSearchInput" class="text-input" placeholder="문자열 검색 후 일괄 지정" />
+                <select id="sdcSearchType" class="text-input"></select>
+                <button id="sdcSearchAdd" class="ghost-button" type="button">검색 일괄 지정</button>
+              </div>
+              <div class="sd-toolbar-group">
+                <button id="sdcAddSelection" class="ghost-button" type="button" title="미리보기에서 문자열을 드래그한 후 누르십시오">선택 영역을 개인정보로 추가</button>
+                <select id="sdcAddType" class="text-input"></select>
+              </div>
+              <div class="sd-toolbar-group">
+                <button id="sdcUndo" class="ghost-button" type="button">되돌리기</button>
+                <span id="sdcDetectCount" class="sd-badge"></span>
+              </div>
+            </div>
+            <div class="sd-review-layout">
+              <div class="sd-pane">
+                <h4>문서 미리보기</h4>
+                <div id="sdcPreview" class="sd-preview" tabindex="0"></div>
+              </div>
+              <div class="sd-pane">
+                <h4>개인정보 후보 목록</h4>
+                <div class="sd-list-actions">
+                  <button id="sdcSelectAll" class="ghost-button" type="button">전체 선택</button>
+                  <button id="sdcDeselectAll" class="ghost-button" type="button">전체 해제</button>
+                </div>
+                <div id="sdcCandidateList" class="sd-candidate-list"></div>
+              </div>
+            </div>
+            <div class="sd-review-footer">
+              <label class="sd-confirm">
+                <input type="checkbox" id="sdcFinalConfirm" />
+                탐지 결과를 검토하였으며 비식별 처리에 동의합니다. (자동 탐지가 모든 개인정보를 찾지 못할 수 있습니다)
+              </label>
+              <button id="sdcExecute" class="send-button" type="button" disabled>비식별 실행</button>
+            </div>
+          </div>
+
+          <!-- 4단계: 결과 -->
+          <div id="sdcScreenResult" class="sd-screen" hidden>
+            <div id="sdcUnprocessedWarning" class="sd-warning" hidden></div>
+            <div id="sdcPdfWarning" class="sd-warning" hidden>
+              PDF 결과의 가림 영역은 근사 좌표로 계산됩니다. 내려받은 파일을 열어 개인정보가 완전히 가려졌는지 <strong>육안으로 반드시 확인</strong>하십시오.
+            </div>
+            <div class="sd-panel">
+              <h4>처리 결과</h4>
+              <div id="sdcResultSummary" class="sd-result-summary"></div>
+              <div class="sd-download-row">
+                <button id="sdcDownloadResult" class="send-button" type="button">결과 파일 다운로드</button>
+                <button id="sdcDownloadMapping" class="ghost-button sd-danger" type="button">대응표 다운로드 (민감정보 주의)</button>
+                <button id="sdcDownloadSummary" class="ghost-button" type="button">처리결과 요약 다운로드</button>
+              </div>
+              <p class="sd-mapping-warning">대응표 파일에는 개인정보 <strong>원문이 평문으로 포함</strong>됩니다. 복원이 필요한 경우에만 내려받고, 결과 파일과 분리하여 안전하게 보관하십시오.</p>
+            </div>
+            <div class="sd-compare-layout">
+              <div class="sd-pane"><h4>처리 전</h4><div id="sdcCompareBefore" class="sd-preview"></div></div>
+              <div class="sd-pane"><h4>처리 후</h4><div id="sdcCompareAfter" class="sd-preview"></div></div>
+            </div>
+            <div class="sd-result-footer">
+              <button id="sdcNewDoc" class="ghost-button" type="button">새 문서 처리</button>
+              <button id="sdcFinish" class="ghost-button sd-danger" type="button">작업 종료 (작업정보 초기화)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 원본 복원 ===== -->
+        <div id="sdcTabRestore" class="sd-tab-panel" hidden>
+          <div class="sd-panel">
+            <h4>원본 복원</h4>
+            <p class="sd-muted">비식별 처리된 문서와 함께 저장한 <strong>대응표 파일(JSON)</strong>을 이용해 치환값을 원문으로 되돌립니다. 마스킹(<code>*</code>)·삭제 방식으로 처리된 항목은 복원할 수 없습니다.</p>
+            <div class="sd-restore-inputs">
+              <label class="sd-file-label">비식별 문서 (TXT/CSV/XLSX/DOCX/HWPX)
+                <input type="file" id="sdcRestoreDocInput" accept=".txt,.csv,.xlsx,.docx,.hwpx" />
+              </label>
+              <label class="sd-file-label">대응표 파일 (JSON)
+                <input type="file" id="sdcRestoreMapInput" accept=".json" />
+              </label>
+            </div>
+            <button id="sdcRestore" class="send-button" type="button" disabled>복원 실행</button>
+            <div id="sdcRestoreResult" class="sd-restore-result" hidden></div>
+          </div>
+        </div>
+
+        <!-- ===== 탐지 설정 ===== -->
+        <div id="sdcTabSettings" class="sd-tab-panel" hidden>
+          <div class="sd-panel">
+            <h4>유형별 기본 처리방식</h4>
+            <p class="sd-muted">비식별 실행 시 각 개인정보 유형에 적용되는 기본 처리방식입니다. 후보별로 개별 변경할 수도 있습니다.</p>
+            <div id="sdcPolicyList" class="sd-policy-list"></div>
+
+            <h4>사용자 정의 탐지 규칙</h4>
+            <p class="sd-muted">정규표현식으로 탐지 규칙을 추가할 수 있습니다. (예: 사번 <code>EMP-\d{6}</code>) 이 규칙은 저장되지 않으며 현재 작업에만 적용됩니다.</p>
+            <div class="sd-toolbar-group">
+              <input type="text" id="sdcRuleName" class="text-input" placeholder="규칙 이름" />
+              <input type="text" id="sdcRulePattern" class="text-input" placeholder="정규표현식" />
+              <button id="sdcAddRule" class="ghost-button" type="button">규칙 추가</button>
+            </div>
+            <ul id="sdcRuleList" class="sd-rule-list"></ul>
+
+            <div class="sd-settings-footer">
+              <button id="sdcResetSettings" class="ghost-button sd-danger" type="button">설정 초기화</button>
+              <span id="sdcVersion" class="sd-meta"></span>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="knowledgePackArea" class="knowledge-area" aria-label="지식팩" hidden>

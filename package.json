@@ -12,8 +12,9 @@
     "dev": "node --watch server/index.js",
     "dev:frontend": "vite",
     "build:frontend": "vite build",
-    "test": "npm run test:readability && npm run test:evidence && npm run test:composer && npm run test:law-review-view && npm run test:law && npm run test:prompt-router && npm run test:mindmap && npm run test:infographic && npm run test:image-worker-env && npm run test:grc && npm run test:grc-pdf && npm run test:hwpx && npm run test:hierarchical-chunk && npm run test:hierarchical-rag && npm run test:smoke",
+    "test": "npm run test:readability && npm run test:evidence && npm run test:composer && npm run test:law-review-view && npm run test:law && npm run test:prompt-router && npm run test:mindmap && npm run test:infographic && npm run test:image-worker-env && npm run test:grc && npm run test:grc-pdf && npm run test:safedoc && npm run test:hwpx && npm run test:hierarchical-chunk && npm run test:hierarchical-rag && npm run test:smoke",
     "test:hwpx": "node scripts/hwpx-parser-test.mjs",
+    "test:safedoc": "node scripts/safedoc-test.mjs",
     "test:hierarchical-chunk": "node scripts/hierarchical-chunk-test.mjs",
     "test:hierarchical-rag": "node scripts/hierarchical-rag-test.mjs",
     "test:grc": "node scripts/grc-review-test.mjs",
@@ -66,8 +67,12 @@
     "pdfkit": "^0.18.0"
   },
   "devDependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
     "@sveltejs/vite-plugin-svelte": "^3.0.2",
     "ace-builds": "^1.44.0",
+    "fflate": "^0.8.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.1.200",
     "playwright": "^1.59.1",
     "svelte": "^4.2.12",
     "svelte-preprocess": "^5.1.3",

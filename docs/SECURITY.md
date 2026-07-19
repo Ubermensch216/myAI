@@ -189,6 +189,54 @@ Configured through Settings -> Admin Console -> Access Management.
 - `ACCESS_TOKEN_SECRET` should be set explicitly for multi-instance deployments.
 - `ACCESS_TOKEN_TTL_SECONDS` defaults to 12 hours.
 
+## Document Security (문서보안) Module
+
+`public/modules/safeDoc/` detects and de-identifies personal information inside uploaded documents
+(TXT/CSV/XLSX/DOCX/HWPX/text PDF).
+
+**Processing is client-only.** The module never uploads the document. It reads the file with
+`File.arrayBuffer()`, parses, detects, and rewrites entirely in the browser, then hands the result back
+through `URL.createObjectURL`. Nothing reaches `/api/upload` or any other endpoint.
+
+The upstream project enforced this with a CSP of `connect-src 'none'`. myAI sets no CSP, so the guarantee
+is enforced instead by a static check in `scripts/safedoc-test.mjs`, which fails the build if any file
+under `public/modules/safeDoc/` contains `fetch(`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`,
+`localStorage`, or `sessionStorage`. Do not weaken that check.
+
+### What is and is not persisted
+
+| Data | Persisted? |
+| --- | --- |
+| Per-type default action (`typePolicies`) | Yes — encrypted IndexedDB, via `serializeSafeDocState()` |
+| User-defined regex rules | **No** — session only. Regexes are a ReDoS vector (FR-803) |
+| `WorkSession` (source file bytes, extracted text, candidates, mapping table, result blob) | **No** — module-scope only, never assigned to `state`, so `saveAppState()` cannot reach it |
+
+`disposeSafeDoc()` runs when the user leaves the view and on `beforeunload`, releasing the session. Stored
+policies are re-validated through `normalizeTypePolicies()` on load, so a corrupted or downgraded record
+cannot inject unknown types or actions.
+
+### Mapping table exports personal data in cleartext
+
+The mapping table JSON contains the **original personal information in plaintext** — that is what makes
+restore possible. This conflicts with the upstream specification (FR-510, FR-703), which prohibits both
+restore and mapping-table storage. The feature is retained deliberately, with these controls:
+
+- Download is gated behind an explicit `showConfirmDialog({ danger: true })` naming the risk.
+- The result screen warns that the mapping table must be stored apart from the result file.
+- The result file itself never contains the originals.
+
+Treat an exported mapping table as equivalent to the original document for classification and retention.
+
+### Known limitations
+
+- **PDF masking coordinates are approximate.** Rectangles are sized by string-length proportion rather
+  than glyph metrics, so on proportional fonts they can drift. Padding is widened to over-cover, and the
+  result screen tells the user to verify visually. Do not treat PDF output as verified without inspection.
+- Regex rules run on the main thread. Nested quantifiers and patterns over 200 characters are rejected at
+  registration, and a 3-second budget disables offending rules at analysis time. Worker isolation is not
+  yet implemented.
+- Shapes, comments, and document properties in Office/HWPX files are not scanned.
+
 ## Deployment Checklist
 
 - Bind Ollama to `127.0.0.1`.

@@ -8,6 +8,7 @@ import {
   ensureLawReviewsState, createLawReview,
   ensureGrcReviewsState
 } from "./state.js";
+import { serializeSafeDocState, deserializeSafeDocState } from "./safeDoc/policies.js";
 
 let saveTimer = null;
 
@@ -131,8 +132,9 @@ export async function loadAppState() {
       }
     : { items: [], activeId: "" };
   ensureGrcReviewsState();
+  state.safeDoc = deserializeSafeDocState(stored.safeDoc);
   state.activeRoomId = stored.activeRoomId || null;
-  state.activeView = ["chat", "law", "grc", "calendar"].includes(stored.activeView) ? stored.activeView : "chat";
+  state.activeView = ["chat", "knowledge", "law", "grc", "calendar", "safedoc"].includes(stored.activeView) ? stored.activeView : "chat";
   state.client = {
     documentCacheKey: typeof stored.client?.documentCacheKey === "string" && stored.client.documentCacheKey
       ? stored.client.documentCacheKey
@@ -231,6 +233,9 @@ export async function saveAppState() {
     activeView: state.activeView,
     lawReviews: ensureLawReviewsState(),
     grcReviews: ensureGrcReviewsState(),
+    // 문서보안: 유형별 기본 처리방식만 저장한다. 작업 세션(원본 문서·개인정보
+    // 원문·대응표)과 사용자 정의 정규식은 serializeSafeDocState() 가 걸러낸다.
+    safeDoc: serializeSafeDocState(state.safeDoc),
     layout: normalizeLayout(state.layout),
     client: {
       documentCacheKey: ensureDocumentCacheKey()

@@ -525,6 +525,7 @@ export const elements = {
   lawArea: document.querySelector(".law-area"),
   grcArea: document.querySelector("#grcWorkbenchContainer"),
   knowledgeArea: document.querySelector("#knowledgePackArea"),
+  safeDocArea: document.querySelector("#safeDocArea"),
   packSidebarAccess: document.querySelector("#packSidebarAccess"),
   packSearchInput: document.querySelector("#packSearchInput"),
   packRefreshButton: document.querySelector("#packRefreshButton"),

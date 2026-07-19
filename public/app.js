@@ -28,6 +28,7 @@ import {
 import {
   renderKnowledgePackPage, bindKnowledgePackEvents
 } from "./modules/knowledgePack.js";
+import { initSafeDoc, disposeSafeDoc } from "./modules/safeDoc/index.js";
 import { renderBrand, closeSettings, bindSettingsEvents } from "./modules/settings.js";
 import { renderCustomPromptPicker } from "./modules/customPrompts.js";
 import { applyLayoutState, bindLayoutEvents } from "./modules/layout.js";
@@ -183,6 +184,9 @@ async function init() {
   if (state.activeView === "law") ensureLawReview();
   bindEvents();
   renderAll();
+  // 저장된 뷰가 문서보안이면 applyActiveView 를 거치지 않고 곧장 복원되므로
+  // 여기서 초기화한다. (applyActiveView 는 뷰가 이미 같으면 조기 반환한다)
+  if (state.activeView === "safedoc") initSafeDoc();
   startReminderWatcher();
   checkStatus();
   restoreAccessSession();
@@ -384,6 +388,7 @@ function renderPrimaryNav() {
   if (elements.lawArea) elements.lawArea.hidden = view !== "law";
   if (elements.grcArea) elements.grcArea.hidden = view !== "grc";
   if (elements.knowledgeArea) elements.knowledgeArea.hidden = view !== "knowledge";
+  if (elements.safeDocArea) elements.safeDocArea.hidden = view !== "safedoc";
 }
 
 function updatePrimaryNavTooltip(item) {
@@ -395,6 +400,9 @@ function updatePrimaryNavTooltip(item) {
 function applyActiveView(view) {
   const next = normalizeView(view);
   if (state.activeView === next) return;
+  // 문서보안 화면을 떠날 때는 작업 세션(원본 문서·개인정보 원문·대응표)을 즉시
+  // 폐기한다. SPA라 화면만 숨기면 메모리에 계속 남는다.
+  if (state.activeView === "safedoc") disposeSafeDoc();
   if (next === "law") ensureLawReview();
   state.activeView = next;
   scheduleSave();
@@ -416,11 +424,14 @@ function applyActiveView(view) {
   if (next === "knowledge") {
     renderKnowledgePackPage();
   }
+  if (next === "safedoc") {
+    initSafeDoc();
+  }
   window.dispatchEvent(new CustomEvent("myai:viewchange", { detail: { view: next } }));
 }
 
 function normalizeView(view) {
-  return view === "calendar" || view === "law" || view === "grc" || view === "knowledge" ? view : "chat";
+  return view === "calendar" || view === "law" || view === "grc" || view === "knowledge" || view === "safedoc" ? view : "chat";
 }
 
 function sortRoomsForRender(rooms) {

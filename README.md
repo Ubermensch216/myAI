@@ -60,6 +60,7 @@ npm.cmd test
 - Answer-as-room-source workflow with generated-source trust metadata and optional department-notebook promotion review.
 - Studio Document Editor for answer-to-document drafting, AI edit, templates, output library, and HWPX/DOCX/PDF/MD export.
 - Studio File Tools for client-side PDF/XLSX/TXT merge and split.
+- Document Security (문서보안) for detecting and de-identifying personal information in TXT/CSV/XLSX/DOCX/HWPX/text-PDF documents. Runs entirely in the browser — the document is never uploaded. Supports per-type replace/mask/delete policies, manual review, a restore path via an exported mapping table, and user-defined regex rules. See `docs/SECURITY.md` for what is and is not persisted.
 - Studio mind maps from active room uploads.
 - Plan-first CSV/XLSX visualization rendered as SVG, table, KPI, or infographic.
 - Local calendar with month/week/day views, natural-language intent extraction, recurrence, reminders, Korean holidays, and ICS import/export.
