@@ -6,6 +6,7 @@
 //
 // 영속화 대상은 "비민감 설정"뿐이다:
 //   - 저장함: typePolicies (유형별 기본 처리방식)
+//   - 저장함: useLlm (AI 기반 탐지 사용 여부 — boolean)
 //   - 저장 안 함: userRules (사용자 정의 정규식 — ReDoS 벡터라 세션 한정, FR-803)
 //   - 저장 안 함: WorkSession 전체 (원본 문서·개인정보 원문·대응표)
 
@@ -35,7 +36,9 @@ export function normalizeTypePolicies(stored) {
  */
 export function serializeSafeDocState(safeDoc) {
   return {
-    typePolicies: normalizeTypePolicies(safeDoc?.typePolicies)
+    typePolicies: normalizeTypePolicies(safeDoc?.typePolicies),
+    // AI(LLM) 탐지 사용 여부 — 비민감 boolean, 기본 꺼짐(opt-in)
+    useLlm: safeDoc?.useLlm === true
     // userRules 는 의도적으로 제외한다 — 정규식은 ReDoS 벡터이며 명세상
     // 세션 한정(FR-803)이다. 여기에 추가하지 말 것.
   };
@@ -45,6 +48,7 @@ export function serializeSafeDocState(safeDoc) {
 export function deserializeSafeDocState(stored) {
   return {
     typePolicies: normalizeTypePolicies(stored?.typePolicies),
+    useLlm: stored?.useLlm === true,
     userRules: []
   };
 }

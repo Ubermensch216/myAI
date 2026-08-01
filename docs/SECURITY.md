@@ -194,20 +194,30 @@ Configured through Settings -> Admin Console -> Access Management.
 `public/modules/safeDoc/` detects and de-identifies personal information inside uploaded documents
 (TXT/CSV/XLSX/DOCX/HWPX/text PDF).
 
-**Processing is client-only.** The module never uploads the document. It reads the file with
-`File.arrayBuffer()`, parses, detects, and rewrites entirely in the browser, then hands the result back
-through `URL.createObjectURL`. Nothing reaches `/api/upload` or any other endpoint.
+**Processing is local-only.** The module reads the file with `File.arrayBuffer()`, parses, detects, and
+rewrites in the browser, then hands the result back through `URL.createObjectURL`. Nothing reaches
+`/api/upload` or any external endpoint.
 
-The upstream project enforced this with a CSP of `connect-src 'none'`. myAI sets no CSP, so the guarantee
-is enforced instead by a static check in `scripts/safedoc-test.mjs`, which fails the build if any file
-under `public/modules/safeDoc/` contains `fetch(`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`,
-`localStorage`, or `sessionStorage`. Do not weaken that check.
+One exception exists: when the user enables **AI(LLM) detection** in the settings tab (off by default),
+document text is sent in chunks to `POST /api/safedoc/analyze` on this app's own server, which relays it
+to the local Ollama instance for candidate verification and unstructured-PII detection. That path
+(`server/safedocLlm.js`) is stateless and **must never store or log the request body, document text, or
+model output** — error logs carry only status codes and elapsed time, and error responses are fixed
+strings. Nothing leaves the host (or the closed network Ollama runs on).
+
+The upstream project enforced no-egress with a CSP of `connect-src 'none'`. myAI sets no CSP, so the
+guarantee is enforced instead by a static check in `scripts/safedoc-test.mjs`, which fails the build if
+any file under `public/modules/safeDoc/` contains `fetch(`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`,
+`localStorage`, or `sessionStorage`. The single allowed exception is `llm/api.js`, which may call `fetch`
+only against the `/api/safedoc/` relative path; the check fails if that file contains any absolute URL.
+Do not weaken that check.
 
 ### What is and is not persisted
 
 | Data | Persisted? |
 | --- | --- |
 | Per-type default action (`typePolicies`) | Yes — encrypted IndexedDB, via `serializeSafeDocState()` |
+| AI(LLM) detection toggle (`useLlm`, boolean) | Yes — non-sensitive setting, same path |
 | User-defined regex rules | **No** — session only. Regexes are a ReDoS vector (FR-803) |
 | `WorkSession` (source file bytes, extracted text, candidates, mapping table, result blob) | **No** — module-scope only, never assigned to `state`, so `saveAppState()` cannot reach it |
 

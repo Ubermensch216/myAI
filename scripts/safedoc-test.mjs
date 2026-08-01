@@ -35,6 +35,12 @@ function stripComments(source) {
 
 // 검증 1: 외부 통신·평문 저장 금지 (원본 safeDoc은 CSP connect-src 'none' 으로
 // 강제했으나 myAI에는 CSP가 없으므로 정적 검사로 대체한다)
+//
+// 예외: llm/api.js 한 파일만 fetch 를 쓸 수 있다 — 로컬 서버의 safeDoc LLM
+// 분석 API(/api/safedoc/) 상대경로 호출 전용이며, 절대 URL(외부 호스트)이
+// 등장하면 위반으로 본다.
+const LLM_API_FILE = path.join('llm', 'api.js');
+
 function assertNoNetworkOrPlainStorage() {
   const forbidden = [
     { pattern: /\bfetch\s*\(/, label: 'fetch(' },
@@ -49,9 +55,19 @@ function assertNoNetworkOrPlainStorage() {
     // 주석에서 이 이름들을 언급하는 것은 위반이 아니므로(무엇을 왜 쓰지 않는지
     // 설명하는 주석이 실제로 있다) 검사 전에 주석을 제거한다.
     const source = stripComments(fs.readFileSync(file, 'utf8'));
+    const isLlmApi = path.relative(moduleDir, file) === LLM_API_FILE;
     for (const { pattern, label } of forbidden) {
+      if (isLlmApi && label === 'fetch(') continue;
       if (pattern.test(source)) {
         violations.push(`${path.relative(rootDir, file)} → ${label}`);
+      }
+    }
+    if (isLlmApi) {
+      if (!source.includes("'/api/safedoc/")) {
+        violations.push(`${path.relative(rootDir, file)} → llm/api.js 는 /api/safedoc/ 상대경로만 호출해야 합니다`);
+      }
+      if (/https?:\/\//.test(source)) {
+        violations.push(`${path.relative(rootDir, file)} → llm/api.js 에 절대 URL이 있습니다 (외부 전송 금지)`);
       }
     }
   }
@@ -60,7 +76,7 @@ function assertNoNetworkOrPlainStorage() {
       '문서보안 모듈은 외부 전송과 평문 저장을 해서는 안 됩니다:\n  ' + violations.join('\n  ')
     );
   }
-  console.log('  [1/3] 외부 통신·평문 저장 없음');
+  console.log('  [1/3] 외부 통신·평문 저장 없음 (llm/api.js 는 로컬 API 한정)');
 }
 
 // 검증 2: 개인정보를 담은 WorkSession 이 영속화 경로에 닿지 않아야 한다.

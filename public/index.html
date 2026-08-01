@@ -643,6 +643,13 @@
         <!-- ===== 탐지 설정 ===== -->
         <div id="sdcTabSettings" class="sd-tab-panel" hidden>
           <div class="sd-panel">
+            <h4>AI 기반 탐지</h4>
+            <label class="sd-llm-toggle">
+              <input type="checkbox" id="sdcUseLlm" />
+              AI(LLM) 기반 개인정보 탐지 사용
+            </label>
+            <p class="sd-muted">켜면 규칙 기반 탐지 결과를 이 서버의 로컬 AI 모델이 재검증하고, 성명·주소 같은 비정형 개인정보를 추가로 찾습니다. 문서 내용이 이 서버의 로컬 AI 모델로 전송되며, 외부 인터넷으로는 전송되지 않습니다. 분석 시간이 문서 길이에 따라 수 분까지 늘어날 수 있습니다.</p>
+
             <h4>유형별 기본 처리방식</h4>
             <p class="sd-muted">비식별 실행 시 각 개인정보 유형에 적용되는 기본 처리방식입니다. 후보별로 개별 변경할 수도 있습니다.</p>
             <div id="sdcPolicyList" class="sd-policy-list"></div>

@@ -14829,6 +14829,39 @@ body.panel-resizing .panel-resizer::after {
 
 #safeDocArea .sd-mini:hover { border-color: var(--accent); }
 
+/* AI(LLM) 검증 뱃지 */
+#safeDocArea .sd-llm-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+#safeDocArea .sd-llm-badge.reject {
+  color: #b3261e;
+  border-color: #b3261e;
+  background: rgba(179, 38, 30, 0.08);
+}
+#safeDocArea .sd-llm-badge.confirm {
+  color: #1b6e3c;
+  border-color: #1b6e3c;
+  background: rgba(27, 110, 60, 0.08);
+}
+#safeDocArea .sd-llm-badge.retype {
+  color: #8a5a00;
+  border-color: #8a5a00;
+  background: rgba(138, 90, 0, 0.08);
+}
+
+/* 설정 탭 — AI 탐지 토글 */
+#safeDocArea .sd-llm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 4px 0;
+}
+
 #safeDocArea .sd-review-footer,
 #safeDocArea .sd-result-footer,
 #safeDocArea .sd-settings-footer {

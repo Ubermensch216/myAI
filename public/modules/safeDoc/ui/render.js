@@ -14,7 +14,25 @@ const METHOD_LABELS = {
   USER_RULE: '사용자 규칙',
   MANUAL: '수동 추가',
   SEARCH: '검색 지정',
+  LLM: 'AI',
 };
+
+// LLM 검증 결과 뱃지 — 오탐 판정도 후보를 지우지 않고 표시만 한다 (최종 결정은 사용자)
+function llmBadgeHtml(c) {
+  if (c.llmVerdict === 'REJECT') {
+    return '<span class="sd-llm-badge reject" title="AI가 개인정보가 아닐 가능성이 높다고 판단했습니다">AI: 오탐 가능</span>';
+  }
+  if (c.llmVerdict === 'CONFIRM') {
+    return '<span class="sd-llm-badge confirm" title="AI가 개인정보로 확인했습니다">AI 확인</span>';
+  }
+  if (c.llmSuggestedType && PII_TYPES[c.llmSuggestedType]) {
+    return `<span class="sd-llm-badge retype" title="AI가 다른 유형을 제안했습니다">AI 제안: ${escapeHtml(PII_TYPES[c.llmSuggestedType].label)}</span>`;
+  }
+  if (c.llmVerdict === 'RETYPE') {
+    return '<span class="sd-llm-badge retype" title="AI가 유형을 재분류했습니다">AI 재분류</span>';
+  }
+  return '';
+}
 
 // 문서 텍스트 + 후보 목록 → 하이라이트된 미리보기 HTML (FR-401)
 export function renderPreviewHtml(text, candidates) {
@@ -80,7 +98,7 @@ export function renderCandidateListHtml(candidates, typePolicies) {
     <select class="c-type" aria-label="개인정보 유형">${typeOptions(c.type)}</select>
     <select class="c-action" aria-label="처리방식">${actionOptions(action)}</select>
     <span class="${confClass(c.confidence)}">${confidenceLabel(c.confidence)} (${c.confidence.toFixed(2)})</span>
-    <span>${METHOD_LABELS[c.detectionMethod] || c.detectionMethod}</span>
+    <span>${METHOD_LABELS[c.detectionMethod] || c.detectionMethod}</span>${llmBadgeHtml(c)}
     <button class="sd-mini c-same">동일값 일괄</button>
   </div>
 </div>`;

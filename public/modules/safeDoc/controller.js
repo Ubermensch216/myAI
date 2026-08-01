@@ -20,6 +20,10 @@ import { buildMappingTable, mappingTableToBlob, parseMappingTable } from './core
 import { buildSummary, summaryToBlob } from './core/summary.js';
 import { AppError } from './core/errors.js';
 import { normalizeTypePolicies } from './policies.js';
+import { chunkText } from './llm/chunker.js';
+import { anchorAdditions } from './llm/anchor.js';
+import { applyVerifications, mergeLlmCandidates } from './llm/merge.js';
+import { requestChunkAnalysis } from './llm/api.js';
 import { $, $side, $$, $$side, toast, showScreen, showTab, textOffsetIn, escapeHtml } from './ui/dom.js';
 import {
   renderPreviewHtml, renderCandidateListHtml, renderAfterHtml, renderSummaryHtml
@@ -28,6 +32,8 @@ import {
 let session = new WorkSession();
 let analyzeCancelled = false;
 let manualSeq = 0;
+// LLM 분석 중단용 — 취소 버튼·화면 이탈 시 진행 중인 요청을 즉시 끊는다.
+let llmAbort = null;
 
 // ---------- 설정 영속화 (myAI 암호화 IndexedDB 경유) ----------
 
@@ -68,6 +74,9 @@ export function initController() {
   renderPolicyList();
   renderRuleList();
 
+  const useLlm = $('#sdcUseLlm');
+  if (useLlm) useLlm.checked = ensureSafeDocState().useLlm === true;
+
   if (!bound) {
     bindTabEvents();
     bindSafeDocUploadEvents();
@@ -86,6 +95,7 @@ export function disposeController() {
   session.dispose();
   session.reset();
   analyzeCancelled = true;
+  llmAbort?.abort();
   resetReviewUi();
   showScreen('main');
 }
@@ -220,6 +230,15 @@ async function runAnalysis() {
     if (analyzeCancelled) throw new AppError('E010');
 
     session.candidates = runDetection();
+    if (analyzeCancelled) throw new AppError('E010');
+
+    // AI(LLM) 분석 — 설정으로 켠 경우에만. 실패해도 정규식 결과로 계속 간다.
+    if (ensureSafeDocState().useLlm === true) {
+      setProgress(50, 'AI 분석을 준비하는 중...');
+      await yieldUi();
+      await runLlmAnalysis();
+    }
+
     setProgress(90, '탐지 결과를 정리하는 중...');
     await yieldUi();
     if (analyzeCancelled) throw new AppError('E010');
@@ -270,6 +289,64 @@ function runDetection() {
     }
   }
   return result;
+}
+
+// AI(LLM) 분석 — 문서를 청크로 잘라 서버(로컬 Ollama 중계)에 순차 전송한다.
+// ① 기존 후보의 오탐/유형 검증을 후보 id 기준으로 먼저 반영하고(id 유지),
+// ② 신규 후보는 전 청크를 모은 뒤 한 번에 병합한다(id 재부여) — 순서 필수.
+// LLM 실패는 치명 오류가 아니다: 첫 청크부터 실패하면 서버·모델이 없는 것으로
+// 보고 전체를 건너뛰고, 중간 청크 실패는 그 구간만 건너뛴다.
+async function runLlmAnalysis() {
+  const text = session.parsed.text;
+  const chunks = chunkText(text);
+  if (chunks.length === 0) return;
+
+  llmAbort = new AbortController();
+  const llmRaw = [];
+  let failedChunks = 0;
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      if (analyzeCancelled) throw new AppError('E010');
+      setProgress(
+        50 + Math.round(35 * (i / chunks.length)),
+        `AI가 개인정보를 검증하는 중... (${i + 1}/${chunks.length} 구간)`
+      );
+
+      const chunk = chunks[i];
+      const chunkEnd = chunk.start + chunk.text.length;
+      const inChunk = session.candidates.filter((c) => c.start >= chunk.start && c.end <= chunkEnd);
+
+      let result;
+      try {
+        result = await requestChunkAnalysis({
+          text: chunk.text,
+          candidates: inChunk.map((c) => ({
+            id: c.id, type: c.type, text: c.originalText, context: c.context,
+          })),
+          signal: llmAbort.signal,
+        });
+      } catch {
+        if (analyzeCancelled || llmAbort.signal.aborted) throw new AppError('E010');
+        if (i === 0) {
+          // 첫 구간부터 실패 — 서버/모델 사용 불가로 보고 전체 생략
+          toast('AI 분석을 사용할 수 없어 규칙 기반 결과만 표시합니다.', true);
+          return;
+        }
+        failedChunks += 1;
+        continue;
+      }
+
+      applyVerifications(session.candidates, result.verifications);
+      llmRaw.push(...anchorAdditions(chunk.text, chunk.start, result.additions));
+    }
+
+    session.candidates = mergeLlmCandidates(session.candidates, llmRaw, text);
+    if (failedChunks > 0) {
+      toast(`AI 분석 중 ${failedChunks}개 구간을 건너뛰었습니다. 해당 구간은 규칙 기반 결과만 반영됩니다.`, true);
+    }
+  } finally {
+    llmAbort = null;
+  }
 }
 
 // 파싱 결과 메타정보 표시 (FR-104 — 원본에서는 계산만 하고 버려져 있었다)
@@ -457,7 +534,10 @@ function bindSafeDocReviewEvents() {
     if (btn) btn.disabled = !e.target.checked;
   });
   $('#sdcExecute')?.addEventListener('click', executeDeidentify);
-  $('#sdcCancelAnalyze')?.addEventListener('click', () => { analyzeCancelled = true; });
+  $('#sdcCancelAnalyze')?.addEventListener('click', () => {
+    analyzeCancelled = true;
+    llmAbort?.abort();
+  });
 }
 
 function addManualCandidate(start, end, type, method = 'MANUAL') {
@@ -673,6 +753,12 @@ function validateRulePattern(pattern) {
 }
 
 function bindSafeDocSettingsEvents() {
+  // AI(LLM) 탐지 사용 여부 — 비민감 설정이라 영속화한다 (policies.js)
+  $('#sdcUseLlm')?.addEventListener('change', (e) => {
+    ensureSafeDocState().useLlm = e.target.checked === true;
+    scheduleSave();
+  });
+
   $('#sdcPolicyList')?.addEventListener('change', (e) => {
     const type = e.target.dataset.type;
     if (!type) return;

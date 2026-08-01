@@ -25,6 +25,7 @@ import { resolvedDepartmentBackend } from "./rag/ragConfig.js";
 import { isNaverSearchConfigured, isNaverSearchEnabled } from "./naverSearch.js";
 import { createExportFile, listExportFormats } from "./exportFiles.js";
 import { generateMindmap } from "./mindmap.js";
+import { analyzeSafedocChunk } from "./safedocLlm.js";
 import { generateInfographicSpec } from "./infographic.js";
 import { generateAssetsForSpec } from "./infographic/assetPlanner.js";
 import { lawApiRouter } from "./law/lawApi.js";
@@ -181,6 +182,7 @@ app.use("/api/upload", createRateLimiter({ name: "upload", keyPrefix: "upload:",
 app.use("/api/export", createRateLimiter({ name: "export", keyPrefix: "export:", ...rateLimitDefaults.lightweight }));
 app.use("/api/source-workflow", createRateLimiter({ name: "source_workflow", keyPrefix: "source_workflow:", ...rateLimitDefaults.lightweight }));
 app.use("/api/studio/mindmap", createRateLimiter({ name: "studio_mindmap", keyPrefix: "studio_mindmap:", ...rateLimitDefaults.chat }));
+app.use("/api/safedoc/analyze", createRateLimiter({ name: "safedoc_llm", keyPrefix: "safedoc_llm:", ...rateLimitDefaults.chat }));
 app.use("/api/studio/document", createRateLimiter({ name: "studio_document", keyPrefix: "studio_document:", ...rateLimitDefaults.chat }));
 app.use("/api/followups", createRateLimiter({ name: "followups", keyPrefix: "followups:", ...rateLimitDefaults.lightweight }));
 app.use("/api/agent/intent", createRateLimiter({ name: "calendar_intent", keyPrefix: "intent:", ...rateLimitDefaults.lightweight }));
@@ -270,6 +272,30 @@ app.post("/api/export", async (request, response) => {
     response.send(file.buffer);
   } catch (error) {
     response.status(400).json({ error: error.message });
+  }
+});
+
+// 문서보안(safeDoc) LLM 분석 — 청크 단위 개인정보 검증/추가 탐지.
+// 무저장·무로깅: 요청 본문(문서 원문)·LLM 출력은 어떤 경로로도 기록하지 않고,
+// 오류 응답은 고정 문구만 돌려준다 (NFR-003).
+app.post("/api/safedoc/analyze", async (request, response) => {
+  const safedocAbort = createRequestAbortController(request, response);
+  try {
+    const result = await analyzeSafedocChunk({
+      text: request.body?.text,
+      candidates: request.body?.candidates,
+      signal: safedocAbort.signal
+    });
+    if (safedocAbort.signal.aborted || response.destroyed) return;
+    response.json(result);
+  } catch (error) {
+    if (safedocAbort.signal.aborted || response.destroyed) return;
+    const status = error.statusCode || 500;
+    response.status(status).json({
+      error: status === 400 ? error.message : "AI 분석 요청 처리에 실패했습니다."
+    });
+  } finally {
+    safedocAbort.cleanup();
   }
 });
 

@@ -27,6 +27,31 @@ export async function parseDocument(file) {
   }
 }
 
+// 원시 후보(start/end/type/baseScore/...)를 화면·처리에 쓰는 최종 후보로 만든다.
+// id는 순번으로 재부여한다. 원시 후보의 carry 객체는 최종 후보에 그대로 얹는다
+// (LLM 병합 시 llmVerdict 등 부가 필드 운반용 — 직렬화 가능한 원시값만 담을 것).
+export function finalizeCandidates(merged, text) {
+  let seq = 0;
+  return merged.map((c) => {
+    seq += 1;
+    return {
+      id: `pii-${String(seq).padStart(6, '0')}`,
+      documentPart: 'body',
+      start: c.start,
+      end: c.end,
+      originalText: c.originalText,
+      type: c.type,
+      confidence: Math.max(0, Math.min(1, c.baseScore)),
+      detectionMethod: c.detectionMethod,
+      context: c.context || getContext(text, c.start, c.end),
+      selected: true,
+      action: null,
+      replacementText: null,
+      ...(c.carry || {}),
+    };
+  });
+}
+
 // 탐지 실행: 엔진 후보 + CSV 열 힌트 후보를 병합하고 중첩을 정리
 export function analyze(parsed, userRules = []) {
   const engineCandidates = detectAll(parsed.text, 'body', userRules);
@@ -40,24 +65,7 @@ export function analyze(parsed, userRules = []) {
         baseScore: c.confidence, detectionMethod: c.detectionMethod, context: c.context,
       }));
       const merged = resolveOverlaps([...raw, ...colCands]);
-      let seq = 0;
-      return merged.map((c) => {
-        seq += 1;
-        return {
-          id: `pii-${String(seq).padStart(6, '0')}`,
-          documentPart: 'body',
-          start: c.start,
-          end: c.end,
-          originalText: c.originalText,
-          type: c.type,
-          confidence: Math.max(0, Math.min(1, c.baseScore)),
-          detectionMethod: c.detectionMethod,
-          context: c.context || getContext(parsed.text, c.start, c.end),
-          selected: true,
-          action: null,
-          replacementText: null,
-        };
-      });
+      return finalizeCandidates(merged, parsed.text);
     }
   }
   return engineCandidates;
